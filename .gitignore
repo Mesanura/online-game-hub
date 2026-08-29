@@ -3,6 +3,8 @@ dist/
 coverage/
 .turbo/
 .next/
+playwright-report/
+test-results/
 .npm-cache/
 .pnpm-store/
 

@@ -18,10 +18,12 @@
     "lint": "pnpm format:check && eslint . --max-warnings 0 && pnpm docs:check && pnpm deps:check",
     "test": "turbo run test",
     "test:integration": "pnpm --filter @online-game-hub/game-server test:integration",
+    "test:e2e": "pnpm build && pnpm --filter @online-game-hub/e2e test:e2e",
     "typecheck": "turbo run typecheck"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
+    "@playwright/test": "1.62.1",
     "@types/node": "24.13.3",
     "eslint": "10.9.1",
     "globals": "17.11.0",

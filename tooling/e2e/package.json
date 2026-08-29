@@ -1,0 +1,19 @@
+{
+  "name": "@online-game-hub/e2e",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test:e2e": "playwright test",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@online-game-hub/game-registry": "workspace:*",
+    "@online-game-hub/game-server": "workspace:*",
+    "@online-game-hub/game-server-runtime": "workspace:*"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.62.1",
+    "@types/node": "24.13.3"
+  }
+}

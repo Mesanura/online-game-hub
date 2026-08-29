@@ -10,6 +10,8 @@ export default tseslint.config(
       "**/node_modules/**",
       "**/.turbo/**",
       "**/.next/**",
+      "**/playwright-report/**",
+      "**/test-results/**",
       "tooling/repository-check/fixtures/**",
     ],
   },

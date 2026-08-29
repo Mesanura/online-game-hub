@@ -18,6 +18,9 @@ const SOURCE_EXTENSIONS = new Set([
   ".tsx",
 ]);
 const IGNORED_DIRECTORIES = new Set([
+  ".next",
+  "playwright-report",
+  "test-results",
   ".git",
   ".turbo",
   "coverage",

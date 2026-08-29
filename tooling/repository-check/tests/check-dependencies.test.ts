@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
@@ -63,4 +66,42 @@ test("fixtures prove every M1 dependency boundary fails closed", async () => {
     /@fixture\/alpha must not import another game @fixture\/beta/u,
   );
   assert.match(messages, /@fixture\/game-sdk\/src\/private\.js/u);
+});
+
+test("framework and browser-test generated directories are not source", async () => {
+  const fixtureRoot = await mkdtemp(join(tmpdir(), "ogh-repository-check-"));
+  try {
+    const webRoot = join(fixtureRoot, "apps", "web");
+    const gameRoot = join(fixtureRoot, "games", "tic");
+    const generatedDirectories = [
+      join(webRoot, ".next"),
+      join(webRoot, "playwright-report"),
+      join(webRoot, "test-results"),
+    ];
+    await Promise.all([
+      mkdir(gameRoot, { recursive: true }),
+      ...generatedDirectories.map((directory) =>
+        mkdir(directory, { recursive: true }),
+      ),
+    ]);
+    await Promise.all([
+      writeFile(
+        join(webRoot, "package.json"),
+        JSON.stringify({ name: "@fixture/web", private: true }),
+      ),
+      writeFile(
+        join(gameRoot, "package.json"),
+        JSON.stringify({ name: "@fixture/tic", private: true }),
+      ),
+      ...generatedDirectories.map((directory) =>
+        writeFile(join(directory, "generated.ts"), 'import "@fixture/tic";\n'),
+      ),
+    ]);
+
+    const result = await checkDependencies(fixtureRoot);
+    assert.deepEqual(result.violations, []);
+    assert.equal(result.sourceFileCount, 0);
+  } finally {
+    await rm(fixtureRoot, { recursive: true, force: true });
+  }
 });

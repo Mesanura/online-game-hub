@@ -30,6 +30,9 @@ jobs:
       - name: Install dependencies from lockfile
         run: pnpm install --frozen-lockfile
 
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
       - name: Lint and repository checks
         run: pnpm lint
 
@@ -44,3 +47,6 @@ jobs:
 
       - name: Build
         run: pnpm build
+
+      - name: End-to-end test
+        run: pnpm test:e2e
