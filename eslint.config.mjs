@@ -9,6 +9,7 @@ export default tseslint.config(
       "**/dist/**",
       "**/node_modules/**",
       "**/.turbo/**",
+      "**/.next/**",
       "tooling/repository-check/fixtures/**",
     ],
   },
