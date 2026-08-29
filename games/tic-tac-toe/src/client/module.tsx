@@ -109,6 +109,9 @@ export function TicTacToeClient(
     setSubmitting(true);
     try {
       await props.submitAction({ type: "PLACE_MARK", cell });
+    } catch {
+      // The host exposes authoritative rejection/error state to the page.
+      // The game module only settles its local submitting affordance.
     } finally {
       setSubmitting(false);
     }
