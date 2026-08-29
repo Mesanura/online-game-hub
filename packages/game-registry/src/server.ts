@@ -17,4 +17,12 @@ export function resolveGameDefinition(
   );
 }
 
+export function resolveCurrentGameDefinition(
+  gameId: string,
+): UnknownGameDefinition | undefined {
+  return serverDefinitions.find(
+    (definition) => definition.manifest.id === gameId,
+  );
+}
+
 export type GameDefinitionResolver = typeof resolveGameDefinition;

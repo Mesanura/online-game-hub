@@ -3,9 +3,14 @@ import { describe, expect, expectTypeOf, it } from "vitest";
 import {
   MAX_GAME_ACTION_BYTES,
   PROTOCOL_VERSION,
+  commandIdSchema,
   commandRejectedSchema,
+  createGameRoomRequestSchema,
   gameActionCommandSchema,
+  gameServerTicketClaimsSchema,
+  joinGameRoomRequestSchema,
   matchSnapshotSchema,
+  roomConnectedSchema,
   serverMessageSchema,
 } from "../src/index.js";
 import type {
@@ -148,5 +153,97 @@ describe("server envelopes", () => {
         stack: "secret",
       }).success,
     ).toBe(false);
+  });
+});
+
+describe("ticket and room matchmaking contracts", () => {
+  const claims = {
+    issuer: "test-web",
+    audience: "game-server",
+    playerSessionId: "session-a",
+    issuedAt: 100,
+    expiresAt: 130,
+    ticketId: "ticket-a",
+    protocolVersion: PROTOCOL_VERSION,
+  } as const;
+
+  it("parses strict ticket claims and rejects incompatible claims", () => {
+    expect(gameServerTicketClaimsSchema.parse(claims)).toEqual(claims);
+    expect(
+      gameServerTicketClaimsSchema.safeParse({
+        ...claims,
+        audience: "another-service",
+      }).success,
+    ).toBe(false);
+    expect(
+      gameServerTicketClaimsSchema.safeParse({
+        ...claims,
+        protocolVersion: 2,
+      }).success,
+    ).toBe(false);
+    expect(
+      gameServerTicketClaimsSchema.safeParse({
+        ...claims,
+        expiresAt: claims.issuedAt,
+      }).success,
+    ).toBe(false);
+  });
+
+  it("accepts create/join intent without client-selected version, slot, or room id", () => {
+    expect(
+      createGameRoomRequestSchema.parse({
+        type: "room.create",
+        protocolVersion: PROTOCOL_VERSION,
+        ticket: "opaque-ticket",
+        gameId: "tic-tac-toe",
+        initialConfig: null,
+      }),
+    ).toEqual({
+      type: "room.create",
+      protocolVersion: PROTOCOL_VERSION,
+      ticket: "opaque-ticket",
+      gameId: "tic-tac-toe",
+      initialConfig: null,
+    });
+
+    expect(
+      joinGameRoomRequestSchema.parse({
+        type: "room.join",
+        protocolVersion: PROTOCOL_VERSION,
+        ticket: "opaque-ticket",
+        roomCode: " abcd2345 ",
+      }).roomCode,
+    ).toBe("ABCD2345");
+
+    for (const forbidden of [
+      { gameVersion: "1.0.0" },
+      { playerSlotId: "slot-2" },
+      { roomId: "internal-room" },
+    ]) {
+      expect(
+        createGameRoomRequestSchema.safeParse({
+          type: "room.create",
+          protocolVersion: PROTOCOL_VERSION,
+          ticket: "opaque-ticket",
+          gameId: "tic-tac-toe",
+          initialConfig: null,
+          ...forbidden,
+        }).success,
+      ).toBe(false);
+    }
+  });
+
+  it("round trips the public room connection response without internal ids", () => {
+    const connected = roomConnectedSchema.parse({
+      type: "room.connected",
+      protocolVersion: PROTOCOL_VERSION,
+      roomCode: "ABCD2345",
+      gameId: "tic-tac-toe",
+      gameVersion: "1.0.0",
+      playerSlotId: "slot-1",
+    });
+    expect(serverMessageSchema.parse(connected)).toEqual(connected);
+    expect(connected).not.toHaveProperty("roomId");
+    expect(commandIdSchema.safeParse("x".repeat(129)).success).toBe(false);
   });
 });

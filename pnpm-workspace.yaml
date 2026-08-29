@@ -4,3 +4,5 @@ packages:
   - games/*
   - tooling/*
   - tools/*
+allowBuilds:
+  msgpackr-extract: false

@@ -7,5 +7,16 @@
     "build": "tsc -p tsconfig.build.json",
     "test": "node --test",
     "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@colyseus/core": "0.18.10",
+    "@colyseus/ws-transport": "0.18.2",
+    "@online-game-hub/game-registry": "workspace:*",
+    "@online-game-hub/game-server-runtime": "workspace:*",
+    "@online-game-hub/protocol": "workspace:*"
+  },
+  "devDependencies": {
+    "@colyseus/sdk": "0.18.2",
+    "@types/node": "24.13.3"
   }
 }

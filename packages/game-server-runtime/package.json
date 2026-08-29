@@ -11,6 +11,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./testing": {
+      "types": "./dist/testing/index.d.ts",
+      "import": "./dist/testing/index.js"
     }
   },
   "scripts": {
@@ -19,6 +23,11 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "@online-game-hub/game-sdk": "workspace:*"
+    "@colyseus/core": "0.18.10",
+    "@online-game-hub/game-sdk": "workspace:*",
+    "@online-game-hub/protocol": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.3"
   }
 }

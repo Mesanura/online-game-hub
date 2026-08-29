@@ -2,6 +2,7 @@ import { z } from "zod";
 
 export const PROTOCOL_VERSION = 1 as const;
 export const MAX_GAME_ACTION_BYTES = 16_384;
+export const GAME_SERVER_TICKET_AUDIENCE = "game-server" as const;
 
 const GAME_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 const EXACT_SEMVER_PATTERN =
@@ -97,6 +98,12 @@ export const revisionSchema = z
 export const commandIdSchema = z.string().min(1).max(128);
 export const gameIdSchema = z.string().regex(GAME_ID_PATTERN);
 export const gameVersionSchema = z.string().regex(EXACT_SEMVER_PATTERN);
+export const roomCodeSchema = z
+  .string()
+  .trim()
+  .toUpperCase()
+  .regex(/^[A-HJ-NP-Z2-9]{8}$/u);
+export const gameServerTicketSchema = z.string().min(1).max(4096);
 export const jsonValueSchema = z.custom<unknown>(isJsonValue, {
   error: "Expected a JSON-serializable value.",
 });
@@ -133,6 +140,64 @@ export const gameActionCommandSchema = z
   })
   .strict();
 export type GameActionCommand = z.infer<typeof gameActionCommandSchema>;
+
+export const gameServerTicketClaimsSchema = z
+  .object({
+    issuer: z.string().min(1).max(128),
+    audience: z.literal(GAME_SERVER_TICKET_AUDIENCE),
+    playerSessionId: z.string().min(1).max(128),
+    issuedAt: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+    expiresAt: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+    ticketId: z.string().min(1).max(128),
+    protocolVersion: protocolVersionSchema,
+  })
+  .strict()
+  .refine((claims) => claims.expiresAt > claims.issuedAt, {
+    error: "Ticket expiry must be after issue time.",
+    path: ["expiresAt"],
+  });
+export type GameServerTicketClaims = z.infer<
+  typeof gameServerTicketClaimsSchema
+>;
+
+export const createGameRoomRequestSchema = z
+  .object({
+    type: z.literal("room.create"),
+    protocolVersion: protocolVersionSchema,
+    ticket: gameServerTicketSchema,
+    gameId: gameIdSchema,
+    initialConfig: jsonValueSchema,
+  })
+  .strict();
+export type CreateGameRoomRequest = z.infer<typeof createGameRoomRequestSchema>;
+
+export const joinGameRoomRequestSchema = z
+  .object({
+    type: z.literal("room.join"),
+    protocolVersion: protocolVersionSchema,
+    ticket: gameServerTicketSchema,
+    roomCode: roomCodeSchema,
+  })
+  .strict();
+export type JoinGameRoomRequest = z.infer<typeof joinGameRoomRequestSchema>;
+
+export const gameRoomRequestSchema = z.discriminatedUnion("type", [
+  createGameRoomRequestSchema,
+  joinGameRoomRequestSchema,
+]);
+export type GameRoomRequest = z.infer<typeof gameRoomRequestSchema>;
+
+export const roomConnectedSchema = z
+  .object({
+    type: z.literal("room.connected"),
+    protocolVersion: protocolVersionSchema,
+    roomCode: roomCodeSchema,
+    gameId: gameIdSchema,
+    gameVersion: gameVersionSchema,
+    playerSlotId: z.string().min(1),
+  })
+  .strict();
+export type RoomConnected = z.infer<typeof roomConnectedSchema>;
 
 export const matchSnapshotSchema = z
   .object({
@@ -195,6 +260,7 @@ export const clientMessageSchema = z.discriminatedUnion("type", [
   gameActionCommandSchema,
 ]);
 export const serverMessageSchema = z.discriminatedUnion("type", [
+  roomConnectedSchema,
   matchSnapshotSchema,
   commandRejectedSchema,
 ]);

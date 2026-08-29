@@ -5,7 +5,10 @@ import { ticTacToeManifest } from "@online-game-hub/tic-tac-toe/manifest";
 
 import { gameCatalog, resolveGameManifest } from "../src/catalog.js";
 import { loadGameClientEntrypoint } from "../src/client.js";
-import { resolveGameDefinition } from "../src/server.js";
+import {
+  resolveCurrentGameDefinition,
+  resolveGameDefinition,
+} from "../src/server.js";
 
 describe("explicit game registry", () => {
   it("uses the game's single manifest source in the catalog and server", () => {
@@ -22,6 +25,13 @@ describe("explicit game registry", () => {
     expect(resolveGameDefinition("tic-tac-toe", "1.0.1")).toBeUndefined();
     expect(resolveGameDefinition("tic-tac-toe", "^1.0.0")).toBeUndefined();
     expect(resolveGameManifest("tic-tac-toe", "latest")).toBeUndefined();
+  });
+
+  it("selects the explicitly registered current exact version for new rooms", () => {
+    expect(resolveCurrentGameDefinition("tic-tac-toe")).toBe(
+      ticTacToeDefinition,
+    );
+    expect(resolveCurrentGameDefinition("unknown")).toBeUndefined();
   });
 
   it("keeps the client entry lazy, isolated, and free of UI business", async () => {
