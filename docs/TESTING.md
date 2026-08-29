@@ -1,6 +1,6 @@
 # 测试策略
 
-> 状态：V1 策略（M3 server integration 已实现，M4 browser E2E 待实现）  
+> 状态：V1 策略（M4 browser E2E 已实现）
 > 本文是测试层级、职责、最低场景和质量门禁的权威来源。具体业务范围见 [PRODUCT.md](./PRODUCT.md)。
 
 ## 1. 目标
@@ -143,18 +143,22 @@ M3 的四个真实 integration cases 覆盖：health/metrics 与 ticket trust bo
 
 ## 9. Playwright E2E
 
-关键 E2E 使用两个隔离 browser contexts，代表两个匿名访客：
+`tooling/e2e/tests/web-vertical-slice.spec.ts` 使用两个隔离 browser contexts，代表两个匿名访客：
 
-1. 玩家 A 打开主页并进入 Tic-Tac-Toe；
-2. A 创建房间并获得房间码/邀请链接；
-3. 玩家 B 通过邀请链接加入；
-4. 双方交替落子，UI 与 revision 同步；
-5. 非当前玩家的操作不能改变服务器状态；
-6. 完成一场胜局和一场平局；
-7. 一方刷新页面，在宽限期内恢复原 slot 和当前棋盘；
-8. 两个 contexts 的 cookie/session 隔离，不可互相接管席位。
+1. A 打开 Tic-Tac-Toe 页面，创建 room 并获得只含 game path/room code 的邀请 URL；
+2. B 用带空白的小写 room code 通过邀请 URL 加入，证明 client 在 SDK join 前规范化；
+3. 两者收到不同 stable slots、相同 revision 和各自完整 View；
+4. 无效 room code 显示 room error，ticket/session secret 不进入 UI；
+5. 测试越过 disabled affordance 提交非当前玩家 intent 和重复点击，真实 Server 都不产生额外 authoritative revision/棋盘/replay；
+6. 两者完成 5-revision 胜局，并验证 WIN UI；
+7. A 断线后 fake clock 前进 30 秒，以同一 browser context、新 ticket/new join reservation 恢复原 slot 和完整棋盘；
+8. 两者再完成 9-revision 平局，并验证 DRAW UI；
+9. 两个 HttpOnly/SameSite guest cookies 值不同，B 不能窃取 A 席位；
+10. 第三房间用 fake clock 前进 60,001 ms 验证 `abandoned`；胜局与平局的 canonical replay 都由现有 `verifyReplay` 成功重建。
 
-E2E 断言用户可见行为和关键网络结果，不依赖 CSS class、内部 React state 或固定端口。测试数据由公开测试 helper 创建，测试结束后清理自己的房间。
+Harness 为 Web 预留随机 loopback port，并用 `port: 0` 启动正式 ticket verifier/CORS composition 的真实 Colyseus Server；随后启动真实 Next production server 和 Chromium。只注入 fake clock、deterministic IDs、内存 stores/logger 等已有可控 ports，不 mock 浏览器、ticket route、matchmaking、WebSocket 或 Action pipeline，也不访问外部服务。
+
+断言优先使用可访问 role/test id 和用户可见文本；恶意 intent case 明确调用实际 React click handler 以绕过 UX disable，但仍通过真实 client host/transport/server。Playwright trace/video 关闭，避免 bearer ticket 进入测试制品；失败 screenshot 只包含不显示 credential 的 UI。harness 在 `afterAll` 对两个进程执行停止清理。
 
 ## 10. Change-to-Test Matrix
 
@@ -171,7 +175,7 @@ E2E 断言用户可见行为和关键网络结果，不依赖 CSS class、内部
 
 ## 11. Root Commands
 
-M3 已提供以下稳定根命令：
+M4 提供以下稳定根命令：
 
 ```text
 pnpm lint
@@ -180,9 +184,10 @@ pnpm test
 pnpm build
 pnpm deps:check
 pnpm test:integration
+pnpm test:e2e
 ```
 
-`pnpm lint` 包含格式、ESLint、本地 Markdown 链接与依赖边界检查。`pnpm test` 纳入 Game SDK、Protocol、Tic-Tac-Toe Core、registry、runtime/replay stores、Game Server unit tests 和 repository-check 的故意违规 fixture tests。`pnpm test:integration` 执行上述真实 Colyseus tests，根 CI 在 unit tests 后、build 前运行它；该命令不是空脚本。
+`pnpm lint` 包含格式、ESLint、本地 Markdown 链接与依赖边界检查。`pnpm test` 纳入 Game SDK、Protocol、Tic-Tac-Toe Core/client、registry、ticket authority、Web guest/config、runtime/replay stores、Game Server unit tests 和 repository-check 的全部故意违规 fixture tests。`pnpm test:integration` 执行上述真实 Colyseus SDK tests。`pnpm test:e2e` 先执行完整 workspace build，再执行真实 Playwright；两个命令都不是空脚本。
 
 所有当前支持 `gameVersion` 的 golden replay：
 
@@ -190,11 +195,7 @@ pnpm test:integration
 pnpm --filter @online-game-hub/tic-tac-toe test:golden
 ```
 
-浏览器层在真正存在后再建立，不提供空脚本：
-
-```text
-pnpm test:e2e          # M4
-```
+首次本机运行 E2E 前执行 `pnpm exec playwright install chromium`。CI 在 frozen-lockfile install 后以 `pnpm exec playwright install --with-deps chromium` 安装与 Playwright 1.62.1 精确匹配的浏览器，然后运行 lint、typecheck、unit、integration、build 和 E2E。
 
 新增 package 必须接入 Turbo task graph，而不是要求 Agent 记忆私有脚本。
 

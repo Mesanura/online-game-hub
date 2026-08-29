@@ -1,6 +1,6 @@
 # 系统架构
 
-> 状态：架构基线（V1，M3 authoritative runtime 已实现）  
+> 状态：架构基线（V1，M4 Web vertical slice 已实现）
 > 本文是系统职责、目录结构、依赖方向和部署基线的权威来源。产品范围见 [PRODUCT.md](./PRODUCT.md)。
 
 ## 1. 架构目标
@@ -60,19 +60,22 @@ Browser
 
 它可以依赖 server registry，但不得包含 Tic-Tac-Toe 等具体规则。
 
-M3 的 composition root 是无副作用的 `createGameServer(options)`：必须注入 `TicketVerifier`，默认组合 `InMemoryRoomStore`、`InMemoryReplayStore`、secure runtime ID source、结构化 logger 和内存 metrics；`start`/`stop` 显式控制生命周期，`port: 0` 支持无固定公共端口的测试。HTTP 使用 Colyseus 自带 router 暴露 `/health` 与 `/metrics`，WebSocket 使用 `@colyseus/ws-transport`。Express 只因该 transport 的运行时顶层 import 而由 app 拥有，不承载业务路由。
+无副作用的 `createGameServer(options)` 必须注入 `TicketVerifier`，默认组合 `InMemoryRoomStore`、`InMemoryReplayStore`、secure runtime ID source、结构化 logger 和内存 metrics；`start`/`stop` 显式控制生命周期，`port: 0` 支持无固定公共端口的测试。HTTP 使用 Colyseus 自带 router 暴露 `/health` 与 `/metrics`，WebSocket 使用 `@colyseus/ws-transport`。Express 只因该 transport 的运行时顶层 import 而由 app 拥有，不承载业务路由。
+
+M4 的 `createProductionGameServer(config, overrides?)` 在 composition layer 注入正式 HMAC ticket verifier、60 秒 reconnect 配置和明确的 Web origin allowlist。CLI 从环境读取 host/port/issuer/secret/origins，`SIGINT`/`SIGTERM` 触发 graceful shutdown；生产模块不导入 `game-server-runtime/testing`。
 
 ## 4. Package 职责
 
-| Package               | 职责                                                                                                  | 明确禁止                                                   |
-| --------------------- | ----------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
-| `game-sdk`            | 离散 Action 游戏的纯类型契约、deterministic RNG、通用 slot/viewer/outcome 类型                        | React、Next.js、DOM、Colyseus、WebSocket、数据库、具体游戏 |
-| `game-client-sdk`     | 游戏 Client Module 契约、客户端连接状态与通用 hooks                                                   | authoritative 规则、服务端 State、数据库                   |
-| `game-server-runtime` | ticket/clock/store/observability ports、通用 Colyseus room、Action pipeline、比赛 lifecycle/reconnect | 具体游戏规则或对 `games/*` 的直接依赖                      |
-| `game-registry`       | 显式组合游戏 manifest、client loader 和 server definition                                             | 游戏规则实现、运行时目录扫描                               |
-| `protocol`            | 跨 Web/Game Server 的 envelope、错误码、票据 claims 和 Zod schema                                     | 具体游戏 Action/State/View 联合类型                        |
-| `database`            | 未来的 Drizzle client、schema、migration 与 repository adapter                                        | 游戏规则和 UI；V1 不创建实现                               |
-| `ui`                  | 无业务规则的共享视觉组件与 design tokens                                                              | 网络、房间、游戏规则和数据库访问                           |
+| Package               | 职责                                                                                                       | 明确禁止                                                     |
+| --------------------- | ---------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| `game-sdk`            | 离散 Action 游戏的纯类型契约、deterministic RNG、通用 slot/viewer/outcome 类型                             | React、Next.js、DOM、Colyseus、WebSocket、数据库、具体游戏   |
+| `game-client-sdk`     | Client Module contract、ticket provider、Colyseus client/room lifecycle、snapshot/command/reconnect host   | authoritative 规则、服务端 State、具体游戏类型、数据库       |
+| `game-server-runtime` | ticket/clock/store/observability ports、通用 Colyseus room、Action pipeline、比赛 lifecycle/reconnect      | 具体游戏规则或对 `games/*` 的直接依赖                        |
+| `game-server-ticket`  | Web issuer 与 Game Server verifier 共用的短期 HMAC-SHA256 ticket authority，实现 Protocol V1 ticket claims | 浏览器 API、session cookie、房间/游戏规则、testing authority |
+| `game-registry`       | 显式组合游戏 manifest、client loader 和 server definition                                                  | 游戏规则实现、运行时目录扫描                                 |
+| `protocol`            | 跨 Web/Game Server 的 envelope、错误码、票据 claims 和 Zod schema                                          | 具体游戏 Action/State/View 联合类型                          |
+| `database`            | 未来的 Drizzle client、schema、migration 与 repository adapter                                             | 游戏规则和 UI；V1 不创建实现                                 |
+| `ui`                  | 无业务规则的共享视觉组件与 design tokens                                                                   | 网络、房间、游戏规则和数据库访问                             |
 
 不创建 `packages/shared`。共享代码只有在所有权明确且出现真实复用后，才移动到职责具体的 package。
 
@@ -118,15 +121,16 @@ Package export map 提供：
 games/*/core ───────────────> game-sdk + zod
 games/*/client ─────────────> own public types + game-client-sdk
 
-game-client-sdk ────────────> protocol
+game-client-sdk ────────────> protocol + Colyseus SDK
 game-server-runtime ────────> game-sdk + protocol + Colyseus
+game-server-ticket ─────────> protocol
 game-registry ──────────────> games/* subpath exports
 
 apps/web ───────────────────> game-registry/client + catalog
-                              game-client-sdk + protocol + ui
+                              game-client-sdk + game-server-ticket
 
 apps/game-server ───────────> game-registry/server
-                              game-server-runtime + protocol
+                              game-server-runtime + game-server-ticket + protocol
 ```
 
 Hard Rules：
@@ -167,12 +171,23 @@ Room 必须串行处理 Action。任何未来多实例方案都必须维持“�
 - command outcome cache 以 `PlayerSessionId + commandId` 为 key，M3 保留整个 room lifetime，覆盖 60 秒重连和正常重试；后续长房间可在不小于重试窗口的前提下加入有界淘汰。
 - 初连、lifecycle 激活、accepted Action、stale recovery、takeover reconnect 和 timeout abandonment 都只发送按当前连接单独调用 `projectView` 得到的完整 snapshot。
 
+### 8.2 M4 Web 与 Client Host
+
+- Next Proxy 在首次页面请求建立签名 `ogh_guest` cookie；`POST /api/game-ticket` 从服务器验证或创建的 session 签发短期 ticket。session ID 和两个 signing secret 都由服务器配置决定，浏览器不能选择或通过独立字段读取 `PlayerSessionId`。
+- 首页和目录只从 `game-registry/catalog` 读取 manifest；游戏页从 `game-registry/client` 加载 Client Module，不导入 Core 或 server registry。
+- 通用 `GameClientHost` 获取新 ticket 后调用 Colyseus `create`/`join`；join 在 SDK 调用前执行 `trim().toUpperCase()`。连接成功以 `room.connected` 的 stable slot 和完整 `match.snapshot` 为准。
+- host 只保存当前 per-viewer View snapshot、revision、连接/拒绝状态。`submitAction` 生成 `commandId` 并从最新 snapshot 填充 `expectedRevision`；它不持有或重演 authoritative State。
+- 所有 server payload 都先通过 Protocol V1 schema。duplicate、stale、schema-invalid 和 game-rule rejection 不在浏览器模拟；host 接受服务器附带或随后发送的完整 snapshot 收敛。
+- transport 非主动关闭时，host 在 60 秒窗口内以指数退避获取新 ticket 并重新执行 room-code join，生成新的 seat reservation；不使用 SDK reconnection token 证明席位所有权。
+- Tic-Tac-Toe Client Module 只解析 View，渲染 3×3 棋盘、mark/turn/Outcome，并只提交 `{ type: "PLACE_MARK", cell }` intent。按钮禁用仅是 UX，不能代替 authoritative rejection。
+
 ## 9. 存储与部署
 
 ### 9.1 V1 基线
 
 - `apps/web` 与 `apps/game-server` 是两个独立服务。
 - 单区域、单个 Game Server 实例。
+- Web 通过环境注入浏览器可达的 Game Server public URL；Game Server 通过环境注入允许的 Web origins 和与 Web 一致的 ticket issuer/secret。
 - `RoomStore` 和 `ReplayStore` 使用内存 adapter。
 - 默认重连宽限为 60 秒；同一 session 通过新 ticket 和新的 Colyseus seat reservation 接管 stable slot，旧连接立即失去 writer 权限。超时策略为 `abandoned`。
 - 服务器重启会丢失活动房间和 replay。
@@ -214,7 +229,7 @@ Room 必须串行处理 Action。任何未来多实例方案都必须维持“�
 
 ### 10.3 当前不做
 
-- 完整网站、Lobby、登录、排行榜或大量 UI；
+- 正式账号、OAuth、Lobby、Matchmaking、排行榜或大量 UI；
 - 数据库业务和 replay 播放器；
 - Gomoku 或并行开发多个游戏；
 - Redis、Kubernetes、多区域或微服务化；
@@ -227,10 +242,11 @@ Room 必须串行处理 Action。任何未来多实例方案都必须维持“�
 | Game Plugin 过早抽象        | 隐藏信息或实时游戏可能迫使接口复杂化                     | V1 只处理离散 Action；仅预留 `projectView`，实时游戏使用独立 runtime family             |
 | `gameVersion` 长期兼容      | replay 读取代码和测试矩阵会持续增长                      | 精确钉住版本、保留 golden replay，并在删除旧实现前迁移稳定归档                          |
 | Colyseus 生命周期与扩容耦合 | 重连、per-viewer snapshot 和多实例可能破坏 single-writer | Core 与 Colyseus 隔离，通过 runtime adapter 和 store ports 组合；扩容前先验证 ownership |
+| Web/Game Server 密钥误配    | ticket 无法验证或错误环境共享身份信任域                  | 独立 32-byte secrets、严格 issuer/audience/config validation；后续再设计轮换基础设施    |
 
 ## 12. 共享 API 变更政策
 
-修改 `game-sdk`、`protocol`、`game-client-sdk` 或 `game-server-runtime` 的公开 API 时必须：
+修改 `game-sdk`、`protocol`、`game-client-sdk`、`game-server-ticket` 或 `game-server-runtime` 的公开 API 时必须：
 
 1. 说明改变的架构理由和兼容性影响；
 2. 同步更新其权威文档；

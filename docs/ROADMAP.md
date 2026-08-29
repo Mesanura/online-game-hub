@@ -79,6 +79,8 @@
 
 ## M4：Web Vertical Slice
 
+> 实施状态：已完成（2026-08-30）。Next.js/guest/ticket/client host/Tic-Tac-Toe UI 已形成真实 Web vertical slice；双 browser-context Playwright 已验证胜局、平局、恶意 intent、reconnect、cookie 隔离、abandoned 和 canonical replay。
+
 目标：完成用户可操作的 Tic-Tac-Toe 端到端链路。
 
 交付：
@@ -130,4 +132,4 @@
 
 ## 下一轮建议
 
-M3 已完成。下一轮只执行 M4：建立 Next.js Web vertical slice、匿名 guest session 与正式短期 ticket issuer/verifier adapter、房间创建/邀请码加入、`game-client-sdk` host、Tic-Tac-Toe Client Module，以及两个隔离 browser contexts 的 Playwright E2E；不要实现数据库、账号系统、Matchmaking、排行榜、观战、replay 播放器或 M5。
+M4 已完成。下一轮只执行 M5，并先确认产品确实需要跨重启历史：设计最小 PostgreSQL/Drizzle schema、migration/transaction 边界和 replay 访问控制，再实现 durable `ReplayStore`、比赛历史读取与 guest-to-account 迁移。认证供应商、outbox 和隐私/保留策略应在该轮基于实际持久化需求决定；不要混入 Lobby、Matchmaking、排行榜、观战、replay 播放器、Redis、多实例或 M6 新游戏。
