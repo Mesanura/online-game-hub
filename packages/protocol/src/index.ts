@@ -2,6 +2,9 @@ import { z } from "zod";
 
 export const PROTOCOL_VERSION = 1 as const;
 export const MAX_GAME_ACTION_BYTES = 16_384;
+export const GAME_ROOM_NAME = "game" as const;
+export const GAME_ACTION_MESSAGE = "game.action" as const;
+export const SERVER_PROTOCOL_MESSAGE = "protocol" as const;
 export const GAME_SERVER_TICKET_AUDIENCE = "game-server" as const;
 
 const GAME_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;

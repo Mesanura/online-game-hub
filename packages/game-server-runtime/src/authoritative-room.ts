@@ -13,7 +13,9 @@ import type {
   UnknownGameDefinition,
 } from "@online-game-hub/game-sdk";
 import {
+  GAME_ACTION_MESSAGE,
   PROTOCOL_VERSION,
+  SERVER_PROTOCOL_MESSAGE,
   createGameRoomRequestSchema,
   gameActionCommandSchema,
   gameRoomRequestSchema,
@@ -48,9 +50,11 @@ import type {
   StoredPlayerSlot,
 } from "./room-store.js";
 
-export const GAME_ROOM_NAME = "game" as const;
-export const GAME_ACTION_MESSAGE = "game.action" as const;
-export const SERVER_PROTOCOL_MESSAGE = "protocol" as const;
+export {
+  GAME_ACTION_MESSAGE,
+  GAME_ROOM_NAME,
+  SERVER_PROTOCOL_MESSAGE,
+} from "@online-game-hub/protocol";
 export const DEFAULT_RECONNECT_GRACE_MILLISECONDS = 60_000;
 
 export type CurrentGameDefinitionResolver = (

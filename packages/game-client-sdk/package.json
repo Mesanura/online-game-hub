@@ -15,7 +15,18 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "test": "node --test",
+    "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@colyseus/sdk": "0.18.2",
+    "@online-game-hub/protocol": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/react": "19.2.18",
+    "react": "19.2.8"
+  },
+  "peerDependencies": {
+    "react": "19.2.8"
   }
 }

@@ -1,8 +1,11 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
 
 import {
+  GAME_ACTION_MESSAGE,
+  GAME_ROOM_NAME,
   MAX_GAME_ACTION_BYTES,
   PROTOCOL_VERSION,
+  SERVER_PROTOCOL_MESSAGE,
   commandIdSchema,
   commandRejectedSchema,
   createGameRoomRequestSchema,
@@ -39,6 +42,14 @@ const snapshot = {
   outcome: null,
   causedByCommandId: "command-1",
 } as const;
+
+describe("transport conventions", () => {
+  it("keeps Protocol V1 room and custom message names stable", () => {
+    expect(GAME_ROOM_NAME).toBe("game");
+    expect(GAME_ACTION_MESSAGE).toBe("game.action");
+    expect(SERVER_PROTOCOL_MESSAGE).toBe("protocol");
+  });
+});
 
 describe("GameActionCommand", () => {
   it("parses a strict V1 envelope and keeps action unknown", () => {
