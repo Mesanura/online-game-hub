@@ -4,7 +4,10 @@ import { ticTacToeDefinition } from "@online-game-hub/tic-tac-toe/core";
 import { ticTacToeManifest } from "@online-game-hub/tic-tac-toe/manifest";
 
 import { gameCatalog, resolveGameManifest } from "../src/catalog.js";
-import { loadGameClientEntrypoint } from "../src/client.js";
+import {
+  loadGameClientEntrypoint,
+  loadGameClientModule,
+} from "../src/client.js";
 import {
   resolveCurrentGameDefinition,
   resolveGameDefinition,
@@ -37,9 +40,18 @@ describe("explicit game registry", () => {
   it("keeps the client entry lazy, isolated, and free of UI business", async () => {
     const entrypoint = await loadGameClientEntrypoint("tic-tac-toe", "1.0.0");
     expect(entrypoint).toBeDefined();
-    expect(Object.keys(entrypoint as object)).toEqual([]);
+    expect(entrypoint).toHaveProperty("ticTacToeClientModule");
+    expect(entrypoint).not.toHaveProperty("transition");
+    expect(entrypoint).not.toHaveProperty("createInitialState");
+
+    const clientModule = await loadGameClientModule("tic-tac-toe", "1.0.0");
+    expect(clientModule).toMatchObject({
+      gameId: "tic-tac-toe",
+      gameVersion: "1.0.0",
+    });
+    expect(clientModule?.parseView).toEqual(expect.any(Function));
     await expect(
-      loadGameClientEntrypoint("tic-tac-toe", "2.0.0"),
+      loadGameClientModule("tic-tac-toe", "2.0.0"),
     ).resolves.toBeUndefined();
   });
 });

@@ -65,6 +65,7 @@ export type TicTacToeView = {
   readonly board: TicTacToeBoard;
   readonly nextTurnSlotId: PlayerSlotId | null;
   readonly outcome: TicTacToeOutcome | null;
+  readonly yourMark: TicTacToeMark | null;
 };
 
 export type TicTacToeRuleErrorCode =
@@ -245,6 +246,14 @@ export function projectView(
         ? context.state.players[context.state.nextPlayerIndex]
         : null,
     outcome,
+    yourMark:
+      context.viewer.kind === "player"
+        ? context.viewer.slotId === firstPlayer
+          ? "X"
+          : context.viewer.slotId === secondPlayer
+            ? "O"
+            : null
+        : null,
   });
 }
 

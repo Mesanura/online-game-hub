@@ -290,8 +290,10 @@ describe("serialization, projection, and determinism", () => {
       { kind: "spectator" },
     ];
     const views = viewers.map((viewer) => projectView({ state, viewer }));
-    expect(views[0]).toEqual(views[1]);
-    expect(views[1]).toEqual(views[2]);
+    expect(views.map((view) => view.yourMark)).toEqual(["X", "O", null]);
+    expect({ ...views[0], yourMark: null }).toEqual(views[2]);
+    expect({ ...views[1], yourMark: null }).toEqual(views[2]);
+    expect(views[0]?.players).toEqual(views[1]?.players);
     expect(views[0]).not.toBe(state);
     expect(views[0]?.board).not.toBe(state.board);
     expect(views[0]).not.toHaveProperty("nextPlayerIndex");

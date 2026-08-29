@@ -1,27 +1,46 @@
+import { eraseGameClientModule } from "@online-game-hub/game-client-sdk";
+import type { UnknownGameClientModule } from "@online-game-hub/game-client-sdk";
 import { ticTacToeManifest } from "@online-game-hub/tic-tac-toe/manifest";
+
+const loadTicTacToeEntrypoint = () =>
+  import("@online-game-hub/tic-tac-toe/client");
 
 interface ClientRegistration {
   readonly gameId: string;
   readonly gameVersion: string;
-  load(): Promise<unknown>;
+  loadEntrypoint(): Promise<unknown>;
+  loadModule(): Promise<UnknownGameClientModule>;
 }
 
 const clientRegistrations = Object.freeze([
   {
     gameId: ticTacToeManifest.id,
     gameVersion: ticTacToeManifest.gameVersion,
-    load: async (): Promise<unknown> =>
-      import("@online-game-hub/tic-tac-toe/client"),
+    loadEntrypoint: loadTicTacToeEntrypoint,
+    loadModule: async (): Promise<UnknownGameClientModule> =>
+      eraseGameClientModule(
+        (await loadTicTacToeEntrypoint()).ticTacToeClientModule,
+      ),
   },
 ]) satisfies readonly ClientRegistration[];
+
+function findRegistration(gameId: string, gameVersion: string) {
+  return clientRegistrations.find(
+    (candidate) =>
+      candidate.gameId === gameId && candidate.gameVersion === gameVersion,
+  );
+}
 
 export async function loadGameClientEntrypoint(
   gameId: string,
   gameVersion: string,
 ): Promise<unknown | undefined> {
-  const registration = clientRegistrations.find(
-    (candidate) =>
-      candidate.gameId === gameId && candidate.gameVersion === gameVersion,
-  );
-  return registration?.load();
+  return findRegistration(gameId, gameVersion)?.loadEntrypoint();
+}
+
+export async function loadGameClientModule(
+  gameId: string,
+  gameVersion: string,
+): Promise<UnknownGameClientModule | undefined> {
+  return findRegistration(gameId, gameVersion)?.loadModule();
 }

@@ -16,3 +16,16 @@ export interface GameClientModule<View = unknown, Action = unknown> {
   parseView(input: unknown): View;
   readonly Component: ComponentType<GameClientProps<View, Action>>;
 }
+
+export interface UnknownGameClientModule {
+  readonly gameId: string;
+  readonly gameVersion: string;
+  parseView(input: unknown): unknown;
+  readonly Component: ComponentType<GameClientProps<unknown, unknown>>;
+}
+
+export function eraseGameClientModule<View, Action>(
+  module: GameClientModule<View, Action>,
+): UnknownGameClientModule {
+  return module as unknown as UnknownGameClientModule;
+}
