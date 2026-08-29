@@ -1,6 +1,6 @@
 # 测试策略
 
-> 状态：V1 策略  
+> 状态：V1 策略（M3 server integration 已实现，M4 browser E2E 待实现）  
 > 本文是测试层级、职责、最低场景和质量门禁的权威来源。具体业务范围见 [PRODUCT.md](./PRODUCT.md)。
 
 ## 1. 目标
@@ -31,7 +31,7 @@
 
 ## 3. Static 与 Architecture Checks
 
-未来 Monorepo 基线至少提供：
+当前 Monorepo 基线提供：
 
 - strict TypeScript typecheck；
 - ESLint 及 import boundary 规则；
@@ -97,7 +97,7 @@ Golden fixture 只在确认规则或版本策略变化后更新。不能通过�
 
 ## 7. Game Server Integration Tests
 
-Server integration tests 在进程内或测试端口启动真实 `game-server-runtime`、Colyseus room 和 in-memory stores。避免 mock 掉被验证的 Action pipeline。
+Server integration tests 位于 `apps/game-server/tests/game-server.integration.test.ts`，使用 `port: 0` 启动真实 `game-server-runtime`、Colyseus room、WebSocket transport 和 in-memory stores。两个独立 `@colyseus/sdk` 客户端走真实 matchmaking/WebSocket；只把 clock、ID、ticket authority 和故障注入 store 作为可控 ports，不 mock 被验证的 room/Action pipeline。
 
 ### 7.1 Authoritative 与安全
 
@@ -112,7 +112,7 @@ Server integration tests 在进程内或测试端口启动真实 `game-server-ru
 ### 7.2 View 与 Lifecycle
 
 - 每个连接只收到 `projectView` 产生的 View。
-- 为隐藏信息测试插件准备最小 fixture，证明不同 slots 不会互相看到秘密字段；不需要实现完整扑克。
+- M3 使用两个 viewer slot 验证每个 snapshot 都来自 `projectView`，且不含 State、RNG seed 或 Core-only 字段。第一个隐藏信息游戏加入时，再提供最小 fixture 证明不同 slots 不会互相看到秘密字段；不为 M3 虚构新游戏。
 - waiting → active → completed/abandoned 转换合法且不可逆。
 - Outcome 只由 Core 产生，断线状态只由平台 lifecycle 处理。
 
@@ -138,6 +138,8 @@ Multiplayer integration 使用两个独立客户端连接同一真实 room，验
 - 重连客户端从服务器 snapshot 收敛，而不是依赖本地 action history。
 
 这些测试覆盖网络时序，不承担穷举游戏规则的职责。
+
+M3 的四个真实 integration cases 覆盖：health/metrics 与 ticket trust boundary；双客户端 stable slots、waiting/active/completed、伪造 actor、invalid/stale/duplicate/concurrent/rule-rejected commands、per-viewer snapshot 与 verified canonical replay；replay append failure 不确认/不提交；新 ticket + 新 reservation 的 reconnect、connection takeover、错误 session theft 和 fake-clock 60 秒 abandoned。ticket verifier、ports、composition logger 另有无 transport 的 contract/unit tests。
 
 ## 9. Playwright E2E
 
@@ -169,7 +171,7 @@ E2E 断言用户可见行为和关键网络结果，不依赖 CSS class、内部
 
 ## 11. Root Commands
 
-M1 已提供以下稳定根命令：
+M3 已提供以下稳定根命令：
 
 ```text
 pnpm lint
@@ -177,9 +179,10 @@ pnpm typecheck
 pnpm test
 pnpm build
 pnpm deps:check
+pnpm test:integration
 ```
 
-`pnpm lint` 包含格式、ESLint、本地 Markdown 链接与依赖边界检查。`pnpm test` 已在 M2 纳入 Game SDK、Protocol、Tic-Tac-Toe Core、registry、replay/store tests 和 repository-check 的故意违规 fixture tests。
+`pnpm lint` 包含格式、ESLint、本地 Markdown 链接与依赖边界检查。`pnpm test` 纳入 Game SDK、Protocol、Tic-Tac-Toe Core、registry、runtime/replay stores、Game Server unit tests 和 repository-check 的故意违规 fixture tests。`pnpm test:integration` 执行上述真实 Colyseus tests，根 CI 在 unit tests 后、build 前运行它；该命令不是空脚本。
 
 所有当前支持 `gameVersion` 的 golden replay：
 
@@ -187,10 +190,9 @@ pnpm deps:check
 pnpm --filter @online-game-hub/tic-tac-toe test:golden
 ```
 
-以下命令在对应测试层真正存在后再建立，不提供空脚本：
+浏览器层在真正存在后再建立，不提供空脚本：
 
 ```text
-pnpm test:integration  # M3
 pnpm test:e2e          # M4
 ```
 

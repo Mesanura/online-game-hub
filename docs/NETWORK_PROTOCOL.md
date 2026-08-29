@@ -1,6 +1,6 @@
 # 网络协议
 
-> 状态：V1 设计  
+> 状态：V1 协议（M3 Game Server transport 已实现，M4 Web issuer/client 待实现）  
 > 本文是 Web、Game Server 与浏览器之间身份、房间、消息、revision 和重连语义的权威来源。游戏规则 payload 见 [GAME_PLUGIN_SPEC.md](./GAME_PLUGIN_SPEC.md)。
 
 ## 1. 协议目标
@@ -61,19 +61,42 @@ interface GameServerTicketClaims {
 - 日志不得记录原始 ticket、cookie 或其他 bearer secret。
 - 具体签名格式、密钥服务和轮换方案在实现认证时决定；wire contract 只依赖上述语义。
 
+M3 在 `game-server-runtime` 定义 `TicketVerifier.verify(ticket: unknown)` port。可信 adapter 只向 room 返回验证后的 `PlayerSessionId` 与 claims；缺失、签名无效、过期、未来签发时间、错误 issuer/audience 和不支持的 protocol version 都在建立玩家身份前拒绝。`@online-game-hub/game-server-runtime/testing` 提供固定 issuer/secret 的 HMAC `TestTicketAuthority`，只供 contract/integration tests 使用；正式 Web ticket issuer/verifier、密钥轮换和账号系统属于 M4 或后续里程碑。
+
 ## 5. 房间标识与流程
 
 内部 `roomId` 属于 Game Server。外部用户只使用不可预测、大小写规范化的临时 `roomCode`；邀请 URL 携带 `gameId` 与 `roomCode`，不携带 ticket。
 
 ### 5.1 创建房间
 
+M3 matchmaking options 使用以下 strict request；客户端不能选择 `gameVersion`、slot 或内部 `roomId`：
+
+```ts
+interface CreateGameRoomRequest {
+  type: "room.create";
+  protocolVersion: 1;
+  ticket: string;
+  gameId: string;
+  initialConfig: unknown;
+}
+```
+
 1. Web 确保 guest session 存在并获取 ticket。
-2. 客户端向 Game Server 提交 `gameId` 和未信任的 `initialConfig`。
+2. 客户端向名为 `game` 的 Colyseus room 提交 request；通用 schema 先要求 `initialConfig` 是 JSON value，具体游戏的 `configSchema` 再解析并规范化。
 3. Server 从 registry 选择当前可创建的 exact `gameVersion`。
-4. Server 校验 Config、创建 room、分配第一个 slot，并返回 `roomCode`、邀请 URL 与 Colyseus seat reservation。
-5. 客户端使用 reservation 建立 WebSocket。
+4. Server 生成不可预测的规范化 `roomCode`，预分配 stable slots，校验 Config 并创建 room/replay。
+5. Colyseus matchmaking 返回 seat reservation；客户端建立 WebSocket 后通过 `room.connected` 获得公共房间信息。邀请 URL 由 M4 Web 组合，不由 M3 Game Server 生成。
 
 ### 5.2 加入房间
+
+```ts
+interface JoinGameRoomRequest {
+  type: "room.join";
+  protocolVersion: 1;
+  ticket: string;
+  roomCode: string;
+}
+```
 
 1. 客户端提交规范化后的 `roomCode` 和有效 ticket。
 2. Server 检查房间存在、版本可用、席位未满且 session 未被禁止加入。
@@ -81,6 +104,25 @@ interface GameServerTicketClaims {
 4. 连接建立后发送当前完整 snapshot。
 
 客户端不得选择 `PlayerSlotId`、伪造其他玩家身份或要求加入内部 `roomId`。
+
+V1 room code 是去掉首尾空白后转为大写的 8 位 `[A-HJ-NP-Z2-9]` 字符串。Colyseus 会在 room 的 Zod transform 之前使用原始 matchmaking options 执行 `roomCode` filter，因此调用 SDK `join` 前必须已经把 code 规范化为大写；不能依赖 room 内部 transform 修正 filter 输入。
+
+### 5.3 连接确认
+
+WebSocket join 成功后，Server 先在 `protocol` message channel 发送：
+
+```ts
+interface RoomConnected {
+  type: "room.connected";
+  protocolVersion: 1;
+  roomCode: string;
+  gameId: string;
+  gameVersion: string;
+  playerSlotId: string;
+}
+```
+
+该消息不暴露内部 `roomId`、session、ticket、replay id 或 seed。随后发送该玩家的完整 `match.snapshot`。
 
 ## 6. Match Lifecycle
 
@@ -98,6 +140,8 @@ type MatchStatus = "waiting" | "active" | "completed" | "abandoned";
 状态转换由 Game Server 管理。Game Core 只决定游戏 Outcome，不决定网络断开、房间销毁或 session 权限。
 
 ## 7. Client Action Envelope
+
+M3 transport 名称固定为：Colyseus room name `game`；客户端 custom message type `game.action`；所有 application-level server envelope 通过 custom message type `protocol` 发送，并由 envelope 自身的 `type` 区分 `room.connected`、`match.snapshot` 和 `command.rejected`。
 
 ```ts
 interface GameActionCommand {
@@ -122,8 +166,8 @@ interface GameActionCommand {
 - schema invalid、platform rejected、game-rule rejected 和 duplicate Action 不增加 revision。
 - Room 在单一串行队列中处理命令，不并发调用 Core。
 - `expectedRevision` 不等于当前 revision 时返回 `STALE_REVISION` 和最新 snapshot，命令不进入 Core。
-- Server 为每个 session/room 保留最近 command outcomes。重复 `commandId` 返回原结果，不重复消费 RNG、追加 replay 或广播 State。
-- 重试窗口的具体大小是 runtime 配置；不得小于客户端正常重连与请求重试所需时间。
+- Server 以 `PlayerSessionId + commandId` 为 key 缓存 command outcome。M3 缓存保留整个 room lifetime，重复 `commandId` 返回原结果，不重复调用 Core、消费 RNG、追加 replay 或广播 snapshot。
+- 后续长生命周期房间可以加入有界淘汰，但保留窗口不得短于客户端正常重连与请求重试窗口。
 
 ## 9. Server Snapshot
 
@@ -187,10 +231,10 @@ V1 `ProtocolErrorCode` 至少包括：
 
 - Game Server 将 `PlayerSessionId` 映射到稳定 `PlayerSlotId`。
 - 意外断线后席位默认保留 60 秒，房间保持 authoritative State。
-- 客户端使用有效 guest session、新 ticket 和 Colyseus reconnection/reservation 信息重新连接。
+- 客户端使用有效 guest session、新 ticket 和新的 Colyseus `join` seat reservation 重新连接；M3 不把 SDK reconnection token 作为 authoritative 恢复凭证。
 - Server 验证 session 与 slot 所有权后发送当前完整 snapshot。
 - 每个 slot 同时只允许一个可操作连接；新的有效连接接管后，旧连接失去提交 Action 的权限。
-- 超过 60 秒后，平台按房间策略将比赛标记为 completed/abandoned 或判定对手胜利；具体游戏不得直接处理 socket timeout。
+- 超过 60 秒后，M3 平台策略把比赛标记为 `abandoned`；旧 SDK reconnection token 和新的 join 都不能恢复该席位。未来判负策略仍由平台 lifecycle 负责，具体游戏不得直接处理 socket timeout。
 - Server 进程重启不在 V1 恢复保证内，因为 RoomStore 使用内存 adapter。
 
 ## 12. 安全与隐私不变量
@@ -205,13 +249,13 @@ V1 `ProtocolErrorCode` 至少包括：
 
 日志和指标使用 `roomId`、`gameId`、`gameVersion`、revision、错误码和经过脱敏的 session correlation ID；不得记录 bearer secret 或完整私密 Action。
 
-最小指标：
+M3 内存 collector 暴露的最小指标：
 
-- active rooms/connections；
-- Action accepted/rejected 数量及延迟；
-- reconnect attempt/success/timeout；
-- replay append failure；
-- room crash 和 internal error；
-- 每个 game/version 的活跃比赛数。
+- `active_rooms`、`active_connections`；
+- `actions_accepted_total`、`actions_rejected_total`；
+- `reconnect_attempt_total`、`reconnect_success_total`、`reconnect_timeout_total`；
+- `replay_append_failure_total`、`room_crash_total`。
+
+样本可带 `gameId`/`gameVersion` labels；日志至少使用 `roomId`、game/version、revision、错误码、lifecycle status 和不可逆的 session correlation id 中与事件相关的字段。
 
 指标不改变游戏行为，也不作为 replay 输入。

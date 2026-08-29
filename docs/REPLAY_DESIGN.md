@@ -1,6 +1,6 @@
 # Replay 设计
 
-> 状态：V1 设计  
+> 状态：V1 设计（M3 authoritative room 写入已实现）  
 > 本文是 canonical replay 内容、确定性重建、版本兼容和存储端口的权威来源。Core 随机性规则见 [GAME_PLUGIN_SPEC.md](./GAME_PLUGIN_SPEC.md)。
 
 ## 1. 目标
@@ -86,17 +86,21 @@ interface CanonicalReplay {
 
 ## 4. 写入顺序与原子性
 
-对于每个 room，runtime 是唯一 writer，并按以下顺序构造候选提交：
+对于每个 room，M3 runtime 以同一个 Promise queue 串行 join、leave、timeout 和 Action，是唯一 authoritative writer。Action 按以下顺序构造并提交候选结果：
 
 1. 验证平台 envelope、session、slot 和 revision；
 2. 解析规范化 Action；
 3. 调用 Core `transition`；
-4. 构造包含新 State、RNG cursor、revision 和 `ReplayAction` 的单次 accepted commit；
-5. 提交后才向客户端广播 snapshot。
+4. 构造包含新 State、RNG cursor、revision 和 `ReplayAction` 的 accepted candidate；
+5. 以当前 revision 作为 `expectedSequence` 先 append canonical action；
+6. append 成功后才更新 room aggregate 的 State/RNG/revision，保存 `RoomStore`；终局再以最终 RNG cursor 和 Core Outcome complete replay；
+7. 所有写入成功后缓存 command outcome，并按 viewer 投影、发送完整 snapshot。
 
-Rejected、stale 或 duplicate command 不产生 `ReplayAction`。
+Schema-invalid、platform rejected、Core rejected、stale 或 duplicate command 不产生 `ReplayAction`，也不改变 revision 或 RNG cursor。
 
-内存 V1 必须让 room State 与 replay actions 在同一同步 critical section 更新。未来持久化 adapter 使用 `expectedSequence`/唯一约束保证幂等；如果 durable append 失败，不得向客户端确认一个无法进入 canonical history 的 Action。具体数据库事务或 outbox 方案在持久化里程碑决定。
+`append` 失败时 M3 不更新 aggregate/`RoomStore`，返回 `INTERNAL_ERROR`，不缓存或发送 accepted snapshot，并增加 replay append failure 指标。终局 `complete` 失败同样不确认 accepted，而被视为 internal room failure。
+
+M3 的 `RoomStore` 与 `ReplayStore` 都是单进程内存 adapter；上述操作受同一 room writer critical section 保护，但两个 port 调用不是 durable database transaction，也不能为未来跨存储故障提供 rollback。持久化 adapter 必须使用数据库事务或 outbox，并继续用 `expectedSequence`/唯一约束保证幂等；不能把 M3 的调用顺序直接宣称为跨存储原子性。
 
 ## 5. Replay Store Port
 
@@ -125,6 +129,8 @@ interface ReplayStore {
 - `complete` 只接受非 `null` 的 terminal Outcome；相同 cursor/Outcome 的重复调用幂等，且不得允许另一个结果覆盖已完成记录。
 - PostgreSQL adapter 将来实现相同语义，不要求 Core 或 room 改变。
 
+M3 room 创建时在 Core 初始化完成后创建 replay header，其中保存 exact game/version、规范化 Config、服务器生成的 stable slot 顺序和初始 RNG algorithm/seed。每次 accepted transition 追加一个规范化 action；比赛进入 `completed` 时保存最终 RNG cursor 与 Core Outcome。`abandoned` 没有伪造游戏 Outcome，record 可以保持未完成状态。
+
 ## 6. 确定性重建
 
 Replay runner 执行：
@@ -139,7 +145,7 @@ Replay runner 执行：
 
 任意 schema error、未知版本、sequence gap、rejected transition 或 Outcome 不一致都使 replay verification 失败，并返回结构化诊断；runner 不静默跳过事件或自动改写历史。
 
-M2 由 `game-server-runtime` 根 public entry 导出 `REPLAY_FORMAT_VERSION`、record 类型、`ReplayStore`、`InMemoryReplayStore` 和 `verifyReplay(input, resolver)`。Verifier 接受一个按 exact `gameId + gameVersion` 返回 `UnknownGameDefinition` 的 resolver port，因此 runtime 不依赖 registry 或具体游戏；结构化失败结果覆盖 envelope/header、Config/Action schema、canonical normalization、sequence、actor、Core rejection、RNG cursor 和 Outcome。
+M2 由 `game-server-runtime` 根 public entry 导出 `REPLAY_FORMAT_VERSION`、record 类型、`ReplayStore`、`InMemoryReplayStore` 和 `verifyReplay(input, resolver)`；M3 authoritative room 直接消费同一 port。Verifier 接受一个按 exact `gameId + gameVersion` 返回 `UnknownGameDefinition` 的 resolver port，因此 runtime 不依赖 registry 或具体游戏；结构化失败结果覆盖 envelope/header、Config/Action schema、canonical normalization、sequence、actor、Core rejection、RNG cursor 和 Outcome。
 
 ## 7. Version Compatibility
 

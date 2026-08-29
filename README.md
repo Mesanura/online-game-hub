@@ -1,6 +1,6 @@
 # Online Game Hub
 
-这是一个 server-authoritative、replay-first 的多人网页游戏平台 monorepo。当前已完成 M2 的纯逻辑基础：Game SDK、Protocol V1、显式 registry、Tic-Tac-Toe 1.0.0 Core 与 canonical replay。网页、Colyseus Game Server、房间/runtime pipeline 和数据库仍未实现。
+这是一个 server-authoritative、replay-first 的多人网页游戏平台 monorepo。当前已完成 M3：Game SDK、Protocol V1、显式 registry、Tic-Tac-Toe 1.0.0 Core、canonical replay，以及可由两个真实 Colyseus 客户端使用的 authoritative Game Server。Next.js 网页、React 游戏 UI 和数据库仍未实现。
 
 ## 开始之前
 
@@ -25,6 +25,8 @@
 - Prettier 3.9.6
 - Zod 4.4.3
 - Vitest 4.1.11
+- Colyseus Core 0.18.10、WebSocket Transport 0.18.2、SDK 0.18.2
+- Express 5.2.1（`@colyseus/ws-transport` 的运行时顶层 import；业务路由继续使用 Colyseus router）
 
 Node 与 pnpm 都是精确固定版本。请使用 Corepack 激活 `package.json#packageManager` 中的 pnpm，再从仓库根目录安装：
 
@@ -42,9 +44,10 @@ pnpm typecheck
 pnpm test
 pnpm build
 pnpm deps:check
+pnpm test:integration
 ```
 
-`pnpm lint` 同时执行格式、ESLint、本地 Markdown 链接和依赖边界检查。`pnpm test` 包含 Game SDK、Protocol、Tic-Tac-Toe Core、registry、replay/store tests，以及故意违规的隔离 fixture。
+`pnpm lint` 同时执行格式、ESLint、本地 Markdown 链接和依赖边界检查。`pnpm test` 包含 Game SDK、Protocol、Tic-Tac-Toe Core、registry、runtime ports、replay/store tests、Game Server unit tests，以及故意违规的隔离 fixture。`pnpm test:integration` 在随机本地端口启动真实 Colyseus transport，并运行双客户端 authoritative match、reconnect 和 replay 验证；它不是空脚本，CI 会执行。
 
 所有当前支持 `gameVersion` 的 golden replay 可单独运行：
 
@@ -52,20 +55,32 @@ pnpm deps:check
 pnpm --filter @online-game-hub/tic-tac-toe test:golden
 ```
 
-`test:integration` 与 `test:e2e` 会在对应运行时和浏览器能力出现时分别于 M3/M4 建立；M2 不提供会产生虚假成功的空脚本。
+`test:e2e` 将在 M4 浏览器能力真正出现后建立；当前不提供会产生虚假成功的空脚本。
+
+Colyseus 的可选 `msgpackr-extract` 原生加速不影响协议正确性，仓库在 `pnpm-workspace.yaml#allowBuilds` 中明确拒绝其 install script，使用纯 JavaScript fallback。依赖版本与 lockfile 必须继续由 pnpm 维护。
+
+## Game Server 运行边界
+
+`apps/game-server` 导出无副作用的 `createGameServer(options)` composition API。调用方必须注入可信 `TicketVerifier`，再显式调用 `start({ hostname, port })`；测试使用 `port: 0`，生产 adapter 可配置确定端口。`start` 返回实际 HTTP/WebSocket 地址，`stop()` 执行 graceful shutdown。服务暴露：
+
+- `GET /health`：JSON health check；Colyseus 同时保留 `GET /__healthcheck`；
+- `GET /metrics`：内存 metric samples，不包含 State、seed 或 bearer secret；
+- `/matchmake/*` 与 WebSocket：Colyseus 创建/加入和房间消息 transport。
+
+M3 只提供 `@online-game-hub/game-server-runtime/testing` 下的签名测试 ticket authority；正式 Web issuer/verifier adapter 属于 M4。服务默认使用内存 `RoomStore`/`ReplayStore`，重启后不恢复活动房间。
 
 ## Workspace 结构
 
 ```text
 apps/
-  game-server/             # 空的服务端 composition root
+  game-server/             # Colyseus composition root、health/metrics 与真实 integration tests
   web/                     # 空的 Web composition root
 packages/
   database/                # 仅 package 外壳；无数据库实现
   game-client-sdk/         # 空 public entry
   game-registry/           # 显式 catalog/client/server 组合与 exact resolution
   game-sdk/                # JSON/definition 类型与 deterministic RNG V1
-  game-server-runtime/     # canonical replay port、内存 store 与 verifier
+  game-server-runtime/     # auth/room ports、authoritative pipeline、Colyseus room、reconnect 与 replay
   protocol/                # Protocol V1 strict Zod schemas 与推导类型
   ui/                      # 空 public entry
 games/

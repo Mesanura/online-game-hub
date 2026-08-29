@@ -61,6 +61,8 @@
 
 ## M3：Authoritative Game Server
 
+> 实施状态：已完成（2026-08-30）。独立 Colyseus composition root、ticket/runtime ports、authoritative room、reconnect、replay commit 与真实双客户端 integration tests 已通过全仓质量门禁。
+
 目标：建立两连接可使用的通用 server runtime。
 
 交付：
@@ -128,4 +130,4 @@
 
 ## 下一轮建议
 
-M2 已完成。下一轮只执行 M3：实现独立 Colyseus Game Server、ticket verification port、创建/加入房间与 stable slots、串行 authoritative Action pipeline、revision/idempotency、per-viewer snapshot、接入现有 ReplayStore、60 秒 reconnect 及 fake-clock integration tests；不要实现 Next.js 页面、React 游戏 UI、数据库或 M4/M5。
+M3 已完成。下一轮只执行 M4：建立 Next.js Web vertical slice、匿名 guest session 与正式短期 ticket issuer/verifier adapter、房间创建/邀请码加入、`game-client-sdk` host、Tic-Tac-Toe Client Module，以及两个隔离 browser contexts 的 Playwright E2E；不要实现数据库、账号系统、Matchmaking、排行榜、观战、replay 播放器或 M5。
