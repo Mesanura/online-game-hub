@@ -10,6 +10,8 @@ import type { GameServerTicketClaims } from "@online-game-hub/protocol";
 import { definePlayerSessionId } from "../auth.js";
 import type { TicketVerificationResult, TicketVerifier } from "../auth.js";
 import type { CancelTimer, RuntimeClock } from "../clock.js";
+import type { RuntimeIdSource } from "../ids.js";
+import { definePlayerSlotId } from "@online-game-hub/game-sdk";
 
 export class FakeRuntimeClock implements RuntimeClock {
   #nowMilliseconds: number;
@@ -64,6 +66,35 @@ export class FakeRuntimeClock implements RuntimeClock {
     }
     this.#nowMilliseconds = target;
   }
+}
+
+export function createDeterministicRuntimeIdSource(
+  roomCodes: readonly string[] = ["TEST2345"],
+): RuntimeIdSource {
+  let roomCodeIndex = 0;
+  let replayIndex = 0;
+  let seedIndex = 0;
+  return {
+    createRoomCode() {
+      const roomCode = roomCodes[roomCodeIndex];
+      roomCodeIndex += 1;
+      if (roomCode === undefined) {
+        throw new Error("Deterministic room codes exhausted.");
+      }
+      return roomCode;
+    },
+    createReplayId() {
+      replayIndex += 1;
+      return `test-replay-${replayIndex}`;
+    },
+    createRngSeed() {
+      seedIndex += 1;
+      return `test-seed-${seedIndex}`;
+    },
+    createPlayerSlotId(index) {
+      return definePlayerSlotId(`slot-${index + 1}`);
+    },
+  };
 }
 
 interface UnsafelyIssuableClaims {
