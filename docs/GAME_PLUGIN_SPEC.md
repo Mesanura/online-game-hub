@@ -24,9 +24,9 @@ Phaser 实时 2D 游戏通常需要 tick、输入缓冲、插值、预测或回�
 以下接口用于说明 V1 public API；实现时由 `game-sdk` 导出等价的 strict TypeScript 类型。
 
 ```ts
-type GameId = string;
-type GameVersion = string;
-type PlayerSlotId = string;
+type GameId = string & Brand<"GameId">;
+type GameVersion = string & Brand<"GameVersion">;
+type PlayerSlotId = string & Brand<"PlayerSlotId">;
 type GameRuleErrorCode = string;
 
 type JsonValue =
@@ -54,6 +54,7 @@ interface GameManifest {
 - `GameId` 使用稳定的 lowercase kebab-case，例如 `tic-tac-toe`。
 - `GameVersion` 使用精确 semver 字符串；registry 和 replay 不使用范围匹配。
 - `PlayerSlotId` 表示比赛中的稳定席位，不是账号、session、connection 或数据库 ID。
+- `game-sdk` 使用 `defineGameId`、`defineGameVersion` 和 `definePlayerSlotId` 构造上述 branded string；brand 只存在于类型系统，wire/replay 中仍是普通字符串。
 - `State`、`Action`、`View`、`Outcome` 和 `Config` 必须符合 `JsonValue` 语义。
 - 禁止 `Date`、`Map`、`Set`、`BigInt`、class instance、function、`undefined`、`NaN` 和 `Infinity`。
 
@@ -81,7 +82,9 @@ declare function nextInt(
 
 RNG helper 不修改传入对象。Core 必须显式使用返回的 `next`。Runtime 在 accepted transition 时提交新的 `RngState`，在 rejected transition 时丢弃所有候选随机结果并保留原 cursor。
 
-`algorithm` 是 replay 兼容契约的一部分。改变算法、随机消费顺序或 seed 解释方式属于可能破坏 replay 的规则变更。
+V1 的 `algorithm` 固定为 `fnv1a32-counter-v1`：以 JavaScript UTF-16 code unit 的低字节、高字节顺序对 `seed + NUL + decimal cursor` 执行 32-bit FNV-1a 与固定 avalanche，并用 rejection sampling 生成无 modulo bias 的整数。每次 candidate 消费一个 cursor，`nextInt` 可能为了 rejection 消费多个 cursor。`algorithm` 是 replay 兼容契约的一部分；改变算法、随机消费顺序或 seed 解释方式属于可能破坏 replay 的规则变更，并需要评估新的 `gameVersion`。
+
+固定向量：seed `m2-seed` 从 cursor `0` 连续执行 `nextInt(rng, 10)` 得到 `[1, 5, 9, 7, 6, 1, 7, 0]`，最终 cursor 为 `8`。
 
 V1 保证服务器控制随机性和确定性重建，不实现 commit-reveal 或密码学可验证公平协议。
 

@@ -112,6 +112,7 @@ interface GameActionCommand {
 - `commandId` 由客户端为每次用户意图生成，在同一 session/room 内唯一。
 - `expectedRevision` 是用户产生 Action 时看到的 revision。
 - `action` 先由通用 envelope schema 读取为 `unknown`，再由当前游戏的 `actionSchema` 解析。
+- V1 通用 schema 要求 `action` 是 JSON value，且序列化后的 UTF-8 长度不超过 16 KiB；transport 仍应在进入 Zod/Core 前设置总消息上限。
 - Envelope 不包含 actor、State、Outcome、RNG seed 或新 revision。
 
 ## 8. Revision、Ordering 与 Idempotency
