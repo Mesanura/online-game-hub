@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { createConsoleRuntimeLogger } from "../src/index.js";
+import { createHmacGameServerTicketAuthority } from "@online-game-hub/game-server-ticket";
+
+import {
+  createConsoleRuntimeLogger,
+  createGameServerTicketVerifier,
+} from "../src/index.js";
 
 describe("game-server composition helpers", () => {
   it("writes one structured JSON log line without adding secret fields", () => {
@@ -25,5 +30,34 @@ describe("game-server composition helpers", () => {
     });
     expect(lines[0]).not.toContain("ticket");
     expect(lines[0]).not.toContain("seed");
+  });
+
+  it("adapts the production HMAC authority without the testing subpath", async () => {
+    const time = { nowSeconds: () => 100 };
+    const secret = "production-ticket-secret-at-least-32-bytes";
+    const authority = createHmacGameServerTicketAuthority({
+      issuer: "web-production",
+      secret,
+      time,
+      ids: { createTicketId: () => "ticket-1" },
+    });
+    const verifier = createGameServerTicketVerifier({
+      issuer: "web-production",
+      secret,
+      time,
+    });
+
+    await expect(
+      verifier.verify(authority.issue("session-a")),
+    ).resolves.toMatchObject({
+      status: "verified",
+      playerSessionId: "session-a",
+      claims: { issuer: "web-production", protocolVersion: 1 },
+    });
+    await expect(verifier.verify("tampered-ticket")).resolves.toEqual({
+      status: "rejected",
+      code: "INVALID_TICKET",
+      protocolCode: "UNAUTHENTICATED",
+    });
   });
 });

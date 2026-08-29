@@ -14,6 +14,7 @@
     "@colyseus/ws-transport": "0.18.2",
     "@online-game-hub/game-registry": "workspace:*",
     "@online-game-hub/game-server-runtime": "workspace:*",
+    "@online-game-hub/game-server-ticket": "workspace:*",
     "@online-game-hub/protocol": "workspace:*",
     "express": "5.2.1"
   },

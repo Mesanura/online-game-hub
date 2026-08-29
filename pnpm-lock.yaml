@@ -50,6 +50,9 @@ importers:
       '@online-game-hub/game-server-runtime':
         specifier: workspace:*
         version: link:../../packages/game-server-runtime
+      '@online-game-hub/game-server-ticket':
+        specifier: workspace:*
+        version: link:../../packages/game-server-ticket
       '@online-game-hub/protocol':
         specifier: workspace:*
         version: link:../../packages/protocol
@@ -109,6 +112,16 @@ importers:
       '@online-game-hub/game-sdk':
         specifier: workspace:*
         version: link:../game-sdk
+      '@online-game-hub/protocol':
+        specifier: workspace:*
+        version: link:../protocol
+    devDependencies:
+      '@types/node':
+        specifier: 24.13.3
+        version: 24.13.3
+
+  packages/game-server-ticket:
+    dependencies:
       '@online-game-hub/protocol':
         specifier: workspace:*
         version: link:../protocol
