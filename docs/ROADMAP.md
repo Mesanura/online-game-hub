@@ -44,6 +44,8 @@
 
 ## M2：Game SDK、Protocol 与 Tic-Tac-Toe Core
 
+> 实施状态：已完成（2026-08-30）。Game/Protocol/registry public API、Tic-Tac-Toe 1.0.0 Core、内存 replay store/verifier 与 golden fixture 已通过全仓质量门禁。
+
 目标：用纯逻辑证明插件和 replay 契约可实现。
 
 交付：
@@ -67,7 +69,7 @@
 - ticket verification port 与测试 issuer；
 - 创建/加入房间、room code 和 stable slots；
 - 串行 Action pipeline、revision、idempotency 和 per-viewer snapshot；
-- in-memory `RoomStore`/`ReplayStore`；
+- in-memory `RoomStore`，并将 M2 `ReplayStore` 接入 authoritative room commit；
 - 60 秒 reconnect 与 fake-clock integration tests；
 - health check、结构化日志和最小指标。
 
@@ -126,4 +128,4 @@
 
 ## 下一轮建议
 
-M1 已完成。下一轮只执行 M2：实现纯 TypeScript 的 Game SDK、Protocol V1 schema、registry manifest/server 基础、Tic-Tac-Toe Core 与 deterministic replay 验证；不要启动 Next.js、Colyseus、数据库或 M3/M4 功能。
+M2 已完成。下一轮只执行 M3：实现独立 Colyseus Game Server、ticket verification port、创建/加入房间与 stable slots、串行 authoritative Action pipeline、revision/idempotency、per-viewer snapshot、接入现有 ReplayStore、60 秒 reconnect 及 fake-clock integration tests；不要实现 Next.js 页面、React 游戏 UI、数据库或 M4/M5。

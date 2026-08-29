@@ -48,6 +48,10 @@ importers:
       zod:
         specifier: 4.4.3
         version: 4.4.3
+    devDependencies:
+      '@online-game-hub/game-server-runtime':
+        specifier: workspace:*
+        version: link:../../packages/game-server-runtime
 
   packages/database: {}
 
@@ -68,7 +72,11 @@ importers:
         specifier: 4.4.3
         version: 4.4.3
 
-  packages/game-server-runtime: {}
+  packages/game-server-runtime:
+    dependencies:
+      '@online-game-hub/game-sdk':
+        specifier: workspace:*
+        version: link:../game-sdk
 
   packages/protocol:
     dependencies:

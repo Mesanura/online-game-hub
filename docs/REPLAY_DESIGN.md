@@ -122,7 +122,7 @@ interface ReplayStore {
 
 - V1 `InMemoryReplayStore` 实现该端口，进程重启后数据丢失。
 - `append` 必须拒绝缺口、重复或乱序 sequence。
-- `complete` 幂等且不得允许另一个不同 Outcome 覆盖已完成结果。
+- `complete` 只接受非 `null` 的 terminal Outcome；相同 cursor/Outcome 的重复调用幂等，且不得允许另一个结果覆盖已完成记录。
 - PostgreSQL adapter 将来实现相同语义，不要求 Core 或 room 改变。
 
 ## 6. 确定性重建
@@ -139,6 +139,8 @@ Replay runner 执行：
 
 任意 schema error、未知版本、sequence gap、rejected transition 或 Outcome 不一致都使 replay verification 失败，并返回结构化诊断；runner 不静默跳过事件或自动改写历史。
 
+M2 由 `game-server-runtime` 根 public entry 导出 `REPLAY_FORMAT_VERSION`、record 类型、`ReplayStore`、`InMemoryReplayStore` 和 `verifyReplay(input, resolver)`。Verifier 接受一个按 exact `gameId + gameVersion` 返回 `UnknownGameDefinition` 的 resolver port，因此 runtime 不依赖 registry 或具体游戏；结构化失败结果覆盖 envelope/header、Config/Action schema、canonical normalization、sequence、actor、Core rejection、RNG cursor 和 Outcome。
+
 ## 7. Version Compatibility
 
 - 破坏重建结果的规则修改发布新 `gameVersion`。
@@ -148,6 +150,10 @@ Replay runner 执行：
 - Replay envelope 不兼容变化提升 `replayFormatVersion`，reader 应显式分派版本，不原地猜测字段。
 
 Bug fix 是否提升版本以“相同 replay 是否可能得到不同 State、RNG cursor 或 Outcome”为判断标准，而不是以改动大小判断。
+
+当前支持版本及 fixture：
+
+- `tic-tac-toe@1.0.0`：`games/tic-tac-toe/tests/fixtures/tic-tac-toe-1.0.0-win.json`
 
 ## 8. Hidden Information 与访问控制
 

@@ -23,6 +23,7 @@ test("fixtures prove every M1 dependency boundary fails closed", async () => {
 
   assert.ok(codes.has("PLATFORM_TO_GAME_DEPENDENCY"));
   assert.ok(codes.has("CROSS_GAME_DEPENDENCY"));
+  assert.ok(codes.has("CORE_FORBIDDEN_API"));
   assert.ok(codes.has("CORE_FORBIDDEN_IMPORT"));
   assert.ok(codes.has("INVALID_PACKAGE_EXPORT"));
   assert.ok(codes.has("UNEXPORTED_WORKSPACE_IMPORT"));
@@ -45,6 +46,16 @@ test("fixtures prove every M1 dependency boundary fails closed", async () => {
     "ws",
   ]) {
     assert.match(messages, new RegExp(forbiddenImport.replace("/", "\\/")));
+  }
+
+  for (const forbiddenApi of [
+    "Math.random()",
+    "Date.now()",
+    "performance.now()",
+    "new Date()",
+    "process.env",
+  ]) {
+    assert.match(messages, new RegExp(forbiddenApi.replace(/[().]/gu, "\\$&")));
   }
 
   assert.match(

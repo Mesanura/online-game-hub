@@ -25,10 +25,13 @@
     "build": "tsc -p tsconfig.build.json",
     "test": "vitest run",
     "test:golden": "vitest run tests/golden-replay.test.ts",
-    "typecheck": "tsc -p tsconfig.json"
+    "typecheck": "tsc -p tsconfig.json && tsc -p tests/tsconfig.json"
   },
   "dependencies": {
     "@online-game-hub/game-sdk": "workspace:*",
     "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@online-game-hub/game-server-runtime": "workspace:*"
   }
 }

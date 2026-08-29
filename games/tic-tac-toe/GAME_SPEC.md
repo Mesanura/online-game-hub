@@ -1,6 +1,6 @@
 # Tic-Tac-Toe 规则规范
 
-> 状态：`gameVersion 1.0.0`  
+> 状态：`gameVersion 1.0.0`
 > 本文是 Tic-Tac-Toe Core 规则与 JSON 数据形状的权威来源；通用契约见 [Game Plugin 规范](../../docs/GAME_PLUGIN_SPEC.md)。
 
 ## 规则

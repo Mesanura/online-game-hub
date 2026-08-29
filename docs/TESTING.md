@@ -179,7 +179,13 @@ pnpm build
 pnpm deps:check
 ```
 
-`pnpm lint` 包含格式、ESLint、本地 Markdown 链接与依赖边界检查。`pnpm test` 在 M1 运行 repository-check 的自动化 fixture tests；游戏 unit tests 从 M2 开始接入同一 Turbo task graph。
+`pnpm lint` 包含格式、ESLint、本地 Markdown 链接与依赖边界检查。`pnpm test` 已在 M2 纳入 Game SDK、Protocol、Tic-Tac-Toe Core、registry、replay/store tests 和 repository-check 的故意违规 fixture tests。
+
+所有当前支持 `gameVersion` 的 golden replay：
+
+```text
+pnpm --filter @online-game-hub/tic-tac-toe test:golden
+```
 
 以下命令在对应测试层真正存在后再建立，不提供空脚本：
 

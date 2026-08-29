@@ -271,13 +271,27 @@ export interface GameDefinition<
   getOutcome(state: DeepReadonly<State>): Outcome | null;
 }
 
-export type UnknownGameDefinition = GameDefinition<
-  JsonValue,
-  JsonValue,
-  JsonValue,
-  JsonValue,
-  JsonValue
->;
+export interface UnknownGameDefinition {
+  readonly manifest: GameManifest;
+  readonly configSchema: ZodType<JsonValue>;
+  readonly actionSchema: ZodType<JsonValue>;
+  createInitialState(context: {
+    readonly config: JsonValue;
+    readonly players: readonly PlayerSlotId[];
+    readonly rng: Readonly<RngState>;
+  }): Initialized<JsonValue>;
+  transition(context: {
+    readonly state: JsonValue;
+    readonly actorSlotId: PlayerSlotId;
+    readonly action: JsonValue;
+    readonly rng: Readonly<RngState>;
+  }): Transition<JsonValue>;
+  projectView(context: {
+    readonly state: JsonValue;
+    readonly viewer: Viewer;
+  }): JsonValue;
+  getOutcome(state: JsonValue): JsonValue | null;
+}
 
 export function eraseGameDefinition<
   Config extends JsonValue,

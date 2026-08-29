@@ -1,6 +1,6 @@
 # Online Game Hub
 
-这是一个 server-authoritative、replay-first 的多人网页游戏平台 monorepo。当前工程只完成 M1 的仓库与质量门禁基础，不包含网页、Game Server、游戏规则或数据库实现。
+这是一个 server-authoritative、replay-first 的多人网页游戏平台 monorepo。当前已完成 M2 的纯逻辑基础：Game SDK、Protocol V1、显式 registry、Tic-Tac-Toe 1.0.0 Core 与 canonical replay。网页、Colyseus Game Server、房间/runtime pipeline 和数据库仍未实现。
 
 ## 开始之前
 
@@ -23,6 +23,8 @@
 - TypeScript 6.0.3（`typescript-eslint` 8.68.0 当前支持的最新 TypeScript 主线）
 - ESLint 10.9.1
 - Prettier 3.9.6
+- Zod 4.4.3
+- Vitest 4.1.11
 
 Node 与 pnpm 都是精确固定版本。请使用 Corepack 激活 `package.json#packageManager` 中的 pnpm，再从仓库根目录安装：
 
@@ -42,9 +44,15 @@ pnpm build
 pnpm deps:check
 ```
 
-`pnpm lint` 同时执行格式、ESLint、本地 Markdown 链接和依赖边界检查。`pnpm test` 包含故意违规的隔离 fixture，证明边界检查在违规时会失败。
+`pnpm lint` 同时执行格式、ESLint、本地 Markdown 链接和依赖边界检查。`pnpm test` 包含 Game SDK、Protocol、Tic-Tac-Toe Core、registry、replay/store tests，以及故意违规的隔离 fixture。
 
-`test:integration` 与 `test:e2e` 会在对应运行时和浏览器能力出现时分别于 M3/M4 建立；M1 不提供会产生虚假成功的空脚本。
+所有当前支持 `gameVersion` 的 golden replay 可单独运行：
+
+```sh
+pnpm --filter @online-game-hub/tic-tac-toe test:golden
+```
+
+`test:integration` 与 `test:e2e` 会在对应运行时和浏览器能力出现时分别于 M3/M4 建立；M2 不提供会产生虚假成功的空脚本。
 
 ## Workspace 结构
 
@@ -55,15 +63,16 @@ apps/
 packages/
   database/                # 仅 package 外壳；无数据库实现
   game-client-sdk/         # 空 public entry
-  game-registry/           # 空 catalog/client/server public entries
-  game-sdk/                # 空 public entry
-  game-server-runtime/     # 空 public entry
-  protocol/                # 空 public entry
+  game-registry/           # 显式 catalog/client/server 组合与 exact resolution
+  game-sdk/                # JSON/definition 类型与 deterministic RNG V1
+  game-server-runtime/     # canonical replay port、内存 store 与 verifier
+  protocol/                # Protocol V1 strict Zod schemas 与推导类型
   ui/                      # 空 public entry
-games/                     # M2 才创建首个实际游戏 package
+games/
+  tic-tac-toe/             # 单 package：manifest/core/client + 1.0.0 golden replay
 tooling/
   repository-check/        # 依赖、循环、Markdown 链接检查及 fixture tests
-tools/                     # 未来面向开发者的 CLI；M1 不创建生成器
+tools/                     # 未来面向开发者的 CLI；当前不创建生成器
 ```
 
 不要创建 `packages/shared`。新增 workspace package 必须声明 public exports，并接入根 typecheck、test 和 build 图；跨 package 只能通过 manifest 中声明的依赖与 export map 导入。

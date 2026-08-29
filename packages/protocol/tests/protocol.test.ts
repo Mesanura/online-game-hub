@@ -55,7 +55,12 @@ describe("GameActionCommand", () => {
   });
 
   it("rejects a missing action and non-JSON action", () => {
-    const { action: _action, ...missingAction } = actionCommand;
+    const missingAction = {
+      type: actionCommand.type,
+      protocolVersion: actionCommand.protocolVersion,
+      commandId: actionCommand.commandId,
+      expectedRevision: actionCommand.expectedRevision,
+    };
     expect(gameActionCommandSchema.safeParse(missingAction).success).toBe(
       false,
     );
