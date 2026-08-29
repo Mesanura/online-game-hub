@@ -1,0 +1,32 @@
+{
+  "name": "online-game-hub",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Server-authoritative multiplayer web game platform monorepo",
+  "license": "UNLICENSED",
+  "packageManager": "pnpm@11.24.0",
+  "engines": {
+    "node": "24.14.0",
+    "pnpm": "11.24.0"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "deps:check": "node tooling/repository-check/src/check-dependencies.ts",
+    "docs:check": "node tooling/repository-check/src/check-markdown-links.ts",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "pnpm format:check && eslint . --max-warnings 0 && pnpm docs:check && pnpm deps:check",
+    "test": "turbo run test",
+    "typecheck": "turbo run typecheck"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@types/node": "24.13.3",
+    "eslint": "10.9.1",
+    "globals": "17.11.0",
+    "prettier": "3.9.6",
+    "turbo": "2.10.12",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.68.0"
+  }
+}

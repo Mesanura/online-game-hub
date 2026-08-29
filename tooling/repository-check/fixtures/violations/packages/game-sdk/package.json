@@ -1,0 +1,11 @@
+{
+  "name": "@fixture/game-sdk",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@fixture/alpha": "workspace:*"
+  }
+}

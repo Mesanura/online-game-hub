@@ -1,0 +1,272 @@
+# Game Plugin 规范
+
+> 状态：V1 规范  
+> 本文是离散 Action 游戏的 Core、Client Module、序列化、版本与随机性契约的权威来源。平台依赖边界见 [ARCHITECTURE.md](./ARCHITECTURE.md)。
+
+## 1. 适用范围
+
+V1 Game Plugin 面向棋盘、卡牌和骰子等“客户端提交离散 Action、服务器产生下一个 State”的游戏。Tic-Tac-Toe 是首个规范验证实现。
+
+Phaser 实时 2D 游戏通常需要 tick、输入缓冲、插值、预测或回滚，不强行复用本规范。未来 realtime game 可以成为另一种 `runtime`，同时复用平台目录、身份、房间和比赛生命周期。
+
+## 2. 设计原则
+
+- Core 是纯 TypeScript 领域逻辑，不读取网络、数据库、系统时间或进程环境。
+- 相同版本、输入和 RNG 状态必须产生相同输出。
+- 平台验证“谁、在哪个房间、是否可行动”；Core 验证“该游戏动作是否合法”。
+- 客户端只持有 View，不持有或提交 authoritative State。
+- 正常的规则拒绝使用 tagged result，不抛异常。
+- 所有跨边界数据必须是 JSON 可序列化数据。
+- 一个游戏的 Core 不得依赖另一个游戏。
+
+## 3. 基础类型
+
+以下接口用于说明 V1 public API；实现时由 `game-sdk` 导出等价的 strict TypeScript 类型。
+
+```ts
+type GameId = string;
+type GameVersion = string;
+type PlayerSlotId = string;
+type GameRuleErrorCode = string;
+
+type JsonValue =
+  null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
+
+type Viewer = { kind: "player"; slotId: PlayerSlotId } | { kind: "spectator" };
+
+interface GameManifest {
+  id: GameId;
+  gameVersion: GameVersion;
+  title: string;
+  description: string;
+  minPlayers: number;
+  maxPlayers: number;
+  runtime: "turn-based";
+  capabilities: {
+    hiddenInformation: boolean;
+    deterministicRandomness: boolean;
+  };
+}
+```
+
+约束：
+
+- `GameId` 使用稳定的 lowercase kebab-case，例如 `tic-tac-toe`。
+- `GameVersion` 使用精确 semver 字符串；registry 和 replay 不使用范围匹配。
+- `PlayerSlotId` 表示比赛中的稳定席位，不是账号、session、connection 或数据库 ID。
+- `State`、`Action`、`View`、`Outcome` 和 `Config` 必须符合 `JsonValue` 语义。
+- 禁止 `Date`、`Map`、`Set`、`BigInt`、class instance、function、`undefined`、`NaN` 和 `Infinity`。
+
+## 4. Deterministic RNG
+
+随机游戏不得调用 `Math.random()`、系统时间或第三方全局随机源。Game Server 使用安全随机源为比赛生成 seed；`game-sdk` 提供版本化的纯 RNG helpers。
+
+```ts
+interface RngState {
+  algorithm: string;
+  seed: string;
+  cursor: number;
+}
+
+interface RandomStep<T> {
+  value: T;
+  next: RngState;
+}
+
+declare function nextInt(
+  rng: Readonly<RngState>,
+  maxExclusive: number,
+): RandomStep<number>;
+```
+
+RNG helper 不修改传入对象。Core 必须显式使用返回的 `next`。Runtime 在 accepted transition 时提交新的 `RngState`，在 rejected transition 时丢弃所有候选随机结果并保留原 cursor。
+
+`algorithm` 是 replay 兼容契约的一部分。改变算法、随机消费顺序或 seed 解释方式属于可能破坏 replay 的规则变更。
+
+V1 保证服务器控制随机性和确定性重建，不实现 commit-reveal 或密码学可验证公平协议。
+
+## 5. Game Definition
+
+```ts
+import type { ZodType } from "zod";
+
+interface InitialContext<Config> {
+  config: Readonly<Config>;
+  players: readonly PlayerSlotId[];
+  rng: Readonly<RngState>;
+}
+
+interface Initialized<State> {
+  state: State;
+  rng: RngState;
+}
+
+interface TransitionContext<State, Action> {
+  state: Readonly<State>;
+  actorSlotId: PlayerSlotId;
+  action: Readonly<Action>;
+  rng: Readonly<RngState>;
+}
+
+type Transition<State> =
+  | { status: "accepted"; state: State; rng: RngState }
+  | { status: "rejected"; code: GameRuleErrorCode };
+
+interface ViewContext<State> {
+  state: Readonly<State>;
+  viewer: Viewer;
+}
+
+interface GameDefinition<Config, State, Action, View, Outcome> {
+  manifest: GameManifest;
+  configSchema: ZodType<Config>;
+  actionSchema: ZodType<Action>;
+  createInitialState(context: InitialContext<Config>): Initialized<State>;
+  transition(context: TransitionContext<State, Action>): Transition<State>;
+  projectView(context: ViewContext<State>): View;
+  getOutcome(state: Readonly<State>): Outcome | null;
+}
+```
+
+该接口的泛型在单个游戏 package 内保持完整类型安全。异构 registry 在运行时以 `GameId + GameVersion` 查找 definition，先通过对应 Zod schema 将 `unknown` 解析为该游戏的类型，再进入泛型 Core。
+
+### 5.1 `createInitialState`
+
+- 输入已规范化的 Config、按固定顺序排列的 slots 和初始 RNG 状态。
+- 必须返回新 State 和消费后的 RNG 状态。
+- 不读取账号资料、显示名称、连接信息或系统时间。
+- 同一输入必须产生深度相等的 State 和 RNG 状态。
+
+### 5.2 `transition`
+
+- 同时判断游戏规则合法性并产生新 State，避免 `validateAction` 与 `applyAction` 逻辑漂移。
+- 不修改输入 State、Action 或 RNG 对象。
+- accepted result 必须包含完整的新 State 和最终 RNG 状态。
+- rejected result 不携带候选 State；runtime 保持 State、revision 和 RNG 不变。
+- 程序不变量被破坏可以抛异常，并由 server 记录为内部故障；用户的非法操作不得抛异常。
+
+### 5.3 `getOutcome`
+
+- 活跃比赛返回 `null`。
+- 终局返回 JSON 可序列化 Outcome，仅引用 slot，不引用账号或连接。
+- 终局 State 不得再接受改变比赛结果的 Action。
+
+### 5.4 `projectView`
+
+- 是 authoritative State 离开服务器前的唯一游戏级投影入口。
+- 公开棋盘游戏可让所有 viewer 得到相同内容，但仍必须经过该函数。
+- 隐藏信息游戏按 `PlayerSlotId` 隐藏其他玩家手牌、秘密目标或未公开随机结果。
+- spectator 是预留 viewer 类型，不表示 V1 已开放观战连接。
+- 返回值不得包含服务端秘密、连接 token、内部审计信息或完整 RNG seed。
+
+## 6. 错误模型
+
+`GameRuleErrorCode` 是稳定、机器可读的游戏领域代码，例如：
+
+```ts
+type TicTacToeRuleErrorCode =
+  "NOT_YOUR_TURN" | "CELL_OCCUPIED" | "MATCH_ALREADY_FINISHED";
+```
+
+- Game Plugin 只返回领域错误，不返回 HTTP、WebSocket 或 Colyseus 错误。
+- 平台错误和 wire error envelope 由 [NETWORK_PROTOCOL.md](./NETWORK_PROTOCOL.md) 定义。
+- 服务端不得依赖人类可读 message 做分支；本地化文案属于客户端展示层。
+- 规则错误码改变语义时应视为 public API 变更。
+
+## 7. Action 设计
+
+Action 表示 intent，而不是结果或 State patch。
+
+正确示例：
+
+```ts
+type Action = { type: "PLACE_MARK"; cell: number };
+```
+
+错误示例：
+
+```ts
+type Action = {
+  type: "SET_BOARD";
+  board: string[];
+  winner: string;
+};
+```
+
+规则：
+
+- 使用 discriminated union 和稳定的 `type`。
+- 只包含完成意图所需的最小数据。
+- 不包含 actor；actor 由服务器连接映射。
+- 骰子 Action 表达 `ROLL`，不携带客户端生成的点数。
+- schema 应拒绝未知或越界字段，并将合法输入规范化后再写入 replay。
+
+## 8. Client Module
+
+游戏 Client Module 可以依赖 React 和 `game-client-sdk`，但不得导入服务端 State 或自行实现 authoritative 规则。
+
+概念契约：
+
+```ts
+interface GameClientProps<View, Action> {
+  view: Readonly<View>;
+  revision: number;
+  connectionState: "connecting" | "connected" | "reconnecting" | "closed";
+  submitAction(action: Action): Promise<void>;
+}
+
+interface GameClientModule<View, Action> {
+  gameId: GameId;
+  gameVersion: GameVersion;
+  Component: React.ComponentType<GameClientProps<View, Action>>;
+}
+```
+
+通用 host 负责添加 `commandId` 和 `expectedRevision`、管理连接、显示平台错误和处理重连。具体游戏组件只渲染 View、采集意图并调用 `submitAction`。
+
+客户端可以重复实现提示性逻辑以改善 UX，但提示不是权威；服务器 Core 始终重新验证 Action。
+
+## 9. Manifest 与 Export Map
+
+`src/manifest.ts` 是单一 manifest 来源，必须无副作用且不导入 client 或 server runtime。避免同时维护 `game.json` 与 TypeScript manifest 造成重复。
+
+每个游戏 package 公开且仅公开必要子路径：
+
+```json
+{
+  "exports": {
+    "./manifest": "./src/manifest.ts",
+    "./core": "./src/core/index.ts",
+    "./client": "./src/client/index.ts"
+  }
+}
+```
+
+实际构建阶段可以将源码路径替换为 dist 路径，但子路径边界保持不变。Web 不得通过 registry server entry 导入 Core，Game Server 不得导入 `/client`。
+
+## 10. Versioning
+
+以下变化必须评估并通常提升 `gameVersion`：
+
+- State transition、胜负或计分规则变化；
+- Config 或 Action schema 的不兼容变化；
+- 初始 State 或玩家 slot 解释变化；
+- RNG 算法、seed 处理或消费顺序变化；
+- 会改变旧 action log 重建结果的 bug fix。
+
+只改变 CSS、动画、无语义文案或等价性能优化，不需要提升 `gameVersion`。
+
+Registry 必须能够按 exact `gameVersion` 读取旧 replay 所需的 definition。旧实现可以在迁移为稳定归档后退役，具体策略见 [REPLAY_DESIGN.md](./REPLAY_DESIGN.md)。
+
+## 11. Plugin Definition of Done
+
+一个游戏只有满足以下条件才可加入 registry：
+
+- manifest、Core、Client Module、`GAME_SPEC.md` 和局部 `AGENTS.md` 完整；
+- Core 没有禁止依赖和非确定性 API；
+- Config/Action schema 能拒绝不可信输入；
+- 合法、非法、终局、不变性和 replay determinism 测试通过；
+- `projectView` 的信息泄漏测试通过；
+- package 只通过声明的 public subpath exports 被消费。
+
+完整测试矩阵见 [TESTING.md](./TESTING.md)。

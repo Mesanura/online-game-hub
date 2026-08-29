@@ -1,0 +1,11 @@
+{
+  "name": "@online-game-hub/game-server",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "node --test",
+    "typecheck": "tsc -p tsconfig.json"
+  }
+}

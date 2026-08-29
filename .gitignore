@@ -1,0 +1,13 @@
+node_modules/
+dist/
+coverage/
+.turbo/
+.npm-cache/
+.pnpm-store/
+
+.env
+.env.*
+!.env.example
+
+.DS_Store
+Thumbs.db

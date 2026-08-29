@@ -1,0 +1,16 @@
+{
+  "name": "@fixture/alpha",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./core": "./src/core/index.ts"
+  },
+  "dependencies": {
+    "@fixture/beta": "workspace:*",
+    "colyseus": "0.0.0",
+    "drizzle-orm": "0.0.0",
+    "next": "0.0.0",
+    "react": "0.0.0",
+    "ws": "0.0.0"
+  }
+}

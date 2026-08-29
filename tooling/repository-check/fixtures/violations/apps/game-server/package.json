@@ -1,0 +1,5 @@
+{
+  "name": "@fixture/game-server",
+  "private": true,
+  "type": "module"
+}
