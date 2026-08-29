@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "test": "vitest run tests/server.test.ts",
+    "dev": "pnpm build && node dist/main.js",
+    "start": "node dist/main.js",
+    "test": "vitest run tests/server.test.ts tests/production.test.ts",
     "test:integration": "vitest run tests/game-server.integration.test.ts",
     "typecheck": "tsc -p tsconfig.json && tsc -p tests/tsconfig.json"
   },
