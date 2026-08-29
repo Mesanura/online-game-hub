@@ -278,3 +278,15 @@ export type UnknownGameDefinition = GameDefinition<
   JsonValue,
   JsonValue
 >;
+
+export function eraseGameDefinition<
+  Config extends JsonValue,
+  State extends JsonValue,
+  Action extends JsonValue,
+  View extends JsonValue,
+  Outcome extends JsonValue,
+>(
+  definition: GameDefinition<Config, State, Action, View, Outcome>,
+): UnknownGameDefinition {
+  return definition as unknown as UnknownGameDefinition;
+}

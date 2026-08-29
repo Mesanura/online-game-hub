@@ -1,0 +1,265 @@
+import type {
+  DeepReadonly,
+  GameDefinition,
+  InitialContext,
+  Initialized,
+  PlayerSlotId,
+  Transition,
+  TransitionContext,
+  ViewContext,
+} from "@online-game-hub/game-sdk";
+import { z } from "zod";
+
+import { ticTacToeManifest } from "../manifest.js";
+
+export type TicTacToeConfig = null;
+export type TicTacToeCellIndex = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
+export type TicTacToeMark = "X" | "O";
+export type TicTacToeBoard = readonly [
+  PlayerSlotId | null,
+  PlayerSlotId | null,
+  PlayerSlotId | null,
+  PlayerSlotId | null,
+  PlayerSlotId | null,
+  PlayerSlotId | null,
+  PlayerSlotId | null,
+  PlayerSlotId | null,
+  PlayerSlotId | null,
+];
+
+type MutableTicTacToeBoard = [
+  PlayerSlotId | null,
+  PlayerSlotId | null,
+  PlayerSlotId | null,
+  PlayerSlotId | null,
+  PlayerSlotId | null,
+  PlayerSlotId | null,
+  PlayerSlotId | null,
+  PlayerSlotId | null,
+  PlayerSlotId | null,
+];
+
+export type TicTacToeState = {
+  readonly players: readonly [PlayerSlotId, PlayerSlotId];
+  readonly board: TicTacToeBoard;
+  readonly nextPlayerIndex: 0 | 1;
+};
+
+export type TicTacToeOutcome =
+  | {
+      readonly type: "WIN";
+      readonly winnerSlotId: PlayerSlotId;
+      readonly winningCells: readonly [
+        TicTacToeCellIndex,
+        TicTacToeCellIndex,
+        TicTacToeCellIndex,
+      ];
+    }
+  | { readonly type: "DRAW" };
+
+export type TicTacToeView = {
+  readonly players: readonly [
+    { readonly slotId: PlayerSlotId; readonly mark: "X" },
+    { readonly slotId: PlayerSlotId; readonly mark: "O" },
+  ];
+  readonly board: TicTacToeBoard;
+  readonly nextTurnSlotId: PlayerSlotId | null;
+  readonly outcome: TicTacToeOutcome | null;
+};
+
+export type TicTacToeRuleErrorCode =
+  | "NOT_A_PLAYER"
+  | "NOT_YOUR_TURN"
+  | "CELL_OUT_OF_BOUNDS"
+  | "CELL_OCCUPIED"
+  | "MATCH_ALREADY_FINISHED";
+
+const cellIndexSchema = z.union([
+  z.literal(0),
+  z.literal(1),
+  z.literal(2),
+  z.literal(3),
+  z.literal(4),
+  z.literal(5),
+  z.literal(6),
+  z.literal(7),
+  z.literal(8),
+]);
+
+export const ticTacToeConfigSchema = z.null();
+export const ticTacToeActionSchema = z
+  .object({
+    type: z.literal("PLACE_MARK"),
+    cell: cellIndexSchema,
+  })
+  .strict();
+export type TicTacToeAction = z.infer<typeof ticTacToeActionSchema>;
+
+const WINNING_LINES = [
+  [0, 1, 2],
+  [3, 4, 5],
+  [6, 7, 8],
+  [0, 3, 6],
+  [1, 4, 7],
+  [2, 5, 8],
+  [0, 4, 8],
+  [2, 4, 6],
+] as const satisfies readonly (readonly [
+  TicTacToeCellIndex,
+  TicTacToeCellIndex,
+  TicTacToeCellIndex,
+])[];
+
+function createEmptyBoard(): TicTacToeBoard {
+  return Object.freeze([null, null, null, null, null, null, null, null, null]);
+}
+
+function requirePlayers(
+  players: readonly PlayerSlotId[],
+): readonly [PlayerSlotId, PlayerSlotId] {
+  const first = players[0];
+  const second = players[1];
+  if (
+    players.length !== 2 ||
+    first === undefined ||
+    second === undefined ||
+    first === second
+  ) {
+    throw new Error("Tic-Tac-Toe requires exactly two distinct player slots.");
+  }
+
+  return Object.freeze([first, second]);
+}
+
+export function createInitialState(
+  context: InitialContext<TicTacToeConfig>,
+): Initialized<TicTacToeState> {
+  const players = requirePlayers(context.players);
+  const state: TicTacToeState = Object.freeze({
+    players,
+    board: createEmptyBoard(),
+    nextPlayerIndex: 0,
+  });
+  return { state, rng: context.rng };
+}
+
+function winningCells(
+  board: DeepReadonly<TicTacToeBoard>,
+): (typeof WINNING_LINES)[number] | null {
+  for (const line of WINNING_LINES) {
+    const [first, second, third] = line;
+    const owner = board[first];
+    if (owner !== null && owner === board[second] && owner === board[third]) {
+      return line;
+    }
+  }
+
+  return null;
+}
+
+export function getOutcome(
+  state: DeepReadonly<TicTacToeState>,
+): TicTacToeOutcome | null {
+  const line = winningCells(state.board);
+  if (line !== null) {
+    const winnerSlotId = state.board[line[0]];
+    if (winnerSlotId === null) {
+      throw new Error("Winning line must have an owner.");
+    }
+
+    const frozenLine: Extract<
+      TicTacToeOutcome,
+      { readonly type: "WIN" }
+    >["winningCells"] = Object.freeze([line[0], line[1], line[2]]);
+    return Object.freeze({
+      type: "WIN",
+      winnerSlotId,
+      winningCells: frozenLine,
+    });
+  }
+
+  return state.board.every((cell) => cell !== null)
+    ? Object.freeze({ type: "DRAW" })
+    : null;
+}
+
+function reject(code: TicTacToeRuleErrorCode): Transition<TicTacToeState> {
+  return { status: "rejected", code };
+}
+
+export function transition(
+  context: TransitionContext<TicTacToeState, TicTacToeAction>,
+): Transition<TicTacToeState> {
+  if (getOutcome(context.state) !== null) {
+    return reject("MATCH_ALREADY_FINISHED");
+  }
+
+  const [firstPlayer, secondPlayer] = context.state.players;
+  if (
+    context.actorSlotId !== firstPlayer &&
+    context.actorSlotId !== secondPlayer
+  ) {
+    return reject("NOT_A_PLAYER");
+  }
+
+  const expectedPlayer = context.state.players[context.state.nextPlayerIndex];
+  if (context.actorSlotId !== expectedPlayer) {
+    return reject("NOT_YOUR_TURN");
+  }
+
+  const rawCell: number = context.action.cell;
+  if (!Number.isInteger(rawCell) || rawCell < 0 || rawCell > 8) {
+    return reject("CELL_OUT_OF_BOUNDS");
+  }
+  const cell = rawCell as TicTacToeCellIndex;
+
+  if (context.state.board[cell] !== null) {
+    return reject("CELL_OCCUPIED");
+  }
+
+  const board = [...context.state.board] as MutableTicTacToeBoard;
+  board[cell] = context.actorSlotId;
+  const state: TicTacToeState = Object.freeze({
+    players: context.state.players,
+    board: Object.freeze(board),
+    nextPlayerIndex: context.state.nextPlayerIndex === 0 ? 1 : 0,
+  });
+
+  return { status: "accepted", state, rng: context.rng };
+}
+
+export function projectView(
+  context: ViewContext<TicTacToeState>,
+): TicTacToeView {
+  const outcome = getOutcome(context.state);
+  const [firstPlayer, secondPlayer] = context.state.players;
+  const players: TicTacToeView["players"] = Object.freeze([
+    Object.freeze({ slotId: firstPlayer, mark: "X" }),
+    Object.freeze({ slotId: secondPlayer, mark: "O" }),
+  ]);
+  return Object.freeze({
+    players,
+    board: Object.freeze([...context.state.board]) as TicTacToeBoard,
+    nextTurnSlotId:
+      outcome === null
+        ? context.state.players[context.state.nextPlayerIndex]
+        : null,
+    outcome,
+  });
+}
+
+export const ticTacToeDefinition = {
+  manifest: ticTacToeManifest,
+  configSchema: ticTacToeConfigSchema,
+  actionSchema: ticTacToeActionSchema,
+  createInitialState,
+  transition,
+  projectView,
+  getOutcome,
+} satisfies GameDefinition<
+  TicTacToeConfig,
+  TicTacToeState,
+  TicTacToeAction,
+  TicTacToeView,
+  TicTacToeOutcome
+>;

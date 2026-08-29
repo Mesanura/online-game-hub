@@ -40,11 +40,27 @@ importers:
 
   apps/web: {}
 
+  games/tic-tac-toe:
+    dependencies:
+      '@online-game-hub/game-sdk':
+        specifier: workspace:*
+        version: link:../../packages/game-sdk
+      zod:
+        specifier: 4.4.3
+        version: 4.4.3
+
   packages/database: {}
 
   packages/game-client-sdk: {}
 
-  packages/game-registry: {}
+  packages/game-registry:
+    dependencies:
+      '@online-game-hub/game-sdk':
+        specifier: workspace:*
+        version: link:../game-sdk
+      '@online-game-hub/tic-tac-toe':
+        specifier: workspace:*
+        version: link:../../games/tic-tac-toe
 
   packages/game-sdk:
     dependencies:

@@ -133,6 +133,8 @@ interface GameDefinition<Config, State, Action, View, Outcome> {
 
 该接口的泛型在单个游戏 package 内保持完整类型安全。异构 registry 在运行时以 `GameId + GameVersion` 查找 definition，先通过对应 Zod schema 将 `unknown` 解析为该游戏的类型，再进入泛型 Core。
 
+`game-sdk` 的 `eraseGameDefinition` 只供 registry/runtime 将已类型检查的具体 definition 转为 `UnknownGameDefinition`；类型擦除不得绕过该 definition 自身的 Config/Action schema，游戏内部与直接消费者继续使用完整泛型类型。
+
 ### 5.1 `createInitialState`
 
 - 输入已规范化的 Config、按固定顺序排列的 slots 和初始 RNG 状态。

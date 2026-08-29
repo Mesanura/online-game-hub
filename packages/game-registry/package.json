@@ -23,7 +23,11 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "test": "node --test",
+    "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@online-game-hub/game-sdk": "workspace:*",
+    "@online-game-hub/tic-tac-toe": "workspace:*"
   }
 }
