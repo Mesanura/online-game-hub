@@ -17,6 +17,7 @@
     "format:check": "prettier --check .",
     "lint": "pnpm format:check && eslint . --max-warnings 0 && pnpm docs:check && pnpm deps:check",
     "test": "turbo run test",
+    "test:integration": "pnpm --filter @online-game-hub/game-server test:integration",
     "typecheck": "turbo run typecheck"
   },
   "devDependencies": {

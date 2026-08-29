@@ -5,18 +5,21 @@
   "type": "module",
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "test": "node --test",
-    "typecheck": "tsc -p tsconfig.json"
+    "test": "vitest run tests/server.test.ts",
+    "test:integration": "vitest run tests/game-server.integration.test.ts",
+    "typecheck": "tsc -p tsconfig.json && tsc -p tests/tsconfig.json"
   },
   "dependencies": {
     "@colyseus/core": "0.18.10",
     "@colyseus/ws-transport": "0.18.2",
     "@online-game-hub/game-registry": "workspace:*",
     "@online-game-hub/game-server-runtime": "workspace:*",
-    "@online-game-hub/protocol": "workspace:*"
+    "@online-game-hub/protocol": "workspace:*",
+    "express": "5.2.1"
   },
   "devDependencies": {
     "@colyseus/sdk": "0.18.2",
+    "@types/express": "5.0.6",
     "@types/node": "24.13.3"
   }
 }
