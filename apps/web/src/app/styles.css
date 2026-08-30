@@ -99,6 +99,7 @@ button:disabled {
 .game-card,
 .room-entry-panel,
 .connection-panel,
+.room-controls-panel,
 .game-board-panel {
   background: rgb(14 32 50 / 88%);
   border: 1px solid #294a64;
@@ -144,6 +145,27 @@ button:disabled {
 
 .connection-panel a {
   overflow-wrap: anywhere;
+}
+
+.room-controls-panel {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.8rem;
+}
+
+.room-controls-panel p {
+  margin: 0;
+}
+
+button.secondary-button {
+  background: #294a64;
+  color: #e7eef8;
+}
+
+button.danger-button {
+  background: #c85a67;
+  color: #fff;
 }
 
 .game-status-row {

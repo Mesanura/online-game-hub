@@ -29,11 +29,19 @@ interface GameRoomPageProps {
 }
 
 const connectionLabels = {
+  idle: "尚未连接",
   loading: "准备连接",
   connecting: "正在连接",
   connected: "已连接",
   reconnecting: "正在重连",
   closed: "连接已关闭",
+} as const;
+
+const closeReasonLabels = {
+  OWNER_CLOSED: "房主已关闭房间。",
+  PLAYER_LEFT: "有玩家主动离开，本局已终止。",
+  RECONNECT_TIMEOUT: "有玩家未在重连期限内返回，房间已关闭。",
+  REMATCH_TIMEOUT: "终局后 5 分钟内未开始下一局，房间已关闭。",
 } as const;
 
 const matchLabels = {
@@ -81,11 +89,13 @@ export function GameRoomPage(props: GameRoomPageProps) {
   const state = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
   const [roomCode, setRoomCode] = useState(props.initialRoomCode ?? "");
   const [localError, setLocalError] = useState<string | null>(null);
+  const [localNotice, setLocalNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [clientModule, setClientModule] =
     useState<UnknownGameClientModule | null>(null);
   const [inviteUrl, setInviteUrl] = useState<string | null>(null);
   const autoJoinStarted = useRef(false);
+  const handledCloseReason = useRef<string | null>(null);
 
   useEffect(() => () => void host.close(), [host]);
 
@@ -114,6 +124,24 @@ export function GameRoomPage(props: GameRoomPageProps) {
   }, [router, state.room]);
 
   useEffect(() => {
+    const lifecycle = state.roomLifecycle;
+    if (
+      lifecycle?.closed !== true ||
+      lifecycle.closeReason === null ||
+      handledCloseReason.current === lifecycle.closeReason
+    ) {
+      return;
+    }
+    handledCloseReason.current = lifecycle.closeReason;
+    setInviteUrl(null);
+    setRoomCode("");
+    setLocalNotice(closeReasonLabels[lifecycle.closeReason]);
+    router.replace(`/games/${encodeURIComponent(props.gameId)}`, {
+      scroll: false,
+    });
+  }, [props.gameId, router, state.roomLifecycle]);
+
+  useEffect(() => {
     const snapshot = state.snapshot;
     if (snapshot === null) return;
     let active = true;
@@ -130,6 +158,8 @@ export function GameRoomPage(props: GameRoomPageProps) {
   const createRoom = async (): Promise<void> => {
     setBusy(true);
     setLocalError(null);
+    setLocalNotice(null);
+    handledCloseReason.current = null;
     try {
       await host.createRoom(props.gameId, props.initialConfig);
     } catch {
@@ -142,10 +172,70 @@ export function GameRoomPage(props: GameRoomPageProps) {
   const joinRoom = async (): Promise<void> => {
     setBusy(true);
     setLocalError(null);
+    setLocalNotice(null);
+    handledCloseReason.current = null;
     try {
       await host.joinRoom(props.gameId, roomCode);
     } catch {
       setLocalError("请输入有效的 8 位房间码。");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const toggleRematch = async (): Promise<void> => {
+    setBusy(true);
+    setLocalError(null);
+    try {
+      if (state.roomLifecycle?.rematch.selfReady === true) {
+        await host.cancelRematch();
+      } else {
+        await host.requestRematch();
+      }
+    } catch {
+      setLocalError("无法更新下一局准备状态。");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const closeRoom = async (): Promise<void> => {
+    if (
+      state.snapshot?.status === "active" &&
+      !window.confirm("关闭房间会立即终止当前对局，确定继续吗？")
+    ) {
+      return;
+    }
+    setBusy(true);
+    setLocalError(null);
+    try {
+      await host.closeRoom();
+    } catch {
+      setLocalError("无法关闭房间。");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const leaveRoom = async (): Promise<void> => {
+    if (
+      state.snapshot?.status === "active" &&
+      !window.confirm("离开会立即终止当前对局，确定继续吗？")
+    ) {
+      return;
+    }
+    setBusy(true);
+    setLocalError(null);
+    try {
+      await host.leaveRoom();
+      setInviteUrl(null);
+      setRoomCode("");
+      setLocalNotice("已离开房间。");
+      router.replace(`/games/${encodeURIComponent(props.gameId)}`, {
+        scroll: false,
+      });
+    } catch {
+      setLocalError("无法离开房间。");
     } finally {
       setBusy(false);
     }
@@ -164,6 +254,8 @@ export function GameRoomPage(props: GameRoomPageProps) {
   }
   const GameComponent = clientModule?.Component;
   const rejection = rejectionLabel(state);
+  const lifecycle = state.roomLifecycle;
+  const hasLiveRoom = state.room !== null;
 
   return (
     <div className="page-shell game-page">
@@ -176,36 +268,38 @@ export function GameRoomPage(props: GameRoomPageProps) {
         </p>
       </div>
 
-      <section aria-labelledby="room-entry" className="room-entry-panel">
-        <h2 id="room-entry">创建或加入</h2>
-        <button
-          data-testid="create-room"
-          disabled={busy || state.connectionState === "connecting"}
-          onClick={() => void createRoom()}
-          type="button"
-        >
-          创建新房间
-        </button>
-        <form
-          onSubmit={(event) => {
-            event.preventDefault();
-            void joinRoom();
-          }}
-        >
-          <label htmlFor="room-code">房间码</label>
-          <input
-            autoComplete="off"
-            id="room-code"
-            maxLength={16}
-            onChange={(event) => setRoomCode(event.target.value)}
-            placeholder="ABCD2345"
-            value={roomCode}
-          />
-          <button data-testid="join-room" disabled={busy} type="submit">
-            加入房间
+      {hasLiveRoom ? null : (
+        <section aria-labelledby="room-entry" className="room-entry-panel">
+          <h2 id="room-entry">创建或加入</h2>
+          <button
+            data-testid="create-room"
+            disabled={busy || state.connectionState === "connecting"}
+            onClick={() => void createRoom()}
+            type="button"
+          >
+            创建新房间
           </button>
-        </form>
-      </section>
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              void joinRoom();
+            }}
+          >
+            <label htmlFor="room-code">房间码</label>
+            <input
+              autoComplete="off"
+              id="room-code"
+              maxLength={16}
+              onChange={(event) => setRoomCode(event.target.value)}
+              placeholder="ABCD2345"
+              value={roomCode}
+            />
+            <button data-testid="join-room" disabled={busy} type="submit">
+              加入房间
+            </button>
+          </form>
+        </section>
+      )}
 
       <section aria-label="连接与房间状态" className="connection-panel">
         <p>
@@ -236,6 +330,14 @@ export function GameRoomPage(props: GameRoomPageProps) {
             </strong>
           </p>
         )}
+        {lifecycle === null || !hasLiveRoom ? null : (
+          <p>
+            当前轮次：
+            <strong data-testid="round-number">
+              第 {lifecycle.roundNumber} 局
+            </strong>
+          </p>
+        )}
         {inviteUrl === null ? null : (
           <p>
             邀请链接：
@@ -246,6 +348,57 @@ export function GameRoomPage(props: GameRoomPageProps) {
         )}
       </section>
 
+      {state.snapshot === null || lifecycle === null || !hasLiveRoom ? null : (
+        <section aria-label="房间操作" className="room-controls-panel">
+          {state.snapshot.status === "completed" &&
+          lifecycle.rematch.available ? (
+            <>
+              <button
+                data-testid="toggle-rematch"
+                disabled={busy}
+                onClick={() => void toggleRematch()}
+                type="button"
+              >
+                {lifecycle.rematch.selfReady ? "取消再来一局" : "再来一局"}
+              </button>
+              <p data-testid="rematch-status" role="status">
+                {lifecycle.rematch.selfReady &&
+                lifecycle.rematch.readyPlayerCount <
+                  lifecycle.rematch.requiredPlayerCount
+                  ? `已准备，等待其他玩家（${lifecycle.rematch.readyPlayerCount}/${lifecycle.rematch.requiredPlayerCount}）`
+                  : `${lifecycle.rematch.readyPlayerCount}/${lifecycle.rematch.requiredPlayerCount} 人已准备`}
+              </p>
+            </>
+          ) : null}
+          {lifecycle.isOwner ? (
+            <button
+              className="danger-button"
+              data-testid="close-room"
+              disabled={busy}
+              onClick={() => void closeRoom()}
+              type="button"
+            >
+              关闭房间
+            </button>
+          ) : (
+            <button
+              className="secondary-button"
+              data-testid="leave-room"
+              disabled={busy}
+              onClick={() => void leaveRoom()}
+              type="button"
+            >
+              离开房间
+            </button>
+          )}
+        </section>
+      )}
+
+      {localNotice === null ? null : (
+        <p data-testid="room-notice" role="status">
+          {localNotice}
+        </p>
+      )}
       {localError === null ? null : <p role="alert">{localError}</p>}
       {state.error === null ? null : (
         <p data-testid="connection-error" role="alert">
