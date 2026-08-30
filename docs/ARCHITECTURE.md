@@ -217,6 +217,7 @@ Room 必须串行处理 Action。任何未来多实例方案都必须维持“�
 
 - `apps/web` 与 `apps/game-server` 是两个独立服务。
 - 单区域、单个 Game Server 实例。
+- 根 `compose.yaml` 提供 WSL2/单机部署基线：独立 Web、Game Server、一次性 migration 和 PostgreSQL 容器；PostgreSQL 使用 named volume，运行时不 bind mount 源码。
 - Web 通过环境注入浏览器可达的 Game Server public URL；Game Server 通过环境注入允许的 Web origins 和与 Web 一致的 ticket issuer/secret。
 - active `RoomStore` 使用内存 delegate；Replay、Match archive 与完成历史使用 PostgreSQL adapter。
 - 默认重连宽限为 60 秒；同一 session 通过新 ticket 和新的 Colyseus seat reservation 接管 stable slot，旧连接立即失去 writer 权限。超时策略为 `abandoned`。
@@ -247,11 +248,12 @@ Room 必须串行处理 Action。任何未来多实例方案都必须维持“�
 - 完整的 per-viewer snapshot，而不是 V1 patch 或纯 Action 广播；
 - 匿名 guest session、短期连接票据和 60 秒重连宽限；
 - 同一 live room 多轮、双方 ready、房主关闭、非房主离开和 terminal TTL；
-- V1 单实例单区域；active RoomStore 为内存，完成 archive/replay 为 PostgreSQL。
+- V1 单实例单区域；active RoomStore 为内存，完成 archive/replay 为 PostgreSQL；
+- Docker Compose 单机部署使用生产构建镜像、显式 migration、服务 healthcheck 和 PostgreSQL named volume。
 
 ### 10.2 暂缓
 
-- 具体云平台、容器运行方式和域名拓扑；
+- 具体云平台和公网域名/TLS 拓扑；
 - 账号认证供应商和跨设备 identity 恢复；
 - Redis driver/presence 的选择与部署；
 - Matchmaking、观战延迟、公开 replay 权限；

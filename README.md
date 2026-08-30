@@ -11,6 +11,7 @@
 - [Game Plugin 规范](./docs/GAME_PLUGIN_SPEC.md)
 - [网络协议](./docs/NETWORK_PROTOCOL.md)
 - [Replay 设计](./docs/REPLAY_DESIGN.md)
+- [Docker Compose 单机部署](./docs/DEPLOYMENT_DOCKER_COMPOSE.md)
 - [测试策略](./docs/TESTING.md)
 - [开发路线图](./docs/ROADMAP.md)
 - [Agent 工作规则](./AGENTS.md)
