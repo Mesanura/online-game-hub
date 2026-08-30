@@ -18,6 +18,7 @@ playwright-report
 test-results
 .npm-cache
 .pnpm-store
+data
 *.log
 .DS_Store
 Thumbs.db

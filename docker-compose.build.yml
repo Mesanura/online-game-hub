@@ -1,0 +1,24 @@
+services:
+  migrate:
+    image: online-game-hub-database-migrator:local
+    pull_policy: build
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: database-migrator
+
+  game-server:
+    image: online-game-hub-game-server:local
+    pull_policy: build
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: game-server
+
+  web:
+    image: online-game-hub-web:local
+    pull_policy: build
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: web

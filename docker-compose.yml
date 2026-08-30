@@ -12,7 +12,9 @@ services:
     ports:
       - "${HOST_BIND_ADDRESS:-127.0.0.1}:${POSTGRES_PORT:-5432}:${POSTGRES_INTERNAL_PORT:-5432}"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - type: bind
+        source: ${POSTGRES_DATA_DIR:-./data/postgres}
+        target: /var/lib/postgresql/data
     healthcheck:
       test:
         [
@@ -28,24 +30,20 @@ services:
       - app
 
   migrate:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: database-migrator
+    image: ${DOCKER_IMAGE_NAMESPACE:-mesanura}/online-game-hub-database-migrator:${DOCKER_IMAGE_TAG:-latest}
+    pull_policy: always
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-online_game_hub}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:${POSTGRES_INTERNAL_PORT:-5432}/${POSTGRES_DB:-online_game_hub}
     depends_on:
       postgres:
         condition: service_healthy
-    restart: "no"
+    restart: "on-failure:5"
     networks:
       - app
 
   game-server:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: game-server
+    image: ${DOCKER_IMAGE_NAMESPACE:-mesanura}/online-game-hub-game-server:${DOCKER_IMAGE_TAG:-latest}
+    pull_policy: always
     init: true
     environment:
       NODE_ENV: production
@@ -80,10 +78,8 @@ services:
       - app
 
   web:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: web
+    image: ${DOCKER_IMAGE_NAMESPACE:-mesanura}/online-game-hub-web:${DOCKER_IMAGE_TAG:-latest}
+    pull_policy: always
     init: true
     environment:
       NODE_ENV: production
@@ -124,7 +120,3 @@ services:
 networks:
   app:
     driver: bridge
-
-volumes:
-  postgres_data:
-    name: ${POSTGRES_VOLUME_NAME:-online-game-hub-postgres-data}

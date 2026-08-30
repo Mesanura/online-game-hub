@@ -7,6 +7,7 @@ playwright-report/
 test-results/
 .npm-cache/
 .pnpm-store/
+/data/
 
 .env
 .env.*
