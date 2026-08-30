@@ -1,6 +1,6 @@
 # 网络协议
 
-> 状态：V1 协议（M4 Web issuer、正式 verifier 与 browser client 已实现）
+> 状态：V1 协议（M5 私有 history HTTP API 已实现；Protocol V1 envelope 不变）
 > 本文是 Web、Game Server 与浏览器之间身份、房间、消息、revision 和重连语义的权威来源。游戏规则 payload 见 [GAME_PLUGIN_SPEC.md](./GAME_PLUGIN_SPEC.md)。
 
 ## 1. 协议目标
@@ -39,7 +39,7 @@ Next Proxy 在首次页面请求验证或建立匿名 guest session。平台生�
 
 Cookie 固定为 `HttpOnly`、`SameSite=Lax`、`Path=/`、`Max-Age=604800`；生产环境强制 `Secure`，development/test 的本地 loopback HTTP 可明确配置 `Secure=false`。guest session secret 至少 32 UTF-8 bytes，只存在于 Web server runtime；cookie 值、secret 和解析出的 `PlayerSessionId` 不进入客户端 JavaScript、日志或错误响应。
 
-M4 不实现账号、OAuth、数据库 session 或跨设备身份。未来账号系统加入后，guest session 可以关联或迁移到账号，但房间和 Game Core 继续只依赖平台 session/slot 抽象。
+M5 仍不实现登录、OAuth、密码或数据库 session。服务器端可以把经可信未来认证边界提供的 UserId 与 guest session 事务化关联：同一 guest→同一 User 重试幂等，关联到不同 User 会冲突失败；没有任何允许浏览器提交 UserId 的 claim API。当前 guest cookie 不加入 UserId，房间和 Game Core 继续只依赖平台 session/slot 抽象。
 
 ### 4.2 Game Server Ticket
 
@@ -73,6 +73,29 @@ interface GameServerTicketClaims {
 ```
 
 成功响应为 `200`，配置或签发失败只返回 `503 { "code": "TICKET_UNAVAILABLE" }`；两者都设置 `Cache-Control: no-store, private`。route 只从 HttpOnly cookie 解析 session，不接受浏览器提交的 `PlayerSessionId`，且不在响应或错误中返回 cookie/secret。
+
+### 4.4 Private Match History API
+
+`GET /api/matches` 是 Web same-origin、当前 guest 私有的平台 metadata 查询，不是 Protocol V1 WebSocket envelope，也不改变 `protocolVersion`。route 只接受经当前部署 secret 验证的 `ogh_guest` cookie；缺失/无效 session 返回 `401 { "code": "GUEST_SESSION_REQUIRED" }`，数据库或配置失败返回 `503 { "code": "MATCH_HISTORY_UNAVAILABLE" }`。成功为：
+
+```ts
+interface MatchHistoryResponse {
+  matches: readonly {
+    matchId: string;
+    gameId: string;
+    gameVersion: string;
+    status: "waiting" | "active" | "completed" | "abandoned";
+    finalRevision: number;
+    playerSlotId: string;
+    createdAt: string;
+    startedAt: string | null;
+    finishedAt: string | null;
+    replayAvailable: boolean;
+  }[];
+}
+```
+
+结果最多 50 条并稳定排序；response 设置 `Cache-Control: no-store, private` 与 `Vary: Cookie`。query/body 中的 `PlayerSessionId`、`UserId`、slot 或 room ID 一律不作为授权输入。其他 guest 即使猜到 match ID，也只能得到自己的列表，不泄漏参与关系。API 不返回 canonical replay、Config、Action、Outcome、RNG seed、authoritative State、其他参与者 identity、database row ID 或 credential。
 
 ## 5. 房间标识与流程
 
@@ -246,7 +269,7 @@ V1 `ProtocolErrorCode` 至少包括：
 - Server 验证 session 与 slot 所有权后发送当前完整 snapshot。
 - 每个 slot 同时只允许一个可操作连接；新的有效连接接管后，旧连接失去提交 Action 的权限。
 - 超过 60 秒后，V1 平台策略把比赛标记为 `abandoned`；旧 SDK reconnection token 和新的 join 都不能恢复该席位。未来判负策略仍由平台 lifecycle 负责，具体游戏不得直接处理 socket timeout。
-- Server 进程重启不在 V1 恢复保证内，因为 RoomStore 使用内存 adapter。
+- Server 进程重启不在 active room 恢复保证内，因为 RoomStore authoritative State 仍在内存。M5 只保证 completed replay/history 跨连接与进程读取，并在单实例启动时把遗留 waiting/active archive 标记 abandoned。
 
 ### 11.1 M4 Client Host 收敛语义
 

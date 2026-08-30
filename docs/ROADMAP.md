@@ -96,17 +96,21 @@
 
 ## M5：持久化与账号基础
 
+> 实施状态：已完成（2026-08-30）。PostgreSQL/Drizzle migration、durable replay、Match archive、guest-to-account 服务端基础、私有 history API、真实数据库 integration 与 PostgreSQL-backed Playwright 已通过验证。
+
 开始条件：M4 稳定，产品确认需要跨重启历史。
 
-候选交付：
+已交付：
 
 - PostgreSQL + Drizzle 基础和 migrations；
 - `User`、`Match`、`MatchPlayer`、`Replay` 的最小 schema；
 - durable `ReplayStore` 和比赛历史读取；
 - guest-to-account 身份迁移；
-- 数据保留、删除和 replay 访问控制。
+- canonical replay 保持 server-only，history API 只返回当前 guest 的最小平台 metadata；
+- 单实例启动把遗留 waiting/active archive 标记 abandoned，不恢复 active State；
+- 固定版本 CI PostgreSQL service、随机数据库清理和真实 adapter/Colyseus/Playwright tests。
 
-此阶段再决定事务/outbox、认证供应商和隐私政策，不在早期文档中虚构实现。
+事务边界已收敛在 replay action/Match revision 与 replay completion/Match completion；active RoomStore 仍是内存且没有跨存储原子性。当前幂等写入与唯一约束足够，不引入 outbox。OAuth/password/provider、通用数据保留/删除产品、公开 replay、active room recovery、多实例 ownership 都未实现。
 
 ## M6：验证插件扩展性
 
@@ -132,4 +136,4 @@
 
 ## 下一轮建议
 
-M4 已完成。下一轮只执行 M5，并先确认产品确实需要跨重启历史：设计最小 PostgreSQL/Drizzle schema、migration/transaction 边界和 replay 访问控制，再实现 durable `ReplayStore`、比赛历史读取与 guest-to-account 迁移。认证供应商、outbox 和隐私/保留策略应在该轮基于实际持久化需求决定；不要混入 Lobby、Matchmaking、排行榜、观战、replay 播放器、Redis、多实例或 M6 新游戏。
+M5 已完成。下一轮只执行 M6 的插件扩展性验证，按顺序先评估并实现 Connect Four，用不同棋盘/胜负扫描验证现有 Game Plugin、registry、client module、replay、projection 与 repository-check 是否无需平台特例。不要同时加入多个游戏，也不要混入 OAuth、Lobby、Matchmaking、排行榜、观战、公开 replay、durable active room、Redis 或多实例。

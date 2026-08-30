@@ -1,6 +1,6 @@
 # Replay 设计
 
-> 状态：V1 设计（M3 authoritative room 写入已实现）  
+> 状态：V1 设计（M5 PostgreSQL durable replay 已实现）
 > 本文是 canonical replay 内容、确定性重建、版本兼容和存储端口的权威来源。Core 随机性规则见 [GAME_PLUGIN_SPEC.md](./GAME_PLUGIN_SPEC.md)。
 
 ## 1. 目标
@@ -13,7 +13,7 @@ Canonical replay 是服务器记录的、可确定性重建一场比赛的最小
 - 举报审查与安全调查；
 - 数据分析和历史记录。
 
-V1 只要求生成、保存到内存、读取并验证 replay。PostgreSQL、公开 replay API 和回放 UI 不在范围内。
+V1 已要求生成、持久化到 PostgreSQL、跨新连接读取并验证 replay。公开 replay API、下载和回放 UI 不在范围内。
 
 ## 2. Canonical Record
 
@@ -93,14 +93,16 @@ interface CanonicalReplay {
 3. 调用 Core `transition`；
 4. 构造包含新 State、RNG cursor、revision 和 `ReplayAction` 的 accepted candidate；
 5. 以当前 revision 作为 `expectedSequence` 先 append canonical action；
-6. append 成功后才更新 room aggregate 的 State/RNG/revision，保存 `RoomStore`；终局再以最终 RNG cursor 和 Core Outcome complete replay；
+6. 终局以最终 RNG cursor 和 Core Outcome complete replay，再保存 candidate `RoomStore` record；
 7. 所有写入成功后缓存 command outcome，并按 viewer 投影、发送完整 snapshot。
 
 Schema-invalid、platform rejected、Core rejected、stale 或 duplicate command 不产生 `ReplayAction`，也不改变 revision 或 RNG cursor。
 
-`append` 失败时 M3 不更新 aggregate/`RoomStore`，返回 `INTERNAL_ERROR`，不缓存或发送 accepted snapshot，并增加 replay append failure 指标。终局 `complete` 失败同样不确认 accepted，而被视为 internal room failure。
+`append`、terminal `complete` 或 candidate room save 失败时 runtime 不更新内存 aggregate，返回 `INTERNAL_ERROR`，不缓存或发送 accepted snapshot，并增加 persistence failure 指标。相同 canonical header/action/completion 可安全幂等重试，冲突内容明确失败。
 
-M3 的 `RoomStore` 与 `ReplayStore` 都是单进程内存 adapter；上述操作受同一 room writer critical section 保护，但两个 port 调用不是 durable database transaction，也不能为未来跨存储故障提供 rollback。持久化 adapter 必须使用数据库事务或 outbox，并继续用 `expectedSequence`/唯一约束保证幂等；不能把 M3 的调用顺序直接宣称为跨存储原子性。
+M5 的 replay 与 Match archive 位于同一 PostgreSQL：header create 单独幂等写入；append 事务化写 `replay_actions` 并推进 Match final revision；terminal complete 事务化保存 cursor/Outcome 并把 Match 标记 completed。每个 replay row 在 append/complete 时加 row lock，`(replay_id, sequence)` 主键提供并发唯一顺序。
+
+active `RoomStore` delegate 仍在进程内存，因此它与 PostgreSQL transaction 不具备跨存储原子性，也不提供 active State rollback/recovery。当前由单 room writer、先 durable 后内存 commit、唯一约束和幂等操作控制 crash window；证据不足以引入 outbox。重启时不从 replay 临时推导活动 State，只把遗留 waiting/active Match archive 标记 abandoned。
 
 ## 5. Replay Store Port
 
@@ -124,10 +126,10 @@ interface ReplayStore {
 }
 ```
 
-- V1 `InMemoryReplayStore` 实现该端口，进程重启后数据丢失。
-- `append` 必须拒绝缺口、重复或乱序 sequence。
+- V1 同时保留测试用 `InMemoryReplayStore` 和生产 `PostgresReplayStore`；后者通过显式注入的可关闭 database client 跨进程持久化。
+- 相同 header 的重复 `create` 与相同 sequence/content 的重复 `append` 幂等成功；缺口、乱序或相同 ID/sequence 的冲突内容失败。
 - `complete` 只接受非 `null` 的 terminal Outcome；相同 cursor/Outcome 的重复调用幂等，且不得允许另一个结果覆盖已完成记录。
-- PostgreSQL adapter 将来实现相同语义，不要求 Core 或 room 改变。
+- `get` 在 repeatable-read transaction 中读取 header/actions/completion；数据库 JSONB 视为 `unknown` 并重新 runtime validation，污染数据返回稳定安全错误。
 
 M3 room 创建时在 Core 初始化完成后创建 replay header，其中保存 exact game/version、规范化 Config、服务器生成的 stable slot 顺序和初始 RNG algorithm/seed。每次 accepted transition 追加一个规范化 action；比赛进入 `completed` 时保存最终 RNG cursor 与 Core Outcome。`abandoned` 没有伪造游戏 Outcome，record 可以保持未完成状态。
 
@@ -168,6 +170,7 @@ Canonical replay 是服务器内部记录，可能通过 seed、Action 或 Confi
 - 比赛进行中不得向客户端发送完整 canonical replay 或 seed。
 - `projectView` 不等于 replay 导出策略；公开 replay 需要独立的授权与脱敏设计。
 - 日志、监控和错误响应不得包含完整 replay payload。
+- M5 的 `GET /api/matches` 只用完成标记计算 `replayAvailable`，不返回 replay ID、header、actions、Config、Outcome 或 seed，也不提供下载端点。
 - 举报审查、玩家下载和公开分享可能拥有不同访问级别，具体策略暂缓。
 - V1 Tic-Tac-Toe 没有隐藏信息，但仍按内部 canonical record 处理。
 

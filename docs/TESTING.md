@@ -1,6 +1,6 @@
 # 测试策略
 
-> 状态：V1 策略（M4 browser E2E 已实现）
+> 状态：V1 策略（M5 PostgreSQL 持久化与私有历史纵切已实现）
 > 本文是测试层级、职责、最低场景和质量门禁的权威来源。具体业务范围见 [PRODUCT.md](./PRODUCT.md)。
 
 ## 1. 目标
@@ -11,6 +11,7 @@
 - Game Server 是否真正 authoritative；
 - 玩家、观众和重连连接是否只收到有权看到的数据；
 - replay 是否仍能被对应 `gameVersion` 重建；
+- PostgreSQL migrations、durable replay、match archive 和身份关联是否保持事务与授权不变量；
 - 两个真实浏览器是否能完成创建、加入、对局和重连；
 - package public API 和依赖方向是否被破坏。
 
@@ -21,6 +22,7 @@
 ```text
                  Playwright E2E
               Multiplayer integration
+             PostgreSQL integration
              Server/Protocol integration
             Replay compatibility tests
               Game Core unit tests
@@ -122,7 +124,7 @@ Server integration tests 位于 `apps/game-server/tests/game-server.integration.
 - 新有效连接接管后旧连接无法继续提交 Action。
 - 不同 session 不能窃取保留 slot。
 - 超时后执行房间策略，旧 reconnection token 不再恢复席位。
-- V1 明确不测试进程重启后的活动房间恢复。
+- V1 明确不测试进程重启后的活动房间恢复；M5 只验证重启后已完成 replay、match history 仍可读取，并验证启动协调会把单实例遗留的 `waiting`/`active` archive 标记为 `abandoned`。
 
 使用 fake clock 驱动 60 秒超时，测试不得真实等待一分钟。
 
@@ -141,7 +143,24 @@ Multiplayer integration 使用两个独立客户端连接同一真实 room，验
 
 M3 的四个真实 integration cases 覆盖：health/metrics 与 ticket trust boundary；双客户端 stable slots、waiting/active/completed、伪造 actor、invalid/stale/duplicate/concurrent/rule-rejected commands、per-viewer snapshot 与 verified canonical replay；replay append failure 不确认/不提交；新 ticket + 新 reservation 的 reconnect、connection takeover、错误 session theft 和 fake-clock 60 秒 abandoned。ticket verifier、ports、composition logger 另有无 transport 的 contract/unit tests。
 
-## 9. Playwright E2E
+## 9. PostgreSQL Integration Tests
+
+`packages/database/tests/postgres.integration.test.ts` 和 `apps/game-server/tests/game-server.postgres.integration.test.ts` 连接真实 PostgreSQL，不使用 SQLite，也不 mock Drizzle driver。根 `pnpm test:database` 会先构建依赖 package，再执行这两组 tests；缺少显式的测试 DSN 时 fail closed，不会回退或连接默认开发数据库。
+
+测试 owner 必须创建带随机名称的独立 database，并在连接前验证名称前缀；cleanup 只删除该测试自己创建的 database，且先终止属于该 database 的测试连接。Windows 本地开发可用 WSL/Docker 中的精确 PostgreSQL 版本，但测试不得依赖公共固定端口或外部托管服务。CI 使用 `postgres:17.6-alpine3.22` service container，并只把 workflow 创建的测试 credential 注入相关 steps；应用日志、错误和测试制品不得包含 DSN。
+
+最低覆盖：
+
+- 空 database 应用 checked-in migrations，随后由 `db:check` 验证 schema/migration metadata 无漂移；
+- replay create/append/complete/get 可由新 connection 和新 adapter 重建，并通过 exact registry 的现有 `verifyReplay`；
+- sequence gap、重复/冲突 payload、并发 append 和冲突 completion fail closed；相同重试幂等；
+- schema-invalid、stale、duplicate、game-rule rejected command 不增加 `replay_actions`；
+- Match/MatchPlayer waiting、active、completed、abandoned archive 及 final revision 正确；completed 必须关联已完成 replay，abandoned 不伪造 Outcome；
+- guest history 只返回当前 server-verified guest 的安全 metadata，猜测其他 guest 的 match ID 不泄漏参与关系；
+- guest-to-account association 在事务中幂等，且不能把已关联记录覆盖到另一 User；
+- adapter/connection shutdown 后无遗留 client；数据库错误经稳定 code 清洗，不泄漏 SQL、DSN、session、ticket、State、seed 或 canonical replay。
+
+## 10. Playwright E2E
 
 `tooling/e2e/tests/web-vertical-slice.spec.ts` 使用两个隔离 browser contexts，代表两个匿名访客：
 
@@ -154,28 +173,31 @@ M3 的四个真实 integration cases 覆盖：health/metrics 与 ticket trust bo
 7. A 断线后 fake clock 前进 30 秒，以同一 browser context、新 ticket/new join reservation 恢复原 slot 和完整棋盘；
 8. 两者再完成 9-revision 平局，并验证 DRAW UI；
 9. 两个 HttpOnly/SameSite guest cookies 值不同，B 不能窃取 A 席位；
-10. 第三房间用 fake clock 前进 60,001 ms 验证 `abandoned`；胜局与平局的 canonical replay 都由现有 `verifyReplay` 成功重建。
+10. 第三房间用 fake clock 前进 60,001 ms 验证 `abandoned`；胜局与平局的 canonical replay 都由现有 `verifyReplay` 成功重建；
+11. 完成比赛后，A 的 server-verified guest session 能读取自己的私有 history metadata，B 不能读取 A 的比赛；关闭并重建 database adapter 后该 metadata 和 replay 仍存在。
 
-Harness 为 Web 预留随机 loopback port，并用 `port: 0` 启动正式 ticket verifier/CORS composition 的真实 Colyseus Server；随后启动真实 Next production server 和 Chromium。只注入 fake clock、deterministic IDs、内存 stores/logger 等已有可控 ports，不 mock 浏览器、ticket route、matchmaking、WebSocket 或 Action pipeline，也不访问外部服务。
+Harness 为 Web 预留随机 loopback port，并用 `port: 0` 启动正式 ticket verifier/CORS composition 的真实 Colyseus Server；随后启动真实 Next production server 和 Chromium。M5 E2E 使用测试 owner 创建的隔离 PostgreSQL database 和正式 adapters，只注入 fake clock、deterministic IDs 与测试 logger 等已有可控 ports，不 mock 数据库、浏览器、ticket route、matchmaking、WebSocket 或 Action pipeline，也不访问外部服务。活动 RoomStore 仍在内存中，因此该测试只验证 archive/replay 跨 adapter 重建，不声称恢复活动 room。
 
 断言优先使用可访问 role/test id 和用户可见文本；恶意 intent case 明确调用实际 React click handler 以绕过 UX disable，但仍通过真实 client host/transport/server。Playwright trace/video 关闭，避免 bearer ticket 进入测试制品；失败 screenshot 只包含不显示 credential 的 UI。harness 在 `afterAll` 对两个进程执行停止清理。
 
-## 10. Change-to-Test Matrix
+## 11. Change-to-Test Matrix
 
-| 改动                    | 最低检查                                                         |
-| ----------------------- | ---------------------------------------------------------------- |
-| 单游戏 Core             | 该游戏 unit + determinism + replay fixtures + typecheck          |
-| Game manifest/client    | registry contract + client component + relevant E2E              |
-| `game-sdk`              | 全部游戏 Core/replay + public API type tests + dependency checks |
-| `protocol`              | protocol contract + server integration + multiplayer/E2E smoke   |
-| `game-server-runtime`   | server integration + multiplayer + replay store tests            |
-| session/ticket          | auth contract + join/reconnect + security negative cases         |
-| replay format/version   | reader compatibility + all supported golden replays              |
-| build/dependency config | full typecheck/lint/unit + affected build graph                  |
+| 改动                    | 最低检查                                                            |
+| ----------------------- | ------------------------------------------------------------------- |
+| 单游戏 Core             | 该游戏 unit + determinism + replay fixtures + typecheck             |
+| Game manifest/client    | registry contract + client component + relevant E2E                 |
+| `game-sdk`              | 全部游戏 Core/replay + public API type tests + dependency checks    |
+| `protocol`              | protocol contract + server integration + multiplayer/E2E smoke      |
+| `game-server-runtime`   | server integration + multiplayer + replay store tests               |
+| database/schema         | migrations + real PostgreSQL integration + restart reads + shutdown |
+| match/history/identity  | PostgreSQL integration + API authorization/privacy + relevant E2E   |
+| session/ticket          | auth contract + join/reconnect + security negative cases            |
+| replay format/version   | reader compatibility + all supported golden replays                 |
+| build/dependency config | full typecheck/lint/unit + affected build graph                     |
 
-## 11. Root Commands
+## 12. Root Commands
 
-M4 提供以下稳定根命令：
+M5 提供以下稳定根命令：
 
 ```text
 pnpm lint
@@ -185,9 +207,14 @@ pnpm build
 pnpm deps:check
 pnpm test:integration
 pnpm test:e2e
+pnpm db:check
+pnpm db:migrate
+pnpm test:database
 ```
 
-`pnpm lint` 包含格式、ESLint、本地 Markdown 链接与依赖边界检查。`pnpm test` 纳入 Game SDK、Protocol、Tic-Tac-Toe Core/client、registry、ticket authority、Web guest/config、runtime/replay stores、Game Server unit tests 和 repository-check 的全部故意违规 fixture tests。`pnpm test:integration` 执行上述真实 Colyseus SDK tests。`pnpm test:e2e` 先执行完整 workspace build，再执行真实 Playwright；两个命令都不是空脚本。
+`pnpm lint` 包含格式、ESLint、本地 Markdown 链接与依赖边界检查。`pnpm test` 纳入 Game SDK、Protocol、Tic-Tac-Toe Core/client、registry、ticket authority、Web guest/config、runtime/replay stores、Game Server unit tests 和 repository-check 的全部故意违规 fixture tests。`pnpm test:integration` 执行内存 ports 和 PostgreSQL ports 两组真实 Colyseus SDK tests。`pnpm test:e2e` 先执行完整 workspace build，再执行 PostgreSQL-backed Playwright。`pnpm test:database` 执行真实 PostgreSQL tests；这些命令都不是空脚本。
+
+`pnpm db:check` 是只读 migration/schema 一致性检查。`pnpm db:migrate` 只在调用者显式提供 `DATABASE_URL` 时应用 checked-in migrations；应用 import 或 production startup 都不会自动 migration。本地创建、迁移与停止 PostgreSQL 的命令见根 README。测试必须使用独立 database/schema，禁止对默认 development `DATABASE_URL` 执行 destructive reset。
 
 所有当前支持 `gameVersion` 的 golden replay：
 
@@ -195,11 +222,11 @@ pnpm test:e2e
 pnpm --filter @online-game-hub/tic-tac-toe test:golden
 ```
 
-首次本机运行 E2E 前执行 `pnpm exec playwright install chromium`。CI 在 frozen-lockfile install 后以 `pnpm exec playwright install --with-deps chromium` 安装与 Playwright 1.62.1 精确匹配的浏览器，然后运行 lint、typecheck、unit、integration、build 和 E2E。
+首次本机运行 E2E 前执行 `pnpm exec playwright install chromium`。CI 在 frozen-lockfile install 后以 `pnpm exec playwright install --with-deps chromium` 安装与 Playwright 1.62.1 精确匹配的浏览器，使用固定 PostgreSQL 17.6 service，然后运行 lint、typecheck、unit、database、integration、build 和 E2E。
 
 新增 package 必须接入 Turbo task graph，而不是要求 Agent 记忆私有脚本。
 
-## 12. Definition of Done
+## 13. Definition of Done
 
 功能或架构变更只有在以下条件满足时完成：
 
