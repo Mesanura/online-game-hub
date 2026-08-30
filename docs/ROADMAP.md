@@ -116,13 +116,24 @@
 
 ## M6：验证插件扩展性
 
+> 实施状态：第一阶段 Connect Four 已完成（2026-08-30）；Gomoku、Reversi 和整个 M6 尚未完成。
+
 按顺序增加少量规则类型不同的游戏：
 
-1. Connect Four：验证不同棋盘和胜负扫描；
+1. Connect Four：验证不同棋盘和胜负扫描（**第一阶段已完成**）；
 2. Gomoku：验证更大棋盘与规则变体 Config；
 3. Reversi：验证翻转、无合法行动和跳过回合。
 
 每新增一个游戏前复盘：需要修改多少平台文件、registry 步骤是否机械、SDK 是否出现游戏特例。只有流程稳定后才实现 `tools/create-game`。
+
+Connect Four 复盘结果：
+
+- 游戏 package 内 16 个文件拥有 manifest、Core、Client Module、局部规则/Agent 文档、unit/client/golden tests；
+- 游戏外非文档改动 12 个文件，其中 registry/build/lockfile 机械登记 6 个、Web 游戏表现 CSS 1 个、验证测试 5 个；
+- `game-sdk`、Protocol V1、Replay Format V1、`game-client-sdk`、通用 runtime、ticket、database schema 和 migration 均无需修改，也没有新增 `gameId` 分支；
+- exact/current resolver、`projectView`、canonical replay、同房间多轮、PostgreSQL history 和 repository-check 可直接支持第二游戏；
+- 现有通用 Web 页面仍含 Tic-Tac-Toe `CELL_OCCUPIED` 规则文案映射，且 game CSS/Next transpile 仍需显式登记；本轮没有为 Connect Four 增加规则文案特例；
+- 两个游戏只证明 registry 步骤大体机械，尚不足以固定模板、样式与错误呈现策略，因此不创建 `tools/create-game`。
 
 ## M7：按证据扩展平台
 
@@ -138,4 +149,4 @@
 
 ## 下一轮建议
 
-M5 已完成。下一轮只执行 M6 的插件扩展性验证，按顺序先评估并实现 Connect Four，用不同棋盘/胜负扫描验证现有 Game Plugin、registry、client module、replay、projection 与 repository-check 是否无需平台特例。不要同时加入多个游戏，也不要混入 OAuth、Lobby、Matchmaking、排行榜、观战、公开 replay、durable active room、Redis 或多实例。
+M6 Connect Four 第一阶段已完成。下一轮只评估并实现 M6 的 Gomoku Config 验证，用更大棋盘和最小规则变体检验现有 Config/Client Module/replay 契约；不要提前实现 Reversi、`tools/create-game` 或 M7，也不要混入 OAuth、Lobby、Matchmaking、排行榜、观战、公开 replay、durable active room、Redis 或多实例。

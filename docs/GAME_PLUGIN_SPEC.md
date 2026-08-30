@@ -216,13 +216,15 @@ type Action = {
 interface GameClientProps<View, Action> {
   view: Readonly<View>;
   revision: number;
-  connectionState: "connecting" | "connected" | "reconnecting" | "closed";
+  connectionState:
+    "idle" | "loading" | "connecting" | "connected" | "reconnecting" | "closed";
   submitAction(action: Action): Promise<void>;
 }
 
 interface GameClientModule<View, Action> {
   gameId: GameId;
   gameVersion: GameVersion;
+  parseView(input: unknown): View;
   Component: React.ComponentType<GameClientProps<View, Action>>;
 }
 ```
@@ -230,6 +232,8 @@ interface GameClientModule<View, Action> {
 通用 host 负责添加 `commandId` 和 `expectedRevision`、管理连接、显示平台错误和处理重连。具体游戏组件只渲染 View、采集意图并调用 `submitAction`。
 
 客户端可以重复实现提示性逻辑以改善 UX，但提示不是权威；服务器 Core 始终重新验证 Action。
+
+Connect Four 1.0.0 验证了该契约可表达固定 7×6 View、每列可访问操作和 `DROP_DISC(column)` intent，而无需让 Client Module 导入 Core、计算重力落点、扫描胜负、预测 Outcome 或推进 revision。客户端 View schema 是对不可信 server payload 的运行时边界，不等于在浏览器重建 authoritative State。
 
 ## 9. Manifest 与 Export Map
 
@@ -273,5 +277,7 @@ Registry 必须能够按 exact `gameVersion` 读取旧 replay 所需的 definiti
 - 合法、非法、终局、不变性和 replay determinism 测试通过；
 - `projectView` 的信息泄漏测试通过；
 - package 只通过声明的 public subpath exports 被消费。
+
+M6 Connect Four 是第二个满足以上清单的 package。其接入没有要求修改 `GameDefinition`、`GameClientModule` 或 replay envelope；因此本轮不扩大 shared public API。
 
 完整测试矩阵见 [TESTING.md](./TESTING.md)。

@@ -85,7 +85,7 @@ M5 的 `createProductionGameServer(config, overrides?)` 在 composition layer �
 每个 `games/<game-id>` 是一个 workspace package，而不是把所有游戏放入一个 package，也不把单个游戏拆成多个 workspace package。
 
 ```text
-games/tic-tac-toe/
+games/<game-id>/
   package.json
   src/
     core/
@@ -167,7 +167,7 @@ Room 必须串行处理 Action。任何未来多实例方案都必须维持“�
 ### 8.1 M3 实现不变量
 
 - Room 创建时通过 registry 的 current resolver 选择一个 exact `gameId + gameVersion`，校验并保存规范化 Config；加入和 replay 继续使用 exact resolver。
-- Room 在 Core 初始化前预分配 `maxPlayers` 个服务器生成的 stable slots；客户端请求没有 `gameVersion`、slot 或内部 `roomId` 字段。Tic-Tac-Toe 的 `minPlayers = maxPlayers = 2`，第二个有效 session 连接后从 `waiting` 进入 `active`。
+- Room 在 Core 初始化前预分配 `maxPlayers` 个服务器生成的 stable slots；客户端请求没有 `gameVersion`、slot 或内部 `roomId` 字段。Tic-Tac-Toe 与 Connect Four 1.0.0 都是 `minPlayers = maxPlayers = 2`，第二个有效 session 连接后从 `waiting` 进入 `active`。
 - Colyseus join/leave/Action 共用每 room Promise queue；连接 session、active connection generation 和 slot ownership 都在进入 Core 前验证。
 - accepted candidate 先以 `expectedSequence = current revision` append replay；终局再 complete replay；随后保存 candidate room record；三个 port 调用全部成功后才提交内存 aggregate、缓存结果和发送 snapshot。任一步失败都返回 `INTERNAL_ERROR`，不提前推进内存 State/RNG/revision。
 - PostgreSQL replay append 在单事务中写 action 并推进 Match final revision；terminal complete 在单事务中写 RNG/Outcome 并把 Match 标记 completed。相同 header/action/completion 重试幂等，不同内容冲突失败；replay row lock 与 `(replay_id, sequence)` 主键串行化 concurrent append。
@@ -183,7 +183,7 @@ Room 必须串行处理 Action。任何未来多实例方案都必须维持“�
 - host 只保存当前 per-viewer View snapshot、`roomLifecycle`、round/revision、连接/拒绝状态。`submitAction` 生成 `commandId` 并从最新 lifecycle/snapshot 填充 `roundNumber` 和 `expectedRevision`；它不持有或重演 authoritative State。
 - 所有 server payload 都先通过 Protocol V1 schema。duplicate、stale、schema-invalid 和 game-rule rejection 不在浏览器模拟；host 接受服务器附带或随后发送的完整 snapshot 收敛。
 - transport 非主动关闭时，host 在 60 秒窗口内以指数退避获取新 ticket 并重新执行 room-code join，生成新的 seat reservation；不使用 SDK reconnection token 证明席位所有权。
-- Tic-Tac-Toe Client Module 只解析 View，渲染 3×3 棋盘、mark/turn/Outcome，并只提交 `{ type: "PLACE_MARK", cell }` intent。按钮禁用仅是 UX，不能代替 authoritative rejection。
+- Tic-Tac-Toe Client Module 只解析 View，渲染 3×3 棋盘并提交 `{ type: "PLACE_MARK", cell }`；Connect Four Client Module 不导入 Core，只解析 View、渲染 7×6 棋盘并提交 `{ type: "DROP_DISC", column }`。两者都不计算 authoritative 落点/Outcome/revision；按钮禁用仅是 UX，不能代替 authoritative rejection。
 
 ### 8.3 同房间多轮与关闭
 
@@ -201,6 +201,15 @@ Room 必须串行处理 Action。任何未来多实例方案都必须维持“�
 - `match_players` 以 `(match_id, player_slot_id)` 为主键并约束同场 participant 唯一；原始 `PlayerSessionId` 只用于服务器授权索引，不进入公共 response、日志或错误。`guest_user_associations` 通过 transaction advisory lock、唯一键和 FK 实现同 guest→同 User 幂等、跨 User 冲突拒绝，并事务化回填既有 MatchPlayer；没有可信认证来源时不暴露浏览器 claim endpoint。
 - Web 的 `GET /api/matches` 只从经 HMAC 验证的 `ogh_guest` 推导 identity，每次请求创建并关闭自己的 server-only database client。结果最多 50 条，按 `createdAt DESC, matchId DESC` 稳定排序，只返回含 `roundNumber` 的平台 metadata；canonical replay、Config、Action、Outcome、seed、State、其他参与者和内部 room ID 都不返回。
 - PostgreSQL 是唯一生产数据库，`DATABASE_MODE=memory` 只允许 development/test 且明确无 durable history。migration 只能通过运维命令显式执行，应用 import/start 不自动迁移；`DATABASE_URL` 不进入浏览器 bundle、结构化日志或错误 response。
+
+### 8.5 M6 Connect Four 插件扩展性实证
+
+- Connect Four 作为第二个游戏只通过 `game-registry` 显式加入 catalog、lazy client loader、exact/current server resolver；没有运行时目录扫描。
+- 游戏外非文档改动为 12 个文件：registry dependency/catalog/client/server、Next transpile 与 lockfile 6 个机械登记，Web presentation CSS 1 个，以及 registry、Colyseus、PostgreSQL、Playwright、repository-check 5 个测试文件。游戏 package 自身为 16 个文件。
+- `game-sdk`、`protocol`、`game-client-sdk`、`game-server-runtime`、`game-server-ticket`、database source/schema/migration 均零修改；Protocol V1、Replay Format V1 和 Tic-Tac-Toe 1.0.0 保持兼容。
+- 通用 Action pipeline、`projectView`、replay verifier、PostgreSQL adapters、多轮/关闭/reconnect 行为没有 `connect-four` 或第二游戏分支。repository-check 原有按 package 分类的 alpha↔beta fixture 同时证明跨游戏依赖与 registry 外具体游戏组合 fail closed。
+- 发现的 presentation 摩擦是 Next transpile allowlist 与 Web 全局游戏 CSS 仍需显式登记；此外通用 `GameRoomPage` 在 M4 已有 Tic-Tac-Toe `CELL_OCCUPIED` 规则文案映射。本轮没有加入 Connect Four 规则文案映射或扩大 Client Module API；第三游戏若再次需要结构化规则文案或 package-owned styles，再评估通用契约。
+- 两个游戏不足以冻结脚手架模板，`tools/create-game` 继续暂缓到 Gomoku Config 验证之后。
 
 ## 9. 存储与部署
 
