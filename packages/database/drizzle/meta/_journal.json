@@ -8,6 +8,13 @@
       "when": 1788052790528,
       "tag": "0000_minor_franklin_richards",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1788075616119,
+      "tag": "0001_yummy_doctor_octopus",
+      "breakpoints": true
     }
   ]
 }

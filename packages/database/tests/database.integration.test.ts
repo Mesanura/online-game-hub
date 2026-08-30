@@ -85,6 +85,7 @@ function roomRecord(
   return {
     roomId,
     roomCode,
+    roundNumber: 1,
     gameId: "tic-tac-toe",
     gameVersion: "1.0.0",
     initialConfig: null,
@@ -334,6 +335,125 @@ describe.sequential("PostgreSQL + Drizzle persistence", () => {
         }),
       ]),
     );
+  });
+
+  it("archives consecutive rounds in one runtime room with independent replay and history", async () => {
+    await replayStore.create("replay-round-one", header);
+    const waiting = roomRecord(
+      "runtime-multi-round",
+      "RUND2345",
+      "replay-round-one",
+      "guest-round-a",
+    );
+    await roomStore.create(waiting);
+    const [firstPlayer, secondPlayer] = waiting.players;
+    if (firstPlayer === undefined || secondPlayer === undefined) {
+      throw new Error("Expected two preallocated player slots.");
+    }
+    const activeRoundOne: StoredGameRoom = {
+      ...waiting,
+      status: "active",
+      players: [
+        firstPlayer,
+        { ...secondPlayer, playerSessionId: "guest-round-b" },
+      ],
+    };
+    await roomStore.save(activeRoundOne);
+    for (const action of winningActions) {
+      await replayStore.append(
+        activeRoundOne.replayId,
+        action.sequence - 1,
+        action,
+      );
+    }
+    await replayStore.complete(activeRoundOne.replayId, 5, 0, winningOutcome);
+    await roomStore.save({
+      ...activeRoundOne,
+      revision: 5,
+      status: "completed",
+      outcome: winningOutcome,
+    });
+
+    const roundTwoHeader: ReplayHeader = {
+      ...header,
+      rng: { ...header.rng, seed: "database-replay-round-two-seed" },
+    };
+    await replayStore.create("replay-round-two", roundTwoHeader);
+    const activeRoundTwo: StoredGameRoom = {
+      ...activeRoundOne,
+      roundNumber: 2,
+      replayId: "replay-round-two",
+      state: waiting.state,
+      rng: createRng(roundTwoHeader.rng.seed),
+      revision: 0,
+      status: "active",
+      outcome: null,
+    };
+    await roomStore.save(activeRoundTwo);
+    for (const action of winningActions) {
+      await replayStore.append(
+        activeRoundTwo.replayId,
+        action.sequence - 1,
+        action,
+      );
+    }
+    await replayStore.complete(activeRoundTwo.replayId, 5, 0, winningOutcome);
+    await roomStore.save({
+      ...activeRoundTwo,
+      revision: 5,
+      status: "completed",
+      outcome: winningOutcome,
+    });
+
+    const history = await matchRepository.listForGuest("guest-round-a");
+    expect(history).toHaveLength(2);
+    expect(history.map((item) => item.roundNumber).sort()).toEqual([1, 2]);
+    expect(new Set(history.map((item) => item.matchId)).size).toBe(2);
+    expect(history).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          roundNumber: 1,
+          status: "completed",
+          replayAvailable: true,
+        }),
+        expect.objectContaining({
+          roundNumber: 2,
+          status: "completed",
+          replayAvailable: true,
+        }),
+      ]),
+    );
+
+    await replayStore.create("replay-skipped-round", roundTwoHeader);
+    await expect(
+      roomStore.save({
+        ...activeRoundTwo,
+        roundNumber: 4,
+        replayId: "replay-skipped-round",
+      }),
+    ).rejects.toMatchObject({ code: "DATABASE_OPERATION_ERROR" });
+
+    const rebuiltClient = createPostgresDatabaseClient({
+      url: isolated.url,
+      applicationName: "database-integration-multi-round-rebuild",
+      maxConnections: 2,
+    });
+    try {
+      const rebuiltMatches = new PostgresMatchRepository(
+        rebuiltClient.database,
+      );
+      await expect(
+        rebuiltMatches.listForGuest("guest-round-a"),
+      ).resolves.toEqual(history);
+      const rebuiltReplay = await new PostgresReplayStore(
+        rebuiltClient.database,
+      ).get("replay-round-two");
+      expect(verifyReplay(rebuiltReplay, resolveGameDefinition)).toMatchObject({
+        status: "verified",
+      });
+    } finally {
+      await rebuiltClient.close();
+    }
   });
 
   it("rebuilds history after adapter reconstruction and enforces guest ownership", async () => {

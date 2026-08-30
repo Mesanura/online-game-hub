@@ -33,6 +33,7 @@ type DatabaseTransaction = Parameters<
 
 export interface MatchHistoryItem {
   readonly matchId: string;
+  readonly roundNumber: number;
   readonly gameId: string;
   readonly gameVersion: string;
   readonly status: MatchStatus;
@@ -61,6 +62,8 @@ function validStoredRoom(room: StoredGameRoom): boolean {
   return (
     room.roomId.length > 0 &&
     room.replayId.length > 0 &&
+    Number.isSafeInteger(room.roundNumber) &&
+    room.roundNumber > 0 &&
     isGameId(room.gameId) &&
     isGameVersion(room.gameVersion) &&
     matchStatusSchema.safeParse(room.status).success &&
@@ -89,6 +92,53 @@ async function lockGuestSessions(
     await transaction.execute(
       sql`select pg_advisory_xact_lock(hashtextextended(${playerSessionId}, 0))`,
     );
+  }
+}
+
+async function lockRuntimeRoom(
+  transaction: DatabaseTransaction,
+  runtimeRoomId: string,
+): Promise<void> {
+  await transaction.execute(
+    sql`select pg_advisory_xact_lock(hashtextextended(${runtimeRoomId}, 1))`,
+  );
+}
+
+async function assertSameParticipants(
+  transaction: DatabaseTransaction,
+  previousMatchId: string,
+  room: StoredGameRoom,
+): Promise<void> {
+  const previousPlayers = await transaction
+    .select({
+      playerSlotId: matchPlayers.playerSlotId,
+      playerSessionId: matchPlayers.playerSessionId,
+    })
+    .from(matchPlayers)
+    .where(eq(matchPlayers.matchId, previousMatchId));
+  const currentPlayers = room.players
+    .filter(
+      (
+        player,
+      ): player is typeof player & { readonly playerSessionId: string } =>
+        player.playerSessionId !== null,
+    )
+    .map((player) => ({
+      playerSlotId: player.slotId,
+      playerSessionId: player.playerSessionId,
+    }));
+  if (
+    previousPlayers.length !== currentPlayers.length ||
+    currentPlayers.some(
+      (current) =>
+        !previousPlayers.some(
+          (previous) =>
+            previous.playerSlotId === current.playerSlotId &&
+            previous.playerSessionId === current.playerSessionId,
+        ),
+    )
+  ) {
+    throw new DatabaseError("DATABASE_OPERATION_ERROR");
   }
 }
 
@@ -147,6 +197,7 @@ async function recordAssignedPlayers(
 
 function parseHistoryRow(row: {
   readonly matchId: string;
+  readonly roundNumber: number;
   readonly gameId: string;
   readonly gameVersion: string;
   readonly status: string;
@@ -161,6 +212,8 @@ function parseHistoryRow(row: {
   const parsedStatus = matchStatusSchema.safeParse(row.status);
   if (
     !validUuid(row.matchId) ||
+    !Number.isSafeInteger(row.roundNumber) ||
+    row.roundNumber <= 0 ||
     !isGameId(row.gameId) ||
     !isGameVersion(row.gameVersion) ||
     !parsedStatus.success ||
@@ -178,6 +231,7 @@ function parseHistoryRow(row: {
   const finishedAt = row.completedAt ?? row.abandonedAt;
   return {
     matchId: row.matchId,
+    roundNumber: row.roundNumber,
     gameId: row.gameId,
     gameVersion: row.gameVersion,
     status: parsedStatus.data,
@@ -207,6 +261,7 @@ export class PostgresMatchRepository {
   public async recordRoomCreated(room: StoredGameRoom): Promise<void> {
     if (
       !validStoredRoom(room) ||
+      room.roundNumber !== 1 ||
       room.status !== "waiting" ||
       room.revision !== 0
     ) {
@@ -214,6 +269,7 @@ export class PostgresMatchRepository {
     }
     try {
       await this.database.transaction(async (transaction) => {
+        await lockRuntimeRoom(transaction, room.roomId);
         const replayRows = await transaction
           .select({
             gameId: replays.gameId,
@@ -237,6 +293,7 @@ export class PostgresMatchRepository {
           .values({
             id: randomUUID(),
             runtimeRoomId: room.roomId,
+            roundNumber: room.roundNumber,
             replayId: room.replayId,
             gameId: room.gameId,
             gameVersion: room.gameVersion,
@@ -247,13 +304,19 @@ export class PostgresMatchRepository {
         const matchRows = await transaction
           .select()
           .from(matches)
-          .where(eq(matches.runtimeRoomId, room.roomId))
+          .where(
+            and(
+              eq(matches.runtimeRoomId, room.roomId),
+              eq(matches.roundNumber, room.roundNumber),
+            ),
+          )
           .for("update")
           .limit(1);
         const match = matchRows[0];
         if (
           match === undefined ||
           match.replayId !== room.replayId ||
+          match.roundNumber !== room.roundNumber ||
           match.gameId !== room.gameId ||
           match.gameVersion !== room.gameVersion
         ) {
@@ -273,16 +336,88 @@ export class PostgresMatchRepository {
     }
     try {
       await this.database.transaction(async (transaction) => {
-        const matchRows = await transaction
+        await lockRuntimeRoom(transaction, room.roomId);
+        let matchRows = await transaction
           .select()
           .from(matches)
-          .where(eq(matches.runtimeRoomId, room.roomId))
+          .where(eq(matches.replayId, room.replayId))
           .for("update")
           .limit(1);
-        const match = matchRows[0];
+        let match = matchRows[0];
+        if (match === undefined) {
+          if (
+            room.roundNumber <= 1 ||
+            room.status !== "active" ||
+            room.revision !== 0
+          ) {
+            throw new DatabaseError("DATABASE_OPERATION_ERROR");
+          }
+          const replayRows = await transaction
+            .select({
+              gameId: replays.gameId,
+              gameVersion: replays.gameVersion,
+            })
+            .from(replays)
+            .where(eq(replays.id, room.replayId))
+            .for("update")
+            .limit(1);
+          const replay = replayRows[0];
+          const previousRows = await transaction
+            .select()
+            .from(matches)
+            .where(
+              and(
+                eq(matches.runtimeRoomId, room.roomId),
+                eq(matches.roundNumber, room.roundNumber - 1),
+              ),
+            )
+            .for("update")
+            .limit(1);
+          const previous = previousRows[0];
+          if (
+            replay === undefined ||
+            replay.gameId !== room.gameId ||
+            replay.gameVersion !== room.gameVersion ||
+            previous === undefined ||
+            previous.status !== "completed" ||
+            previous.gameId !== room.gameId ||
+            previous.gameVersion !== room.gameVersion
+          ) {
+            throw new DatabaseError("DATABASE_OPERATION_ERROR");
+          }
+          await assertSameParticipants(transaction, previous.id, room);
+          await transaction
+            .insert(matches)
+            .values({
+              id: randomUUID(),
+              runtimeRoomId: room.roomId,
+              roundNumber: room.roundNumber,
+              replayId: room.replayId,
+              gameId: room.gameId,
+              gameVersion: room.gameVersion,
+              status: "active",
+              finalRevision: 0,
+              startedAt: new Date(),
+            })
+            .onConflictDoNothing();
+          matchRows = await transaction
+            .select()
+            .from(matches)
+            .where(
+              and(
+                eq(matches.runtimeRoomId, room.roomId),
+                eq(matches.roundNumber, room.roundNumber),
+              ),
+            )
+            .for("update")
+            .limit(1);
+          match = matchRows[0];
+        }
         if (
           match === undefined ||
+          match.runtimeRoomId !== room.roomId ||
           match.replayId !== room.replayId ||
+          match.roundNumber !== room.roundNumber ||
           match.gameId !== room.gameId ||
           match.gameVersion !== room.gameVersion ||
           room.revision < match.finalRevision
@@ -405,6 +540,7 @@ export class PostgresMatchRepository {
       const rows = await this.database
         .select({
           matchId: matches.id,
+          roundNumber: matches.roundNumber,
           gameId: matches.gameId,
           gameVersion: matches.gameVersion,
           status: matches.status,

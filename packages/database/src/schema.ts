@@ -118,6 +118,7 @@ export const matches = pgTable(
   {
     id: uuid("id").primaryKey(),
     runtimeRoomId: text("runtime_room_id").notNull(),
+    roundNumber: integer("round_number").default(1).notNull(),
     replayId: text("replay_id")
       .notNull()
       .references(() => replays.id, { onDelete: "restrict" }),
@@ -147,13 +148,17 @@ export const matches = pgTable(
     }),
   },
   (table) => [
-    unique("matches_runtime_room_id_unique").on(table.runtimeRoomId),
+    unique("matches_runtime_room_round_unique").on(
+      table.runtimeRoomId,
+      table.roundNumber,
+    ),
     unique("matches_replay_id_unique").on(table.replayId),
     index("matches_history_order_idx").on(table.createdAt, table.id),
     check(
       "matches_runtime_room_id_not_empty",
       sql`length(${table.runtimeRoomId}) > 0`,
     ),
+    check("matches_round_number_positive", sql`${table.roundNumber} > 0`),
     check("matches_game_id_not_empty", sql`length(${table.gameId}) > 0`),
     check(
       "matches_game_version_not_empty",
