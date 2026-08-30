@@ -1,0 +1,84 @@
+{
+  "header": {
+    "replayFormatVersion": 1,
+    "gameId": "connect-four",
+    "gameVersion": "1.0.0",
+    "rng": {
+      "algorithm": "fnv1a32-counter-v1",
+      "seed": "golden-connect-four-1"
+    },
+    "initialConfig": null,
+    "players": [
+      {
+        "slotId": "player-red"
+      },
+      {
+        "slotId": "player-yellow"
+      }
+    ]
+  },
+  "actions": [
+    {
+      "sequence": 1,
+      "actorSlotId": "player-red",
+      "action": {
+        "type": "DROP_DISC",
+        "column": 0
+      }
+    },
+    {
+      "sequence": 2,
+      "actorSlotId": "player-yellow",
+      "action": {
+        "type": "DROP_DISC",
+        "column": 0
+      }
+    },
+    {
+      "sequence": 3,
+      "actorSlotId": "player-red",
+      "action": {
+        "type": "DROP_DISC",
+        "column": 1
+      }
+    },
+    {
+      "sequence": 4,
+      "actorSlotId": "player-yellow",
+      "action": {
+        "type": "DROP_DISC",
+        "column": 1
+      }
+    },
+    {
+      "sequence": 5,
+      "actorSlotId": "player-red",
+      "action": {
+        "type": "DROP_DISC",
+        "column": 2
+      }
+    },
+    {
+      "sequence": 6,
+      "actorSlotId": "player-yellow",
+      "action": {
+        "type": "DROP_DISC",
+        "column": 2
+      }
+    },
+    {
+      "sequence": 7,
+      "actorSlotId": "player-red",
+      "action": {
+        "type": "DROP_DISC",
+        "column": 3
+      }
+    }
+  ],
+  "recordedRngCursor": 0,
+  "recordedOutcome": {
+    "type": "WIN",
+    "winnerSlotId": "player-red",
+    "winningCells": [35, 36, 37, 38]
+  }
+}
