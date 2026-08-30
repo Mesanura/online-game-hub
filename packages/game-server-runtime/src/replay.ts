@@ -184,6 +184,34 @@ function jsonEqual(left: JsonValue, right: JsonValue): boolean {
   );
 }
 
+function headerEqual(left: ReplayHeader, right: ReplayHeader): boolean {
+  return (
+    left.replayFormatVersion === right.replayFormatVersion &&
+    left.gameId === right.gameId &&
+    left.gameVersion === right.gameVersion &&
+    left.rng.algorithm === right.rng.algorithm &&
+    left.rng.seed === right.rng.seed &&
+    jsonEqual(left.initialConfig, right.initialConfig) &&
+    left.players.length === right.players.length &&
+    left.players.every((player, index) => {
+      const other = right.players[index];
+      return (
+        other !== undefined &&
+        player.slotId === other.slotId &&
+        player.participantRef === other.participantRef
+      );
+    })
+  );
+}
+
+function actionEqual(left: ReplayAction, right: ReplayAction): boolean {
+  return (
+    left.sequence === right.sequence &&
+    left.actorSlotId === right.actorSlotId &&
+    jsonEqual(left.action, right.action)
+  );
+}
+
 function validHeader(header: ReplayHeader): boolean {
   const slotIds = header.players.map((player) => player.slotId);
   return (
@@ -225,10 +253,14 @@ export class InMemoryReplayStore implements ReplayStore {
     if (!validHeader(header)) {
       throw new ReplayStoreError("INVALID_HEADER", "Replay header is invalid.");
     }
-    if (this.#replays.has(replayId)) {
+    const existing = this.#replays.get(replayId);
+    if (existing !== undefined) {
+      if (headerEqual(existing.header, header)) {
+        return;
+      }
       throw new ReplayStoreError(
         "REPLAY_ALREADY_EXISTS",
-        "Replay already exists.",
+        "Replay id is already bound to a different header.",
       );
     }
 
@@ -246,6 +278,20 @@ export class InMemoryReplayStore implements ReplayStore {
     event: ReplayAction,
   ): Promise<void> {
     const replay = this.#requireReplay(replayId);
+    if (!validReplayAction(event)) {
+      throw new ReplayStoreError(
+        "INVALID_REPLAY_ACTION",
+        "Replay action is invalid.",
+      );
+    }
+    const existing = replay.actions[event.sequence - 1];
+    if (
+      expectedSequence === event.sequence - 1 &&
+      existing !== undefined &&
+      actionEqual(existing, event)
+    ) {
+      return;
+    }
     if (replay.recordedRngCursor !== null) {
       throw new ReplayStoreError(
         "REPLAY_ALREADY_COMPLETED",
@@ -263,13 +309,6 @@ export class InMemoryReplayStore implements ReplayStore {
         "Replay append sequence is stale, duplicate, or out of order.",
       );
     }
-    if (!validReplayAction(event)) {
-      throw new ReplayStoreError(
-        "INVALID_REPLAY_ACTION",
-        "Replay action is invalid.",
-      );
-    }
-
     replay.actions.push(cloneAction(event));
   }
 

@@ -617,6 +617,23 @@ export function createAuthoritativeGameRoomClass(
             action: actionResult.data,
           },
         );
+        if (outcome !== null) {
+          await dependencies.replayStore.complete(
+            aggregate.replayId,
+            nextRevision,
+            transitioned.rng.cursor,
+            outcome,
+          );
+        }
+        await dependencies.roomStore.save(
+          this.#storedRoom({
+            state: transitioned.state,
+            rng: transitioned.rng,
+            revision: nextRevision,
+            status: outcome === null ? aggregate.status : "completed",
+            outcome,
+          }),
+        );
       } catch {
         metrics.increment("replay_append_failure_total", this.#labels());
         this.#rejectAndCache(
@@ -634,20 +651,6 @@ export function createAuthoritativeGameRoomClass(
       aggregate.outcome = outcome;
       if (outcome !== null) {
         aggregate.status = "completed";
-      }
-      try {
-        await dependencies.roomStore.save(this.#storedRoom());
-        if (outcome !== null) {
-          await dependencies.replayStore.complete(
-            aggregate.replayId,
-            nextRevision,
-            transitioned.rng.cursor,
-            outcome,
-          );
-        }
-      } catch {
-        this.#roomCrash(client, command.commandId);
-        return;
       }
 
       metrics.increment("actions_accepted_total", this.#labels());
@@ -918,7 +921,14 @@ export function createAuthoritativeGameRoomClass(
       });
     }
 
-    #storedRoom(): StoredGameRoom {
+    #storedRoom(
+      candidate: Partial<
+        Pick<
+          StoredGameRoom,
+          "state" | "rng" | "revision" | "status" | "outcome"
+        >
+      > = {},
+    ): StoredGameRoom {
       const aggregate = this.#requireAggregate();
       const players: StoredPlayerSlot[] = aggregate.slots.map((slot) => ({
         slotId: slot.slotId,
@@ -932,11 +942,17 @@ export function createAuthoritativeGameRoomClass(
         gameVersion: aggregate.definition.manifest.gameVersion,
         initialConfig: aggregate.initialConfig,
         players,
-        state: aggregate.state,
-        rng: aggregate.rng,
-        revision: aggregate.revision,
-        status: aggregate.status,
-        outcome: aggregate.outcome,
+        state:
+          candidate.state === undefined
+            ? aggregate.state
+            : candidate.state,
+        rng: candidate.rng ?? aggregate.rng,
+        revision: candidate.revision ?? aggregate.revision,
+        status: candidate.status ?? aggregate.status,
+        outcome:
+          candidate.outcome === undefined
+            ? aggregate.outcome
+            : candidate.outcome,
         replayId: aggregate.replayId,
       };
     }

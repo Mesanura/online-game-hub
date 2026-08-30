@@ -52,13 +52,19 @@ describe("InMemoryReplayStore", () => {
     });
   });
 
-  it("rejects replay id conflicts and unknown records", async () => {
+  it("makes identical create retry idempotent and rejects conflicts", async () => {
     const store = new InMemoryReplayStore();
     await expect(store.create("", header)).rejects.toMatchObject({
       code: "INVALID_REPLAY_ID",
     });
     await store.create("replay-1", header);
-    await expect(store.create("replay-1", header)).rejects.toMatchObject({
+    await expect(store.create("replay-1", header)).resolves.toBeUndefined();
+    await expect(
+      store.create("replay-1", {
+        ...header,
+        rng: { ...header.rng, seed: "conflicting-seed" },
+      }),
+    ).rejects.toMatchObject({
       code: "REPLAY_ALREADY_EXISTS",
     });
     await expect(store.append("unknown", 0, firstAction)).rejects.toMatchObject(
@@ -67,7 +73,7 @@ describe("InMemoryReplayStore", () => {
     await expect(store.get("unknown")).resolves.toBeNull();
   });
 
-  it("rejects sequence gaps, duplicates, and stale expectedSequence atomically", async () => {
+  it("makes identical append retry idempotent and rejects conflicts atomically", async () => {
     const store = new InMemoryReplayStore();
     await store.create("replay-1", header);
 
@@ -75,12 +81,10 @@ describe("InMemoryReplayStore", () => {
       store.append("replay-1", 0, { ...firstAction, sequence: 2 }),
     ).rejects.toMatchObject({ code: "INVALID_SEQUENCE" });
     await store.append("replay-1", 0, firstAction);
-    await expect(
-      store.append("replay-1", 1, firstAction),
-    ).rejects.toMatchObject({ code: "INVALID_SEQUENCE" });
+    await expect(store.append("replay-1", 0, firstAction)).resolves.toBeUndefined();
     await expect(
       store.append("replay-1", 0, {
-        sequence: 2,
+        sequence: 1,
         actorSlotId: "player-o",
         action: { type: "PLACE_MARK", cell: 1 },
       }),
