@@ -1,6 +1,6 @@
 # 产品目标与范围
 
-> 状态：架构基线（V1）  
+> 状态：V1 产品基线（M5 已完成）
 > 本文是产品目标、范围和非目标的权威来源。技术实现边界见 [ARCHITECTURE.md](./ARCHITECTURE.md)。
 
 ## 1. 产品愿景
@@ -33,13 +33,16 @@
 2. 当前玩家提交一个游戏 Action。
 3. 服务器接受或拒绝该 Action，并同步新的权威视图。
 4. 比赛结束后平台产生结构化 Outcome 和 canonical replay。
+5. 两名原玩家可以分别准备或取消；双方都准备且仍在线时，在同一房间和 stable slots 下无缝开始下一轮。
+6. 每轮都是独立的 Match、canonical replay 和私有 history 记录，不把多轮合并成一场比赛。
+7. 房主可以关闭房间，非房主可以主动离开；终止 active 对局前界面必须要求确认。
 
 ### 3.3 断线恢复
 
 1. 临时网络中断或页面刷新不会立即释放玩家席位。
 2. 同一匿名 session 在默认 60 秒宽限期内可重新连接。
 3. 重连后客户端收到完整的当前视图，而不是依赖本地状态猜测恢复。
-4. 超过宽限期后，由平台比赛生命周期策略判负或终止比赛。
+4. 超过宽限期后，由平台比赛生命周期策略终止当前比赛并关闭 live room。
 
 详细通信语义见 [NETWORK_PROTOCOL.md](./NETWORK_PROTOCOL.md)。
 
@@ -54,21 +57,23 @@ Tic-Tac-Toe 是架构验证游戏，不以内容丰富度为目标。首个可�
 - server-authoritative 的回合、合法落子、胜负和平局判断；
 - 完整的按玩家 View snapshot 同步；
 - 60 秒席位保留和重连后的完整同步；
-- canonical replay 记录、确定性重建和自动化验证。
+- canonical replay 记录、确定性重建和自动化验证；
+- 同一 live room 多轮、终局 ready/cancel、房主关闭、非房主离开和有界回收；
+- 每轮独立 PostgreSQL Match/Replay archive，以及当前 guest 私有的最小 history metadata。
 
-该切片允许使用内存 `RoomStore` 和 `ReplayStore`。进程重启后数据丢失是已知限制，不属于该里程碑的缺陷。
+当前生产 composition 使用内存 active `RoomStore` 和 PostgreSQL `ReplayStore`/Match archive。已完成轮次可跨进程读取，但进程重启仍不会恢复 waiting/active live room、socket、timer 或 authoritative State；启动协调只会把残留 archive 诚实标记为 `abandoned`。
 
 ## 5. 长期产品能力
 
 以下能力在架构上不得被阻碍，但不要求在首个纵向切片实现：
 
 - 持久用户账号与跨设备身份；
-- 比赛历史、replay 浏览和回放 UI；
+- 完整账号下的跨设备比赛历史、replay 浏览和回放 UI；
 - Rating、排行榜和赛季；
 - Friendship、邀请与社交能力；
 - 观战、观众延迟和隐私策略；
 - Matchmaking；
-- PostgreSQL 持久化；
+- durable active room/checkpoint 与跨实例 ownership；
 - 多实例、跨区域或容灾部署；
 - 卡牌、骰子、隐藏信息和更多玩家数量的游戏；
 - 使用 Phaser 的实时 2D 游戏。
@@ -77,11 +82,11 @@ Tic-Tac-Toe 是架构验证游戏，不以内容丰富度为目标。首个可�
 
 ## 6. 当前明确非目标
 
-在架构基线和首个纵向切片阶段，不实现：
+M5 完成后当前仍不实现：
 
 - 完整 Lobby 或公开房间浏览；
-- 用户注册、登录和第三方 OAuth；
-- 数据库业务 schema、历史页面或排行榜；
+- 正式用户注册、登录、密码和第三方 OAuth；
+- 公开比赛列表、完整历史产品、公开 replay 或排行榜；
 - 自动 Matchmaking；
 - 观战功能；
 - Redis、Kubernetes、微服务拆分或多区域部署；

@@ -96,7 +96,7 @@
 
 ## M5：持久化与账号基础
 
-> 实施状态：已完成（2026-08-30）。PostgreSQL/Drizzle migration、durable replay、Match archive、guest-to-account 服务端基础、私有 history API、真实数据库 integration 与 PostgreSQL-backed Playwright 已通过验证。
+> 实施状态：已完成（2026-08-30）。PostgreSQL/Drizzle migration、durable replay、Match archive、guest-to-account 服务端基础、私有 history API、同房间多轮/关闭纵切、真实数据库 integration 与 PostgreSQL-backed Playwright 已通过验证。
 
 开始条件：M4 稳定，产品确认需要跨重启历史。
 
@@ -107,10 +107,12 @@
 - durable `ReplayStore` 和比赛历史读取；
 - guest-to-account 身份迁移；
 - canonical replay 保持 server-only，history API 只返回当前 guest 的最小平台 metadata；
+- 两名原玩家在同一 live room ready/cancel 后开始独立下一轮，保留 room code/stable slots；每轮拥有独立 Match、replay、revision 和 `roundNumber` history；
+- 房主关闭、非房主主动离开、active 确认、terminal outsider 拒绝、60 秒 reconnect close 与 5 分钟 completed TTL；
 - 单实例启动把遗留 waiting/active archive 标记 abandoned，不恢复 active State；
 - 固定版本 CI PostgreSQL service、随机数据库清理和真实 adapter/Colyseus/Playwright tests。
 
-事务边界已收敛在 replay action/Match revision 与 replay completion/Match completion；active RoomStore 仍是内存且没有跨存储原子性。当前幂等写入与唯一约束足够，不引入 outbox。OAuth/password/provider、通用数据保留/删除产品、公开 replay、active room recovery、多实例 ownership 都未实现。
+事务边界已收敛在 replay action/Match revision、replay completion/Match completion，以及 advisory lock 下连续后续轮 Match insert；`(runtime_room_id, round_number)`、replay sequence 和 participant 约束 fail closed。active RoomStore 仍是内存且没有跨存储原子性。当前幂等写入与唯一约束足够，不引入 outbox。OAuth/password/provider、通用数据保留/删除产品、公开 replay、active room recovery、多实例 ownership 都未实现。
 
 ## M6：验证插件扩展性
 

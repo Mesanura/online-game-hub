@@ -95,6 +95,7 @@ Golden fixture 只在确认规则或版本策略变化后更新。不能通过�
 - 确认 `action` 在通用层保持 `unknown`，并由选中的 game schema 再解析；
 - server response 不包含 stack、ticket、cookie、完整 State 或 RNG seed；
 - encode/decode round trip 保持稳定字段；
+- `room.control`/`room.lifecycle` 拒绝 identity 字段和不一致 ready/closed 状态；Action/snapshot 的可选 `roundNumber` 保持 V1 首轮兼容并拒绝非法值；
 - platform error 与 `gameRuleCode` 的映射不混淆。
 
 ## 7. Game Server Integration Tests
@@ -108,6 +109,7 @@ Server integration tests 位于 `apps/game-server/tests/game-server.integration.
 - schema-invalid Action 不进入 Core。
 - stale `expectedRevision` 被拒绝并返回最新 snapshot。
 - 同一 `commandId` 重试返回原结果，不重复推进 revision/RNG/replay。
+- 第二轮 revision 重置后，旧轮 duplicate 仍返回原 outcome 但不进入新轮；缺失/错轮命令 fail closed，旧轮 snapshot 不覆盖当前轮。
 - 两个同时到达的命令按单一顺序处理，不产生双写。
 - Game rule rejection 保持 State、revision、RNG 和 replay 不变。
 
@@ -115,8 +117,9 @@ Server integration tests 位于 `apps/game-server/tests/game-server.integration.
 
 - 每个连接只收到 `projectView` 产生的 View。
 - M3 使用两个 viewer slot 验证每个 snapshot 都来自 `projectView`，且不含 State、RNG seed 或 Core-only 字段。第一个隐藏信息游戏加入时，再提供最小 fixture 证明不同 slots 不会互相看到秘密字段；不为 M3 虚构新游戏。
-- waiting → active → completed/abandoned 转换合法且不可逆。
+- 每轮 waiting/active → completed/abandoned 转换合法且不可逆；同 live room 下一轮创建新的 Match/replay 和 revision 序列，不重写上一轮。
 - Outcome 只由 Core 产生，断线状态只由平台 lifecycle 处理。
+- ready/cancel、断线/takeover 清 ready、双方 ready 开新轮、terminal outsider 拒绝、owner close、non-owner leave 和 5 分钟 terminal TTL 都由平台处理。
 
 ### 7.3 Reconnect
 
@@ -141,7 +144,7 @@ Multiplayer integration 使用两个独立客户端连接同一真实 room，验
 
 这些测试覆盖网络时序，不承担穷举游戏规则的职责。
 
-M3 的四个真实 integration cases 覆盖：health/metrics 与 ticket trust boundary；双客户端 stable slots、waiting/active/completed、伪造 actor、invalid/stale/duplicate/concurrent/rule-rejected commands、per-viewer snapshot 与 verified canonical replay；replay append failure 不确认/不提交；新 ticket + 新 reservation 的 reconnect、connection takeover、错误 session theft 和 fake-clock 60 秒 abandoned。ticket verifier、ports、composition logger 另有无 transport 的 contract/unit tests。
+真实 integration cases 覆盖：health/metrics 与 ticket trust boundary；双客户端 stable slots、waiting/active/completed、伪造 actor、invalid/stale/duplicate/concurrent/rule-rejected commands、per-viewer snapshot 与 verified canonical replay；replay append failure 不确认/不提交；新 ticket + 新 reservation 的 reconnect、connection takeover、错误 session theft 和 fake-clock 60 秒 abandoned；同房间 ready/cancel 开第二轮、跨轮 duplicate/错轮防护、terminal outsider、房主关闭、非房主 active leave 和 terminal TTL。ticket verifier、ports、composition logger 另有无 transport 的 contract/unit tests。
 
 ## 9. PostgreSQL Integration Tests
 
@@ -156,6 +159,7 @@ M3 的四个真实 integration cases 覆盖：health/metrics 与 ticket trust bo
 - sequence gap、重复/冲突 payload、并发 append 和冲突 completion fail closed；相同重试幂等；
 - schema-invalid、stale、duplicate、game-rule rejected command 不增加 `replay_actions`；
 - Match/MatchPlayer waiting、active、completed、abandoned archive 及 final revision 正确；completed 必须关联已完成 replay，abandoned 不伪造 Outcome；
+- 同一 `runtime_room_id` 可有连续正整数轮次，但 `(runtime_room_id, round_number)` 唯一；后续轮只接受与 completed 前轮相同 game/version/slot/session 的参与者，并持有独立 replay；
 - guest history 只返回当前 server-verified guest 的安全 metadata，猜测其他 guest 的 match ID 不泄漏参与关系；
 - guest-to-account association 在事务中幂等，且不能把已关联记录覆盖到另一 User；
 - adapter/connection shutdown 后无遗留 client；数据库错误经稳定 code 清洗，不泄漏 SQL、DSN、session、ticket、State、seed 或 canonical replay。
@@ -164,17 +168,16 @@ M3 的四个真实 integration cases 覆盖：health/metrics 与 ticket trust bo
 
 `tooling/e2e/tests/web-vertical-slice.spec.ts` 使用两个隔离 browser contexts，代表两个匿名访客：
 
-1. A 打开 Tic-Tac-Toe 页面，创建 room 并获得只含 game path/room code 的邀请 URL；
-2. B 用带空白的小写 room code 通过邀请 URL 加入，证明 client 在 SDK join 前规范化；
-3. 两者收到不同 stable slots、相同 revision 和各自完整 View；
-4. 无效 room code 显示 room error，ticket/session secret 不进入 UI；
-5. 测试越过 disabled affordance 提交非当前玩家 intent 和重复点击，真实 Server 都不产生额外 authoritative revision/棋盘/replay；
-6. 两者完成 5-revision 胜局，并验证 WIN UI；
-7. A 断线后 fake clock 前进 30 秒，以同一 browser context、新 ticket/new join reservation 恢复原 slot 和完整棋盘；
-8. 两者再完成 9-revision 平局，并验证 DRAW UI；
-9. 两个 HttpOnly/SameSite guest cookies 值不同，B 不能窃取 A 席位；
-10. 第三房间用 fake clock 前进 60,001 ms 验证 `abandoned`；胜局与平局的 canonical replay 都由现有 `verifyReplay` 成功重建；
-11. 完成比赛后，A 的 server-verified guest session 能读取自己的私有 history metadata，B 不能读取 A 的比赛；关闭并重建 database adapter 后该 metadata 和 replay 仍存在。
+1. A 创建 Tic-Tac-Toe room，B 以规范化 room code 加入；两者获得不同 stable slots、相同 room code/revision 和各自完整 View；
+2. 越过 disabled affordance 提交非当前玩家 intent 和重复点击，真实 Server 不产生额外 revision、棋盘或 replay action；
+3. 两者完成第 1 局 5-revision 胜局并验证 WIN；临时断线仍以同一 guest、新 ticket/new reservation 恢复原 slot；
+4. A ready、cancel、再次 ready，B ready 后在同一 room code 和 slots 无缝进入第 2 局，页面显示轮次且 revision 重置为 `0`；
+5. 两者完成第 2 局 9-revision 平局并验证 DRAW；两轮各有独立 Match/replay/history，均通过现有 `verifyReplay`，history 返回 `roundNumber`；
+6. 第三 guest 猜到 completed room code 仍被 `ROOM_NOT_JOINABLE` 拒绝；A/B 的 HttpOnly guest cookies 与私有 history 授权继续隔离；
+7. completed room 由房主关闭并返回入口；另一个 waiting room 由房主无确认关闭；
+8. active room 中非房主确认离开后当前 Match abandoned、双方返回入口；取消确认不会离开；
+9. 另一 active room 用 fake clock 前进 60,001 ms，验证 `RECONNECT_TIMEOUT` abandoned 并关闭 live room；
+10. 关闭并重建 database adapter 后，两轮 history metadata 和 completed canonical replays 仍存在；浏览器只看到安全 metadata，不看到数据库或 replay 细节。
 
 Harness 为 Web 预留随机 loopback port，并用 `port: 0` 启动正式 ticket verifier/CORS composition 的真实 Colyseus Server；随后启动真实 Next production server 和 Chromium。M5 E2E 使用测试 owner 创建的隔离 PostgreSQL database 和正式 adapters，只注入 fake clock、deterministic IDs 与测试 logger 等已有可控 ports，不 mock 数据库、浏览器、ticket route、matchmaking、WebSocket 或 Action pipeline，也不访问外部服务。活动 RoomStore 仍在内存中，因此该测试只验证 archive/replay 跨 adapter 重建，不声称恢复活动 room。
 

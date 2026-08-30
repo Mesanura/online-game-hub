@@ -5,7 +5,7 @@
 
 ## 1. 目标
 
-Canonical replay 是服务器记录的、可确定性重建一场比赛的最小事件日志。它服务于：
+Canonical replay 是服务器记录的、可确定性重建一轮比赛的最小事件日志。一个 live room 可以承载多轮，但每轮拥有独立 replay。它服务于：
 
 - 自动化 replay 测试与 bug 复现；
 - 断线或服务恢复能力的未来基础；
@@ -59,7 +59,7 @@ interface CanonicalReplay {
 
 ### 3.2 RNG
 
-- Game Server 为比赛生成 seed，header 记录 seed 和 exact RNG algorithm version。
+- Game Server 为每轮生成 seed，header 记录 seed 和 exact RNG algorithm version。
 - 重建从 cursor `0` 开始，依次执行初始化和 accepted actions。
 - Rejected、duplicate 和 stale commands 不记录，也不消耗 replay RNG。
 - 对隐藏信息游戏，seed 在比赛进行中属于服务器秘密。
@@ -86,9 +86,9 @@ interface CanonicalReplay {
 
 ## 4. 写入顺序与原子性
 
-对于每个 room，M3 runtime 以同一个 Promise queue 串行 join、leave、timeout 和 Action，是唯一 authoritative writer。Action 按以下顺序构造并提交候选结果：
+对于每个 live room，runtime 以同一个 Promise queue 串行 join、leave、timeout、room control 和 Action，是唯一 authoritative writer。每轮 Action 按以下顺序构造并提交候选结果：
 
-1. 验证平台 envelope、session、slot 和 revision；
+1. 验证平台 envelope、session、slot、round 和 revision；
 2. 解析规范化 Action；
 3. 调用 Core `transition`；
 4. 构造包含新 State、RNG cursor、revision 和 `ReplayAction` 的 accepted candidate；
@@ -96,11 +96,13 @@ interface CanonicalReplay {
 6. 终局以最终 RNG cursor 和 Core Outcome complete replay，再保存 candidate `RoomStore` record；
 7. 所有写入成功后缓存 command outcome，并按 viewer 投影、发送完整 snapshot。
 
-Schema-invalid、platform rejected、Core rejected、stale 或 duplicate command 不产生 `ReplayAction`，也不改变 revision 或 RNG cursor。
+Schema-invalid、platform rejected、Core rejected、错轮、stale 或 duplicate command 不产生 `ReplayAction`，也不改变 revision 或 RNG cursor。
 
 `append`、terminal `complete` 或 candidate room save 失败时 runtime 不更新内存 aggregate，返回 `INTERNAL_ERROR`，不缓存或发送 accepted snapshot，并增加 persistence failure 指标。相同 canonical header/action/completion 可安全幂等重试，冲突内容明确失败。
 
 M5 的 replay 与 Match archive 位于同一 PostgreSQL：header create 单独幂等写入；append 事务化写 `replay_actions` 并推进 Match final revision；terminal complete 事务化保存 cursor/Outcome 并把 Match 标记 completed。每个 replay row 在 append/complete 时加 row lock，`(replay_id, sequence)` 主键提供并发唯一顺序。
+
+同房间下一轮复用 Config、stable slot 顺序和参与者，但生成新 seed、replay ID 与 Match。`matches` 以 `(runtime_room_id, round_number)` 唯一；创建后续轮次的 transaction 取得 runtime-room advisory lock，并验证上一轮 completed、轮次连续、game/version 和参与者一致。Replay header create 与 Match insert 是两个可幂等重试的 port 操作，不假装与内存 active RoomStore 具有跨存储原子性。`roundNumber` 是平台/wire metadata，不进入 canonical replay envelope，因此 replay format V1 不变。
 
 active `RoomStore` delegate 仍在进程内存，因此它与 PostgreSQL transaction 不具备跨存储原子性，也不提供 active State rollback/recovery。当前由单 room writer、先 durable 后内存 commit、唯一约束和幂等操作控制 crash window；证据不足以引入 outbox。重启时不从 replay 临时推导活动 State，只把遗留 waiting/active Match archive 标记 abandoned。
 
@@ -131,7 +133,7 @@ interface ReplayStore {
 - `complete` 只接受非 `null` 的 terminal Outcome；相同 cursor/Outcome 的重复调用幂等，且不得允许另一个结果覆盖已完成记录。
 - `get` 在 repeatable-read transaction 中读取 header/actions/completion；数据库 JSONB 视为 `unknown` 并重新 runtime validation，污染数据返回稳定安全错误。
 
-M3 room 创建时在 Core 初始化完成后创建 replay header，其中保存 exact game/version、规范化 Config、服务器生成的 stable slot 顺序和初始 RNG algorithm/seed。每次 accepted transition 追加一个规范化 action；比赛进入 `completed` 时保存最终 RNG cursor 与 Core Outcome。`abandoned` 没有伪造游戏 Outcome，record 可以保持未完成状态。
+首轮 room 创建和每次 rematch 在 Core 初始化完成后各自创建 replay header，其中保存 exact game/version、规范化 Config、服务器生成的 stable slot 顺序和该轮初始 RNG algorithm/seed。每次 accepted transition 只追加到当前轮 replay；该轮进入 `completed` 时保存最终 RNG cursor 与 Core Outcome。`abandoned` 没有伪造游戏 Outcome，record 可以保持未完成状态。
 
 ## 6. 确定性重建
 

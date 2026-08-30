@@ -38,7 +38,8 @@ Browser
 - 建立匿名访客 session；
 - 签发短期 Game Server 连接票据；
 - 加载具体游戏的 Client Module；
-- 展示服务器发送的 View 并提交 Action intent。
+- 展示服务器发送的 View，提交 Action 与房间控制 intent；
+- 以 server-verified guest 读取私有比赛 metadata。
 
 不负责：
 
@@ -53,7 +54,7 @@ Browser
 
 - 启动 Colyseus 和注册具体游戏；
 - 验证连接票据并映射 `PlayerSessionId`；
-- 创建/加入房间、分配 `PlayerSlotId` 和管理重连；
+- 创建/加入房间、分配 `PlayerSlotId`，管理多轮、关闭和重连；
 - 调用通用 game runtime 处理 Action；
 - 组装内存 active `RoomStore`、PostgreSQL `ReplayStore` 和 Match archive adapter；
 - 暴露健康检查与运行指标。
@@ -66,16 +67,16 @@ M5 的 `createProductionGameServer(config, overrides?)` 在 composition layer �
 
 ## 4. Package 职责
 
-| Package               | 职责                                                                                                        | 明确禁止                                                     |
-| --------------------- | ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
-| `game-sdk`            | 离散 Action 游戏的纯类型契约、deterministic RNG、通用 slot/viewer/outcome 类型                              | React、Next.js、DOM、Colyseus、WebSocket、数据库、具体游戏   |
-| `game-client-sdk`     | Client Module contract、ticket provider、Colyseus client/room lifecycle、snapshot/command/reconnect host    | authoritative 规则、服务端 State、具体游戏类型、数据库       |
-| `game-server-runtime` | ticket/clock/store/observability ports、通用 Colyseus room、Action pipeline、比赛 lifecycle/reconnect       | 具体游戏规则或对 `games/*` 的直接依赖                        |
-| `game-server-ticket`  | Web issuer 与 Game Server verifier 共用的短期 HMAC-SHA256 ticket authority，实现 Protocol V1 ticket claims  | 浏览器 API、session cookie、房间/游戏规则、testing authority |
-| `game-registry`       | 显式组合游戏 manifest、client loader 和 server definition                                                   | 游戏规则实现、运行时目录扫描                                 |
-| `protocol`            | 跨 Web/Game Server 的 envelope、错误码、票据 claims 和 Zod schema                                           | 具体游戏 Action/State/View 联合类型                          |
-| `database`            | PostgreSQL/Drizzle client、checked-in migrations、durable replay、Match archive/history 与 User association | 具体游戏、规则执行、UI、active authoritative State           |
-| `ui`                  | 无业务规则的共享视觉组件与 design tokens                                                                    | 网络、房间、游戏规则和数据库访问                             |
+| Package               | 职责                                                                                                             | 明确禁止                                                     |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| `game-sdk`            | 离散 Action 游戏的纯类型契约、deterministic RNG、通用 slot/viewer/outcome 类型                                   | React、Next.js、DOM、Colyseus、WebSocket、数据库、具体游戏   |
+| `game-client-sdk`     | Client Module contract、ticket provider、Colyseus client/room lifecycle、snapshot/command/control/reconnect host | authoritative 规则、服务端 State、具体游戏类型、数据库       |
+| `game-server-runtime` | ticket/clock/store/observability ports、通用 Colyseus room、Action pipeline、多轮/关闭、比赛 lifecycle/reconnect | 具体游戏规则或对 `games/*` 的直接依赖                        |
+| `game-server-ticket`  | Web issuer 与 Game Server verifier 共用的短期 HMAC-SHA256 ticket authority，实现 Protocol V1 ticket claims       | 浏览器 API、session cookie、房间/游戏规则、testing authority |
+| `game-registry`       | 显式组合游戏 manifest、client loader 和 server definition                                                        | 游戏规则实现、运行时目录扫描                                 |
+| `protocol`            | 跨 Web/Game Server 的 envelope、错误码、票据 claims 和 Zod schema                                                | 具体游戏 Action/State/View 联合类型                          |
+| `database`            | PostgreSQL/Drizzle client、checked-in migrations、durable replay、Match archive/history 与 User association      | 具体游戏、规则执行、UI、active authoritative State           |
+| `ui`                  | 无业务规则的共享视觉组件与 design tokens                                                                         | 网络、房间、游戏规则和数据库访问                             |
 
 不创建 `packages/shared`。共享代码只有在所有权明确且出现真实复用后，才移动到职责具体的 package。
 
@@ -153,7 +154,7 @@ Game Server 对每个客户端 Action 严格按以下顺序处理：
 1. 解析通用 protocol envelope；
 2. 验证连接 session 和房间成员关系；
 3. 从服务器连接映射 actor，不读取客户端声明的 actor；
-4. 验证房间生命周期、席位和 `expectedRevision`；
+4. 验证房间生命周期、席位、`roundNumber` 和 `expectedRevision`；
 5. 使用已注册游戏的 Zod schema 解析 Action；
 6. 调用 Game Core `transition`；
 7. 若被拒绝，保持 State、revision 和 RNG cursor 不变；
@@ -171,7 +172,7 @@ Room 必须串行处理 Action。任何未来多实例方案都必须维持“�
 - accepted candidate 先以 `expectedSequence = current revision` append replay；终局再 complete replay；随后保存 candidate room record；三个 port 调用全部成功后才提交内存 aggregate、缓存结果和发送 snapshot。任一步失败都返回 `INTERNAL_ERROR`，不提前推进内存 State/RNG/revision。
 - PostgreSQL replay append 在单事务中写 action 并推进 Match final revision；terminal complete 在单事务中写 RNG/Outcome 并把 Match 标记 completed。相同 header/action/completion 重试幂等，不同内容冲突失败；replay row lock 与 `(replay_id, sequence)` 主键串行化 concurrent append。
 - active RoomStore 仍是进程内存，Match archive decorator 与 PostgreSQL replay 虽共享数据库，但 runtime port 调用和内存 delegate 之间没有跨存储原子事务。当前依靠单 writer、数据库事务、唯一约束与幂等重试收敛；没有证据要求 outbox，因此 M5 不引入通用事件总线或队列。
-- command outcome cache 以 `PlayerSessionId + commandId` 为 key，M3 保留整个 room lifetime，覆盖 60 秒重连和正常重试；后续长房间可在不小于重试窗口的前提下加入有界淘汰。
+- command outcome cache 以 `PlayerSessionId + commandId` 为 key，V1 保留整个 live room lifetime，包括同房间后续轮次。旧轮重复命令返回带旧 `roundNumber` 的原结果，但不会再次进入 Core 或覆盖新轮 snapshot；后续长房间可在不小于重试窗口的前提下加入有界淘汰。
 - 初连、lifecycle 激活、accepted Action、stale recovery、takeover reconnect 和 timeout abandonment 都只发送按当前连接单独调用 `projectView` 得到的完整 snapshot。
 
 ### 8.2 M4 Web 与 Client Host
@@ -179,17 +180,26 @@ Room 必须串行处理 Action。任何未来多实例方案都必须维持“�
 - Next Proxy 在首次页面请求建立签名 `ogh_guest` cookie；`POST /api/game-ticket` 从服务器验证或创建的 session 签发短期 ticket。session ID 和两个 signing secret 都由服务器配置决定，浏览器不能选择或通过独立字段读取 `PlayerSessionId`。
 - 首页和目录只从 `game-registry/catalog` 读取 manifest；游戏页从 `game-registry/client` 加载 Client Module，不导入 Core 或 server registry。
 - 通用 `GameClientHost` 获取新 ticket 后调用 Colyseus `create`/`join`；join 在 SDK 调用前执行 `trim().toUpperCase()`。连接成功以 `room.connected` 的 stable slot 和完整 `match.snapshot` 为准。
-- host 只保存当前 per-viewer View snapshot、revision、连接/拒绝状态。`submitAction` 生成 `commandId` 并从最新 snapshot 填充 `expectedRevision`；它不持有或重演 authoritative State。
+- host 只保存当前 per-viewer View snapshot、`roomLifecycle`、round/revision、连接/拒绝状态。`submitAction` 生成 `commandId` 并从最新 lifecycle/snapshot 填充 `roundNumber` 和 `expectedRevision`；它不持有或重演 authoritative State。
 - 所有 server payload 都先通过 Protocol V1 schema。duplicate、stale、schema-invalid 和 game-rule rejection 不在浏览器模拟；host 接受服务器附带或随后发送的完整 snapshot 收敛。
 - transport 非主动关闭时，host 在 60 秒窗口内以指数退避获取新 ticket 并重新执行 room-code join，生成新的 seat reservation；不使用 SDK reconnection token 证明席位所有权。
 - Tic-Tac-Toe Client Module 只解析 View，渲染 3×3 棋盘、mark/turn/Outcome，并只提交 `{ type: "PLACE_MARK", cell }` intent。按钮禁用仅是 UX，不能代替 authoritative rejection。
 
-### 8.3 M5 持久化、Identity 与 History
+### 8.3 同房间多轮与关闭
+
+- live room 属于 Platform，`Match`/canonical replay 属于一轮。首轮完成后保留 room code、原 `PlayerSessionId → PlayerSlotId` 映射和游戏 Config；双方仍在线并都 ready 时，runtime 创建新 RNG/replay，把 `roundNumber` 加一并从 revision `0` 初始化新 State。Game Core 不知道 room 或 rematch。
+- `room.control` 是 Protocol V1 的向后兼容扩展，只包含 `REQUEST_REMATCH`、`CANCEL_REMATCH`、`CLOSE_ROOM`。ready 可取消，断线、主动离开和 connection takeover 都清除该 session 的 ready；新轮开始后清空全部 ready。completed room 拒绝任何未占原 slot 的新 session，返回 `ROOM_NOT_JOINABLE`。
+- `GameClientHost.closeRoom()` 只供房主发出关闭 intent；房主可关闭 waiting、active 或 completed room。非房主使用 `leaveRoom()` 执行 consented leave。active 状态下 Web 先确认，服务端随后把该轮保存为 `abandoned`；waiting 同样 abandoned，completed 保留原 Outcome。`close()` 仅关闭组件/刷新对应的 transport，使用 non-consented leave 以保留 60 秒重连，不能当作主动离开。
+- 关闭先广播带 `OWNER_CLOSED`、`PLAYER_LEFT`、`RECONNECT_TIMEOUT` 或 `REMATCH_TIMEOUT` 的 per-viewer `room.lifecycle`，再用 25 ms 有界 drain 让 WebSocket 发送完成并断开 clients。completed room 5 分钟未开启下一轮会自动关闭；reconnect timeout 会 abandoned 当前轮并关闭 live room。客户端清除 URL room code 和本地 room state，回到创建/加入入口。
+- `GameActionCommand.roundNumber` 与 `MatchSnapshot.roundNumber` 是 Protocol V1 可选兼容字段：新 host/server 始终发送，旧 V1 首轮缺失时按 `1` 处理；第二轮起缺失或错轮命令以 `STALE_REVISION` 和当前 snapshot fail closed。Host 忽略低于当前 lifecycle 的旧轮 snapshot，拒绝领先 lifecycle 的 snapshot。该 transport 扩展不改变 canonical replay，因此不提升 protocol/replay/game version。
+
+### 8.4 M5 持久化、Identity 与 History
 
 - `packages/database` 是唯一 PostgreSQL/Drizzle owner，提供显式可关闭 client、checked-in SQL migration、`PostgresReplayStore`、`PostgresMatchRepository`、Match archive `RoomStore` decorator 与 `PostgresUserRepository`。它不依赖具体游戏；`game-server-runtime` 不依赖 database、Drizzle 或 PostgreSQL。
 - schema 包含 `users`、`guest_user_associations`、`replays`、`replay_actions`、`matches`、`match_players`。Match 不保存 authoritative State 或游戏专属列；canonical Config/Action/Outcome/seed 只存在受保护 replay 表，所有 JSONB 在写入前和读取后经过通用 runtime validation。
+- `matches` 使用正整数 `round_number`，并以 `(runtime_room_id, round_number)` 唯一；同一 live room 的每轮拥有不同 Match/replay。创建后续轮次时 PostgreSQL transaction 取得 runtime-room advisory lock，要求上一轮 completed、轮次连续、game/version 与 slot/session 参与者完全一致，再插入新 active Match。Replay header create 可先于该事务幂等发生；active RoomStore 与 PostgreSQL 之间仍无跨存储原子性。
 - `match_players` 以 `(match_id, player_slot_id)` 为主键并约束同场 participant 唯一；原始 `PlayerSessionId` 只用于服务器授权索引，不进入公共 response、日志或错误。`guest_user_associations` 通过 transaction advisory lock、唯一键和 FK 实现同 guest→同 User 幂等、跨 User 冲突拒绝，并事务化回填既有 MatchPlayer；没有可信认证来源时不暴露浏览器 claim endpoint。
-- Web 的 `GET /api/matches` 只从经 HMAC 验证的 `ogh_guest` 推导 identity，每次请求创建并关闭自己的 server-only database client。结果最多 50 条，按 `createdAt DESC, matchId DESC` 稳定排序，只返回平台 metadata；canonical replay、Config、Action、Outcome、seed、State、其他参与者和内部 room ID 都不返回。
+- Web 的 `GET /api/matches` 只从经 HMAC 验证的 `ogh_guest` 推导 identity，每次请求创建并关闭自己的 server-only database client。结果最多 50 条，按 `createdAt DESC, matchId DESC` 稳定排序，只返回含 `roundNumber` 的平台 metadata；canonical replay、Config、Action、Outcome、seed、State、其他参与者和内部 room ID 都不返回。
 - PostgreSQL 是唯一生产数据库，`DATABASE_MODE=memory` 只允许 development/test 且明确无 durable history。migration 只能通过运维命令显式执行，应用 import/start 不自动迁移；`DATABASE_URL` 不进入浏览器 bundle、结构化日志或错误 response。
 
 ## 9. 存储与部署
@@ -201,6 +211,7 @@ Room 必须串行处理 Action。任何未来多实例方案都必须维持“�
 - Web 通过环境注入浏览器可达的 Game Server public URL；Game Server 通过环境注入允许的 Web origins 和与 Web 一致的 ticket issuer/secret。
 - active `RoomStore` 使用内存 delegate；Replay、Match archive 与完成历史使用 PostgreSQL adapter。
 - 默认重连宽限为 60 秒；同一 session 通过新 ticket 和新的 Colyseus seat reservation 接管 stable slot，旧连接立即失去 writer 权限。超时策略为 `abandoned`。
+- 同一 live room 可以顺序承载多轮，但每轮 Match/replay 独立；completed room 的 live TTL 为 5 分钟，且不再接纳新参与者。
 - 服务器重启会丢失活动房间、State、socket 与 reconnect timer；已完成 replay/history 保留。启动协调只把遗留 waiting/active archive 标记 abandoned。
 - 不引入 Redis、Kubernetes 或服务网格。
 
@@ -226,6 +237,7 @@ Room 必须串行处理 Action。任何未来多实例方案都必须维持“�
 - Zod 负责不可信边界的运行时校验；
 - 完整的 per-viewer snapshot，而不是 V1 patch 或纯 Action 广播；
 - 匿名 guest session、短期连接票据和 60 秒重连宽限；
+- 同一 live room 多轮、双方 ready、房主关闭、非房主离开和 terminal TTL；
 - V1 单实例单区域；active RoomStore 为内存，完成 archive/replay 为 PostgreSQL。
 
 ### 10.2 暂缓

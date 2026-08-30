@@ -1,6 +1,6 @@
 # 网络协议
 
-> 状态：V1 协议（M5 私有 history HTTP API 已实现；Protocol V1 envelope 不变）
+> 状态：V1 协议（M5 私有 history 与同房间多轮控制已实现）
 > 本文是 Web、Game Server 与浏览器之间身份、房间、消息、revision 和重连语义的权威来源。游戏规则 payload 见 [GAME_PLUGIN_SPEC.md](./GAME_PLUGIN_SPEC.md)。
 
 ## 1. 协议目标
@@ -14,12 +14,12 @@
 
 ## 2. 传输边界
 
-| 流程                             | Transport                  | Owner       |
-| -------------------------------- | -------------------------- | ----------- |
-| 页面、游戏目录、匿名 session     | HTTPS                      | Next.js Web |
-| 短期 Game Server ticket          | HTTPS                      | Next.js Web |
-| 创建/加入房间、seat reservation  | Colyseus matchmaking HTTPS | Game Server |
-| 对局 Action、snapshot、lifecycle | WebSocket                  | Game Server |
+| 流程                                      | Transport                  | Owner       |
+| ----------------------------------------- | -------------------------- | ----------- |
+| 页面、游戏目录、匿名 session              | HTTPS                      | Next.js Web |
+| 短期 Game Server ticket                   | HTTPS                      | Next.js Web |
+| 创建/加入房间、seat reservation           | Colyseus matchmaking HTTPS | Game Server |
+| 对局 Action、snapshot、房间控制/lifecycle | WebSocket                  | Game Server |
 
 浏览器直接连接 Game Server。Next.js 不代理 WebSocket，也不保存 authoritative match State。
 
@@ -82,6 +82,7 @@ interface GameServerTicketClaims {
 interface MatchHistoryResponse {
   matches: readonly {
     matchId: string;
+    roundNumber: number;
     gameId: string;
     gameVersion: string;
     status: "waiting" | "active" | "completed" | "abandoned";
@@ -133,7 +134,7 @@ interface JoinGameRoomRequest {
 ```
 
 1. 客户端提交规范化后的 `roomCode` 和有效 ticket。
-2. Server 检查房间存在、版本可用、席位未满且 session 未被禁止加入。
+2. Server 检查房间存在、版本可用、席位未满且 session 未被禁止加入；completed live room 只允许原 slot session 重连，新访客返回 `ROOM_NOT_JOINABLE`。
 3. Server 分配稳定 `PlayerSlotId` 并返回 seat reservation。
 4. 连接建立后发送当前完整 snapshot。
 
@@ -173,6 +174,53 @@ type MatchStatus = "waiting" | "active" | "completed" | "abandoned";
 
 状态转换由 Game Server 管理。Game Core 只决定游戏 Outcome，不决定网络断开、房间销毁或 session 权限。
 
+### 6.1 Live Room、轮次与控制
+
+一个 live room 可以顺序承载多轮，但每轮都从 `roundNumber = 1, 2, ...` 标识，并拥有独立 Match、RNG、revision 序列和 canonical replay。首轮由 room create 建立；每轮 completed 后不修改 Outcome，只有两名原参与者都在线并 ready 才创建下一轮。room code 和 stable slots 不变，新轮 revision 从 `0` 开始。
+
+V1 增加独立的 Colyseus custom message type `room.control`。客户端发送：
+
+```ts
+interface RoomControlCommand {
+  type: "room.control";
+  protocolVersion: 1;
+  commandId: string;
+  operation: "REQUEST_REMATCH" | "CANCEL_REMATCH" | "CLOSE_ROOM";
+}
+```
+
+Server 在同一 `room.control` channel 按 viewer 返回：
+
+```ts
+interface RoomLifecycleState {
+  type: "room.lifecycle";
+  protocolVersion: 1;
+  roundNumber: number;
+  isOwner: boolean;
+  rematch: {
+    available: boolean;
+    selfReady: boolean;
+    readyPlayerCount: number;
+    requiredPlayerCount: number;
+  };
+  closed: boolean;
+  closeReason:
+    | "OWNER_CLOSED"
+    | "PLAYER_LEFT"
+    | "RECONNECT_TIMEOUT"
+    | "REMATCH_TIMEOUT"
+    | null;
+  causedByCommandId?: string;
+}
+```
+
+- ready 可用 `CANCEL_REMATCH` 取消；断线、consented leave 或 connection takeover 都清除该 session 的 ready。只有所有已分配参与者都在线且 ready 才开始下一轮。
+- 只有 room creator 是 owner，只有 owner 可发 `CLOSE_ROOM`；否则返回 `ROOM_CONTROL_NOT_ALLOWED`。owner 可关闭 waiting/active/completed room。
+- 非 owner 的主动离开不是可伪造 identity 的 control payload，而是 `GameClientHost.leaveRoom()` 发起的 consented transport leave。waiting/active leave 会把当前 Match 标记 `abandoned` 并以 `PLAYER_LEFT` 关闭 room；completed leave 只移除连接，保留其 slot，直到 owner 关闭、原玩家返回或 terminal TTL 到期。
+- Web 在 active 状态执行关闭/离开前必须确认；waiting/completed 不弹确认。关闭后清除 URL room code 并返回创建/加入入口。
+- completed room 拒绝新参与者，并在 5 分钟未开始下一轮时以 `REMATCH_TIMEOUT` 关闭。waiting/active 的 60 秒 reconnect timeout 以 `RECONNECT_TIMEOUT` abandoned 当前轮并关闭 room。
+- 关闭 lifecycle 先发送，server 经过 25 ms 有界 WebSocket drain 后断开 clients；客户端不能把该时间窗口当成 durable acknowledgment。
+
 ## 7. Client Action Envelope
 
 V1 transport 名称固定为：Colyseus room name `game`；客户端 custom message type `game.action`；所有 application-level server envelope 通过 custom message type `protocol` 发送，并由 envelope 自身的 `type` 区分 `room.connected`、`match.snapshot` 和 `command.rejected`。
@@ -182,12 +230,14 @@ interface GameActionCommand {
   type: "game.action";
   protocolVersion: 1;
   commandId: string;
+  roundNumber?: number;
   expectedRevision: number;
   action: unknown;
 }
 ```
 
-- `commandId` 由客户端为每次用户意图生成，在同一 session/room 内唯一。
+- `commandId` 由客户端为每次用户意图生成，在同一 session/live room 内唯一。
+- 新客户端始终发送当前 `roundNumber`。该字段是 Protocol V1 的可选兼容扩展：首轮缺失按 `1` 处理；第二轮起缺失或与当前轮不一致时返回 `STALE_REVISION` 和当前 snapshot，不进入 Core。
 - `expectedRevision` 是用户产生 Action 时看到的 revision。
 - `action` 先由通用 envelope schema 读取为 `unknown`，再由当前游戏的 `actionSchema` 解析。
 - V1 通用 schema 要求 `action` 是 JSON value，且序列化后的 UTF-8 长度不超过 16 KiB；transport 仍应在进入 Zod/Core 前设置总消息上限。
@@ -195,12 +245,12 @@ interface GameActionCommand {
 
 ## 8. Revision、Ordering 与 Idempotency
 
-- 初始 match snapshot 的 revision 为 `0`。
+- 每轮初始 match snapshot 的 revision 为 `0`。
 - 每个 accepted Action 恰好使 revision 增加 `1`。
 - schema invalid、platform rejected、game-rule rejected 和 duplicate Action 不增加 revision。
 - Room 在单一串行队列中处理命令，不并发调用 Core。
 - `expectedRevision` 不等于当前 revision 时返回 `STALE_REVISION` 和最新 snapshot，命令不进入 Core。
-- Server 以 `PlayerSessionId + commandId` 为 key 缓存 command outcome。V1 内存缓存保留整个 room lifetime，重复 `commandId` 返回原结果，不重复调用 Core、消费 RNG、追加 replay 或广播 snapshot。
+- Server 以 `PlayerSessionId + commandId` 为 key 缓存 command outcome。V1 内存缓存保留整个 live room lifetime，包括后续轮次；重复 `commandId` 返回带原 `roundNumber` 的原结果，不重复调用 Core、消费 RNG、追加 replay 或广播 snapshot。
 - 后续长生命周期房间可以加入有界淘汰，但保留窗口不得短于客户端正常重连与请求重试窗口。
 
 ## 9. Server Snapshot
@@ -211,6 +261,7 @@ interface MatchSnapshot<View, Outcome> {
   protocolVersion: 1;
   gameId: string;
   gameVersion: string;
+  roundNumber?: number;
   revision: number;
   status: MatchStatus;
   viewer: { kind: "player"; slotId: string } | { kind: "spectator" };
@@ -221,6 +272,7 @@ interface MatchSnapshot<View, Outcome> {
 ```
 
 - Snapshot 是该连接在指定 revision 的完整权威 View，不是 patch。
+- 新 Server 始终发送 `roundNumber`；首轮旧 V1 snapshot 缺失时按 `1` 处理。Host 忽略低于当前 `room.lifecycle` 的旧轮 snapshot，并把领先 lifecycle 的 snapshot 视为非法 server message。
 - Server 对每个接收者分别调用 `projectView`，不得先广播完整 State 再让客户端隐藏字段。
 - 不同玩家在同一 revision 可以获得不同 View，但 revision 和 lifecycle status 相同。
 - `causedByCommandId` 用于让发起客户端确认命令；其他客户端可以不接收该字段。
@@ -268,17 +320,18 @@ V1 `ProtocolErrorCode` 至少包括：
 - 客户端使用同一有效 guest session、新 ticket 和新的 Colyseus `join` seat reservation 重新连接；V1 不把 SDK reconnection token 作为 authoritative 恢复凭证。
 - Server 验证 session 与 slot 所有权后发送当前完整 snapshot。
 - 每个 slot 同时只允许一个可操作连接；新的有效连接接管后，旧连接失去提交 Action 的权限。
-- 超过 60 秒后，V1 平台策略把比赛标记为 `abandoned`；旧 SDK reconnection token 和新的 join 都不能恢复该席位。未来判负策略仍由平台 lifecycle 负责，具体游戏不得直接处理 socket timeout。
+- 超过 60 秒后，V1 平台策略把比赛标记为 `abandoned` 并关闭 live room；旧 SDK reconnection token 和新的 join 都不能恢复该席位。未来判负策略仍由平台 lifecycle 负责，具体游戏不得直接处理 socket timeout。
 - Server 进程重启不在 active room 恢复保证内，因为 RoomStore authoritative State 仍在内存。M5 只保证 completed replay/history 跨连接与进程读取，并在单实例启动时把遗留 waiting/active archive 标记 abandoned。
 
-### 11.1 M4 Client Host 收敛语义
+### 11.1 Client Host 收敛语义
 
-- `GameClientHostState` 明确暴露 `loading | connecting | connected | reconnecting | closed`，以及独立的 room metadata、最新 snapshot、command rejection 和 ticket/room/protocol/closed error。
+- `GameClientHostState` 明确暴露 `idle | loading | connecting | connected | reconnecting | closed`，以及独立的 room metadata、`roomLifecycle`、最新 snapshot、command rejection 和 ticket/room/protocol/closed error。
 - `createRoom(gameId, initialConfig)` 和 `joinRoom(gameId, roomCode)` 每次先通过 provider 获取新 ticket；join 在调用 Colyseus SDK 前执行 `trim().toUpperCase()` 并用 Protocol V1 schema 校验。
 - Host 将每个 `protocol` transport payload 当作 `unknown`，只有通过 `serverMessageSchema` 且 game/room/version/viewer identity 与当前连接一致后才更新状态；非法或不一致消息会关闭连接并报告 `INVALID_SERVER_MESSAGE`。
-- `submitAction(action)` 使用安全 UUID command ID，并从最新 authoritative snapshot 填充 `expectedRevision`。Host 不接收 actor/State/Outcome，也不计算下一个 revision；pending promise 只由 matching rejection 或服务器 snapshot 结算。
+- `submitAction(action)` 使用安全 UUID command ID，并从最新 lifecycle/snapshot 填充 `roundNumber` 和 `expectedRevision`。Host 不接收 actor/State/Outcome，也不计算下一个 revision；pending promise 只由同轮 matching rejection 或服务器 snapshot 结算。
 - Rejection 中若包含 snapshot，host 先应用完整 snapshot 再暴露 rejection。duplicate、stale 和 reconnect 都通过 server snapshot 收敛，不在客户端 replay Action 或推导 authoritative State。
-- 非主动 leave 后，host 在默认 60 秒窗口内从 100 ms 到 2 s 指数退避；每次尝试使用新 ticket 和新 join reservation。窗口耗尽进入 `closed`；显式 `close()` 不重连。
+- `requestRematch()`、`cancelRematch()` 和 `closeRoom()` 发送 control command；`leaveRoom()` 使用 consented leave、清空本地 room 并进入 `idle`。`close()` 仅用于刷新/卸载等本地 transport teardown，使用 non-consented leave 以保留服务器 60 秒重连语义，不能代替主动离开。
+- 非主动 leave 后，host 在默认 60 秒窗口内从 100 ms 到 2 s 指数退避；每次尝试使用新 ticket 和新 join reservation。窗口耗尽进入 `closed`；收到 closed lifecycle 后进入 `idle` 且不重连。
 
 ## 12. 安全与隐私不变量
 

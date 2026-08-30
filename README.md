@@ -1,6 +1,6 @@
 # Online Game Hub
 
-这是一个 server-authoritative、replay-first 的多人网页游戏平台 monorepo。当前已完成 M5：M4 的 Next.js/Colyseus 双访客纵切之上已接入 PostgreSQL + Drizzle、durable canonical replay、Match/MatchPlayer archive、guest-to-account 服务端关联基础和私有比赛历史 API。Protocol V1、replay format V1 和 Tic-Tac-Toe 1.0.0 保持不变；OAuth、密码登录、公开 replay 与活动房间恢复仍未实现。
+这是一个 server-authoritative、replay-first 的多人网页游戏平台 monorepo。当前已完成 M5：M4 的 Next.js/Colyseus 双访客纵切之上已接入 PostgreSQL + Drizzle、durable canonical replay、Match/MatchPlayer archive、guest-to-account 服务端关联基础和私有比赛历史 API。两名原玩家可在同一 live room 内 ready/cancel 并无缝开始下一轮；每轮拥有独立 Match、Replay 和 history，房主可关闭房间，非房主可主动离开，终局房间有 5 分钟回收期限。Protocol V1、replay format V1 和 Tic-Tac-Toe 1.0.0 保持不变；OAuth、密码登录、公开 replay 与活动房间恢复仍未实现。
 
 ## 开始之前
 
@@ -110,6 +110,8 @@ pnpm --filter @online-game-hub/web dev
 
 生产入口 `createProductionGameServer(config, overrides?)` 使用 `@online-game-hub/game-server-ticket` 的 HMAC adapter 注入 verifier，并在 `DATABASE_MODE=postgres` 时注入 `PostgresReplayStore` 与 Match archive `RoomStore` decorator；生产代码不导入 testing subpath。启动协调会把同一数据库中上次单实例留下的 `waiting`/`active` archive 诚实标记为 `abandoned`，不会尝试恢复不存在的 authoritative State。completed replay/history 可跨进程读取；活动 `RoomStore`、socket、reconnect timer 和 State 仍只在内存。
 
+一轮结束后，房间保留原 room code 和 stable slots；双方都点击“再来一局”才创建下一轮，任一方可取消，断线或 connection takeover 会清除其 ready。每轮从 revision `0`、新 RNG 和新 replay 开始，history 以 `roundNumber` 区分。终局房间拒绝新访客，只允许原玩家重连；房主可关闭 waiting/active/completed 房间，非房主可离开，active 操作先由 Web 确认并把当前 Match 标记 `abandoned`。刷新或组件卸载调用 `GameClientHost.close()`，属于非主动断线并保留 60 秒重连；只有 `leaveRoom()` 是主动离开。未关闭的 completed live room 在 5 分钟后回收，URL 同时清除 room code 并返回创建/加入入口。
+
 ## Workspace 结构
 
 ```text
@@ -121,7 +123,7 @@ packages/
   game-client-sdk/         # 通用 browser host、ticket provider 与 Client Module contract
   game-registry/           # 显式 catalog/client/server 组合与 exact resolution
   game-sdk/                # JSON/definition 类型与 deterministic RNG V1
-  game-server-runtime/     # auth/room ports、authoritative pipeline、Colyseus room、reconnect 与 replay
+  game-server-runtime/     # auth/room ports、authoritative pipeline、多轮/关闭、reconnect 与 replay
   game-server-ticket/      # Web/Game Server 共用的正式短期 HMAC ticket authority
   protocol/                # Protocol V1 strict Zod schemas 与推导类型
   ui/                      # 空 public entry
