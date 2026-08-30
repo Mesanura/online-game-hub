@@ -199,6 +199,54 @@ button.danger-button {
   border-color: #68d5ba;
 }
 
+.connect-four-column-controls,
+.connect-four-board {
+  display: grid;
+  gap: clamp(0.22rem, 1vw, 0.5rem);
+  grid-template-columns: repeat(7, minmax(2.25rem, 4.25rem));
+  justify-content: center;
+  margin-inline: auto;
+}
+
+.connect-four-column-controls {
+  margin-top: 1.5rem;
+}
+
+.connect-four-column-controls button {
+  padding: 0.45rem 0;
+}
+
+.connect-four-board {
+  background: #174a8b;
+  border: 1px solid #5b8fd2;
+  border-radius: 0.9rem;
+  margin-top: 0.6rem;
+  padding: clamp(0.35rem, 1.5vw, 0.75rem);
+}
+
+.connect-four-cell {
+  aspect-ratio: 1;
+  background: #07111f;
+  border: 2px solid #376ba9;
+  border-radius: 50%;
+}
+
+.connect-four-cell[data-disc="RED"] {
+  background: #ef5b69;
+  border-color: #ff9da6;
+}
+
+.connect-four-cell[data-disc="YELLOW"] {
+  background: #ffd166;
+  border-color: #fff0b3;
+}
+
+.connect-four-cell.winning-cell {
+  box-shadow:
+    0 0 0 3px #fff,
+    0 0 1rem rgb(255 255 255 / 65%);
+}
+
 @media (max-width: 36rem) {
   .room-entry-panel form {
     grid-template-columns: 1fr;

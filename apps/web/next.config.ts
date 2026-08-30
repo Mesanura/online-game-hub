@@ -6,6 +6,7 @@ const nextConfig: NextConfig = {
     "@online-game-hub/game-client-sdk",
     "@online-game-hub/game-registry",
     "@online-game-hub/protocol",
+    "@online-game-hub/connect-four",
     "@online-game-hub/tic-tac-toe",
   ],
 };

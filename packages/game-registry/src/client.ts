@@ -1,7 +1,10 @@
 import { eraseGameClientModule } from "@online-game-hub/game-client-sdk";
 import type { UnknownGameClientModule } from "@online-game-hub/game-client-sdk";
+import { connectFourManifest } from "@online-game-hub/connect-four/manifest";
 import { ticTacToeManifest } from "@online-game-hub/tic-tac-toe/manifest";
 
+const loadConnectFourEntrypoint = () =>
+  import("@online-game-hub/connect-four/client");
 const loadTicTacToeEntrypoint = () =>
   import("@online-game-hub/tic-tac-toe/client");
 
@@ -20,6 +23,15 @@ const clientRegistrations = Object.freeze([
     loadModule: async (): Promise<UnknownGameClientModule> =>
       eraseGameClientModule(
         (await loadTicTacToeEntrypoint()).ticTacToeClientModule,
+      ),
+  },
+  {
+    gameId: connectFourManifest.id,
+    gameVersion: connectFourManifest.gameVersion,
+    loadEntrypoint: loadConnectFourEntrypoint,
+    loadModule: async (): Promise<UnknownGameClientModule> =>
+      eraseGameClientModule(
+        (await loadConnectFourEntrypoint()).connectFourClientModule,
       ),
   },
 ]) satisfies readonly ClientRegistration[];

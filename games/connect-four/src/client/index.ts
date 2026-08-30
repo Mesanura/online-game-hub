@@ -1,1 +1,5 @@
-export * from "./module.js";
+export {
+  ConnectFourClient,
+  connectFourClientModule,
+  connectFourViewSchema,
+} from "./module.js";

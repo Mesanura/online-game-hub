@@ -66,5 +66,27 @@ describe("explicit game registry", () => {
     await expect(
       loadGameClientModule("tic-tac-toe", "2.0.0"),
     ).resolves.toBeUndefined();
+
+    const connectFourEntrypoint = await loadGameClientEntrypoint(
+      "connect-four",
+      "1.0.0",
+    );
+    expect(connectFourEntrypoint).toBeDefined();
+    expect(connectFourEntrypoint).toHaveProperty("connectFourClientModule");
+    expect(connectFourEntrypoint).not.toHaveProperty("transition");
+    expect(connectFourEntrypoint).not.toHaveProperty("createInitialState");
+
+    const connectFourClient = await loadGameClientModule(
+      "connect-four",
+      "1.0.0",
+    );
+    expect(connectFourClient).toMatchObject({
+      gameId: "connect-four",
+      gameVersion: "1.0.0",
+    });
+    expect(connectFourClient?.parseView).toEqual(expect.any(Function));
+    await expect(
+      loadGameClientModule("connect-four", "1.0.1"),
+    ).resolves.toBeUndefined();
   });
 });
