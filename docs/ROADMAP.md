@@ -7,7 +7,7 @@
 
 - 完成当前里程碑的退出条件后再扩大范围。
 - 每个阶段留下可运行检查和明确 public API。
-- Tic-Tac-Toe 用于验证架构，不并行堆叠更多游戏。
+- 井字棋用于验证架构，不并行堆叠更多游戏。
 - 基础设施只在当前产品需求或测量结果证明必要时引入。
 - Roadmap 变化不得绕过 [PRODUCT.md](./PRODUCT.md) 的明确非目标和 [ARCHITECTURE.md](./ARCHITECTURE.md) 的依赖边界。
 
@@ -40,11 +40,11 @@
 
 退出条件：空实现 package 能在干净环境安装、typecheck、lint、test 和 build；边界检查能用故意违规 fixture 证明有效。
 
-不做：Next.js 页面、Colyseus room、Tic-Tac-Toe 规则、数据库或 UI。
+不做：Next.js 页面、Colyseus room、井字棋规则、数据库或 UI。
 
-## M2：Game SDK、Protocol 与 Tic-Tac-Toe Core
+## M2：Game SDK、Protocol 与井字棋 Core
 
-> 实施状态：已完成（2026-08-30）。Game/Protocol/registry public API、Tic-Tac-Toe 1.0.0 Core、内存 replay store/verifier 与 golden fixture 已通过全仓质量门禁。
+> 实施状态：已完成（2026-08-30）。Game/Protocol/registry public API、井字棋 1.0.0 Core、内存 replay store/verifier 与 golden fixture 已通过全仓质量门禁。
 
 目标：用纯逻辑证明插件和 replay 契约可实现。
 
@@ -53,7 +53,7 @@
 - `game-sdk` 类型、JSON 约束和 deterministic RNG；
 - `protocol` V1 Zod schemas 与 type tests；
 - 显式 registry 的 manifest/server 基础；
-- Tic-Tac-Toe manifest、Core、规则说明和局部 `AGENTS.md`；
+- 井字棋 manifest、Core、规则说明和局部 `AGENTS.md`；
 - in-memory replay record/runner；
 - Core、determinism、projection 和 golden replay tests。
 
@@ -79,16 +79,16 @@
 
 ## M4：Web Vertical Slice
 
-> 实施状态：已完成（2026-08-30）。Next.js/guest/ticket/client host/Tic-Tac-Toe UI 已形成真实 Web vertical slice；双 browser-context Playwright 已验证胜局、平局、恶意 intent、reconnect、cookie 隔离、abandoned 和 canonical replay。
+> 实施状态：已完成（2026-08-30）。Next.js/guest/ticket/client host/井字棋 UI 已形成真实 Web vertical slice；双 browser-context Playwright 已验证胜局、平局、恶意 intent、reconnect、cookie 隔离、abandoned 和 canonical replay。
 
-目标：完成用户可操作的 Tic-Tac-Toe 端到端链路。
+目标：完成用户可操作的井字棋端到端链路。
 
 交付：
 
-- Next.js 首页、游戏目录和 Tic-Tac-Toe 页面；
+- Next.js 首页、游戏目录和井字棋页面；
 - 匿名 guest session 和短期连接 ticket；
 - 创建房间、房间码及邀请链接加入；
-- `game-client-sdk` host 与 Tic-Tac-Toe Client Module；
+- `game-client-sdk` host 与井字棋 Client Module；
 - 连接、重连、错误和终局的最小 UI；
 - 两 browser contexts 的 Playwright E2E。
 
@@ -116,23 +116,23 @@
 
 ## M6：验证插件扩展性
 
-> 实施状态：第一阶段 Connect Four 已完成（2026-08-30）；Gomoku、Reversi 和整个 M6 尚未完成。
+> 实施状态：第一阶段四子棋已完成（2026-08-30）；五子棋、黑白棋和整个 M6 尚未完成。
 
 按顺序增加少量规则类型不同的游戏：
 
-1. Connect Four：验证不同棋盘和胜负扫描（**第一阶段已完成**）；
-2. Gomoku：验证更大棋盘与规则变体 Config；
-3. Reversi：验证翻转、无合法行动和跳过回合。
+1. 四子棋：验证不同棋盘和胜负扫描（**第一阶段已完成**）；
+2. 五子棋：验证更大棋盘与规则变体 Config；
+3. 黑白棋：验证翻转、无合法行动和跳过回合。
 
 每新增一个游戏前复盘：需要修改多少平台文件、registry 步骤是否机械、SDK 是否出现游戏特例。只有流程稳定后才实现 `tools/create-game`。
 
-Connect Four 复盘结果：
+四子棋复盘结果：
 
 - 游戏 package 内 16 个文件拥有 manifest、Core、Client Module、局部规则/Agent 文档、unit/client/golden tests；
 - 游戏外非文档改动 12 个文件，其中 registry/build/lockfile 机械登记 6 个、Web 游戏表现 CSS 1 个、验证测试 5 个；
 - `game-sdk`、Protocol V1、Replay Format V1、`game-client-sdk`、通用 runtime、ticket、database schema 和 migration 均无需修改，也没有新增 `gameId` 分支；
 - exact/current resolver、`projectView`、canonical replay、同房间多轮、PostgreSQL history 和 repository-check 可直接支持第二游戏；
-- 现有通用 Web 页面仍含 Tic-Tac-Toe `CELL_OCCUPIED` 规则文案映射，且 game CSS/Next transpile 仍需显式登记；本轮没有为 Connect Four 增加规则文案特例；
+- 现有通用 Web 页面仍含井字棋 `CELL_OCCUPIED` 规则文案映射，且 game CSS/Next transpile 仍需显式登记；本轮没有为四子棋增加规则文案特例；
 - 两个游戏只证明 registry 步骤大体机械，尚不足以固定模板、样式与错误呈现策略，因此不创建 `tools/create-game`。
 
 ## M7：按证据扩展平台
@@ -149,4 +149,4 @@ Connect Four 复盘结果：
 
 ## 下一轮建议
 
-M6 Connect Four 第一阶段已完成。下一轮只评估并实现 M6 的 Gomoku Config 验证，用更大棋盘和最小规则变体检验现有 Config/Client Module/replay 契约；不要提前实现 Reversi、`tools/create-game` 或 M7，也不要混入 OAuth、Lobby、Matchmaking、排行榜、观战、公开 replay、durable active room、Redis 或多实例。
+M6 四子棋第一阶段已完成。下一轮只评估并实现 M6 的五子棋 Config 验证，用更大棋盘和最小规则变体检验现有 Config/Client Module/replay 契约；不要提前实现黑白棋、`tools/create-game` 或 M7，也不要混入 OAuth、Lobby、Matchmaking、排行榜、观战、公开 replay、durable active room、Redis 或多实例。

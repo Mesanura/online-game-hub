@@ -62,9 +62,9 @@
 | Projection      | 每种 viewer 只得到被授权字段，State 不直接泄漏                          |
 | Determinism     | 相同输入重复运行得到深度相等的 State、RNG 和 Outcome                    |
 
-Tic-Tac-Toe 至少覆盖所有获胜方向、平局、重复落子、错误回合、越界 cell 和终局后落子。
+井字棋至少覆盖所有获胜方向、平局、重复落子、错误回合、越界 cell 和终局后落子。
 
-Connect Four 至少覆盖重力、轮次切换、7 个满列、越界 column、非当前玩家、横向/纵向/双对角获胜、合法 42-action 平局、终局拒绝、immutability、serialization、projection 和零 RNG cursor determinism。
+四子棋至少覆盖重力、轮次切换、7 个满列、越界 column、非当前玩家、横向/纵向/双对角获胜、合法 42-action 平局、终局拒绝、immutability、serialization、projection 和零 RNG cursor determinism。
 
 ### 4.2 Property 与 Table-driven Tests
 
@@ -146,7 +146,7 @@ Multiplayer integration 使用两个独立客户端连接同一真实 room，验
 
 这些测试覆盖网络时序，不承担穷举游戏规则的职责。
 
-真实 integration cases 覆盖：health/metrics 与 ticket trust boundary；Tic-Tac-Toe 和 Connect Four 双客户端 stable slots、waiting/active/completed、伪造 actor、invalid/stale/duplicate/concurrent/rule-rejected commands、per-viewer snapshot 与 verified canonical replay；replay append failure 不确认/不提交；新 ticket + 新 reservation 的 reconnect、connection takeover、错误 session theft 和 fake-clock 60 秒 abandoned；同房间 ready/cancel 开第二轮、跨轮 duplicate/错轮防护、terminal outsider、房主关闭、非房主 active leave 和 terminal TTL。Connect Four 场景额外覆盖满列、横向胜局、42-action 平局、两轮独立 replay 与 abandoned 无伪造 Outcome。ticket verifier、ports、composition logger 另有无 transport 的 contract/unit tests。
+真实 integration cases 覆盖：health/metrics 与 ticket trust boundary；井字棋和四子棋双客户端 stable slots、waiting/active/completed、伪造 actor、invalid/stale/duplicate/concurrent/rule-rejected commands、per-viewer snapshot 与 verified canonical replay；replay append failure 不确认/不提交；新 ticket + 新 reservation 的 reconnect、connection takeover、错误 session theft 和 fake-clock 60 秒 abandoned；同房间 ready/cancel 开第二轮、跨轮 duplicate/错轮防护、terminal outsider、房主关闭、非房主 active leave 和 terminal TTL。四子棋场景额外覆盖满列、横向胜局、42-action 平局、两轮独立 replay 与 abandoned 无伪造 Outcome。ticket verifier、ports、composition logger 另有无 transport 的 contract/unit tests。
 
 ## 9. PostgreSQL Integration Tests
 
@@ -170,7 +170,7 @@ Multiplayer integration 使用两个独立客户端连接同一真实 room，验
 
 `tooling/e2e/tests/web-vertical-slice.spec.ts` 使用两个隔离 browser contexts，代表两个匿名访客：
 
-1. A 创建 Tic-Tac-Toe room，B 以规范化 room code 加入；两者获得不同 stable slots、相同 room code/revision 和各自完整 View；
+1. A 创建井字棋 room，B 以规范化 room code 加入；两者获得不同 stable slots、相同 room code/revision 和各自完整 View；
 2. 越过 disabled affordance 提交非当前玩家 intent 和重复点击，真实 Server 不产生额外 revision、棋盘或 replay action；
 3. 两者完成第 1 局 5-revision 胜局并验证 WIN；临时断线仍以同一 guest、新 ticket/new reservation 恢复原 slot；
 4. A ready、cancel、再次 ready，B ready 后在同一 room code 和 slots 无缝进入第 2 局，页面显示轮次且 revision 重置为 `0`；
@@ -183,7 +183,7 @@ Multiplayer integration 使用两个独立客户端连接同一真实 room，验
 
 `tooling/e2e/tests/connect-four-vertical-slice.spec.ts` 保留上述真实 Next/PostgreSQL/Colyseus harness，独立验证：
 
-1. 两个 guest contexts 从统一目录进入 Connect Four，并以同一通用游戏页创建/加入真实 room；
+1. 两个 guest contexts 从统一目录进入四子棋，并以同一通用游戏页创建/加入真实 room；
 2. 越过非当前玩家 disabled column 操作提交真实恶意 intent，双方 revision/棋盘保持 `0`；
 3. 双方完成 7-revision 权威横向胜局，浏览器只显示服务器 View；
 4. 双方 ready 后在相同 room code/stable slots 进入第 2 局并再次完成胜局；
@@ -226,7 +226,7 @@ pnpm db:migrate
 pnpm test:database
 ```
 
-`pnpm lint` 包含格式、ESLint、本地 Markdown 链接与依赖边界检查。`pnpm test` 纳入 Game SDK、Protocol、Tic-Tac-Toe/Connect Four Core/client、registry、ticket authority、Web guest/config、runtime/replay stores、Game Server unit tests 和 repository-check 的全部故意违规 fixture tests。`pnpm test:integration` 执行真实 Colyseus SDK tests。`pnpm test:e2e` 先执行完整 workspace build，再执行 PostgreSQL-backed Playwright。`pnpm test:database` 执行真实 PostgreSQL tests；这些命令都不是空脚本。
+`pnpm lint` 包含格式、ESLint、本地 Markdown 链接与依赖边界检查。`pnpm test` 纳入 Game SDK、Protocol、井字棋/四子棋 Core/client、registry、ticket authority、Web guest/config、runtime/replay stores、Game Server unit tests 和 repository-check 的全部故意违规 fixture tests。`pnpm test:integration` 执行真实 Colyseus SDK tests。`pnpm test:e2e` 先执行完整 workspace build，再执行 PostgreSQL-backed Playwright。`pnpm test:database` 执行真实 PostgreSQL tests；这些命令都不是空脚本。
 
 `pnpm db:check` 是只读 migration/schema 一致性检查。`pnpm db:migrate` 只在调用者显式提供 `DATABASE_URL` 时应用 checked-in migrations；应用 import 或 production startup 都不会自动 migration。本地创建、迁移与停止 PostgreSQL 的命令见根 README。测试必须使用独立 database/schema，禁止对默认 development `DATABASE_URL` 执行 destructive reset。
 

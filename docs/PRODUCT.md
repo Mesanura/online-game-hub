@@ -1,6 +1,6 @@
 # 产品目标与范围
 
-> 状态：V1 产品基线（M5 已完成，M6 Connect Four 第一阶段已完成）
+> 状态：V1 产品基线（M5 已完成，M6 四子棋第一阶段已完成）
 > 本文是产品目标、范围和非目标的权威来源。技术实现边界见 [ARCHITECTURE.md](./ARCHITECTURE.md)。
 
 ## 1. 产品愿景
@@ -15,7 +15,7 @@
 2. **平台能力复用**：房间、连接、玩家席位、重连、比赛生命周期和 replay 不在每个游戏中重复实现。
 3. **游戏独立演进**：一个 Agent 应能以单个游戏目录为主要上下文完成规则或表现层修改。
 4. **公平且可复现**：客户端只提交意图，服务器裁定结果；一场比赛可由版本、配置、seed 和 accepted actions 重建。
-5. **先验证架构**：先用 Tic-Tac-Toe 打通最小纵向链路，再用 Connect Four 验证第二游戏扩展成本；Gomoku、Reversi 继续按证据顺序推进。
+5. **先验证架构**：先用井字棋打通最小纵向链路，再用四子棋验证第二游戏扩展成本；五子棋、黑白棋继续按证据顺序推进。
 
 ## 3. 目标用户流程
 
@@ -48,9 +48,9 @@
 
 ## 4. 首个纵向切片
 
-Tic-Tac-Toe 是架构验证游戏，不以内容丰富度为目标。首个可运行切片必须验证：
+井字棋是架构验证游戏，不以内容丰富度为目标。首个可运行切片必须验证：
 
-- 统一游戏目录可以发现 Tic-Tac-Toe；
+- 统一游戏目录可以发现井字棋；
 - 匿名访客 session 和短期 Game Server 连接票据；
 - 创建房间、房间码/邀请链接加入及两个玩家席位；
 - 浏览器直接连接独立的 Colyseus Game Server；
@@ -65,7 +65,7 @@ Tic-Tac-Toe 是架构验证游戏，不以内容丰富度为目标。首个可�
 
 ### 4.1 第二游戏扩展验证
 
-Connect Four 1.0.0 已从同一目录和通用游戏页提供标准 7 列 × 6 行、两人轮流重力落子、横/纵/双对角四连胜与满盘平局。它复用与 Tic-Tac-Toe 相同的 create/join/reconnect、stable slots、多轮 ready/cancel、close/leave、canonical replay、PostgreSQL archive 和私有 history 行为；浏览器只提交 column intent，服务端决定落点和 Outcome。
+四子棋 1.0.0 已从同一目录和通用游戏页提供标准 7 列 × 6 行、两人轮流重力落子、横/纵/双对角四连胜与满盘平局。它复用与井字棋相同的 create/join/reconnect、stable slots、多轮 ready/cancel、close/leave、canonical replay、PostgreSQL archive 和私有 history 行为；浏览器只提交 column intent，服务端决定落点和 Outcome。
 
 该阶段没有新增平台产品能力，不包含 AI、计时、悔棋、公开房间、Matchmaking、观战或公开 replay。
 
@@ -88,7 +88,7 @@ Connect Four 1.0.0 已从同一目录和通用游戏页提供标准 7 列 × 6 �
 
 ## 6. 当前明确非目标
 
-M6 Connect Four 第一阶段完成后当前仍不实现：
+M6 四子棋第一阶段完成后当前仍不实现：
 
 - 完整 Lobby 或公开房间浏览；
 - 正式用户注册、登录、密码和第三方 OAuth；
@@ -97,7 +97,7 @@ M6 Connect Four 第一阶段完成后当前仍不实现：
 - 观战功能；
 - Redis、Kubernetes、微服务拆分或多区域部署；
 - 完整 replay 播放器；
-- Gomoku 或一批并行开发的游戏；
+- 五子棋或一批并行开发的游戏；
 - 为尚未验证的未来游戏提前设计通用脚本系统或复杂 ECS。
 
 ## 7. 成功标准

@@ -166,7 +166,7 @@ Bug fix 是否提升版本以“相同 replay 是否可能得到不同 State、R
 - `tic-tac-toe@1.0.0`：`games/tic-tac-toe/tests/fixtures/tic-tac-toe-1.0.0-win.json`
 - `connect-four@1.0.0`：`games/connect-four/tests/fixtures/connect-four-1.0.0-win.json`
 
-Connect Four golden replay 仍使用 Replay Format V1，只记录规范化 `DROP_DISC(column)` 与服务器推导的 actor slot。Exact registry 可重建相同 7×6 State、WIN Outcome 和零 RNG cursor；真实 Colyseus/PostgreSQL tests 同时证明错轮、满列、schema-invalid、duplicate、stale 与终局后命令不进入 actions。无需 `replayFormatVersion` 或 Tic-Tac-Toe `gameVersion` 变化。
+四子棋 golden replay 仍使用 Replay Format V1，只记录规范化 `DROP_DISC(column)` 与服务器推导的 actor slot。Exact registry 可重建相同 7×6 State、WIN Outcome 和零 RNG cursor；真实 Colyseus/PostgreSQL tests 同时证明错轮、满列、schema-invalid、duplicate、stale 与终局后命令不进入 actions。无需 `replayFormatVersion` 或井字棋 `gameVersion` 变化。
 
 ## 8. Hidden Information 与访问控制
 
@@ -177,7 +177,7 @@ Canonical replay 是服务器内部记录，可能通过 seed、Action 或 Confi
 - 日志、监控和错误响应不得包含完整 replay payload。
 - M5 的 `GET /api/matches` 只用完成标记计算 `replayAvailable`，不返回 replay ID、header、actions、Config、Outcome 或 seed，也不提供下载端点。
 - 举报审查、玩家下载和公开分享可能拥有不同访问级别，具体策略暂缓。
-- V1 Tic-Tac-Toe 与 Connect Four 都没有隐藏信息，但仍按内部 canonical record 处理。
+- V1 井字棋与四子棋都没有隐藏信息，但仍按内部 canonical record 处理。
 
 ## 9. Checkpoint
 

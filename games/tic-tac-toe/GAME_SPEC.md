@@ -1,7 +1,8 @@
-# Tic-Tac-Toe 规则规范
+# 井字棋规则规范
 
 > 状态：`gameVersion 1.0.0`
-> 本文是 Tic-Tac-Toe Core 规则与 JSON 数据形状的权威来源；通用契约见 [Game Plugin 规范](../../docs/GAME_PLUGIN_SPEC.md)。
+> 展示名：井字棋
+> 本文是井字棋 Core 规则与 JSON 数据形状的权威来源；通用契约见 [Game Plugin 规范](../../docs/GAME_PLUGIN_SPEC.md)。
 
 ## 规则
 
@@ -28,4 +29,4 @@
 - `CELL_OCCUPIED`
 - `MATCH_ALREADY_FINISHED`
 
-Tic-Tac-Toe 不消费 RNG；初始化、accepted transition 和 rejected transition 都原样返回或保留输入 RNG cursor。任何改变规则结果、slot 解释、Action/Config schema 或 RNG 消费的修改都必须评估新的 `gameVersion`。
+井字棋不消费 RNG；初始化、accepted transition 和 rejected transition 都原样返回或保留输入 RNG cursor。任何改变规则结果、slot 解释、Action/Config schema 或 RNG 消费的修改都必须评估新的 `gameVersion`。

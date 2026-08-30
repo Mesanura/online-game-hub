@@ -264,7 +264,7 @@ docker compose exec -T postgres sh -lc \
 3. 完成一局，双方 revision 应同步且 history 出现 completed Match；
 4. 在浏览器开发者工具的 Network/WS 中确认连接目标是 `ws://localhost:2567`，而不是 Docker hostname。
 
-也可用 Connect Four 重复同样流程。该验证同时覆盖 ticket API、matchmaking HTTP、CORS、浏览器公开地址和 WebSocket。
+也可用四子棋重复同样流程。该验证同时覆盖 ticket API、matchmaking HTTP、CORS、浏览器公开地址和 WebSocket。
 
 ## 完整验收清单
 

@@ -5,7 +5,7 @@
 
 ## 1. 适用范围
 
-V1 Game Plugin 面向棋盘、卡牌和骰子等“客户端提交离散 Action、服务器产生下一个 State”的游戏。Tic-Tac-Toe 是首个规范验证实现。
+V1 Game Plugin 面向棋盘、卡牌和骰子等“客户端提交离散 Action、服务器产生下一个 State”的游戏。井字棋是首个规范验证实现。
 
 Phaser 实时 2D 游戏通常需要 tick、输入缓冲、插值、预测或回滚，不强行复用本规范。未来 realtime game 可以成为另一种 `runtime`，同时复用平台目录、身份、房间和比赛生命周期。
 
@@ -51,8 +51,11 @@ interface GameManifest {
 
 约束：
 
-- `GameId` 使用稳定的 lowercase kebab-case，例如 `tic-tac-toe`。
+- `GameId` 使用稳定的 lowercase kebab-case，例如 `tic-tac-toe`；它同时用于包名、URL、wire 和 replay，不因展示名翻译而修改。
 - `GameVersion` 使用精确 semver 字符串；registry 和 replay 不使用范围匹配。
+- `title` 是面向玩家的简体中文正式展示名；新游戏加入 registry 前必须由产品确认译名，manifest 与中文文档统一使用该名称。
+- `description` 使用面向玩家的简体中文，不暴露内部架构或协议术语。
+- 技术标识、代码符号和必要的英文诊断可以保留英文；不得把英文技术标识当作玩家展示名。
 - `PlayerSlotId` 表示比赛中的稳定席位，不是账号、session、connection 或数据库 ID。
 - `game-sdk` 使用 `defineGameId`、`defineGameVersion` 和 `definePlayerSlotId` 构造上述 branded string；brand 只存在于类型系统，wire/replay 中仍是普通字符串。
 - `State`、`Action`、`View`、`Outcome` 和 `Config` 必须符合 `JsonValue` 语义。
@@ -233,7 +236,7 @@ interface GameClientModule<View, Action> {
 
 客户端可以重复实现提示性逻辑以改善 UX，但提示不是权威；服务器 Core 始终重新验证 Action。
 
-Connect Four 1.0.0 验证了该契约可表达固定 7×6 View、每列可访问操作和 `DROP_DISC(column)` intent，而无需让 Client Module 导入 Core、计算重力落点、扫描胜负、预测 Outcome 或推进 revision。客户端 View schema 是对不可信 server payload 的运行时边界，不等于在浏览器重建 authoritative State。
+四子棋 1.0.0 验证了该契约可表达固定 7×6 View、每列可访问操作和 `DROP_DISC(column)` intent，而无需让 Client Module 导入 Core、计算重力落点、扫描胜负、预测 Outcome 或推进 revision。客户端 View schema 是对不可信 server payload 的运行时边界，不等于在浏览器重建 authoritative State。
 
 ## 9. Manifest 与 Export Map
 
@@ -278,6 +281,6 @@ Registry 必须能够按 exact `gameVersion` 读取旧 replay 所需的 definiti
 - `projectView` 的信息泄漏测试通过；
 - package 只通过声明的 public subpath exports 被消费。
 
-M6 Connect Four 是第二个满足以上清单的 package。其接入没有要求修改 `GameDefinition`、`GameClientModule` 或 replay envelope；因此本轮不扩大 shared public API。
+M6 四子棋是第二个满足以上清单的 package。其接入没有要求修改 `GameDefinition`、`GameClientModule` 或 replay envelope；因此本轮不扩大 shared public API。
 
 完整测试矩阵见 [TESTING.md](./TESTING.md)。

@@ -1,7 +1,8 @@
-# Connect Four 规则规范
+# 四子棋规则规范
 
 > 状态：`gameVersion 1.0.0`
-> 本文是 Connect Four Core 规则与 JSON 数据形状的权威来源；通用契约见 [Game Plugin 规范](../../docs/GAME_PLUGIN_SPEC.md)。
+> 展示名：四子棋
+> 本文是四子棋 Core 规则与 JSON 数据形状的权威来源；通用契约见 [Game Plugin 规范](../../docs/GAME_PLUGIN_SPEC.md)。
 
 ## 规则
 
@@ -31,4 +32,4 @@ State、Action、View 和 Outcome 都由 strict Zod schema 验证；board 中的
 - `COLUMN_FULL`
 - `MATCH_ALREADY_FINISHED`
 
-Connect Four 不消费 RNG；初始化、accepted transition 和 rejected transition 都保留输入 RNG cursor。任何改变重力、扫描顺序、slot/disc 解释、Action/Config schema 或 RNG 消费的修改都必须评估新的 `gameVersion`。
+四子棋不消费 RNG；初始化、accepted transition 和 rejected transition 都保留输入 RNG cursor。任何改变重力、扫描顺序、slot/disc 解释、Action/Config schema 或 RNG 消费的修改都必须评估新的 `gameVersion`。

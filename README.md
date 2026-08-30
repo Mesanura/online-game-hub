@@ -1,6 +1,6 @@
 # Online Game Hub
 
-这是一个 server-authoritative、replay-first 的多人网页游戏平台 monorepo。M1–M5 已完成，M6 第一阶段已新增 Connect Four，用第二个完整游戏验证既有 Game Plugin、显式 registry、Client Module、authoritative runtime、projection、Replay V1、PostgreSQL Match/history 和 Web vertical slice。两名原玩家可在同一 live room 内 ready/cancel 并无缝开始下一轮；每轮拥有独立 Match、Replay 和 history，房主可关闭房间，非房主可主动离开，终局房间有 5 分钟回收期限。Protocol V1、replay format V1、Tic-Tac-Toe 1.0.0 和 Connect Four 1.0.0 均保持 exact version；Gomoku、OAuth、公开 replay 与活动房间恢复仍未实现。
+这是一个 server-authoritative、replay-first 的多人网页游戏平台 monorepo。M1–M5 已完成，M6 第一阶段已新增四子棋，用第二个完整游戏验证既有 Game Plugin、显式 registry、Client Module、authoritative runtime、projection、Replay V1、PostgreSQL Match/history 和 Web vertical slice。两名原玩家可在同一 live room 内 ready/cancel 并无缝开始下一轮；每轮拥有独立 Match、Replay 和 history，房主可关闭房间，非房主可主动离开，终局房间有 5 分钟回收期限。Protocol V1、replay format V1、井字棋 1.0.0 和四子棋 1.0.0 均保持 exact version；五子棋、OAuth、公开 replay 与活动房间恢复仍未实现。
 
 ## 开始之前
 
@@ -57,7 +57,7 @@ pnpm test:integration
 pnpm test:e2e
 ```
 
-`pnpm lint` 同时执行格式、ESLint、本地 Markdown 链接和依赖边界检查。`pnpm test` 包含 Game SDK、Protocol、Tic-Tac-Toe Core、registry、runtime ports、replay/store tests、Game Server unit tests，以及故意违规的隔离 fixture。`pnpm db:check` 静态检查 checked-in migration；`pnpm db:migrate` 只在调用者显式提供 `DATABASE_URL` 时应用 migration。`pnpm test:database` 需要 `TEST_DATABASE_URL` 指向测试可创建数据库的 PostgreSQL 管理库，并为每个 suite 创建、验证和删除随机 `ogh_test_*` 数据库。`pnpm test:integration` 在随机本地端口运行真实 Colyseus 双客户端 tests；`pnpm test:e2e` 先构建 workspace，再以随机回环端口启动真实 Next production app、真实 Colyseus Server 和隔离 PostgreSQL 数据库，运行双 browser-context Playwright。三个测试脚本都不是空脚本，CI 都会执行。
+`pnpm lint` 同时执行格式、ESLint、本地 Markdown 链接和依赖边界检查。`pnpm test` 包含 Game SDK、Protocol、井字棋 Core、registry、runtime ports、replay/store tests、Game Server unit tests，以及故意违规的隔离 fixture。`pnpm db:check` 静态检查 checked-in migration；`pnpm db:migrate` 只在调用者显式提供 `DATABASE_URL` 时应用 migration。`pnpm test:database` 需要 `TEST_DATABASE_URL` 指向测试可创建数据库的 PostgreSQL 管理库，并为每个 suite 创建、验证和删除随机 `ogh_test_*` 数据库。`pnpm test:integration` 在随机本地端口运行真实 Colyseus 双客户端 tests；`pnpm test:e2e` 先构建 workspace，再以随机回环端口启动真实 Next production app、真实 Colyseus Server 和隔离 PostgreSQL 数据库，运行双 browser-context Playwright。三个测试脚本都不是空脚本，CI 都会执行。
 
 所有当前支持 `gameVersion` 的 golden replay 可单独运行：
 
@@ -150,7 +150,7 @@ tools/                     # 未来面向开发者的 CLI；当前不创建生�
 
 不要创建 `packages/shared`。新增 workspace package 必须声明 public exports，并接入根 typecheck、test 和 build 图；跨 package 只能通过 manifest 中声明的依赖与 export map 导入。
 
-M6 Connect Four 没有新增外部依赖，也没有修改 `game-sdk`、`protocol`、`game-client-sdk`、`game-server-runtime`、`game-server-ticket` 或 database schema。游戏外的非文档改动共 12 个文件：6 个是 registry dependency/catalog/client/server、Next transpile 和 lockfile 的机械登记，1 个是 Web 中的游戏表现 CSS，5 个是 registry/Colyseus/PostgreSQL/Playwright/repository-check 测试。第二游戏尚不足以证明生成器接口已经稳定，因此 `tools/create-game` 仍不创建。
+M6 四子棋没有新增外部依赖，也没有修改 `game-sdk`、`protocol`、`game-client-sdk`、`game-server-runtime`、`game-server-ticket` 或 database schema。游戏外的非文档改动共 12 个文件：6 个是 registry dependency/catalog/client/server、Next transpile 和 lockfile 的机械登记，1 个是 Web 中的游戏表现 CSS，5 个是 registry/Colyseus/PostgreSQL/Playwright/repository-check 测试。第二游戏尚不足以证明生成器接口已经稳定，因此 `tools/create-game` 仍不创建。
 
 ## 自动化边界
 

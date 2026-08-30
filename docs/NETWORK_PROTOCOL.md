@@ -243,7 +243,7 @@ interface GameActionCommand {
 - V1 通用 schema 要求 `action` 是 JSON value，且序列化后的 UTF-8 长度不超过 16 KiB；transport 仍应在进入 Zod/Core 前设置总消息上限。
 - Envelope 不包含 actor、State、Outcome、RNG seed 或新 revision。
 
-M6 Connect Four 通过同一 Protocol V1 envelope 发送 `{ type: "DROP_DISC", column }`。越界 column 属于 `INVALID_ACTION_PAYLOAD`，合法形状但错误回合/满列属于带 opaque `gameRuleCode` 的 `GAME_RULE_REJECTED`；duplicate、stale、错轮和终局拒绝继续使用现有平台语义。Transport 不知道重力、row 或四连规则，因此 `protocolVersion` 保持 `1`。
+M6 四子棋通过同一 Protocol V1 envelope 发送 `{ type: "DROP_DISC", column }`。越界 column 属于 `INVALID_ACTION_PAYLOAD`，合法形状但错误回合/满列属于带 opaque `gameRuleCode` 的 `GAME_RULE_REJECTED`；duplicate、stale、错轮和终局拒绝继续使用现有平台语义。Transport 不知道重力、row 或四连规则，因此 `protocolVersion` 保持 `1`。
 
 ## 8. Revision、Ordering 与 Idempotency
 

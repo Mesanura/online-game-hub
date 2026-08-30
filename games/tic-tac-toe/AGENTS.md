@@ -1,4 +1,4 @@
-# Tic-Tac-Toe 工作规则
+# 井字棋工作规则
 
 修改本游戏前先阅读 [GAME_SPEC.md](./GAME_SPEC.md)，并继续遵守仓库根 `AGENTS.md` 与权威架构文档。
 
