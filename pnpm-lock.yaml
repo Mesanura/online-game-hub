@@ -212,6 +212,9 @@ importers:
 
   packages/game-registry:
     dependencies:
+      '@online-game-hub/connect-four':
+        specifier: workspace:*
+        version: link:../../games/connect-four
       '@online-game-hub/game-client-sdk':
         specifier: workspace:*
         version: link:../game-client-sdk
