@@ -5,6 +5,7 @@ import {
   GAME_ROOM_NAME,
   MAX_GAME_ACTION_BYTES,
   PROTOCOL_VERSION,
+  ROOM_CONTROL_MESSAGE,
   SERVER_PROTOCOL_MESSAGE,
   commandIdSchema,
   commandRejectedSchema,
@@ -13,6 +14,8 @@ import {
   gameServerTicketClaimsSchema,
   joinGameRoomRequestSchema,
   matchSnapshotSchema,
+  roomControlCommandSchema,
+  roomLifecycleStateSchema,
   roomConnectedSchema,
   serverMessageSchema,
 } from "../src/index.js";
@@ -47,7 +50,109 @@ describe("transport conventions", () => {
   it("keeps Protocol V1 room and custom message names stable", () => {
     expect(GAME_ROOM_NAME).toBe("game");
     expect(GAME_ACTION_MESSAGE).toBe("game.action");
+    expect(ROOM_CONTROL_MESSAGE).toBe("room.control");
     expect(SERVER_PROTOCOL_MESSAGE).toBe("protocol");
+  });
+});
+
+describe("room control", () => {
+  it("parses strict rematch and close commands without identity fields", () => {
+    for (const operation of [
+      "REQUEST_REMATCH",
+      "CANCEL_REMATCH",
+      "CLOSE_ROOM",
+    ] as const) {
+      expect(
+        roomControlCommandSchema.parse({
+          type: "room.control",
+          protocolVersion: PROTOCOL_VERSION,
+          commandId: `control-${operation}`,
+          operation,
+        }),
+      ).toMatchObject({ operation });
+    }
+    expect(
+      roomControlCommandSchema.safeParse({
+        type: "room.control",
+        protocolVersion: PROTOCOL_VERSION,
+        commandId: "forged-control",
+        operation: "CLOSE_ROOM",
+        playerSessionId: "another-player",
+      }).success,
+    ).toBe(false);
+  });
+
+  it("validates per-viewer lifecycle state without exposing participant ids", () => {
+    const lifecycle = roomLifecycleStateSchema.parse({
+      type: "room.lifecycle",
+      protocolVersion: PROTOCOL_VERSION,
+      roundNumber: 2,
+      isOwner: false,
+      rematch: {
+        available: true,
+        selfReady: true,
+        readyPlayerCount: 1,
+        requiredPlayerCount: 2,
+      },
+      closed: false,
+      closeReason: null,
+      causedByCommandId: "rematch-1",
+    });
+    expect(lifecycle).not.toHaveProperty("playerSessionId");
+    expect(JSON.stringify(lifecycle)).not.toContain("another-player");
+  });
+
+  it.each([
+    [
+      {
+        type: "room.lifecycle",
+        protocolVersion: PROTOCOL_VERSION,
+        roundNumber: 1,
+        isOwner: true,
+        rematch: {
+          available: true,
+          selfReady: false,
+          readyPlayerCount: 3,
+          requiredPlayerCount: 2,
+        },
+        closed: false,
+        closeReason: null,
+      },
+    ],
+    [
+      {
+        type: "room.lifecycle",
+        protocolVersion: PROTOCOL_VERSION,
+        roundNumber: 1,
+        isOwner: true,
+        rematch: {
+          available: false,
+          selfReady: true,
+          readyPlayerCount: 1,
+          requiredPlayerCount: 2,
+        },
+        closed: false,
+        closeReason: null,
+      },
+    ],
+    [
+      {
+        type: "room.lifecycle",
+        protocolVersion: PROTOCOL_VERSION,
+        roundNumber: 1,
+        isOwner: true,
+        rematch: {
+          available: false,
+          selfReady: false,
+          readyPlayerCount: 0,
+          requiredPlayerCount: 2,
+        },
+        closed: true,
+        closeReason: null,
+      },
+    ],
+  ])("rejects inconsistent lifecycle state %#", (candidate) => {
+    expect(roomLifecycleStateSchema.safeParse(candidate).success).toBe(false);
   });
 });
 

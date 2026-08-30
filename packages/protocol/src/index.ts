@@ -4,6 +4,7 @@ export const PROTOCOL_VERSION = 1 as const;
 export const MAX_GAME_ACTION_BYTES = 16_384;
 export const GAME_ROOM_NAME = "game" as const;
 export const GAME_ACTION_MESSAGE = "game.action" as const;
+export const ROOM_CONTROL_MESSAGE = "room.control" as const;
 export const SERVER_PROTOCOL_MESSAGE = "protocol" as const;
 export const GAME_SERVER_TICKET_AUDIENCE = "game-server" as const;
 
@@ -144,6 +145,92 @@ export const gameActionCommandSchema = z
   .strict();
 export type GameActionCommand = z.infer<typeof gameActionCommandSchema>;
 
+export const roomControlOperationSchema = z.enum([
+  "REQUEST_REMATCH",
+  "CANCEL_REMATCH",
+  "CLOSE_ROOM",
+]);
+export type RoomControlOperation = z.infer<typeof roomControlOperationSchema>;
+
+export const roomControlCommandSchema = z
+  .object({
+    type: z.literal("room.control"),
+    protocolVersion: protocolVersionSchema,
+    commandId: commandIdSchema,
+    operation: roomControlOperationSchema,
+  })
+  .strict();
+export type RoomControlCommand = z.infer<typeof roomControlCommandSchema>;
+
+export const roomCloseReasonSchema = z.enum([
+  "OWNER_CLOSED",
+  "PLAYER_LEFT",
+  "RECONNECT_TIMEOUT",
+  "REMATCH_TIMEOUT",
+]);
+export type RoomCloseReason = z.infer<typeof roomCloseReasonSchema>;
+
+export const roomLifecycleStateSchema = z
+  .object({
+    type: z.literal("room.lifecycle"),
+    protocolVersion: protocolVersionSchema,
+    roundNumber: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+    isOwner: z.boolean(),
+    rematch: z
+      .object({
+        available: z.boolean(),
+        selfReady: z.boolean(),
+        readyPlayerCount: z.number().int().nonnegative(),
+        requiredPlayerCount: z.number().int().positive(),
+      })
+      .strict(),
+    closed: z.boolean(),
+    closeReason: roomCloseReasonSchema.nullable(),
+    causedByCommandId: commandIdSchema.optional(),
+  })
+  .strict()
+  .superRefine((state, context) => {
+    if (state.rematch.readyPlayerCount > state.rematch.requiredPlayerCount) {
+      context.addIssue({
+        code: "custom",
+        message: "Ready player count cannot exceed the required count.",
+        path: ["rematch", "readyPlayerCount"],
+      });
+    }
+    if (state.rematch.selfReady && state.rematch.readyPlayerCount === 0) {
+      context.addIssue({
+        code: "custom",
+        message: "A ready viewer must be included in the ready count.",
+        path: ["rematch", "selfReady"],
+      });
+    }
+    if (
+      !state.rematch.available &&
+      (state.rematch.selfReady || state.rematch.readyPlayerCount !== 0)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Unavailable rematch state cannot contain ready players.",
+        path: ["rematch"],
+      });
+    }
+    if (state.closed !== (state.closeReason !== null)) {
+      context.addIssue({
+        code: "custom",
+        message: "Closed state and close reason must be consistent.",
+        path: ["closeReason"],
+      });
+    }
+    if (state.closed && state.rematch.available) {
+      context.addIssue({
+        code: "custom",
+        message: "A closed room cannot offer a rematch.",
+        path: ["rematch", "available"],
+      });
+    }
+  });
+export type RoomLifecycleState = z.infer<typeof roomLifecycleStateSchema>;
+
 export const gameServerTicketClaimsSchema = z
   .object({
     issuer: z.string().min(1).max(128),
@@ -231,6 +318,8 @@ export const protocolErrorCodeSchema = z.enum([
   "PROTOCOL_VERSION_UNSUPPORTED",
   "ROOM_NOT_FOUND",
   "ROOM_FULL",
+  "ROOM_NOT_JOINABLE",
+  "ROOM_CONTROL_NOT_ALLOWED",
   "NOT_A_PLAYER",
   "MATCH_NOT_ACTIVE",
   "STALE_REVISION",
@@ -261,6 +350,7 @@ export type CommandRejected = Omit<InferredCommandRejected, "snapshot"> & {
 
 export const clientMessageSchema = z.discriminatedUnion("type", [
   gameActionCommandSchema,
+  roomControlCommandSchema,
 ]);
 export const serverMessageSchema = z.discriminatedUnion("type", [
   roomConnectedSchema,
