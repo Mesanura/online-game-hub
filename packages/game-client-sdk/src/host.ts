@@ -97,6 +97,7 @@ interface RoomTarget {
 
 interface PendingCommand {
   readonly kind: "action" | "control";
+  readonly expectedRoundNumber?: number;
   readonly expectedRevision?: number;
   readonly resolve: () => void;
   readonly reject: (error: Error) => void;
@@ -223,10 +224,12 @@ export class GameClientHost<View = unknown, Outcome = unknown> {
       return Promise.reject(new Error("The game room is not connected."));
     }
     const commandId = this.#options.commandIds.createCommandId();
+    const roundNumber = this.#state.roomLifecycle?.roundNumber ?? 1;
     const command = gameActionCommandSchema.parse({
       type: "game.action",
       protocolVersion: PROTOCOL_VERSION,
       commandId,
+      roundNumber,
       expectedRevision: snapshot.revision,
       action,
     }) satisfies GameActionCommand;
@@ -239,6 +242,7 @@ export class GameClientHost<View = unknown, Outcome = unknown> {
     return new Promise<void>((resolve, reject) => {
       this.#pendingCommands.set(commandId, {
         kind: "action",
+        expectedRoundNumber: roundNumber,
         expectedRevision: snapshot.revision,
         resolve,
         reject,
@@ -551,7 +555,26 @@ export class GameClientHost<View = unknown, Outcome = unknown> {
       return;
     }
     const current = this.#state.snapshot;
-    if (current !== null && snapshot.revision < current.revision) {
+    const snapshotRoundNumber = snapshot.roundNumber ?? 1;
+    const lifecycleRoundNumber = this.#state.roomLifecycle?.roundNumber;
+    if (
+      lifecycleRoundNumber !== undefined &&
+      snapshotRoundNumber < lifecycleRoundNumber
+    ) {
+      return;
+    }
+    if (
+      lifecycleRoundNumber !== undefined &&
+      snapshotRoundNumber > lifecycleRoundNumber
+    ) {
+      this.#failProtocol();
+      return;
+    }
+    if (
+      current !== null &&
+      (current.roundNumber ?? 1) === snapshotRoundNumber &&
+      snapshot.revision < current.revision
+    ) {
       return;
     }
     this.#replaceState({
@@ -566,6 +589,7 @@ export class GameClientHost<View = unknown, Outcome = unknown> {
     for (const [commandId, pending] of this.#pendingCommands) {
       if (
         pending.kind === "action" &&
+        pending.expectedRoundNumber === snapshotRoundNumber &&
         (snapshot.causedByCommandId === commandId ||
           (pending.expectedRevision !== undefined &&
             snapshot.revision > pending.expectedRevision))

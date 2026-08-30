@@ -99,6 +99,11 @@ export const revisionSchema = z
   .int()
   .nonnegative()
   .max(Number.MAX_SAFE_INTEGER);
+export const roundNumberSchema = z
+  .number()
+  .int()
+  .positive()
+  .max(Number.MAX_SAFE_INTEGER);
 export const commandIdSchema = z.string().min(1).max(128);
 export const gameIdSchema = z.string().regex(GAME_ID_PATTERN);
 export const gameVersionSchema = z.string().regex(EXACT_SEMVER_PATTERN);
@@ -139,6 +144,7 @@ export const gameActionCommandSchema = z
     type: z.literal("game.action"),
     protocolVersion: protocolVersionSchema,
     commandId: commandIdSchema,
+    roundNumber: roundNumberSchema.optional(),
     expectedRevision: revisionSchema,
     action: gameActionPayloadSchema,
   })
@@ -174,7 +180,7 @@ export const roomLifecycleStateSchema = z
   .object({
     type: z.literal("room.lifecycle"),
     protocolVersion: protocolVersionSchema,
-    roundNumber: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+    roundNumber: roundNumberSchema,
     isOwner: z.boolean(),
     rematch: z
       .object({
@@ -295,6 +301,7 @@ export const matchSnapshotSchema = z
     protocolVersion: protocolVersionSchema,
     gameId: gameIdSchema,
     gameVersion: gameVersionSchema,
+    roundNumber: roundNumberSchema.optional(),
     revision: revisionSchema,
     status: matchStatusSchema,
     viewer: viewerSchema,

@@ -29,6 +29,7 @@ const actionCommand = {
   type: "game.action",
   protocolVersion: PROTOCOL_VERSION,
   commandId: "command-1",
+  roundNumber: 1,
   expectedRevision: 0,
   action: { type: "PLACE_MARK", cell: 4 },
 } as const;
@@ -38,6 +39,7 @@ const snapshot = {
   protocolVersion: PROTOCOL_VERSION,
   gameId: "tic-tac-toe",
   gameVersion: "1.0.0",
+  roundNumber: 1,
   revision: 1,
   status: "active",
   viewer: { kind: "player", slotId: "player-1" },
@@ -161,6 +163,15 @@ describe("GameActionCommand", () => {
     const parsed = gameActionCommandSchema.parse(actionCommand);
     expect(parsed).toEqual(actionCommand);
     expectTypeOf<GameActionCommand["action"]>().toBeUnknown();
+    expect(
+      gameActionCommandSchema.safeParse({
+        type: actionCommand.type,
+        protocolVersion: actionCommand.protocolVersion,
+        commandId: actionCommand.commandId,
+        expectedRevision: actionCommand.expectedRevision,
+        action: actionCommand.action,
+      }).success,
+    ).toBe(true);
   });
 
   it.each([
@@ -168,6 +179,7 @@ describe("GameActionCommand", () => {
     [{ ...actionCommand, expectedRevision: -1 }],
     [{ ...actionCommand, expectedRevision: 1.5 }],
     [{ ...actionCommand, expectedRevision: Number.MAX_SAFE_INTEGER + 1 }],
+    [{ ...actionCommand, roundNumber: 0 }],
     [{ ...actionCommand, type: "game.move" }],
     [{ ...actionCommand, actorSlotId: "player-2" }],
     [{ ...actionCommand, state: { board: [] } }],
@@ -216,6 +228,7 @@ describe("server envelopes", () => {
   it.each([
     [{ ...snapshot, protocolVersion: 0 }],
     [{ ...snapshot, revision: -1 }],
+    [{ ...snapshot, roundNumber: 0 }],
     [{ ...snapshot, type: "match.patch" }],
     [{ ...snapshot, state: { secret: true } }],
     [{ ...snapshot, rng: { seed: "secret" } }],

@@ -193,11 +193,13 @@ function command(
   commandId: string,
   expectedRevision: number,
   action: unknown,
+  roundNumber?: number,
 ): GameActionCommand {
   return {
     type: "game.action",
     protocolVersion: PROTOCOL_VERSION,
     commandId,
+    ...(roundNumber === undefined ? {} : { roundNumber }),
     expectedRevision,
     action,
   };
@@ -452,13 +454,14 @@ describe.sequential("authoritative Colyseus Game Server", () => {
       id: string,
       revision: number,
       cell: number,
+      roundNumber?: number,
     ): Promise<ServerMessage> => {
       const result = inbox.next(
         (message) => isSnapshot(message) && message.causedByCommandId === id,
       );
       room.send(
         GAME_ACTION_MESSAGE,
-        command(id, revision, { type: "PLACE_MARK", cell }),
+        command(id, revision, { type: "PLACE_MARK", cell }, roundNumber),
       );
       return result;
     };
@@ -622,11 +625,42 @@ describe.sequential("authoritative Colyseus Game Server", () => {
     });
     expect(roundTwoStored?.replayId).not.toBe(stored?.replayId);
 
-    await playAccepted(roomA, inboxA, "round-2-play-1", 0, 0);
-    await playAccepted(roomB, inboxB, "round-2-play-2", 1, 3);
-    await playAccepted(roomA, inboxA, "round-2-play-3", 2, 1);
-    await playAccepted(roomB, inboxB, "round-2-play-4", 3, 4);
-    await playAccepted(roomA, inboxA, "round-2-play-5", 4, 2);
+    const duplicateFromRoundOne = inboxA.next(
+      (message) =>
+        isSnapshot(message) && message.causedByCommandId === "play-1",
+    );
+    roomA.send(
+      GAME_ACTION_MESSAGE,
+      command("play-1", 0, { type: "PLACE_MARK", cell: 0 }),
+    );
+    await expect(duplicateFromRoundOne).resolves.toMatchObject({
+      roundNumber: 1,
+      revision: 1,
+    });
+    roomA.send(
+      GAME_ACTION_MESSAGE,
+      command("wrong-round", 0, { type: "PLACE_MARK", cell: 0 }, 1),
+    );
+    await expect(
+      inboxA.next(
+        (message) =>
+          message.type === "command.rejected" &&
+          message.commandId === "wrong-round",
+      ),
+    ).resolves.toMatchObject({
+      code: "STALE_REVISION",
+      snapshot: { roundNumber: 2, revision: 0 },
+    });
+    expect(await roomStore.getByRoomCode("PLAY2345")).toMatchObject({
+      roundNumber: 2,
+      revision: 0,
+    });
+
+    await playAccepted(roomA, inboxA, "round-2-play-1", 0, 0, 2);
+    await playAccepted(roomB, inboxB, "round-2-play-2", 1, 3, 2);
+    await playAccepted(roomA, inboxA, "round-2-play-3", 2, 1, 2);
+    await playAccepted(roomB, inboxB, "round-2-play-4", 3, 4, 2);
+    await playAccepted(roomA, inboxA, "round-2-play-5", 4, 2, 2);
     const completedRoundTwo = await roomStore.getByRoomCode("PLAY2345");
     expect(completedRoundTwo).toMatchObject({
       roundNumber: 2,

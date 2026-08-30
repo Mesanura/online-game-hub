@@ -118,12 +118,17 @@ const connected = {
   playerSlotId: "slot-1",
 } as const;
 
-function snapshot(revision: number, causedByCommandId?: string) {
+function snapshot(
+  revision: number,
+  causedByCommandId?: string,
+  roundNumber = 1,
+) {
   return {
     type: "match.snapshot",
     protocolVersion: PROTOCOL_VERSION,
     gameId: "tic-tac-toe",
     gameVersion: "1.0.0",
+    roundNumber,
     revision,
     status: "active",
     viewer: { kind: "player", slotId: "slot-1" },
@@ -231,6 +236,7 @@ describe("GameClientHost", () => {
           type: "game.action",
           protocolVersion: PROTOCOL_VERSION,
           commandId: "command-1",
+          roundNumber: 1,
           expectedRevision: 4,
           action: { type: "PLACE_MARK", cell: 2 },
         },
@@ -305,7 +311,7 @@ describe("GameClientHost", () => {
 
   it("sends control commands, resets revision on a new round, and suppresses reconnect after close", async () => {
     const room = new FakeRoom();
-    const ids = ["ready-1", "cancel-1", "ready-2", "close-1"];
+    const ids = ["ready-1", "cancel-1", "ready-2", "round-2-action", "close-1"];
     let idIndex = 0;
     let ticketCount = 0;
     const host = new GameClientHost({
@@ -363,8 +369,25 @@ describe("GameClientHost", () => {
       roomLifecycle: { roundNumber: 2 },
       snapshot: null,
     });
-    room.emit(snapshot(0));
+    room.emit(snapshot(5));
+    expect(host.getState().snapshot).toBeNull();
+    room.emit(snapshot(0, undefined, 2));
     expect(host.getState().snapshot?.revision).toBe(0);
+
+    const roundTwoAction = host.submitAction({
+      type: "PLACE_MARK",
+      cell: 0,
+    });
+    expect(room.sent.at(-1)).toMatchObject({
+      type: GAME_ACTION_MESSAGE,
+      payload: {
+        commandId: "round-2-action",
+        roundNumber: 2,
+        expectedRevision: 0,
+      },
+    });
+    room.emit(snapshot(1, "round-2-action", 2));
+    await expect(roundTwoAction).resolves.toBeUndefined();
 
     const close = host.closeRoom();
     room.emitLifecycle(

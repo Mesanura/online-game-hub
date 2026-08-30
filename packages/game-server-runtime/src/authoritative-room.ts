@@ -580,6 +580,16 @@ export function createAuthoritativeGameRoomClass(
         );
         return;
       }
+      if ((command.roundNumber ?? 1) !== aggregate.roundNumber) {
+        this.#rejectAndCache(
+          client,
+          commandKey,
+          "STALE_REVISION",
+          command.commandId,
+          this.#snapshotFor(client),
+        );
+        return;
+      }
       const slot = aggregate.slots.find(
         (candidate) => candidate.slotId === clientData.slotId,
       );
@@ -897,7 +907,6 @@ export function createAuthoritativeGameRoomClass(
       aggregate.outcome = null;
       this.#pendingRound = null;
       this.#readySessions.clear();
-      this.#commandOutcomes.clear();
       this.#terminalTimeout?.cancel();
       this.#terminalTimeout = null;
       logger.write({
@@ -1310,6 +1319,7 @@ export function createAuthoritativeGameRoomClass(
         protocolVersion: PROTOCOL_VERSION,
         gameId: aggregate.definition.manifest.id,
         gameVersion: aggregate.definition.manifest.gameVersion,
+        roundNumber: aggregate.roundNumber,
         revision: aggregate.revision,
         status: aggregate.status,
         viewer,
