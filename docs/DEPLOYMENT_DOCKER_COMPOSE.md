@@ -11,15 +11,16 @@
 | `game-server` | Colyseus HTTP、matchmaking 和 WebSocket        | `http://localhost:2567` | `GET /health` 返回成功                 |
 | `web`         | Next.js standalone production server           | `http://localhost:3000` | 首页返回成功                           |
 
-`web` 和 `game-server` 使用 non-root Node 用户运行。三个应用镜像来自同一个多阶段 Dockerfile；依赖安装按 workspace manifest 和 lockfile 分层缓存，最终镜像只包含各服务的生产运行文件。Compose 不使用源码 bind mount，PostgreSQL 数据写入 named volume。
+`web` 和 `game-server` 使用 non-root Node 用户运行。CI 从同一个多阶段 Dockerfile 构建并向 Docker Hub 发布 Web、Game Server 和 database migrator 镜像；最终镜像只包含各服务的生产运行文件。部署主机无需 Node.js、pnpm 或项目源码。PostgreSQL 数据写入默认位于 `./data/postgres` 的宿主目录，便于直接备份和迁移。
 
 浏览器直接访问 `GAME_SERVER_PUBLIC_URL`，不会经过 Next.js WebSocket 代理。该值必须是浏览器可访问的宿主地址，不能写成 Docker 内部的 `game-server` hostname。容器内部只有 PostgreSQL 连接使用 `postgres` 服务名。
 
 ## 前置要求
 
-- 支持 BuildKit 的 Docker Engine；
+- Bash、curl、tar、awk、od 和常用 POSIX 工具；
+- 可用的 Docker Engine；
 - 通过 `docker compose` 调用的 Docker Compose plugin；
-- 至少能拉取 `node:24.14.0-bookworm-slim` 与 `postgres:17.6-alpine3.22`；
+- 能够拉取 `.env` 指定的 Online Game Hub 镜像与 `postgres:17.6-alpine3.22`；
 - 默认宿主端口可用，或已在 `.env` 中覆盖。
 
 先确认运行环境：
@@ -32,9 +33,33 @@ docker info >/dev/null
 
 下文使用 POSIX shell 命令示例，但部署不依赖特定宿主操作系统、桌面管理工具或源码目录布局。`docker info` 必须能够连接预期的 Docker daemon。
 
+## 自动准备新机器
+
+在希望保存项目的父目录执行：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Mesanura/online-game-hub/main/docker-deploy.sh | bash
+cd online-game-hub
+docker compose up -d
+```
+
+脚本只下载指定 GitHub ref 的 `docker-compose.yml` 和 `.env.example`；随后生成独立的 PostgreSQL、guest session 和 Game Server ticket 凭证，写入权限为 `0600` 的 `.env`，创建权限为 `0700` 的 `data/postgres`，并运行 `docker compose config`。完成时会在终端显示生成的凭证；请立即保存到受控的密码管理工具中。脚本只准备文件，不会自行启动服务，`docker compose up -d` 会直接拉取已发布镜像。
+
+默认目标目录是当前目录下的 `online-game-hub`，且必须为空。可在运行 Bash 时覆盖源码 ref、目标目录或仓库，例如：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Mesanura/online-game-hub/main/docker-deploy.sh | \
+  ONLINE_GAME_HUB_REF=v1.0.0 \
+  ONLINE_GAME_HUB_IMAGE_TAG=v1.0.0 \
+  ONLINE_GAME_HUB_DIR=/srv/online-game-hub \
+  bash
+```
+
+`ONLINE_GAME_HUB_IMAGE_NAMESPACE` 可覆盖默认 Docker Hub namespace `mesanura`。正式部署建议把脚本 URL、`ONLINE_GAME_HUB_REF` 和 `ONLINE_GAME_HUB_IMAGE_TAG` 同时固定到同一个已审查的版本 tag，而不是长期跟随 `main`/`latest`。目标父目录必须允许当前用户写入。
+
 ## 配置 `.env`
 
-进入仓库并复制示例：
+自动准备脚本已生成 `.env`，无需再次复制。手动部署时进入仓库并复制示例：
 
 ```bash
 cd /path/to/online-game-hub
@@ -46,6 +71,15 @@ cp .env.example .env
 - `POSTGRES_PASSWORD`：使用 URL-safe 密码，因为 Compose 会把它嵌入 PostgreSQL URL；
 - `GUEST_SESSION_SECRET`：Web guest cookie 的独立密钥，至少 32 bytes；
 - `GAME_SERVER_TICKET_SECRET`：Web 与 Game Server 共享的 ticket 密钥，至少 32 bytes，不能与 guest secret 相同。
+
+`DOCKER_IMAGE_NAMESPACE` 与 `DOCKER_IMAGE_TAG` 决定三个应用镜像的来源。默认使用 `mesanura/*:latest`；固定发布版本时应把 tag 改为对应的 `v*` tag。若镜像仓库是 private，启动前还必须先执行 `docker login`，一键匿名部署则要求三个仓库公开可拉取。
+
+手动部署还需创建 PostgreSQL 数据目录：
+
+```bash
+mkdir -p ./data/postgres
+chmod 700 ./data ./data/postgres
+```
 
 可使用 OpenSSL 生成示例值：
 
@@ -69,26 +103,25 @@ GUEST_COOKIE_SECURE=true
 
 `WEB_PUBLIC_ORIGIN` 必须精确出现在 Game Server CORS allowlist 中；`GAME_SERVER_PUBLIC_URL` 必须指向浏览器实际访问的 HTTP(S)/WebSocket 入口。若修改 `WEB_PORT` 或 `GAME_SERVER_PORT`，也要同步修改这两个公开地址。
 
-## 构建与启动
+## 拉取与启动
 
-先检查插值后的配置，再构建并启动：
+先检查插值后的配置，再拉取并启动：
 
 ```bash
 docker compose config
-docker compose build
-docker compose up -d
+docker compose pull
+docker compose up -d --wait
 docker compose ps -a
 docker compose logs --tail=200
 ```
 
-`migrate` 显示 `Exited (0)` 是正常状态。它在 PostgreSQL healthy 后调用仓库现有 migration CLI；Game Server 和 Web 只在 migration 成功后启动。应用本身仍不会隐式创建或修改 schema。
+`migrate` 显示 `Exited (0)` 是正常状态。它在 PostgreSQL healthy 后调用仓库现有 migration CLI；Game Server 和 Web 只在 migration 成功后启动。为覆盖整体 `docker compose restart` 时 PostgreSQL 与一次性任务并发恢复的短暂竞态，migrate 最多失败重试 5 次；实际 migration 错误仍会稳定失败并阻止应用启动。应用本身不会隐式创建或修改 schema。
 
 日常最短启动命令是：
 
 ```bash
 cd /path/to/online-game-hub
-cp .env.example .env
-docker compose up --build -d
+docker compose up -d
 ```
 
 ## 查看、停止与重建
@@ -118,30 +151,65 @@ Compose 的 `restart` 命令本身不重新评估 `depends_on`；紧接着执行
 docker compose stop
 ```
 
-停止并删除容器和网络，但保留 PostgreSQL named volume：
+停止并删除容器和网络，但保留 PostgreSQL 数据目录：
 
 ```bash
 docker compose down
 ```
 
-重新构建全部服务：
+拉取当前 `.env` 指定 tag 的最新镜像并重建容器：
 
 ```bash
-docker compose build --no-cache
-docker compose up -d --force-recreate
+docker compose pull
+docker compose up -d --force-recreate --wait
 ```
 
-只重建一个服务可使用 `docker compose build web` 或 `docker compose build game-server`，随后执行 `docker compose up -d --no-deps web` 或对应服务名。
+只更新一个服务可使用 `docker compose pull web` 或 `docker compose pull game-server`，随后执行 `docker compose up -d --no-deps --force-recreate web` 或对应服务名。migration 与 schema 变化仍应通过完整 `docker compose up -d --wait` 应用依赖顺序。
+
+## 从源码构建镜像
+
+仓库中的 `docker-compose.build.yml` 是维护者使用的本地 overlay，不由快速部署脚本下载。在完整源码 checkout 中可运行：
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.build.yml build
+docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --wait
+```
+
+overlay 只把三个已发布应用镜像替换为本地 Dockerfile targets；PostgreSQL、migration 顺序、healthcheck、端口和数据目录都继续复用生产 Compose。
+
+## Docker Hub 镜像发布
+
+`.github/workflows/ci.yml` 的 `publish-images` job 只在 `main` 或 `v*` tag 的 push 通过完整 `verify` job 后运行。它使用 Docker 官方 GitHub Actions、Buildx 和 QEMU，从现有 Dockerfile targets 构建 `linux/amd64`/`linux/arm64` 镜像并推送：
+
+- `mesanura/online-game-hub-web`；
+- `mesanura/online-game-hub-game-server`；
+- `mesanura/online-game-hub-database-migrator`。
+
+默认分支发布 `latest` 和 `sha-<short-sha>`；`v*` Git tag 发布同名版本 tag 和 `sha-<short-sha>`。发布前在 GitHub repository settings 中配置：
+
+- Actions secret `DOCKERHUB_USERNAME`：有目标 namespace push 权限的 Docker Hub 用户；
+- Actions secret `DOCKERHUB_TOKEN`：最小 read/write scope 的 access token，不使用账号密码；
+- 可选 Actions variable `DOCKERHUB_NAMESPACE`：目标 namespace，缺省为 `mesanura`。
+
+Docker Hub 中必须预先创建或允许 token 创建上述三个 repository。要支持脚本匿名一键部署，应将它们设为 public；若 namespace 不是 `mesanura`，还要通过脚本的 `ONLINE_GAME_HUB_IMAGE_NAMESPACE` 或生成后 `.env` 的 `DOCKER_IMAGE_NAMESPACE` 指向实际位置。
 
 ## 数据持久化与清理
 
-PostgreSQL 数据默认位于 Docker 管理的 `online-game-hub-postgres-data` named volume。查看实际位置和创建时间：
+PostgreSQL 数据默认位于部署目录下的 `./data/postgres`。可通过 `.env` 的 `POSTGRES_DATA_DIR` 改为其他绝对或相对路径；相对路径从 `docker-compose.yml` 所在目录解析。官方 PostgreSQL entrypoint 会把目录改为容器内 postgres UID 所有且限制权限，因此普通宿主用户可能不能直接读取。默认路径可通过同版本容器安全备份：
 
 ```bash
-docker volume inspect online-game-hub-postgres-data
+docker compose stop postgres
+docker run --rm \
+  -v "$(pwd)/data/postgres:/source:ro" \
+  -v "$(pwd):/backup" \
+  postgres:17.6-alpine3.22 \
+  tar -czf /backup/postgres-data-backup.tar.gz -C /source .
+docker compose start postgres
 ```
 
-`docker compose down` 不删除该 volume；重新 `up` 时 PostgreSQL 会复用原数据目录。可以在完成一局后记录行数，再执行 `down`/`up` 并比较：
+迁移时在 Compose 停止状态下，用同版本容器把备份解压到新机器配置的 `POSTGRES_DATA_DIR`，再启动 Compose。PostgreSQL 主版本必须与 `docker-compose.yml` 固定的版本兼容。若修改了 `POSTGRES_DATA_DIR`，备份命令中的宿主 source path 也必须同步修改并核对绝对路径。
+
+`docker compose down` 不删除该宿主目录；重新 `up` 时 PostgreSQL 会复用原数据。可以在完成一局后记录行数，再执行 `down`/`up` 并比较：
 
 ```bash
 docker compose exec -T postgres sh -lc \
@@ -160,13 +228,18 @@ docker compose exec -T postgres sh -lc \
   -c "select count(*) from replay_actions;"'
 ```
 
-只有明确要永久清空本地数据库时才执行：
+`docker compose down -v` 不会删除 bind-mounted 数据目录。只有明确要永久清空本地数据库，并确认当前目录是该部署目录时，才执行：
 
 ```bash
-docker compose down -v
+docker compose down
+test -f ./docker-compose.yml
+docker run --rm \
+  -v "$(pwd)/data:/data" \
+  postgres:17.6-alpine3.22 \
+  sh -c 'rm -rf -- /data/postgres'
 ```
 
-该命令会删除 PostgreSQL named volume 和其中全部 Match、replay、history 与 migration 数据，无法通过 Compose 恢复。
+最后一条命令以容器 root 权限删除默认数据目录中的全部 Match、replay、history 与 migration 数据，无法通过 Compose 恢复。若 `POSTGRES_DATA_DIR` 已被修改，应先核对实际绝对路径，不要照抄默认清理命令。
 
 ## 验证服务
 
@@ -201,8 +274,8 @@ docker compose exec -T postgres sh -lc \
 docker version
 docker compose version
 docker compose config
-docker compose build
-docker compose up -d
+docker compose pull
+docker compose up -d --wait
 docker compose ps -a
 docker compose logs --tail=200
 docker compose restart
@@ -213,7 +286,7 @@ docker compose up -d --wait
 docker compose ps -a
 ```
 
-完成浏览器 WebSocket 流程和持久化行数对比后，使用 `docker compose down` 停止验收栈。除非明确接受数据丢失，不要加 `-v`。
+完成浏览器 WebSocket 流程和持久化行数对比后，使用 `docker compose down` 停止验收栈。该命令保留 `POSTGRES_DATA_DIR`。
 
 ## 常见故障
 
@@ -223,7 +296,7 @@ docker compose ps -a
 
 ### 拉取 Docker Hub 超时
 
-确认 Docker daemon 能访问 registry；daemon 的代理配置可能独立于当前 shell 环境。更新代理或 registry mirror 后重启 daemon，再运行 `docker pull node:24.14.0-bookworm-slim` 验证。不要通过改成未固定版本的镜像规避网络问题。
+确认 Docker daemon 能访问 registry；daemon 的代理配置可能独立于当前 shell 环境。更新代理或 registry mirror 后重启 daemon，再运行 `docker compose pull` 验证。若返回 denied/not found，核对 `DOCKER_IMAGE_NAMESPACE`、`DOCKER_IMAGE_TAG`、仓库可见性和 Docker Hub 登录状态。不要通过改成未固定版本的镜像规避网络问题。
 
 ### 端口已占用
 

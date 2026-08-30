@@ -85,6 +85,16 @@ Colyseus 的可选 `msgpackr-extract` 原生加速不影响协议正确性，仓
 
 ## 本地启动与停止
 
+新机器可使用 Docker Compose 自动准备脚本下载部署配置、生成安全凭证并创建本地 PostgreSQL 数据目录；应用直接从 Docker Hub 拉取，不需要下载源码或安装 Node.js：
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/Mesanura/online-game-hub/main/docker-deploy.sh | bash
+cd online-game-hub
+docker compose up -d
+```
+
+脚本的版本固定、目标目录、数据备份与完整验收方式见 [Docker Compose 单机部署](./docs/DEPLOYMENT_DOCKER_COMPOSE.md)。
+
 Web 和 Game Server 是两个独立进程，也是各自 PostgreSQL 连接的 owner。先分别复制 `apps/web/.env.example` 和 `apps/game-server/.env.example` 为同目录下被忽略的 `.env.local`，将数据库与 secret 占位符替换为本地值。两端使用同一个已迁移数据库时，`DATABASE_MODE=postgres` 与 `DATABASE_URL` 必须一致；生产环境强制 PostgreSQL，缺失 credential 会 fail closed。两端的 `GAME_SERVER_TICKET_ISSUER` 和 `GAME_SERVER_TICKET_SECRET` 必须完全一致；Web 的 `GAME_SERVER_PUBLIC_URL` 必须是浏览器可访问的 Game Server HTTP(S) 地址，Game Server 的 `GAME_SERVER_ALLOWED_WEB_ORIGINS` 必须包含 Web origin。guest session secret 与 ticket secret 不得复用，`DATABASE_URL`、cookie 和 ticket 不得写入仓库或日志。
 
 先显式创建空数据库并从 workspace root 应用 migration；应用启动不会自动迁移或破坏 schema：
