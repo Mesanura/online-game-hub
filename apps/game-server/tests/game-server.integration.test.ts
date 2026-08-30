@@ -259,6 +259,9 @@ describe.sequential("authoritative Colyseus Game Server", () => {
         "LEAV2345",
         "WALT2345",
         "TTLM2345",
+        "CFPLAY45",
+        "CFDRAW45",
+        "CFLEAV45",
       ]),
       logger: { write: (event) => logs.push(event) },
     });
@@ -1057,6 +1060,544 @@ describe.sequential("authoritative Colyseus Game Server", () => {
       status: "completed",
       roundNumber: 1,
       revision: 5,
+    });
+  });
+
+  it("runs Connect Four authoritatively across rules, reconnection, rematch, terminal lifecycle, draw, and abandonment", async () => {
+    const originalRoomA = await new ColyseusClient(address.httpUrl).create(
+      GAME_ROOM_NAME,
+      {
+        type: "room.create",
+        protocolVersion: PROTOCOL_VERSION,
+        ticket: authority.issue("connect-four-a"),
+        gameId: "connect-four",
+        initialConfig: null,
+      },
+    );
+    const originalInboxA = new MessageInbox(originalRoomA);
+    const connectedA = await originalInboxA.next(
+      (message) => message.type === "room.connected",
+    );
+    expect(connectedA).toMatchObject({
+      gameId: "connect-four",
+      gameVersion: "1.0.0",
+      roomCode: "CFPLAY45",
+      playerSlotId: "slot-1",
+    });
+    await expect(originalInboxA.next(isSnapshot)).resolves.toMatchObject({
+      roundNumber: 1,
+      revision: 0,
+      status: "waiting",
+    });
+
+    const activeForA = originalInboxA.next(
+      (message) => isSnapshot(message) && message.status === "active",
+    );
+    const originalRoomB = await new ColyseusClient(address.httpUrl).join(
+      GAME_ROOM_NAME,
+      {
+        type: "room.join",
+        protocolVersion: PROTOCOL_VERSION,
+        ticket: authority.issue("connect-four-b"),
+        roomCode: "CFPLAY45",
+      },
+    );
+    const originalInboxB = new MessageInbox(originalRoomB);
+    const connectedB = await originalInboxB.next(
+      (message) => message.type === "room.connected",
+    );
+    const [initialA, initialB] = await Promise.all([
+      activeForA,
+      originalInboxB.next(
+        (message) => isSnapshot(message) && message.status === "active",
+      ),
+    ]);
+    expect(connectedB).toMatchObject({
+      roomCode: "CFPLAY45",
+      playerSlotId: "slot-2",
+    });
+    expect(initialA).toMatchObject({
+      viewer: { kind: "player", slotId: "slot-1" },
+      view: { yourDisc: "RED", nextTurnSlotId: "slot-1" },
+    });
+    expect(initialB).toMatchObject({
+      viewer: { kind: "player", slotId: "slot-2" },
+      view: { yourDisc: "YELLOW", nextTurnSlotId: "slot-1" },
+    });
+    expect(initialA).not.toHaveProperty("state");
+    expect((initialA as MatchSnapshot).view).not.toHaveProperty(
+      "nextPlayerIndex",
+    );
+
+    const oldConnectionLeft = new Promise<void>((resolve) =>
+      originalRoomA.onLeave.once(() => resolve()),
+    );
+    const roomA = await new ColyseusClient(address.httpUrl).join(
+      GAME_ROOM_NAME,
+      {
+        type: "room.join",
+        protocolVersion: PROTOCOL_VERSION,
+        ticket: authority.issue("connect-four-a"),
+        roomCode: "CFPLAY45",
+      },
+    );
+    const inboxA = new MessageInbox(roomA);
+    const lifecycleA = new LifecycleInbox(roomA);
+    await expect(
+      inboxA.next((message) => message.type === "room.connected"),
+    ).resolves.toMatchObject({
+      roomCode: "CFPLAY45",
+      playerSlotId: "slot-1",
+    });
+    await inboxA.next(
+      (message) => isSnapshot(message) && message.status === "active",
+    );
+    await oldConnectionLeft;
+
+    await originalRoomB.leave(false);
+    await waitUntil(async () => {
+      const stored = await roomStore.getByRoomCode("CFPLAY45");
+      return stored?.players[1]?.reservedUntilMilliseconds !== null;
+    });
+    const roomB = await new ColyseusClient(address.httpUrl).join(
+      GAME_ROOM_NAME,
+      {
+        type: "room.join",
+        protocolVersion: PROTOCOL_VERSION,
+        ticket: authority.issue("connect-four-b"),
+        roomCode: "CFPLAY45",
+      },
+    );
+    const inboxB = new MessageInbox(roomB);
+    const lifecycleB = new LifecycleInbox(roomB);
+    await expect(
+      inboxB.next((message) => message.type === "room.connected"),
+    ).resolves.toMatchObject({
+      roomCode: "CFPLAY45",
+      playerSlotId: "slot-2",
+    });
+    await inboxB.next(
+      (message) => isSnapshot(message) && message.status === "active",
+    );
+
+    roomA.send(GAME_ACTION_MESSAGE, {
+      ...command("cf-forged", 0, { type: "DROP_DISC", column: 0 }),
+      actorSlotId: "slot-2",
+    });
+    await expect(
+      inboxA.next(
+        (message) =>
+          message.type === "command.rejected" &&
+          message.code === "INVALID_ACTION_PAYLOAD",
+      ),
+    ).resolves.toMatchObject({
+      code: "INVALID_ACTION_PAYLOAD",
+      revision: 0,
+    });
+    roomA.send(
+      GAME_ACTION_MESSAGE,
+      command("cf-out-of-bounds", 0, { type: "DROP_DISC", column: 7 }),
+    );
+    await expect(
+      inboxA.next(
+        (message) =>
+          message.type === "command.rejected" &&
+          message.commandId === "cf-out-of-bounds",
+      ),
+    ).resolves.toMatchObject({
+      code: "INVALID_ACTION_PAYLOAD",
+      revision: 0,
+    });
+    roomB.send(
+      GAME_ACTION_MESSAGE,
+      command("cf-wrong-turn", 0, { type: "DROP_DISC", column: 0 }),
+    );
+    await expect(
+      inboxB.next(
+        (message) =>
+          message.type === "command.rejected" &&
+          message.commandId === "cf-wrong-turn",
+      ),
+    ).resolves.toMatchObject({
+      code: "GAME_RULE_REJECTED",
+      gameRuleCode: "NOT_YOUR_TURN",
+      revision: 0,
+    });
+
+    const acceptDrop = async (
+      room: ClientRoom,
+      inbox: MessageInbox,
+      id: string,
+      revision: number,
+      column: number,
+      roundNumber = 1,
+    ): Promise<MatchSnapshot> => {
+      const accepted = inbox.next(
+        (message) => isSnapshot(message) && message.causedByCommandId === id,
+      );
+      room.send(
+        GAME_ACTION_MESSAGE,
+        command(id, revision, { type: "DROP_DISC", column }, roundNumber),
+      );
+      return (await accepted) as MatchSnapshot;
+    };
+
+    await acceptDrop(roomA, inboxA, "cf-fill-1", 0, 0);
+    roomA.send(
+      GAME_ACTION_MESSAGE,
+      command("cf-fill-1", 0, { type: "DROP_DISC", column: 0 }),
+    );
+    await expect(
+      inboxA.next(
+        (message) =>
+          isSnapshot(message) && message.causedByCommandId === "cf-fill-1",
+      ),
+    ).resolves.toMatchObject({ roundNumber: 1, revision: 1 });
+    roomB.send(
+      GAME_ACTION_MESSAGE,
+      command("cf-stale", 0, { type: "DROP_DISC", column: 0 }),
+    );
+    await expect(
+      inboxB.next(
+        (message) =>
+          message.type === "command.rejected" &&
+          message.commandId === "cf-stale",
+      ),
+    ).resolves.toMatchObject({
+      code: "STALE_REVISION",
+      revision: 1,
+      snapshot: { roundNumber: 1, revision: 1 },
+    });
+
+    await acceptDrop(roomB, inboxB, "cf-fill-2", 1, 0);
+    await acceptDrop(roomA, inboxA, "cf-fill-3", 2, 0);
+    await acceptDrop(roomB, inboxB, "cf-fill-4", 3, 0);
+    await acceptDrop(roomA, inboxA, "cf-fill-5", 4, 0);
+    await acceptDrop(roomB, inboxB, "cf-fill-6", 5, 0);
+    roomA.send(
+      GAME_ACTION_MESSAGE,
+      command("cf-column-full", 6, { type: "DROP_DISC", column: 0 }),
+    );
+    await expect(
+      inboxA.next(
+        (message) =>
+          message.type === "command.rejected" &&
+          message.commandId === "cf-column-full",
+      ),
+    ).resolves.toMatchObject({
+      code: "GAME_RULE_REJECTED",
+      gameRuleCode: "COLUMN_FULL",
+      revision: 6,
+    });
+    expect(await roomStore.getByRoomCode("CFPLAY45")).toMatchObject({
+      revision: 6,
+      status: "active",
+    });
+
+    await acceptDrop(roomA, inboxA, "cf-win-1", 6, 1);
+    await acceptDrop(roomB, inboxB, "cf-win-2", 7, 6);
+    await acceptDrop(roomA, inboxA, "cf-win-3", 8, 2);
+    await acceptDrop(roomB, inboxB, "cf-win-4", 9, 6);
+    const completedRoundOne = await acceptDrop(
+      roomA,
+      inboxA,
+      "cf-win-5",
+      10,
+      3,
+    );
+    expect(completedRoundOne).toMatchObject({
+      roundNumber: 1,
+      revision: 11,
+      status: "completed",
+      outcome: {
+        type: "WIN",
+        winnerSlotId: "slot-1",
+        winningCells: [35, 36, 37, 38],
+      },
+    });
+    roomA.send(
+      GAME_ACTION_MESSAGE,
+      command("cf-after-terminal", 11, { type: "DROP_DISC", column: 4 }),
+    );
+    await expect(
+      inboxA.next(
+        (message) =>
+          message.type === "command.rejected" &&
+          message.commandId === "cf-after-terminal",
+      ),
+    ).resolves.toMatchObject({
+      code: "MATCH_NOT_ACTIVE",
+      revision: 11,
+    });
+
+    const storedRoundOne = await roomStore.getByRoomCode("CFPLAY45");
+    const replayRoundOne = await replayStore.get(
+      storedRoundOne?.replayId ?? "",
+    );
+    expect(storedRoundOne).toMatchObject({
+      gameId: "connect-four",
+      gameVersion: "1.0.0",
+      roundNumber: 1,
+      revision: 11,
+      status: "completed",
+    });
+    expect(replayRoundOne?.actions).toHaveLength(11);
+    expect(replayRoundOne?.actions.map((event) => event.action)).toEqual([
+      { type: "DROP_DISC", column: 0 },
+      { type: "DROP_DISC", column: 0 },
+      { type: "DROP_DISC", column: 0 },
+      { type: "DROP_DISC", column: 0 },
+      { type: "DROP_DISC", column: 0 },
+      { type: "DROP_DISC", column: 0 },
+      { type: "DROP_DISC", column: 1 },
+      { type: "DROP_DISC", column: 6 },
+      { type: "DROP_DISC", column: 2 },
+      { type: "DROP_DISC", column: 6 },
+      { type: "DROP_DISC", column: 3 },
+    ]);
+    expect(replayRoundOne).toMatchObject({
+      recordedRngCursor: 0,
+      recordedOutcome: { type: "WIN", winnerSlotId: "slot-1" },
+    });
+    expect(verifyReplay(replayRoundOne, resolveGameDefinition)).toMatchObject({
+      status: "verified",
+      rng: { cursor: 0 },
+      outcome: { type: "WIN", winnerSlotId: "slot-1" },
+    });
+
+    await Promise.all([
+      lifecycleA.next((message) => message.rematch.available),
+      lifecycleB.next((message) => message.rematch.available),
+    ]);
+    const readyA = lifecycleA.next(
+      (message) => message.causedByCommandId === "cf-ready-a",
+    );
+    roomA.send(
+      ROOM_CONTROL_MESSAGE,
+      controlCommand("cf-ready-a", "REQUEST_REMATCH"),
+    );
+    await readyA;
+    const roundTwoLifecycleA = lifecycleA.next(
+      (message) => message.roundNumber === 2,
+    );
+    const roundTwoLifecycleB = lifecycleB.next(
+      (message) =>
+        message.roundNumber === 2 && message.causedByCommandId === "cf-ready-b",
+    );
+    const roundTwoSnapshotA = inboxA.next(
+      (message) =>
+        isSnapshot(message) &&
+        message.roundNumber === 2 &&
+        message.revision === 0,
+    );
+    const roundTwoSnapshotB = inboxB.next(
+      (message) =>
+        isSnapshot(message) &&
+        message.roundNumber === 2 &&
+        message.revision === 0,
+    );
+    roomB.send(
+      ROOM_CONTROL_MESSAGE,
+      controlCommand("cf-ready-b", "REQUEST_REMATCH"),
+    );
+    await Promise.all([
+      roundTwoLifecycleA,
+      roundTwoLifecycleB,
+      roundTwoSnapshotA,
+      roundTwoSnapshotB,
+    ]);
+    const storedRoundTwoStart = await roomStore.getByRoomCode("CFPLAY45");
+    expect(storedRoundTwoStart).toMatchObject({
+      roomCode: "CFPLAY45",
+      gameId: "connect-four",
+      gameVersion: "1.0.0",
+      roundNumber: 2,
+      revision: 0,
+      status: "active",
+      players: [{ slotId: "slot-1" }, { slotId: "slot-2" }],
+    });
+    expect(storedRoundTwoStart?.replayId).not.toBe(storedRoundOne?.replayId);
+
+    roomA.send(
+      GAME_ACTION_MESSAGE,
+      command("cf-wrong-round", 0, { type: "DROP_DISC", column: 0 }, 1),
+    );
+    await expect(
+      inboxA.next(
+        (message) =>
+          message.type === "command.rejected" &&
+          message.commandId === "cf-wrong-round",
+      ),
+    ).resolves.toMatchObject({
+      code: "STALE_REVISION",
+      snapshot: { roundNumber: 2, revision: 0 },
+    });
+    await acceptDrop(roomA, inboxA, "cf-r2-1", 0, 0, 2);
+    await acceptDrop(roomB, inboxB, "cf-r2-2", 1, 0, 2);
+    await acceptDrop(roomA, inboxA, "cf-r2-3", 2, 1, 2);
+    await acceptDrop(roomB, inboxB, "cf-r2-4", 3, 1, 2);
+    await acceptDrop(roomA, inboxA, "cf-r2-5", 4, 2, 2);
+    await acceptDrop(roomB, inboxB, "cf-r2-6", 5, 2, 2);
+    await acceptDrop(roomA, inboxA, "cf-r2-7", 6, 3, 2);
+    const storedRoundTwo = await roomStore.getByRoomCode("CFPLAY45");
+    const replayRoundTwo = await replayStore.get(
+      storedRoundTwo?.replayId ?? "",
+    );
+    expect(storedRoundTwo).toMatchObject({
+      roomCode: "CFPLAY45",
+      roundNumber: 2,
+      revision: 7,
+      status: "completed",
+    });
+    expect(replayRoundTwo?.actions).toHaveLength(7);
+    expect(verifyReplay(replayRoundTwo, resolveGameDefinition)).toMatchObject({
+      status: "verified",
+      rng: { cursor: 0 },
+      outcome: { type: "WIN", winnerSlotId: "slot-1" },
+    });
+
+    await expect(
+      new ColyseusClient(address.httpUrl).join(GAME_ROOM_NAME, {
+        type: "room.join",
+        protocolVersion: PROTOCOL_VERSION,
+        ticket: authority.issue("connect-four-outsider"),
+        roomCode: "CFPLAY45",
+      }),
+    ).rejects.toThrow("ROOM_NOT_JOINABLE");
+    const ttlClosedA = lifecycleA.next(
+      (message) => message.closeReason === "REMATCH_TIMEOUT",
+    );
+    const ttlClosedB = lifecycleB.next(
+      (message) => message.closeReason === "REMATCH_TIMEOUT",
+    );
+    clock.advanceBy(300_000);
+    await Promise.all([ttlClosedA, ttlClosedB]);
+    expect(await roomStore.getByRoomCode("CFPLAY45")).toMatchObject({
+      roundNumber: 2,
+      revision: 7,
+      status: "completed",
+    });
+
+    const drawRoomA = await new ColyseusClient(address.httpUrl).create(
+      GAME_ROOM_NAME,
+      {
+        type: "room.create",
+        protocolVersion: PROTOCOL_VERSION,
+        ticket: authority.issue("connect-four-draw-a"),
+        gameId: "connect-four",
+        initialConfig: null,
+      },
+    );
+    const drawInboxA = new MessageInbox(drawRoomA);
+    const drawLifecycleA = new LifecycleInbox(drawRoomA);
+    await drawInboxA.next((message) => message.type === "room.connected");
+    const drawActiveA = drawInboxA.next(
+      (message) => isSnapshot(message) && message.status === "active",
+    );
+    const drawRoomB = await new ColyseusClient(address.httpUrl).join(
+      GAME_ROOM_NAME,
+      {
+        type: "room.join",
+        protocolVersion: PROTOCOL_VERSION,
+        ticket: authority.issue("connect-four-draw-b"),
+        roomCode: "CFDRAW45",
+      },
+    );
+    const drawInboxB = new MessageInbox(drawRoomB);
+    const drawLifecycleB = new LifecycleInbox(drawRoomB);
+    await Promise.all([
+      drawActiveA,
+      drawInboxB.next(
+        (message) => isSnapshot(message) && message.status === "active",
+      ),
+    ]);
+    const drawColumns = [
+      3, 3, 5, 5, 1, 2, 6, 6, 0, 4, 4, 6, 6, 0, 4, 5, 4, 0, 2, 3, 1, 3, 0, 0, 2,
+      1, 6, 2, 6, 1, 5, 0, 2, 5, 2, 4, 3, 4, 5, 3, 1, 1,
+    ] as const;
+    let drawSnapshot: MatchSnapshot | null = null;
+    for (const [index, column] of drawColumns.entries()) {
+      drawSnapshot = await acceptDrop(
+        index % 2 === 0 ? drawRoomA : drawRoomB,
+        index % 2 === 0 ? drawInboxA : drawInboxB,
+        `cf-draw-${index + 1}`,
+        index,
+        column,
+      );
+    }
+    expect(drawSnapshot).toMatchObject({
+      revision: 42,
+      status: "completed",
+      outcome: { type: "DRAW" },
+    });
+    const drawStored = await roomStore.getByRoomCode("CFDRAW45");
+    const drawReplay = await replayStore.get(drawStored?.replayId ?? "");
+    expect(drawReplay?.actions).toHaveLength(42);
+    expect(verifyReplay(drawReplay, resolveGameDefinition)).toMatchObject({
+      status: "verified",
+      rng: { cursor: 0 },
+      outcome: { type: "DRAW" },
+    });
+    const ownerClosedA = drawLifecycleA.next(
+      (message) => message.closeReason === "OWNER_CLOSED",
+    );
+    const ownerClosedB = drawLifecycleB.next(
+      (message) => message.closeReason === "OWNER_CLOSED",
+    );
+    drawRoomA.send(
+      ROOM_CONTROL_MESSAGE,
+      controlCommand("cf-owner-close", "CLOSE_ROOM"),
+    );
+    await Promise.all([ownerClosedA, ownerClosedB]);
+
+    const leaveRoomA = await new ColyseusClient(address.httpUrl).create(
+      GAME_ROOM_NAME,
+      {
+        type: "room.create",
+        protocolVersion: PROTOCOL_VERSION,
+        ticket: authority.issue("connect-four-leave-a"),
+        gameId: "connect-four",
+        initialConfig: null,
+      },
+    );
+    const leaveInboxA = new MessageInbox(leaveRoomA);
+    const leaveLifecycleA = new LifecycleInbox(leaveRoomA);
+    await leaveInboxA.next((message) => message.type === "room.connected");
+    const leaveActiveA = leaveInboxA.next(
+      (message) => isSnapshot(message) && message.status === "active",
+    );
+    const leaveRoomB = await new ColyseusClient(address.httpUrl).join(
+      GAME_ROOM_NAME,
+      {
+        type: "room.join",
+        protocolVersion: PROTOCOL_VERSION,
+        ticket: authority.issue("connect-four-leave-b"),
+        roomCode: "CFLEAV45",
+      },
+    );
+    await leaveActiveA;
+    await leaveRoomB.leave(true);
+    await Promise.all([
+      leaveInboxA.next(
+        (message) => isSnapshot(message) && message.status === "abandoned",
+      ),
+      leaveLifecycleA.next((message) => message.closeReason === "PLAYER_LEFT"),
+    ]);
+    const abandonedStored = await roomStore.getByRoomCode("CFLEAV45");
+    const abandonedReplay = await replayStore.get(
+      abandonedStored?.replayId ?? "",
+    );
+    expect(abandonedStored).toMatchObject({
+      gameId: "connect-four",
+      gameVersion: "1.0.0",
+      roundNumber: 1,
+      revision: 0,
+      status: "abandoned",
+    });
+    expect(abandonedReplay).toMatchObject({
+      actions: [],
+      recordedRngCursor: null,
+      recordedOutcome: null,
     });
   });
 });
