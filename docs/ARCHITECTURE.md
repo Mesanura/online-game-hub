@@ -217,7 +217,7 @@ Room 必须串行处理 Action。任何未来多实例方案都必须维持“�
 
 - `apps/web` 与 `apps/game-server` 是两个独立服务。
 - 单区域、单个 Game Server 实例。
-- 根 `compose.yaml` 提供 WSL2/单机部署基线：独立 Web、Game Server、一次性 migration 和 PostgreSQL 容器；PostgreSQL 使用 named volume，运行时不 bind mount 源码。
+- 根 `compose.yaml` 提供通用单机部署基线：独立 Web、Game Server、一次性 migration 和 PostgreSQL 容器；PostgreSQL 使用 named volume，运行时不 bind mount 源码。
 - Web 通过环境注入浏览器可达的 Game Server public URL；Game Server 通过环境注入允许的 Web origins 和与 Web 一致的 ticket issuer/secret。
 - active `RoomStore` 使用内存 delegate；Replay、Match archive 与完成历史使用 PostgreSQL adapter。
 - 默认重连宽限为 60 秒；同一 session 通过新 ticket 和新的 Colyseus seat reservation 接管 stable slot，旧连接立即失去 writer 权限。超时策略为 `abandoned`。

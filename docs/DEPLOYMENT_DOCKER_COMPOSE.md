@@ -17,29 +17,24 @@
 
 ## 前置要求
 
-- Windows 11 或支持 WSL2 的 Windows 10；
-- 一个 WSL2 Linux 发行版；
-- Docker Desktop 已启用 **Use the WSL 2 based engine**，并在 **Settings → Resources → WSL Integration** 中启用目标发行版；或者在 WSL 内自行运行可用的 Docker Engine；
-- Docker CLI 和 Compose plugin 可从 WSL 终端访问；
-- 至少能拉取 `node:24.14.0-bookworm-slim` 与 `postgres:17.6-alpine3.22`。
+- 支持 BuildKit 的 Docker Engine；
+- 通过 `docker compose` 调用的 Docker Compose plugin；
+- 至少能拉取 `node:24.14.0-bookworm-slim` 与 `postgres:17.6-alpine3.22`；
+- 默认宿主端口可用，或已在 `.env` 中覆盖。
 
-所有部署命令都应在 WSL Linux 终端执行，而不是 PowerShell。先确认运行环境：
+先确认运行环境：
 
 ```bash
-cat /etc/os-release
-uname -r
 docker version
 docker compose version
 docker info >/dev/null
 ```
 
-`uname -r` 应包含 `microsoft-standard-WSL2`。如果 `docker info` 无法连接 daemon，先修复 Docker Desktop WSL Integration 或启动 WSL 内 Docker Engine。
-
-仓库可以位于 `/mnt/c/...` 或 `/mnt/d/...`。跨文件系统会让大量小文件的开发安装和文件监听变慢；本部署没有源码 bind mount，也不运行 watcher，因此容器运行时不受影响。若初次构建仍明显缓慢，可把仓库复制到 WSL 的 Linux 文件系统后再构建。
+下文使用 POSIX shell 命令示例，但部署不依赖特定宿主操作系统、桌面管理工具或源码目录布局。`docker info` 必须能够连接预期的 Docker daemon。
 
 ## 配置 `.env`
 
-从 WSL 终端进入仓库并复制示例：
+进入仓库并复制示例：
 
 ```bash
 cd /path/to/online-game-hub
@@ -52,7 +47,7 @@ cp .env.example .env
 - `GUEST_SESSION_SECRET`：Web guest cookie 的独立密钥，至少 32 bytes；
 - `GAME_SERVER_TICKET_SECRET`：Web 与 Game Server 共享的 ticket 密钥，至少 32 bytes，不能与 guest secret 相同。
 
-可在 WSL 中生成示例值：
+可使用 OpenSSL 生成示例值：
 
 ```bash
 openssl rand -hex 24
@@ -62,7 +57,7 @@ openssl rand -hex 32
 
 不要提交 `.env`。仓库只提交不含真实 credential 的 `.env.example`，Compose 在三个敏感变量缺失时 fail closed。
 
-默认配置把端口绑定到 `127.0.0.1`，适合单机 WSL2 验收。生产构建镜像不等同于公网 TLS 配置：本地 loopback HTTP 使用 `APP_ENV=development` 和 `GUEST_COOKIE_SECURE=false`。对公网部署时必须在 Compose 外提供 TLS 终止，并同时设置：
+默认配置把端口绑定到 `127.0.0.1`，适合仅从部署主机访问的单机环境。生产构建镜像不等同于公网 TLS 配置：本地 loopback HTTP 使用 `APP_ENV=development` 和 `GUEST_COOKIE_SECURE=false`。对公网部署时必须在 Compose 外提供 TLS 终止，并同时设置：
 
 ```dotenv
 APP_ENV=production
@@ -175,7 +170,7 @@ docker compose down -v
 
 ## 验证服务
 
-在 WSL 中验证 Web、Game Server 和 PostgreSQL：
+在部署主机验证 Web、Game Server 和 PostgreSQL：
 
 ```bash
 curl -fsS http://localhost:3000/ >/dev/null
@@ -189,7 +184,7 @@ docker compose exec -T postgres sh -lc \
 
 预期结果：Web 返回 HTTP 200；Game Server 返回 `{"status":"ok"}`；PostgreSQL 接受连接；migration 表至少包含 checked-in migration。
 
-从 Windows 宿主浏览器打开 `http://localhost:3000/games/tic-tac-toe`：
+从能够访问 Web 公开地址的浏览器打开 `http://localhost:3000/games/tic-tac-toe`：
 
 1. 在普通窗口创建房间，页面应显示“已连接”和 8 位房间码；
 2. 在无痕窗口打开邀请链接，两边应变为“对局进行中”；
@@ -198,9 +193,9 @@ docker compose exec -T postgres sh -lc \
 
 也可用 Connect Four 重复同样流程。该验证同时覆盖 ticket API、matchmaking HTTP、CORS、浏览器公开地址和 WebSocket。
 
-## WSL2 完整验收清单
+## 完整验收清单
 
-每次发布部署配置时，从 WSL 终端依次执行：
+每次发布部署配置时，在部署主机依次执行：
 
 ```bash
 docker version
@@ -224,15 +219,15 @@ docker compose ps -a
 
 ### 无法连接 Docker daemon
 
-运行 `docker context ls` 和 `docker info`。Docker Desktop 用户应确认目标 WSL 发行版已开启 Integration；WSL 内 Engine 用户应确认 daemon 正在运行并且当前用户有访问 socket 的权限。
+运行 `docker context ls` 和 `docker info`，确认当前 context 指向预期 daemon，并确认当前用户有访问 Docker socket 或远程 daemon 的权限。
 
 ### 拉取 Docker Hub 超时
 
-先确认 WSL 与 Docker daemon 都获得代理设置。Docker Desktop 的代理配置独立于 WSL shell 环境；修改后重启 Docker Desktop，再运行 `docker pull node:24.14.0-bookworm-slim` 验证。不要通过改成未固定版本的镜像规避网络问题。
+确认 Docker daemon 能访问 registry；daemon 的代理配置可能独立于当前 shell 环境。更新代理或 registry mirror 后重启 daemon，再运行 `docker pull node:24.14.0-bookworm-slim` 验证。不要通过改成未固定版本的镜像规避网络问题。
 
 ### 端口已占用
 
-修改 `.env` 中的宿主端口，例如 `POSTGRES_PORT=55432`。修改 Web/Game Server 宿主端口时必须同步 `WEB_PUBLIC_ORIGIN` 和 `GAME_SERVER_PUBLIC_URL`。可在 Windows 使用 `Get-NetTCPConnection`，或在 WSL 使用 `ss -ltn` 查找占用。
+修改 `.env` 中的宿主端口，例如 `POSTGRES_PORT=55432`。修改 Web/Game Server 宿主端口时必须同步 `WEB_PUBLIC_ORIGIN` 和 `GAME_SERVER_PUBLIC_URL`。可使用宿主系统提供的端口检查工具（例如 `ss`、`lsof` 或 `netstat`）查找占用。
 
 ### migration 失败
 
@@ -254,4 +249,4 @@ docker compose ps -a
 
 ### Linux 权限、换行或大小写错误
 
-镜像构建不依赖 Windows 路径或 PowerShell。仓库 `.gitattributes` 将文本固定为 LF，容器没有额外 shell entrypoint；Node 直接启动已编译入口。若新增脚本，必须提交 Unix LF 并设置可执行位，且在 WSL 中验证大小写敏感路径。
+容器使用 Linux userspace。仓库 `.gitattributes` 将文本固定为 LF，容器没有额外 shell entrypoint；Node 直接启动已编译入口。若新增脚本，必须使用 LF、设置可执行位，并确保容器内引用的路径大小写正确。
