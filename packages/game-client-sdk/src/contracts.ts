@@ -1,7 +1,7 @@
 import type { ComponentType } from "react";
 
 export type ClientConnectionState =
-  "loading" | "connecting" | "connected" | "reconnecting" | "closed";
+  "idle" | "loading" | "connecting" | "connected" | "reconnecting" | "closed";
 
 export interface GameClientProps<View, Action> {
   readonly view: Readonly<View>;

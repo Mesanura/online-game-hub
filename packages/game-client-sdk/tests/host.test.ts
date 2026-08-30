@@ -1,6 +1,7 @@
 import {
   GAME_ACTION_MESSAGE,
   PROTOCOL_VERSION,
+  ROOM_CONTROL_MESSAGE,
   SERVER_PROTOCOL_MESSAGE,
 } from "@online-game-hub/protocol";
 import { describe, expect, it } from "vitest";
@@ -23,6 +24,7 @@ class FakeRoom implements GameTransportRoom {
   >();
   readonly #leaveHandlers: ((code: number, reason?: string) => void)[] = [];
   public left = false;
+  readonly leaveConsents: boolean[] = [];
 
   public onMessage<Payload>(
     type: string | number,
@@ -46,8 +48,9 @@ class FakeRoom implements GameTransportRoom {
     this.sent.push({ type, payload });
   }
 
-  public async leave(): Promise<number> {
+  public async leave(consented = true): Promise<number> {
     this.left = true;
+    this.leaveConsents.push(consented);
     return 1000;
   }
 
@@ -60,6 +63,13 @@ class FakeRoom implements GameTransportRoom {
 
   public disconnect(): void {
     for (const handler of this.#leaveHandlers) handler(1006, "network");
+  }
+
+  public emitLifecycle(payload: unknown): void {
+    for (const handler of this.#messageHandlers.get(ROOM_CONTROL_MESSAGE) ??
+      []) {
+      handler(payload);
+    }
   }
 }
 
@@ -123,7 +133,53 @@ function snapshot(revision: number, causedByCommandId?: string) {
   } as const;
 }
 
+function lifecycle(
+  roundNumber: number,
+  options: {
+    readonly causedByCommandId?: string;
+    readonly selfReady?: boolean;
+    readonly readyPlayerCount?: number;
+    readonly closed?: boolean;
+    readonly closeReason?: "OWNER_CLOSED" | null;
+  } = {},
+) {
+  const closed = options.closed ?? false;
+  return {
+    type: "room.lifecycle",
+    protocolVersion: PROTOCOL_VERSION,
+    roundNumber,
+    isOwner: true,
+    rematch: {
+      available: !closed,
+      selfReady: options.selfReady ?? false,
+      readyPlayerCount: options.readyPlayerCount ?? 0,
+      requiredPlayerCount: 2,
+    },
+    closed,
+    closeReason: options.closeReason ?? null,
+    ...(options.causedByCommandId === undefined
+      ? {}
+      : { causedByCommandId: options.causedByCommandId }),
+  } as const;
+}
+
 describe("GameClientHost", () => {
+  it("starts idle before any room intent", () => {
+    const host = new GameClientHost({
+      gameServerUrl: "http://127.0.0.1:1234",
+      ticketProvider: async () => "ticket-1",
+      transport: new FakeTransport([]),
+    });
+    expect(host.getState()).toEqual({
+      connectionState: "idle",
+      room: null,
+      snapshot: null,
+      roomLifecycle: null,
+      rejection: null,
+      error: null,
+    });
+  });
+
   it("normalizes join codes before matchmaking and applies validated snapshots", async () => {
     const room = new FakeRoom();
     const transport = new FakeTransport([room]);
@@ -247,6 +303,117 @@ describe("GameClientHost", () => {
     });
   });
 
+  it("sends control commands, resets revision on a new round, and suppresses reconnect after close", async () => {
+    const room = new FakeRoom();
+    const ids = ["ready-1", "cancel-1", "ready-2", "close-1"];
+    let idIndex = 0;
+    let ticketCount = 0;
+    const host = new GameClientHost({
+      gameServerUrl: "http://127.0.0.1:1234",
+      ticketProvider: async () => `ticket-${++ticketCount}`,
+      transport: new FakeTransport([room]),
+      commandIds: {
+        createCommandId: () => ids[idIndex++] ?? "unexpected-command",
+      },
+    });
+    await host.joinRoom("tic-tac-toe", "ABCD2345");
+    room.emit(connected);
+    room.emitLifecycle(lifecycle(1));
+    room.emit(snapshot(5));
+
+    const firstReady = host.requestRematch();
+    expect(room.sent.at(-1)).toEqual({
+      type: ROOM_CONTROL_MESSAGE,
+      payload: {
+        type: "room.control",
+        protocolVersion: PROTOCOL_VERSION,
+        commandId: "ready-1",
+        operation: "REQUEST_REMATCH",
+      },
+    });
+    room.emitLifecycle(
+      lifecycle(1, {
+        causedByCommandId: "ready-1",
+        selfReady: true,
+        readyPlayerCount: 1,
+      }),
+    );
+    await expect(firstReady).resolves.toBeUndefined();
+
+    const cancelReady = host.cancelRematch();
+    expect(room.sent.at(-1)).toMatchObject({
+      type: ROOM_CONTROL_MESSAGE,
+      payload: { commandId: "cancel-1", operation: "CANCEL_REMATCH" },
+    });
+    room.emitLifecycle(
+      lifecycle(1, {
+        causedByCommandId: "cancel-1",
+      }),
+    );
+    await expect(cancelReady).resolves.toBeUndefined();
+
+    const secondReady = host.requestRematch();
+    room.emitLifecycle(
+      lifecycle(2, {
+        causedByCommandId: "ready-2",
+      }),
+    );
+    await expect(secondReady).resolves.toBeUndefined();
+    expect(host.getState()).toMatchObject({
+      roomLifecycle: { roundNumber: 2 },
+      snapshot: null,
+    });
+    room.emit(snapshot(0));
+    expect(host.getState().snapshot?.revision).toBe(0);
+
+    const close = host.closeRoom();
+    room.emitLifecycle(
+      lifecycle(2, {
+        causedByCommandId: "close-1",
+        closed: true,
+        closeReason: "OWNER_CLOSED",
+      }),
+    );
+    await expect(close).resolves.toBeUndefined();
+    expect(host.getState()).toMatchObject({
+      connectionState: "idle",
+      room: null,
+      snapshot: null,
+      roomLifecycle: { closed: true, closeReason: "OWNER_CLOSED" },
+      error: null,
+    });
+    room.disconnect();
+    await Promise.resolve();
+    expect(ticketCount).toBe(1);
+  });
+
+  it("uses consented leave only for an explicit user departure", async () => {
+    const explicitRoom = new FakeRoom();
+    const explicitHost = new GameClientHost({
+      gameServerUrl: "http://127.0.0.1:1234",
+      ticketProvider: async () => "ticket-1",
+      transport: new FakeTransport([explicitRoom]),
+    });
+    await explicitHost.joinRoom("tic-tac-toe", "ABCD2345");
+    await explicitHost.leaveRoom();
+    expect(explicitRoom.leaveConsents).toEqual([true]);
+    expect(explicitHost.getState()).toMatchObject({
+      connectionState: "idle",
+      room: null,
+      roomLifecycle: null,
+    });
+
+    const cleanupRoom = new FakeRoom();
+    const cleanupHost = new GameClientHost({
+      gameServerUrl: "http://127.0.0.1:1234",
+      ticketProvider: async () => "ticket-1",
+      transport: new FakeTransport([cleanupRoom]),
+    });
+    await cleanupHost.joinRoom("tic-tac-toe", "ABCD2345");
+    await cleanupHost.close();
+    expect(cleanupRoom.leaveConsents).toEqual([false]);
+  });
+
   it("fails closed on unknown server payload without exposing transport data", async () => {
     const room = new FakeRoom();
     const host = new GameClientHost({
@@ -260,6 +427,7 @@ describe("GameClientHost", () => {
       connectionState: "closed",
       room: null,
       snapshot: null,
+      roomLifecycle: null,
       rejection: null,
       error: {
         code: "INVALID_SERVER_MESSAGE",

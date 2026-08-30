@@ -3,11 +3,14 @@ import {
   GAME_ACTION_MESSAGE,
   GAME_ROOM_NAME,
   PROTOCOL_VERSION,
+  ROOM_CONTROL_MESSAGE,
   SERVER_PROTOCOL_MESSAGE,
   createGameRoomRequestSchema,
   gameActionCommandSchema,
   gameServerTicketSchema,
   joinGameRoomRequestSchema,
+  roomControlCommandSchema,
+  roomLifecycleStateSchema,
   roomCodeSchema,
   serverMessageSchema,
 } from "@online-game-hub/protocol";
@@ -15,7 +18,10 @@ import type {
   CommandRejected,
   GameActionCommand,
   MatchSnapshot,
+  RoomControlCommand,
+  RoomControlOperation,
   RoomConnected,
+  RoomLifecycleState,
 } from "@online-game-hub/protocol";
 
 import type { ClientConnectionState } from "./contracts.js";
@@ -69,6 +75,7 @@ export interface GameClientHostState<View = unknown, Outcome = unknown> {
   readonly connectionState: ClientConnectionState;
   readonly room: RoomConnected | null;
   readonly snapshot: MatchSnapshot<View, Outcome> | null;
+  readonly roomLifecycle: RoomLifecycleState | null;
   readonly rejection: CommandRejected | null;
   readonly error: GameClientHostError | null;
 }
@@ -89,7 +96,8 @@ interface RoomTarget {
 }
 
 interface PendingCommand {
-  readonly expectedRevision: number;
+  readonly kind: "action" | "control";
+  readonly expectedRevision?: number;
   readonly resolve: () => void;
   readonly reject: (error: Error) => void;
 }
@@ -119,9 +127,10 @@ export class GameClientHost<View = unknown, Outcome = unknown> {
   readonly #listeners = new Set<() => void>();
   readonly #pendingCommands = new Map<string, PendingCommand>();
   #state: GameClientHostState<View, Outcome> = {
-    connectionState: "loading",
+    connectionState: "idle",
     room: null,
     snapshot: null,
+    roomLifecycle: null,
     rejection: null,
     error: null,
   };
@@ -229,6 +238,7 @@ export class GameClientHost<View = unknown, Outcome = unknown> {
 
     return new Promise<void>((resolve, reject) => {
       this.#pendingCommands.set(commandId, {
+        kind: "action",
         expectedRevision: snapshot.revision,
         resolve,
         reject,
@@ -240,6 +250,43 @@ export class GameClientHost<View = unknown, Outcome = unknown> {
         reject(new Error("The game command could not be sent."));
       }
     });
+  }
+
+  public requestRematch(): Promise<void> {
+    return this.#sendControl("REQUEST_REMATCH");
+  }
+
+  public cancelRematch(): Promise<void> {
+    return this.#sendControl("CANCEL_REMATCH");
+  }
+
+  public closeRoom(): Promise<void> {
+    return this.#sendControl("CLOSE_ROOM");
+  }
+
+  public async leaveRoom(): Promise<void> {
+    this.#closing = true;
+    this.#generation += 1;
+    const room = this.#transportRoom;
+    this.#transportRoom = null;
+    this.#target = null;
+    this.#expectedGameId = null;
+    this.#rejectPending("The game room was left.");
+    this.#replaceState({
+      connectionState: "idle",
+      room: null,
+      snapshot: null,
+      roomLifecycle: null,
+      rejection: null,
+      error: null,
+    });
+    if (room !== null) {
+      try {
+        await room.leave(true);
+      } catch {
+        // The local identity has already left; transport shutdown is best-effort.
+      }
+    }
   }
 
   public async close(): Promise<void> {
@@ -256,11 +303,43 @@ export class GameClientHost<View = unknown, Outcome = unknown> {
     });
     if (room !== null) {
       try {
-        await room.leave(true);
+        await room.leave(false);
       } catch {
         // The local lifecycle is already closed; transport shutdown is best-effort.
       }
     }
+  }
+
+  #sendControl(operation: RoomControlOperation): Promise<void> {
+    const room = this.#transportRoom;
+    if (room === null || this.#state.connectionState !== "connected") {
+      return Promise.reject(new Error("The game room is not connected."));
+    }
+    const commandId = this.#options.commandIds.createCommandId();
+    const command = roomControlCommandSchema.parse({
+      type: "room.control",
+      protocolVersion: PROTOCOL_VERSION,
+      commandId,
+      operation,
+    }) satisfies RoomControlCommand;
+    if (this.#pendingCommands.has(commandId)) {
+      return Promise.reject(
+        new Error("Command id source produced a duplicate id."),
+      );
+    }
+    return new Promise<void>((resolve, reject) => {
+      this.#pendingCommands.set(commandId, {
+        kind: "control",
+        resolve,
+        reject,
+      });
+      try {
+        room.send(ROOM_CONTROL_MESSAGE, command);
+      } catch {
+        this.#pendingCommands.delete(commandId);
+        reject(new Error("The room control command could not be sent."));
+      }
+    });
   }
 
   async #connect(
@@ -275,6 +354,7 @@ export class GameClientHost<View = unknown, Outcome = unknown> {
       connectionState: "loading",
       room: null,
       snapshot: null,
+      roomLifecycle: null,
       rejection: null,
       error: null,
     });
@@ -297,7 +377,7 @@ export class GameClientHost<View = unknown, Outcome = unknown> {
       );
       const room = await reserve(ticket, client);
       if (generation !== this.#generation) {
-        await room.leave(true);
+        await room.leave(false);
         return;
       }
       this.#bindRoom(room, generation);
@@ -315,6 +395,11 @@ export class GameClientHost<View = unknown, Outcome = unknown> {
         this.#handleServerMessage(payload);
       }
     });
+    room.onMessage<unknown>(ROOM_CONTROL_MESSAGE, (payload) => {
+      if (generation === this.#generation) {
+        this.#handleLifecycle(payload);
+      }
+    });
     room.onLeave(() => {
       if (
         generation !== this.#generation ||
@@ -324,7 +409,60 @@ export class GameClientHost<View = unknown, Outcome = unknown> {
         return;
       }
       this.#transportRoom = null;
+      if (this.#state.roomLifecycle?.closed === true) {
+        return;
+      }
       void this.#reconnect();
+    });
+  }
+
+  #handleLifecycle(payload: unknown): void {
+    const parsed = roomLifecycleStateSchema.safeParse(payload);
+    if (!parsed.success || this.#state.room === null) {
+      this.#failProtocol();
+      return;
+    }
+    const lifecycle = parsed.data;
+    const current = this.#state.roomLifecycle;
+    if (current !== null && lifecycle.roundNumber < current.roundNumber) {
+      return;
+    }
+    if (current !== null && lifecycle.isOwner !== current.isOwner) {
+      this.#failProtocol();
+      return;
+    }
+    const roundChanged =
+      current !== null && lifecycle.roundNumber > current.roundNumber;
+    const causedByCommandId = lifecycle.causedByCommandId;
+    if (causedByCommandId !== undefined) {
+      const pending = this.#pendingCommands.get(causedByCommandId);
+      if (pending?.kind === "control") {
+        this.#pendingCommands.delete(causedByCommandId);
+        pending.resolve();
+      }
+    }
+    if (lifecycle.closed) {
+      this.#closing = true;
+      this.#generation += 1;
+      this.#transportRoom = null;
+      this.#target = null;
+      this.#expectedGameId = null;
+      this.#rejectPending("The live game room was closed.");
+      this.#replaceState({
+        connectionState: "idle",
+        room: null,
+        snapshot: null,
+        roomLifecycle: lifecycle,
+        rejection: null,
+        error: null,
+      });
+      return;
+    }
+    this.#replaceState({
+      ...this.#state,
+      roomLifecycle: lifecycle,
+      ...(roundChanged ? { snapshot: null, rejection: null } : {}),
+      error: null,
     });
   }
 
@@ -427,8 +565,10 @@ export class GameClientHost<View = unknown, Outcome = unknown> {
     }
     for (const [commandId, pending] of this.#pendingCommands) {
       if (
-        snapshot.causedByCommandId === commandId ||
-        snapshot.revision > pending.expectedRevision
+        pending.kind === "action" &&
+        (snapshot.causedByCommandId === commandId ||
+          (pending.expectedRevision !== undefined &&
+            snapshot.revision > pending.expectedRevision))
       ) {
         this.#pendingCommands.delete(commandId);
         pending.resolve();
@@ -475,7 +615,7 @@ export class GameClientHost<View = unknown, Outcome = unknown> {
           }),
         );
         if (generation !== this.#generation || this.#closing) {
-          await room.leave(true);
+          await room.leave(false);
           return;
         }
         this.#bindRoom(room, generation);
@@ -502,7 +642,7 @@ export class GameClientHost<View = unknown, Outcome = unknown> {
     this.#closing = true;
     this.#generation += 1;
     if (room !== null) {
-      void room.leave(true).catch(() => undefined);
+      void room.leave(false).catch(() => undefined);
     }
     this.#fail(
       "INVALID_SERVER_MESSAGE",
