@@ -1,1 +1,6 @@
-export {};
+export * from "./client.js";
+export * from "./errors.js";
+export * from "./migrations.js";
+export * from "./postgres-replay-store.js";
+export * from "./postgres-match-repository.js";
+export * from "./postgres-user-repository.js";

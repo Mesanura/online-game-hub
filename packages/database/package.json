@@ -5,17 +5,37 @@
   "type": "module",
   "sideEffects": false,
   "files": [
-    "dist"
+    "dist",
+    "drizzle"
   ],
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./testing": {
+      "types": "./dist/testing.d.ts",
+      "import": "./dist/testing.js"
     }
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "test": "node --test",
+    "db:check": "drizzle-kit check",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "node src/migrate-cli.ts",
+    "test": "vitest run tests/config.test.ts",
+    "test:database": "vitest run tests/database.integration.test.ts",
     "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@online-game-hub/game-sdk": "workspace:*",
+    "@online-game-hub/game-server-runtime": "workspace:*",
+    "@online-game-hub/protocol": "workspace:*",
+    "drizzle-orm": "0.45.2",
+    "postgres": "3.4.9"
+  },
+  "devDependencies": {
+    "@online-game-hub/game-registry": "workspace:*",
+    "drizzle-kit": "0.31.10"
   }
 }
