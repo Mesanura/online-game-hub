@@ -10,6 +10,8 @@ import type { GameServerApplication } from "../src/index.js";
 
 const productionEnvironment = {
   APP_ENV: "production",
+  DATABASE_MODE: "postgres",
+  DATABASE_URL: "postgresql://app:secret@database.example.test/app",
   GAME_SERVER_HOST: "127.0.0.1",
   GAME_SERVER_PORT: "2567",
   GAME_SERVER_ALLOWED_WEB_ORIGINS: "https://web.example.test",
@@ -29,6 +31,8 @@ describe.sequential("production Game Server configuration", () => {
   it("requires production secrets, HTTPS Web origins, and a fixed public port", () => {
     expect(readGameServerConfig(productionEnvironment)).toEqual({
       applicationEnvironment: "production",
+      databaseMode: "postgres",
+      databaseUrl: productionEnvironment.DATABASE_URL,
       hostname: "127.0.0.1",
       port: 2567,
       ticketIssuer: "web-production",
@@ -48,6 +52,18 @@ describe.sequential("production Game Server configuration", () => {
         GAME_SERVER_PORT: "0",
       }),
     ).toThrow(/1 to 65535/u);
+    expect(() =>
+      readGameServerConfig({
+        ...productionEnvironment,
+        DATABASE_MODE: "memory",
+      }),
+    ).toThrow(/PostgreSQL/u);
+    expect(() =>
+      readGameServerConfig({
+        ...productionEnvironment,
+        DATABASE_URL: "",
+      }),
+    ).toThrow(/DATABASE_URL/u);
   });
 
   it("allows only loopback HTTP and port zero in development/test", () => {
@@ -55,11 +71,14 @@ describe.sequential("production Game Server configuration", () => {
       readGameServerConfig({
         ...productionEnvironment,
         APP_ENV: "test",
+        DATABASE_MODE: "memory",
         GAME_SERVER_PORT: "0",
         GAME_SERVER_ALLOWED_WEB_ORIGINS: "http://127.0.0.1:43210",
       }),
     ).toMatchObject({
       applicationEnvironment: "test",
+      databaseMode: "memory",
+      databaseUrl: null,
       port: 0,
       allowedWebOrigins: ["http://127.0.0.1:43210"],
     });
@@ -67,6 +86,7 @@ describe.sequential("production Game Server configuration", () => {
       readGameServerConfig({
         ...productionEnvironment,
         APP_ENV: "development",
+        DATABASE_MODE: "memory",
         GAME_SERVER_ALLOWED_WEB_ORIGINS: "http://192.0.2.1:3000",
       }),
     ).toThrow(/loopback/u);
@@ -103,6 +123,7 @@ describe.sequential("production Game Server configuration", () => {
     const config = readGameServerConfig({
       ...productionEnvironment,
       APP_ENV: "test",
+      DATABASE_MODE: "memory",
       GAME_SERVER_PORT: "0",
       GAME_SERVER_ALLOWED_WEB_ORIGINS: "http://127.0.0.1:43210",
     });

@@ -2,14 +2,48 @@ export type WebEnvironment = Readonly<Record<string, string | undefined>>;
 
 export type WebApplicationEnvironment = "development" | "test" | "production";
 
+export type WebDatabaseMode = "memory" | "postgres";
+
 export interface WebServerConfig {
   readonly applicationEnvironment: WebApplicationEnvironment;
+  readonly databaseMode: WebDatabaseMode;
+  readonly databaseUrl: string | null;
   readonly gameServerPublicUrl: string;
   readonly guestSessionSecret: string;
   readonly guestCookieSecure: boolean;
   readonly ticketIssuer: string;
   readonly ticketSecret: string;
   readonly ticketLifetimeSeconds: number;
+}
+
+function databaseConfig(
+  environment: WebEnvironment,
+  appEnvironment: WebApplicationEnvironment,
+): Pick<WebServerConfig, "databaseMode" | "databaseUrl"> {
+  const mode = required(environment, "DATABASE_MODE");
+  if (mode !== "memory" && mode !== "postgres") {
+    throw new Error("DATABASE_MODE must be memory or postgres.");
+  }
+  if (appEnvironment === "production" && mode !== "postgres") {
+    throw new Error("Production Web history persistence must use PostgreSQL.");
+  }
+  if (mode === "memory") {
+    return { databaseMode: mode, databaseUrl: null };
+  }
+  const rawUrl = required(environment, "DATABASE_URL");
+  let url: URL;
+  try {
+    url = new URL(rawUrl);
+  } catch {
+    throw new Error("DATABASE_URL must be a PostgreSQL URL.");
+  }
+  if (
+    (url.protocol !== "postgres:" && url.protocol !== "postgresql:") ||
+    url.hostname.length === 0
+  ) {
+    throw new Error("DATABASE_URL must be a PostgreSQL URL.");
+  }
+  return { databaseMode: mode, databaseUrl: rawUrl };
 }
 
 function required(environment: WebEnvironment, name: string): string {
@@ -99,6 +133,7 @@ export function readWebServerConfig(
   }
   return {
     applicationEnvironment: appEnvironment,
+    ...databaseConfig(environment, appEnvironment),
     gameServerPublicUrl: publicGameServerUrl(environment, appEnvironment),
     guestSessionSecret: required(environment, "GUEST_SESSION_SECRET"),
     guestCookieSecure,

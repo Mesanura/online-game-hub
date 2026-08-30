@@ -8,6 +8,7 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
+    "@online-game-hub/database": "workspace:*",
     "@online-game-hub/game-registry": "workspace:*",
     "@online-game-hub/game-server": "workspace:*",
     "@online-game-hub/game-server-runtime": "workspace:*"

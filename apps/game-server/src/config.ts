@@ -5,14 +5,48 @@ export type GameServerEnvironment = Readonly<
 export type GameServerApplicationEnvironment =
   "development" | "test" | "production";
 
+export type GameServerDatabaseMode = "memory" | "postgres";
+
 export interface GameServerConfig {
   readonly applicationEnvironment: GameServerApplicationEnvironment;
+  readonly databaseMode: GameServerDatabaseMode;
+  readonly databaseUrl: string | null;
   readonly hostname: string;
   readonly port: number;
   readonly ticketIssuer: string;
   readonly ticketSecret: string;
   readonly allowedWebOrigins: readonly string[];
   readonly reconnectGraceMilliseconds: number;
+}
+
+function databaseConfig(
+  environment: GameServerEnvironment,
+  appEnvironment: GameServerApplicationEnvironment,
+): Pick<GameServerConfig, "databaseMode" | "databaseUrl"> {
+  const mode = required(environment, "DATABASE_MODE");
+  if (mode !== "memory" && mode !== "postgres") {
+    throw new Error("DATABASE_MODE must be memory or postgres.");
+  }
+  if (appEnvironment === "production" && mode !== "postgres") {
+    throw new Error("Production Game Server persistence must use PostgreSQL.");
+  }
+  if (mode === "memory") {
+    return { databaseMode: mode, databaseUrl: null };
+  }
+  const rawUrl = required(environment, "DATABASE_URL");
+  let url: URL;
+  try {
+    url = new URL(rawUrl);
+  } catch {
+    throw new Error("DATABASE_URL must be a PostgreSQL URL.");
+  }
+  if (
+    (url.protocol !== "postgres:" && url.protocol !== "postgresql:") ||
+    url.hostname.length === 0
+  ) {
+    throw new Error("DATABASE_URL must be a PostgreSQL URL.");
+  }
+  return { databaseMode: mode, databaseUrl: rawUrl };
 }
 
 function required(environment: GameServerEnvironment, name: string): string {
@@ -141,6 +175,7 @@ export function readGameServerConfig(
   const appEnvironment = applicationEnvironment(environment);
   return {
     applicationEnvironment: appEnvironment,
+    ...databaseConfig(environment, appEnvironment),
     hostname: hostname(environment),
     port: port(environment, appEnvironment),
     ticketIssuer: required(environment, "GAME_SERVER_TICKET_ISSUER"),

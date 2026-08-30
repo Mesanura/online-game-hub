@@ -11,6 +11,7 @@
     "typecheck": "next typegen && tsc --noEmit"
   },
   "dependencies": {
+    "@online-game-hub/database": "workspace:*",
     "@online-game-hub/game-client-sdk": "workspace:*",
     "@online-game-hub/game-registry": "workspace:*",
     "@online-game-hub/game-server-ticket": "workspace:*",

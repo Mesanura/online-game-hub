@@ -47,6 +47,9 @@ importers:
       '@colyseus/ws-transport':
         specifier: 0.18.2
         version: 0.18.2(@colyseus/core@0.18.10)(express@5.2.1)
+      '@online-game-hub/database':
+        specifier: workspace:*
+        version: link:../../packages/database
       '@online-game-hub/game-registry':
         specifier: workspace:*
         version: link:../../packages/game-registry
@@ -75,6 +78,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@online-game-hub/database':
+        specifier: workspace:*
+        version: link:../../packages/database
       '@online-game-hub/game-client-sdk':
         specifier: workspace:*
         version: link:../../packages/game-client-sdk
@@ -230,6 +236,9 @@ importers:
 
   tooling/e2e:
     dependencies:
+      '@online-game-hub/database':
+        specifier: workspace:*
+        version: link:../../packages/database
       '@online-game-hub/game-registry':
         specifier: workspace:*
         version: link:../../packages/game-registry

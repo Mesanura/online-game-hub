@@ -17,12 +17,14 @@
     "dev": "pnpm build && node --env-file-if-exists=.env.local dist/main.js",
     "start": "node --env-file-if-exists=.env.local dist/main.js",
     "test": "vitest run tests/server.test.ts tests/production.test.ts",
+    "test:database": "vitest run tests/database.integration.test.ts",
     "test:integration": "vitest run tests/game-server.integration.test.ts",
     "typecheck": "tsc -p tsconfig.json && tsc -p tests/tsconfig.json"
   },
   "dependencies": {
     "@colyseus/core": "0.18.10",
     "@colyseus/ws-transport": "0.18.2",
+    "@online-game-hub/database": "workspace:*",
     "@online-game-hub/game-registry": "workspace:*",
     "@online-game-hub/game-server-runtime": "workspace:*",
     "@online-game-hub/game-server-ticket": "workspace:*",

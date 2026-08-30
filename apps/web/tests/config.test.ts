@@ -4,6 +4,8 @@ import { readWebServerConfig } from "../src/server/config.js";
 
 const secureEnvironment = {
   APP_ENV: "production",
+  DATABASE_MODE: "postgres",
+  DATABASE_URL: "postgresql://web:secret@database.example.test/app",
   GAME_SERVER_PUBLIC_URL: "https://games.example.test",
   GUEST_SESSION_SECRET: "guest-session-secret-at-least-32-bytes",
   GUEST_COOKIE_SECURE: "true",
@@ -16,6 +18,8 @@ describe("Web server configuration", () => {
   it("requires explicit production secrets, issuer, public URL, and Secure cookie", () => {
     expect(readWebServerConfig(secureEnvironment)).toEqual({
       applicationEnvironment: "production",
+      databaseMode: "postgres",
+      databaseUrl: secureEnvironment.DATABASE_URL,
       gameServerPublicUrl: "https://games.example.test",
       guestSessionSecret: secureEnvironment.GUEST_SESSION_SECRET,
       guestCookieSecure: true,
@@ -35,6 +39,18 @@ describe("Web server configuration", () => {
         GAME_SERVER_PUBLIC_URL: "http://games.example.test",
       }),
     ).toThrow(/HTTPS/u);
+    expect(() =>
+      readWebServerConfig({
+        ...secureEnvironment,
+        DATABASE_MODE: "memory",
+      }),
+    ).toThrow(/PostgreSQL/u);
+    expect(() =>
+      readWebServerConfig({
+        ...secureEnvironment,
+        DATABASE_URL: "",
+      }),
+    ).toThrow(/DATABASE_URL/u);
   });
 
   it("allows explicit insecure localhost cookies only in development/test", () => {
@@ -42,11 +58,14 @@ describe("Web server configuration", () => {
       readWebServerConfig({
         ...secureEnvironment,
         APP_ENV: "test",
+        DATABASE_MODE: "memory",
         GAME_SERVER_PUBLIC_URL: "http://127.0.0.1:43210",
         GUEST_COOKIE_SECURE: "false",
       }),
     ).toMatchObject({
       applicationEnvironment: "test",
+      databaseMode: "memory",
+      databaseUrl: null,
       guestCookieSecure: false,
       gameServerPublicUrl: "http://127.0.0.1:43210",
     });
