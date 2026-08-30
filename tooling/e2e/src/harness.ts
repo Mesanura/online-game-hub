@@ -6,6 +6,11 @@ import { setTimeout as delay } from "node:timers/promises";
 import { spawn } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
 
+import {
+  createIsolatedTestDatabase,
+  requireTestDatabaseUrl,
+} from "@online-game-hub/database/testing";
+import type { IsolatedTestDatabase } from "@online-game-hub/database/testing";
 import { createProductionGameServer } from "@online-game-hub/game-server";
 import type { GameServerApplication } from "@online-game-hub/game-server";
 import {
@@ -73,6 +78,7 @@ function startWebApplication(
   gameServerPublicUrl: string,
   ticketIssuer: string,
   ticketSecret: string,
+  databaseUrl: string,
 ): ChildProcess {
   const webDirectory = join(REPOSITORY_ROOT, "apps", "web");
   const nextCli = join(
@@ -93,6 +99,8 @@ function startWebApplication(
         APP_ENV: "test",
         NODE_ENV: "production",
         NEXT_TELEMETRY_DISABLED: "1",
+        DATABASE_MODE: "postgres",
+        DATABASE_URL: databaseUrl,
         GAME_SERVER_PUBLIC_URL: gameServerPublicUrl,
         GUEST_SESSION_SECRET: randomBytes(32).toString("base64url"),
         GUEST_COOKIE_SECURE: "false",
@@ -108,12 +116,16 @@ function startWebApplication(
 
 export interface E2eHarness {
   readonly clock: FakeRuntimeClock;
+  readonly databaseUrl: string;
   readonly gameServer: GameServerApplication;
   readonly webUrl: string;
   stop(): Promise<void>;
 }
 
 export async function startE2eHarness(): Promise<E2eHarness> {
+  const database: IsolatedTestDatabase = await createIsolatedTestDatabase(
+    requireTestDatabaseUrl(process.env),
+  );
   const webPort = await reserveLoopbackPort();
   const webUrl = `http://${LOOPBACK_HOST}:${webPort}`;
   const ticketIssuer = `e2e-web-${randomUUID()}`;
@@ -122,6 +134,8 @@ export async function startE2eHarness(): Promise<E2eHarness> {
   const gameServer = createProductionGameServer(
     {
       applicationEnvironment: "test",
+      databaseMode: "postgres",
+      databaseUrl: database.url,
       hostname: LOOPBACK_HOST,
       port: 0,
       ticketIssuer,
@@ -139,12 +153,19 @@ export async function startE2eHarness(): Promise<E2eHarness> {
       logger: { write: () => undefined },
     },
   );
-  const gameAddress = await gameServer.start();
+  let gameAddress;
+  try {
+    gameAddress = await gameServer.start();
+  } catch (error) {
+    await Promise.allSettled([gameServer.stop(), database.close()]);
+    throw error;
+  }
   const webProcess = startWebApplication(
     webPort,
     gameAddress.httpUrl,
     ticketIssuer,
     ticketSecret,
+    database.url,
   );
   webProcess.stdout?.resume();
   webProcess.stderr?.resume();
@@ -152,22 +173,30 @@ export async function startE2eHarness(): Promise<E2eHarness> {
   try {
     await waitForWebApplication(webProcess, webUrl);
   } catch (error) {
-    await Promise.allSettled([stopChildProcess(webProcess), gameServer.stop()]);
+    await Promise.allSettled([
+      stopChildProcess(webProcess),
+      gameServer.stop(),
+    ]);
+    await database.close().catch(() => undefined);
     throw error;
   }
 
   let stopped = false;
   return {
     clock,
+    databaseUrl: database.url,
     gameServer,
     webUrl,
     async stop() {
       if (stopped) return;
       stopped = true;
-      await Promise.allSettled([
+      const results = await Promise.allSettled([
         stopChildProcess(webProcess),
         gameServer.stop(),
       ]);
+      await database.close();
+      const failure = results.find((result) => result.status === "rejected");
+      if (failure?.status === "rejected") throw failure.reason;
     },
   };
 }

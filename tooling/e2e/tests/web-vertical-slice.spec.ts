@@ -1,6 +1,10 @@
 import { expect, test } from "@playwright/test";
 import type { BrowserContext, Page } from "@playwright/test";
 
+import {
+  PostgresReplayStore,
+  createPostgresDatabaseClient,
+} from "@online-game-hub/database";
 import { resolveGameDefinition } from "@online-game-hub/game-registry/server";
 import { verifyReplay } from "@online-game-hub/game-server-runtime";
 
@@ -147,6 +151,87 @@ async function assertCanonicalReplay(
       "type" in outcome &&
       outcome.type === expectedOutcomeType,
   ).toBe(true);
+
+  const rebuiltClient = createPostgresDatabaseClient({
+    url: harness.databaseUrl,
+    applicationName: "online-game-hub-e2e-rebuilt-replay",
+    maxConnections: 2,
+  });
+  try {
+    const rebuiltReplay = await new PostgresReplayStore(
+      rebuiltClient.database,
+    ).get(room.replayId);
+    expect(rebuiltReplay?.actions).toHaveLength(expectedRevision);
+    expect(
+      verifyReplay(rebuiltReplay, resolveGameDefinition),
+    ).toMatchObject({ status: "verified" });
+  } finally {
+    await rebuiltClient.close();
+  }
+}
+
+async function assertPrivateCompletedHistory(
+  pageA: Page,
+  pageB: Page,
+  expectedRevision: number,
+): Promise<string> {
+  const [responseA, responseB] = await Promise.all([
+    pageA.request.get(`${harness.webUrl}/api/matches`),
+    pageB.request.get(`${harness.webUrl}/api/matches`),
+  ]);
+  expect(responseA.status()).toBe(200);
+  expect(responseB.status()).toBe(200);
+  expect(responseA.headers()["cache-control"]).toBe("no-store, private");
+  const bodyA = (await responseA.json()) as {
+    readonly matches?: readonly Record<string, unknown>[];
+  };
+  const bodyB = (await responseB.json()) as {
+    readonly matches?: readonly Record<string, unknown>[];
+  };
+  const matchA = bodyA.matches?.find(
+    (match) =>
+      match.status === "completed" &&
+      match.finalRevision === expectedRevision,
+  );
+  if (matchA === undefined || typeof matchA.matchId !== "string") {
+    throw new Error("Guest A history did not contain the completed match.");
+  }
+  expect(matchA).toEqual({
+    matchId: matchA.matchId,
+    gameId: "tic-tac-toe",
+    gameVersion: "1.0.0",
+    status: "completed",
+    finalRevision: expectedRevision,
+    playerSlotId: "slot-1",
+    createdAt: expect.any(String),
+    startedAt: expect.any(String),
+    finishedAt: expect.any(String),
+    replayAvailable: true,
+  });
+  expect(bodyB.matches).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        matchId: matchA.matchId,
+        playerSlotId: "slot-2",
+        status: "completed",
+        replayAvailable: true,
+      }),
+    ]),
+  );
+  const serialized = JSON.stringify([bodyA, bodyB]);
+  for (const forbidden of [
+    "playerSessionId",
+    "userId",
+    "runtimeRoomId",
+    "initialConfig",
+    "acceptedActions",
+    "recordedOutcome",
+    "rngSeed",
+    "authoritativeState",
+  ]) {
+    expect(serialized).not.toContain(forbidden);
+  }
+  return matchA.matchId;
 }
 
 test("two isolated guests complete win/draw, converge on reconnect, and cannot steal state", async ({
@@ -274,6 +359,28 @@ test("two isolated guests complete win/draw, converge on reconnect, and cannot s
   await expect(pageA.getByTestId("turn-status")).toContainText("胜者：你");
   await expect(pageB.getByTestId("turn-status")).toContainText("胜者：对手");
   await assertCanonicalReplay(winningRoom.roomCode, 5, "WIN");
+  const persistedMatchId = await assertPrivateCompletedHistory(
+    pageA,
+    pageB,
+    5,
+  );
+
+  const unrelatedContext = await browser.newContext();
+  const missingSession = await unrelatedContext.request.get(
+    `${harness.webUrl}/api/matches`,
+  );
+  expect(missingSession.status()).toBe(401);
+  await expect(missingSession.json()).resolves.toEqual({
+    code: "GUEST_SESSION_REQUIRED",
+  });
+  const unrelatedPage = await unrelatedContext.newPage();
+  await unrelatedPage.goto(harness.webUrl);
+  const unrelatedHistory = await unrelatedPage.request.get(
+    `${harness.webUrl}/api/matches?matchId=${persistedMatchId}&playerSessionId=forged`,
+  );
+  expect(unrelatedHistory.status()).toBe(200);
+  await expect(unrelatedHistory.json()).resolves.toEqual({ matches: [] });
+  await unrelatedContext.close();
 
   const drawingRoom = await createAndJoinRoom(pageA, pageB);
   const drawMoves = [
