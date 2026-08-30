@@ -152,10 +152,7 @@ export function ConnectFourClient(
       aria-labelledby="connect-four-heading"
       className="game-board-panel"
     >
-      <div className="game-status-row">
-        <h2 id="connect-four-heading">7 × 6 棋盘</h2>
-        <span data-testid="revision">Revision {props.revision}</span>
-      </div>
+      <h2 id="connect-four-heading">7 × 6 棋盘</h2>
       <p data-testid="player-disc">
         {props.view.yourDisc === null
           ? "你正在旁观"
@@ -194,7 +191,7 @@ export function ConnectFourClient(
       </div>
       <div
         aria-colcount={CONNECT_FOUR_COLUMNS}
-        aria-label="Connect Four 棋盘"
+        aria-label="四子棋棋盘"
         aria-rowcount={CONNECT_FOUR_ROWS}
         className="connect-four-board"
         role="grid"

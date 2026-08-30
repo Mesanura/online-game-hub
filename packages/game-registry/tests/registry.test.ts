@@ -18,6 +18,10 @@ import {
 describe("explicit game registry", () => {
   it("uses the game's single manifest source in the catalog and server", () => {
     expect(gameCatalog).toEqual([ticTacToeManifest, connectFourManifest]);
+    expect(gameCatalog.map(({ id, title }) => ({ id, title }))).toEqual([
+      { id: "tic-tac-toe", title: "井字棋" },
+      { id: "connect-four", title: "四子棋" },
+    ]);
     expect(resolveGameManifest("tic-tac-toe", "1.0.0")).toBe(ticTacToeManifest);
     expect(resolveGameDefinition("tic-tac-toe", "1.0.0")).toBe(
       ticTacToeDefinition,

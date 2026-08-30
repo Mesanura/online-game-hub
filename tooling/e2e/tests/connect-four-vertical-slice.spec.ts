@@ -31,7 +31,7 @@ async function expectRevision(
 ): Promise<void> {
   await Promise.all(
     pages.map((page) =>
-      expect(page.getByTestId("revision")).toHaveText(`Revision ${revision}`),
+      expect(page.getByTestId("revision")).toHaveText(String(revision)),
     ),
   );
 }
@@ -141,7 +141,7 @@ test("two guests play two authoritative Connect Four rounds with independent rep
   await pageA.goto(`${harness.webUrl}/games`);
   const connectFourCard = pageA
     .getByRole("article")
-    .filter({ hasText: "Connect Four" });
+    .filter({ hasText: "四子棋" });
   await expect(connectFourCard).toContainText("2–2");
   await connectFourCard.getByRole("link", { name: "创建或加入房间" }).click();
   await expect(pageA).toHaveURL(/\/games\/connect-four$/u);
@@ -162,7 +162,7 @@ test("two guests play two authoritative Connect Four rounds with independent rep
 
   await pageB.goto(`${harness.webUrl}/games`);
   await expect(
-    pageB.getByRole("article").filter({ hasText: "Connect Four" }),
+    pageB.getByRole("article").filter({ hasText: "四子棋" }),
   ).toBeVisible();
   await pageB.goto(inviteUrl);
   await Promise.all(
@@ -177,8 +177,11 @@ test("two guests play two authoritative Connect Four rounds with independent rep
   await assertIsolatedGuestCookies(contextA, contextB);
   await expect(pageA.getByTestId("player-disc")).toContainText("红方");
   await expect(pageB.getByTestId("player-disc")).toContainText("黄方");
-  const slotA = await pageA.getByTestId("player-slot").innerText();
-  const slotB = await pageB.getByTestId("player-slot").innerText();
+  const slotA = (await pageA.getByTestId("player-slot").textContent())?.trim();
+  const slotB = (await pageB.getByTestId("player-slot").textContent())?.trim();
+  if (slotA === undefined || slotB === undefined) {
+    throw new Error("A connected player is missing its stable slot.");
+  }
   expect(slotA).not.toBe(slotB);
 
   const illegalColumn = pageB.locator('[data-column-index="0"]');

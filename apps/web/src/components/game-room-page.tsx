@@ -51,6 +51,8 @@ const matchLabels = {
   abandoned: "对局已终止",
 } as const;
 
+type InviteCopyState = "idle" | "copying" | "copied" | "failed";
+
 function rejectionLabel(state: GameClientHostState): string | null {
   const rejection = state.rejection;
   if (rejection === null) return null;
@@ -94,6 +96,8 @@ export function GameRoomPage(props: GameRoomPageProps) {
   const [clientModule, setClientModule] =
     useState<UnknownGameClientModule | null>(null);
   const [inviteUrl, setInviteUrl] = useState<string | null>(null);
+  const [inviteCopyState, setInviteCopyState] =
+    useState<InviteCopyState>("idle");
   const autoJoinStarted = useRef(false);
   const handledCloseReason = useRef<string | null>(null);
 
@@ -121,6 +125,7 @@ export function GameRoomPage(props: GameRoomPageProps) {
     router.replace(path, { scroll: false });
     setRoomCode(state.room.roomCode);
     setInviteUrl(`${window.location.origin}${path}`);
+    setInviteCopyState("idle");
   }, [router, state.room]);
 
   useEffect(() => {
@@ -134,6 +139,7 @@ export function GameRoomPage(props: GameRoomPageProps) {
     }
     handledCloseReason.current = lifecycle.closeReason;
     setInviteUrl(null);
+    setInviteCopyState("idle");
     setRoomCode("");
     setLocalNotice(closeReasonLabels[lifecycle.closeReason]);
     router.replace(`/games/${encodeURIComponent(props.gameId)}`, {
@@ -199,6 +205,17 @@ export function GameRoomPage(props: GameRoomPageProps) {
     }
   };
 
+  const copyInviteLink = async (): Promise<void> => {
+    if (inviteUrl === null) return;
+    setInviteCopyState("copying");
+    try {
+      await navigator.clipboard.writeText(inviteUrl);
+      setInviteCopyState("copied");
+    } catch {
+      setInviteCopyState("failed");
+    }
+  };
+
   const closeRoom = async (): Promise<void> => {
     if (
       state.snapshot?.status === "active" &&
@@ -229,6 +246,7 @@ export function GameRoomPage(props: GameRoomPageProps) {
     try {
       await host.leaveRoom();
       setInviteUrl(null);
+      setInviteCopyState("idle");
       setRoomCode("");
       setLocalNotice("已离开房间。");
       router.replace(`/games/${encodeURIComponent(props.gameId)}`, {
@@ -262,10 +280,7 @@ export function GameRoomPage(props: GameRoomPageProps) {
       <div>
         <p className="eyebrow">私人房间</p>
         <h1>{props.title}</h1>
-        <p>
-          浏览器只发送落子意图；回合、棋盘、胜负和 revision 全部由 Game Server
-          裁定。
-        </p>
+        <p>创建私人房间并邀请朋友，或输入房间码加入已有对局。</p>
       </div>
 
       {hasLiveRoom ? null : (
@@ -314,18 +329,19 @@ export function GameRoomPage(props: GameRoomPageProps) {
               房间码：
               <strong data-testid="room-code">{state.room.roomCode}</strong>
             </p>
-            <p>
-              稳定席位：
-              <strong data-testid="player-slot">
-                {state.room.playerSlotId}
-              </strong>
-            </p>
           </>
         )}
         {state.snapshot === null ? null : (
           <p>
             比赛状态：
-            <strong data-testid="match-status">
+            <strong
+              aria-atomic="true"
+              aria-live="polite"
+              className="match-status"
+              data-status={state.snapshot.status}
+              data-testid="match-status"
+              role="status"
+            >
               {matchLabels[state.snapshot.status]}
             </strong>
           </p>
@@ -339,12 +355,64 @@ export function GameRoomPage(props: GameRoomPageProps) {
           </p>
         )}
         {inviteUrl === null ? null : (
-          <p>
-            邀请链接：
-            <a data-testid="invite-link" href={inviteUrl}>
-              {inviteUrl}
-            </a>
-          </p>
+          <div className="invite-block">
+            <p>邀请链接：</p>
+            <div className="invite-link-row">
+              <a data-testid="invite-link" href={inviteUrl}>
+                {inviteUrl}
+              </a>
+              <button
+                className="secondary-button copy-invite-button"
+                data-testid="copy-invite-link"
+                disabled={inviteCopyState === "copying"}
+                onClick={() => void copyInviteLink()}
+                type="button"
+              >
+                {inviteCopyState === "copying"
+                  ? "复制中…"
+                  : inviteCopyState === "copied"
+                    ? "已复制"
+                    : "复制链接"}
+              </button>
+            </div>
+            {inviteCopyState === "copied" ? (
+              <p
+                className="copy-feedback copy-feedback-success"
+                data-testid="copy-invite-status"
+                role="status"
+              >
+                邀请链接已复制。
+              </p>
+            ) : null}
+            {inviteCopyState === "failed" ? (
+              <p
+                className="copy-feedback copy-feedback-error"
+                data-testid="copy-invite-status"
+                role="alert"
+              >
+                复制失败，请手动选择链接复制。
+              </p>
+            ) : null}
+          </div>
+        )}
+        {state.room === null ? null : (
+          <details className="connection-details">
+            <summary>连接详情</summary>
+            <p>
+              稳定席位：
+              <strong data-testid="player-slot">
+                {state.room.playerSlotId}
+              </strong>
+            </p>
+            {state.snapshot === null ? null : (
+              <p>
+                同步版本：
+                <strong data-testid="revision">
+                  {state.snapshot.revision}
+                </strong>
+              </p>
+            )}
+          </details>
         )}
       </section>
 

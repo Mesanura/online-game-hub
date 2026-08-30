@@ -44,9 +44,27 @@ button,
   text-decoration: none;
 }
 
+button,
+.primary-link,
+.header-nav-link {
+  transition:
+    background-color 150ms ease,
+    border-color 150ms ease,
+    color 150ms ease,
+    transform 150ms ease;
+}
+
 button:disabled {
   cursor: not-allowed;
   opacity: 0.45;
+}
+
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+summary:focus-visible {
+  outline: 3px solid #72d7ff;
+  outline-offset: 3px;
 }
 
 .site-header {
@@ -60,6 +78,17 @@ button:disabled {
 .brand {
   color: #fff;
   font-weight: 850;
+  text-decoration: none;
+}
+
+.header-nav-link {
+  background: rgb(14 32 50 / 88%);
+  border: 1px solid #42627a;
+  border-radius: 0.7rem;
+  color: #e7eef8;
+  display: inline-block;
+  font-weight: 750;
+  padding: 0.62rem 0.9rem;
   text-decoration: none;
 }
 
@@ -147,6 +176,96 @@ button:disabled {
   overflow-wrap: anywhere;
 }
 
+.connection-panel {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.connection-panel > p,
+.invite-block p,
+.connection-details p {
+  margin: 0;
+}
+
+.match-status {
+  border-radius: 999px;
+  display: inline-flex;
+  font-weight: 850;
+  margin-inline-start: 0.2rem;
+  padding: 0.22rem 0.58rem;
+}
+
+.match-status[data-status="waiting"] {
+  background: rgb(255 123 135 / 12%);
+  color: #ff7b87;
+}
+
+.match-status[data-status="active"] {
+  background: rgb(109 230 161 / 12%);
+  color: #6de6a1;
+}
+
+.match-status[data-status="completed"] {
+  background: rgb(154 214 255 / 12%);
+  color: #9ad6ff;
+}
+
+.match-status[data-status="abandoned"] {
+  background: rgb(255 123 135 / 12%);
+  color: #ff7b87;
+}
+
+.invite-block {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.invite-link-row {
+  align-items: center;
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.invite-link-row a {
+  background: #06111e;
+  border: 1px solid #294a64;
+  border-radius: 0.7rem;
+  min-width: 0;
+  padding: 0.72rem 0.8rem;
+}
+
+.copy-invite-button {
+  white-space: nowrap;
+}
+
+.copy-feedback {
+  font-size: 0.9rem;
+}
+
+.copy-feedback-success {
+  color: #6de6a1;
+}
+
+.copy-feedback-error {
+  color: #ff7b87;
+}
+
+.connection-details {
+  border-top: 1px solid #294a64;
+  color: #b9c9d8;
+  padding-top: 0.75rem;
+}
+
+.connection-details summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.connection-details p {
+  margin-top: 0.65rem;
+}
+
 .room-controls-panel {
   align-items: center;
   display: flex;
@@ -168,10 +287,23 @@ button.danger-button {
   color: #fff;
 }
 
-.game-status-row {
-  align-items: center;
-  display: flex;
-  justify-content: space-between;
+@media (hover: hover) {
+  button:not(:disabled):hover,
+  .primary-link:hover,
+  .header-nav-link:hover {
+    transform: translateY(-1px);
+  }
+
+  button:not(:disabled):hover,
+  .primary-link:hover {
+    background: #80e3ca;
+  }
+
+  .header-nav-link:hover {
+    background: #173149;
+    border-color: #72d7ff;
+    color: #fff;
+  }
 }
 
 .tic-tac-toe-board {
@@ -250,5 +382,13 @@ button.danger-button {
 @media (max-width: 36rem) {
   .room-entry-panel form {
     grid-template-columns: 1fr;
+  }
+
+  .invite-link-row {
+    grid-template-columns: 1fr;
+  }
+
+  .copy-invite-button {
+    width: 100%;
   }
 }

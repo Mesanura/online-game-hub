@@ -38,7 +38,7 @@ async function expectRevision(
 ): Promise<void> {
   await Promise.all(
     pages.map((page) =>
-      expect(page.getByTestId("revision")).toHaveText(`Revision ${revision}`),
+      expect(page.getByTestId("revision")).toHaveText(String(revision)),
     ),
   );
 }
@@ -60,14 +60,42 @@ async function createAndJoinRoom(
   pageB: Page,
 ): Promise<JoinedRoom> {
   await pageA.goto(`${harness.webUrl}/games/tic-tac-toe`);
+  await expect(pageA.getByRole("link", { name: "游戏目录" })).toHaveClass(
+    /header-nav-link/u,
+  );
   await pageA.getByTestId("create-room").click();
   await expect(pageA.getByTestId("connection-state")).toHaveText("已连接");
-  await expect(pageA.getByTestId("match-status")).toHaveText("等待另一位玩家");
+  const waitingStatus = pageA.getByTestId("match-status");
+  await expect(waitingStatus).toHaveText("等待另一位玩家");
+  await expect(waitingStatus).toHaveAttribute("data-status", "waiting");
+  await expect(waitingStatus).toHaveCSS("color", "rgb(255, 123, 135)");
 
   const inviteUrl = await pageA.getByTestId("invite-link").getAttribute("href");
   if (inviteUrl === null) {
     throw new Error("The Web app did not expose an invitation URL.");
   }
+  await pageA.getByTestId("copy-invite-link").click();
+  await expect(pageA.getByTestId("copy-invite-link")).toHaveText("已复制");
+  await expect(pageA.getByTestId("copy-invite-status")).toHaveText(
+    "邀请链接已复制。",
+  );
+  await expect
+    .poll(() => pageA.evaluate(() => navigator.clipboard.readText()))
+    .toBe(inviteUrl);
+  await pageA.evaluate(() => {
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        readText: () => Promise.resolve(""),
+        writeText: () => Promise.reject(new Error("clipboard unavailable")),
+      },
+    });
+  });
+  await pageA.getByTestId("copy-invite-link").click();
+  await expect(pageA.getByTestId("copy-invite-link")).toHaveText("复制链接");
+  await expect(pageA.getByTestId("copy-invite-status")).toHaveText(
+    "复制失败，请手动选择链接复制。",
+  );
   const invitation = new URL(inviteUrl);
   expect(invitation.origin).toBe(harness.webUrl);
   expect(invitation.pathname).toBe("/games/tic-tac-toe");
@@ -90,14 +118,20 @@ async function createAndJoinRoom(
     ),
   );
   await Promise.all(
-    [pageA, pageB].map((page) =>
-      expect(page.getByTestId("match-status")).toHaveText("对局进行中"),
-    ),
+    [pageA, pageB].map(async (page) => {
+      const activeStatus = page.getByTestId("match-status");
+      await expect(activeStatus).toHaveText("对局进行中");
+      await expect(activeStatus).toHaveAttribute("data-status", "active");
+      await expect(activeStatus).toHaveCSS("color", "rgb(109, 230, 161)");
+    }),
   );
   await expect(pageB.getByTestId("room-code")).toHaveText(roomCode);
 
-  const slotA = await pageA.getByTestId("player-slot").innerText();
-  const slotB = await pageB.getByTestId("player-slot").innerText();
+  const slotA = (await pageA.getByTestId("player-slot").textContent())?.trim();
+  const slotB = (await pageB.getByTestId("player-slot").textContent())?.trim();
+  if (slotA === undefined || slotB === undefined) {
+    throw new Error("A connected player is missing its stable slot.");
+  }
   expect(slotA === slotB).toBe(false);
   return { inviteUrl, roomCode, slotA, slotB };
 }
@@ -243,6 +277,9 @@ test("two isolated guests complete win/draw, converge on reconnect, and cannot s
 }) => {
   const contextA = await browser.newContext();
   const contextB = await browser.newContext();
+  await contextA.grantPermissions(["clipboard-read", "clipboard-write"], {
+    origin: harness.webUrl,
+  });
   const browserErrors: string[] = [];
   let ticketRequestsA = 0;
   let joinReservationsA = 0;

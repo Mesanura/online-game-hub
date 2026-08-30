@@ -33,7 +33,7 @@ describe("Tic-Tac-Toe Client Module", () => {
     ).toBe(false);
   });
 
-  it("renders the board, player mark, turn, and authoritative revision", () => {
+  it("renders the board, player mark, and turn", () => {
     const html = renderToStaticMarkup(
       createElement(TicTacToeClient, {
         view: ticTacToeClientModule.parseView(view),
@@ -42,7 +42,6 @@ describe("Tic-Tac-Toe Client Module", () => {
         submitAction: vi.fn(async () => undefined),
       }),
     );
-    expect(html).toContain("Revision 2");
     expect(html).toContain("你的棋子：X");
     expect(html).toContain("轮到你落子");
     expect(html.match(/data-cell-index=/gu)).toHaveLength(9);

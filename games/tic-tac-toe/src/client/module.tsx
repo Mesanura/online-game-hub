@@ -119,10 +119,7 @@ export function TicTacToeClient(
 
   return (
     <section aria-labelledby="tic-tac-toe-heading" className="game-board-panel">
-      <div className="game-status-row">
-        <h2 id="tic-tac-toe-heading">3 × 3 棋盘</h2>
-        <span data-testid="revision">Revision {props.revision}</span>
-      </div>
+      <h2 id="tic-tac-toe-heading">3 × 3 棋盘</h2>
       <p data-testid="player-mark">
         {props.view.yourMark === null
           ? "你正在旁观"
@@ -136,11 +133,7 @@ export function TicTacToeClient(
               ? "轮到你落子"
               : `当前回合：${nextMark}`)}
       </p>
-      <div
-        aria-label="Tic-Tac-Toe 棋盘"
-        className="tic-tac-toe-board"
-        role="grid"
-      >
+      <div aria-label="井字棋棋盘" className="tic-tac-toe-board" role="grid">
         {props.view.board.map((slotId, cell) => {
           const cellIndex = cell as TicTacToeCellIndex;
           const mark = markForSlot(props.view, slotId);

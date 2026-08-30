@@ -59,7 +59,7 @@ describe("Connect Four Client Module", () => {
     expect(intent).not.toHaveProperty("outcome");
   });
 
-  it("renders seven accessible column controls, 42 cells, turn, disc, and authoritative revision", () => {
+  it("renders seven accessible column controls, 42 cells, turn, and disc", () => {
     const html = renderToStaticMarkup(
       createElement(ConnectFourClient, {
         view: connectFourClientModule.parseView(view),
@@ -68,7 +68,6 @@ describe("Connect Four Client Module", () => {
         submitAction: vi.fn(async () => undefined),
       }),
     );
-    expect(html).toContain("Revision 4");
     expect(html).toContain("你的棋子：红方");
     expect(html).toContain("轮到你选择一列");
     expect(html.match(/data-column-index=/gu)).toHaveLength(7);

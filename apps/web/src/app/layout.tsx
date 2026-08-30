@@ -22,7 +22,9 @@ export default function RootLayout({
             Online Game Hub
           </Link>
           <nav aria-label="主导航">
-            <Link href="/games">游戏目录</Link>
+            <Link className="header-nav-link" href="/games">
+              游戏目录
+            </Link>
           </nav>
         </header>
         <main>{children}</main>
