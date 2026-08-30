@@ -6,6 +6,7 @@ import {
   InMemoryMetricsCollector,
   InMemoryReplayStore,
   InMemoryRoomStore,
+  ROOM_CONTROL_MESSAGE,
   SERVER_PROTOCOL_MESSAGE,
   verifyReplay,
 } from "@online-game-hub/game-server-runtime";
@@ -23,11 +24,15 @@ import {
 import { resolveGameDefinition } from "@online-game-hub/game-registry/server";
 import {
   PROTOCOL_VERSION,
+  roomLifecycleStateSchema,
   serverMessageSchema,
 } from "@online-game-hub/protocol";
 import type {
   GameActionCommand,
   MatchSnapshot,
+  RoomControlCommand,
+  RoomControlOperation,
+  RoomLifecycleState,
   ServerMessage,
 } from "@online-game-hub/protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -129,6 +134,57 @@ class MessageInbox {
   }
 }
 
+class LifecycleInbox {
+  readonly #messages: RoomLifecycleState[] = [];
+  readonly #waiters: {
+    readonly predicate: (message: RoomLifecycleState) => boolean;
+    readonly resolve: (message: RoomLifecycleState) => void;
+  }[] = [];
+
+  public constructor(room: ClientRoom) {
+    room.onMessage<unknown>(ROOM_CONTROL_MESSAGE, (raw) => {
+      const parsed = roomLifecycleStateSchema.safeParse(raw);
+      if (!parsed.success) {
+        throw new Error("Server emitted an invalid room lifecycle message.");
+      }
+      const message = parsed.data;
+      const waiterIndex = this.#waiters.findIndex((waiter) =>
+        waiter.predicate(message),
+      );
+      if (waiterIndex === -1) {
+        this.#messages.push(message);
+        return;
+      }
+      const [waiter] = this.#waiters.splice(waiterIndex, 1);
+      waiter?.resolve(message);
+    });
+  }
+
+  public next(
+    predicate: (message: RoomLifecycleState) => boolean,
+    timeoutMilliseconds = 3000,
+  ): Promise<RoomLifecycleState> {
+    const messageIndex = this.#messages.findIndex(predicate);
+    if (messageIndex !== -1) {
+      const [message] = this.#messages.splice(messageIndex, 1);
+      if (message !== undefined) return Promise.resolve(message);
+    }
+    return new Promise((resolve, reject) => {
+      const waiter = { predicate, resolve };
+      this.#waiters.push(waiter);
+      const timeout = setTimeout(() => {
+        const index = this.#waiters.indexOf(waiter);
+        if (index !== -1) this.#waiters.splice(index, 1);
+        reject(new Error("Timed out waiting for a room lifecycle message."));
+      }, timeoutMilliseconds);
+      waiter.resolve = (message) => {
+        clearTimeout(timeout);
+        resolve(message);
+      };
+    });
+  }
+}
+
 function isSnapshot(message: ServerMessage): message is MatchSnapshot {
   return message.type === "match.snapshot";
 }
@@ -144,6 +200,18 @@ function command(
     commandId,
     expectedRevision,
     action,
+  };
+}
+
+function controlCommand(
+  commandId: string,
+  operation: RoomControlOperation,
+): RoomControlCommand {
+  return {
+    type: "room.control",
+    protocolVersion: PROTOCOL_VERSION,
+    commandId,
+    operation,
   };
 }
 
@@ -186,6 +254,9 @@ describe.sequential("authoritative Colyseus Game Server", () => {
         "PLAY2345",
         "FALL2345",
         "TAKE2345",
+        "LEAV2345",
+        "WALT2345",
+        "TTLM2345",
       ]),
       logger: { write: (event) => logs.push(event) },
     });
@@ -265,6 +336,7 @@ describe.sequential("authoritative Colyseus Game Server", () => {
       initialConfig: null,
     });
     const inboxA = new MessageInbox(roomA);
+    const lifecycleA = new LifecycleInbox(roomA);
     const connectedA = await inboxA.next(
       (message) => message.type === "room.connected",
     );
@@ -286,6 +358,7 @@ describe.sequential("authoritative Colyseus Game Server", () => {
       roomCode: "PLAY2345",
     });
     const inboxB = new MessageInbox(roomB);
+    const lifecycleB = new LifecycleInbox(roomB);
     const connectedB = await inboxB.next(
       (message) => message.type === "room.connected",
     );
@@ -460,7 +533,141 @@ describe.sequential("authoritative Colyseus Game Server", () => {
       rng: { cursor: 0 },
       outcome: { type: "WIN", winnerSlotId: "slot-1" },
     });
-    await Promise.all([roomA.leave(), roomB.leave()]);
+
+    await Promise.all([
+      lifecycleA.next(
+        (message) => message.roundNumber === 1 && message.rematch.available,
+      ),
+      lifecycleB.next(
+        (message) => message.roundNumber === 1 && message.rematch.available,
+      ),
+    ]);
+
+    roomB.send(
+      ROOM_CONTROL_MESSAGE,
+      controlCommand("non-owner-close", "CLOSE_ROOM"),
+    );
+    await expect(
+      inboxB.next(
+        (message) =>
+          message.type === "command.rejected" &&
+          message.commandId === "non-owner-close",
+      ),
+    ).resolves.toMatchObject({ code: "ROOM_CONTROL_NOT_ALLOWED" });
+
+    const readyA1 = lifecycleA.next(
+      (message) => message.causedByCommandId === "ready-a-1",
+    );
+    roomA.send(
+      ROOM_CONTROL_MESSAGE,
+      controlCommand("ready-a-1", "REQUEST_REMATCH"),
+    );
+    await expect(readyA1).resolves.toMatchObject({
+      roundNumber: 1,
+      rematch: { selfReady: true, readyPlayerCount: 1 },
+    });
+    const cancelledA = lifecycleA.next(
+      (message) => message.causedByCommandId === "cancel-a",
+    );
+    roomA.send(
+      ROOM_CONTROL_MESSAGE,
+      controlCommand("cancel-a", "CANCEL_REMATCH"),
+    );
+    await expect(cancelledA).resolves.toMatchObject({
+      rematch: { selfReady: false, readyPlayerCount: 0 },
+    });
+
+    const readyA2 = lifecycleA.next(
+      (message) => message.causedByCommandId === "ready-a-2",
+    );
+    roomA.send(
+      ROOM_CONTROL_MESSAGE,
+      controlCommand("ready-a-2", "REQUEST_REMATCH"),
+    );
+    await readyA2;
+    const roundTwoLifecycleA = lifecycleA.next(
+      (message) => message.roundNumber === 2,
+    );
+    const roundTwoLifecycleB = lifecycleB.next(
+      (message) =>
+        message.roundNumber === 2 && message.causedByCommandId === "ready-b",
+    );
+    const roundTwoSnapshotA = inboxA.next(
+      (message) =>
+        isSnapshot(message) &&
+        message.status === "active" &&
+        message.revision === 0,
+    );
+    const roundTwoSnapshotB = inboxB.next(
+      (message) =>
+        isSnapshot(message) &&
+        message.status === "active" &&
+        message.revision === 0,
+    );
+    roomB.send(
+      ROOM_CONTROL_MESSAGE,
+      controlCommand("ready-b", "REQUEST_REMATCH"),
+    );
+    await Promise.all([
+      roundTwoLifecycleA,
+      roundTwoLifecycleB,
+      roundTwoSnapshotA,
+      roundTwoSnapshotB,
+    ]);
+    const roundTwoStored = await roomStore.getByRoomCode("PLAY2345");
+    expect(roundTwoStored).toMatchObject({
+      roundNumber: 2,
+      revision: 0,
+      status: "active",
+    });
+    expect(roundTwoStored?.replayId).not.toBe(stored?.replayId);
+
+    await playAccepted(roomA, inboxA, "round-2-play-1", 0, 0);
+    await playAccepted(roomB, inboxB, "round-2-play-2", 1, 3);
+    await playAccepted(roomA, inboxA, "round-2-play-3", 2, 1);
+    await playAccepted(roomB, inboxB, "round-2-play-4", 3, 4);
+    await playAccepted(roomA, inboxA, "round-2-play-5", 4, 2);
+    const completedRoundTwo = await roomStore.getByRoomCode("PLAY2345");
+    expect(completedRoundTwo).toMatchObject({
+      roundNumber: 2,
+      revision: 5,
+      status: "completed",
+    });
+    const replayRoundTwo = await replayStore.get(
+      completedRoundTwo?.replayId ?? "",
+    );
+    expect(replayRoundTwo?.actions).toHaveLength(5);
+    expect(verifyReplay(replayRoundTwo, resolveGameDefinition)).toMatchObject({
+      status: "verified",
+      outcome: { type: "WIN", winnerSlotId: "slot-1" },
+    });
+
+    await expect(
+      new ColyseusClient(address.httpUrl).join(GAME_ROOM_NAME, {
+        type: "room.join",
+        protocolVersion: PROTOCOL_VERSION,
+        ticket: authority.issue("terminal-outsider"),
+        roomCode: "PLAY2345",
+      }),
+    ).rejects.toThrow("ROOM_NOT_JOINABLE");
+
+    const closedA = lifecycleA.next(
+      (message) => message.closeReason === "OWNER_CLOSED",
+    );
+    const closedB = lifecycleB.next(
+      (message) => message.closeReason === "OWNER_CLOSED",
+    );
+    const leftA = new Promise<void>((resolve) =>
+      roomA.onLeave.once(() => resolve()),
+    );
+    const leftB = new Promise<void>((resolve) =>
+      roomB.onLeave.once(() => resolve()),
+    );
+    roomA.send(
+      ROOM_CONTROL_MESSAGE,
+      controlCommand("owner-close", "CLOSE_ROOM"),
+    );
+    await Promise.all([closedA, closedB, leftA, leftB]);
   });
 
   it("does not acknowledge or commit when replay append fails", async () => {
@@ -507,7 +714,7 @@ describe.sequential("authoritative Colyseus Game Server", () => {
         .snapshot()
         .find((sample) => sample.name === "replay_append_failure_total")?.value,
     ).toBe(1);
-    await Promise.all([roomA.leave(), roomB.leave()]);
+    await roomA.leave(true);
   });
 
   it("restores stable slots, takes over old connections, and abandons after fake-clock timeout", async () => {
@@ -562,7 +769,7 @@ describe.sequential("authoritative Colyseus Game Server", () => {
       revision: 0,
     });
 
-    await takeoverRoom.leave();
+    await takeoverRoom.leave(false);
     await waitUntil(async () => {
       const stored = await roomStore.getByRoomCode("TAKE2345");
       return stored?.players[0]?.reservedUntilMilliseconds !== null;
@@ -591,13 +798,13 @@ describe.sequential("authoritative Colyseus Game Server", () => {
     expect(reconnected).toMatchObject({ playerSlotId: "slot-1" });
     await reconnectInbox.next(isSnapshot);
     const reconnectionToken = reconnectedRoom.reconnectionToken;
-    await reconnectedRoom.leave();
+    await reconnectedRoom.leave(false);
+    await waitUntil(async () => {
+      const stored = await roomStore.getByRoomCode("TAKE2345");
+      return stored?.players[0]?.reservedUntilMilliseconds !== null;
+    });
 
-    const abandonedForB = inboxB.next(
-      (message) => isSnapshot(message) && message.status === "abandoned",
-    );
     clock.advanceBy(60_000);
-    await abandonedForB;
     await waitUntil(
       async () =>
         (await roomStore.getByRoomCode("TAKE2345"))?.status === "abandoned",
@@ -617,6 +824,205 @@ describe.sequential("authoritative Colyseus Game Server", () => {
       status: "abandoned",
       revision: 0,
     });
-    await roomB.leave();
+  });
+
+  it("closes immediately on explicit active leave and lets the owner close a waiting room", async () => {
+    const roomA = await new ColyseusClient(address.httpUrl).create(
+      GAME_ROOM_NAME,
+      {
+        type: "room.create",
+        protocolVersion: PROTOCOL_VERSION,
+        ticket: authority.issue("leave-a"),
+        gameId: "tic-tac-toe",
+        initialConfig: null,
+      },
+    );
+    const inboxA = new MessageInbox(roomA);
+    const lifecycleA = new LifecycleInbox(roomA);
+    await inboxA.next((message) => message.type === "room.connected");
+    const activeA = inboxA.next(
+      (message) => isSnapshot(message) && message.status === "active",
+    );
+    const roomB = await new ColyseusClient(address.httpUrl).join(
+      GAME_ROOM_NAME,
+      {
+        type: "room.join",
+        protocolVersion: PROTOCOL_VERSION,
+        ticket: authority.issue("leave-b"),
+        roomCode: "LEAV2345",
+      },
+    );
+    await activeA;
+    const abandonedA = inboxA.next(
+      (message) => isSnapshot(message) && message.status === "abandoned",
+    );
+    const closedA = lifecycleA.next(
+      (message) => message.closeReason === "PLAYER_LEFT",
+    );
+    const leftA = new Promise<void>((resolve) =>
+      roomA.onLeave.once(() => resolve()),
+    );
+    await roomB.leave(true);
+    await Promise.all([abandonedA, closedA, leftA]);
+    expect(await roomStore.getByRoomCode("LEAV2345")).toMatchObject({
+      roundNumber: 1,
+      revision: 0,
+      status: "abandoned",
+    });
+
+    const waitingRoom = await new ColyseusClient(address.httpUrl).create(
+      GAME_ROOM_NAME,
+      {
+        type: "room.create",
+        protocolVersion: PROTOCOL_VERSION,
+        ticket: authority.issue("waiting-owner"),
+        gameId: "tic-tac-toe",
+        initialConfig: null,
+      },
+    );
+    const waitingInbox = new MessageInbox(waitingRoom);
+    const waitingLifecycle = new LifecycleInbox(waitingRoom);
+    await waitingInbox.next(
+      (message) => isSnapshot(message) && message.status === "waiting",
+    );
+    const ownerClosed = waitingLifecycle.next(
+      (message) => message.closeReason === "OWNER_CLOSED",
+    );
+    waitingRoom.send(
+      ROOM_CONTROL_MESSAGE,
+      controlCommand("close-waiting", "CLOSE_ROOM"),
+    );
+    await ownerClosed;
+    expect(await roomStore.getByRoomCode("WALT2345")).toMatchObject({
+      status: "abandoned",
+    });
+  });
+
+  it("clears rematch ready on disconnect/takeover and expires terminal rooms", async () => {
+    const roomA = await new ColyseusClient(address.httpUrl).create(
+      GAME_ROOM_NAME,
+      {
+        type: "room.create",
+        protocolVersion: PROTOCOL_VERSION,
+        ticket: authority.issue("ttl-a"),
+        gameId: "tic-tac-toe",
+        initialConfig: null,
+      },
+    );
+    const inboxA = new MessageInbox(roomA);
+    const lifecycleA = new LifecycleInbox(roomA);
+    await inboxA.next((message) => message.type === "room.connected");
+    const roomB = await new ColyseusClient(address.httpUrl).join(
+      GAME_ROOM_NAME,
+      {
+        type: "room.join",
+        protocolVersion: PROTOCOL_VERSION,
+        ticket: authority.issue("ttl-b"),
+        roomCode: "TTLM2345",
+      },
+    );
+    const inboxB = new MessageInbox(roomB);
+    const lifecycleB = new LifecycleInbox(roomB);
+    await inboxB.next(
+      (message) => isSnapshot(message) && message.status === "active",
+    );
+
+    const accept = async (
+      room: ClientRoom,
+      inbox: MessageInbox,
+      id: string,
+      revision: number,
+      cell: number,
+    ): Promise<void> => {
+      const accepted = inbox.next(
+        (message) => isSnapshot(message) && message.causedByCommandId === id,
+      );
+      room.send(
+        GAME_ACTION_MESSAGE,
+        command(id, revision, { type: "PLACE_MARK", cell }),
+      );
+      await accepted;
+    };
+    await accept(roomA, inboxA, "ttl-1", 0, 0);
+    await accept(roomB, inboxB, "ttl-2", 1, 3);
+    await accept(roomA, inboxA, "ttl-3", 2, 1);
+    await accept(roomB, inboxB, "ttl-4", 3, 4);
+    await accept(roomA, inboxA, "ttl-5", 4, 2);
+    await Promise.all([
+      lifecycleA.next((message) => message.rematch.available),
+      lifecycleB.next((message) => message.rematch.available),
+    ]);
+
+    const readyA = lifecycleA.next(
+      (message) => message.causedByCommandId === "ttl-ready-a",
+    );
+    roomA.send(
+      ROOM_CONTROL_MESSAGE,
+      controlCommand("ttl-ready-a", "REQUEST_REMATCH"),
+    );
+    await readyA;
+    const clearedAfterDisconnect = lifecycleB.next(
+      (message) =>
+        message.rematch.available && message.rematch.readyPlayerCount === 0,
+    );
+    await roomA.leave(false);
+    await clearedAfterDisconnect;
+
+    const reconnectedA = await new ColyseusClient(address.httpUrl).join(
+      GAME_ROOM_NAME,
+      {
+        type: "room.join",
+        protocolVersion: PROTOCOL_VERSION,
+        ticket: authority.issue("ttl-a"),
+        roomCode: "TTLM2345",
+      },
+    );
+    const reconnectInbox = new MessageInbox(reconnectedA);
+    const reconnectLifecycle = new LifecycleInbox(reconnectedA);
+    await reconnectInbox.next((message) => message.type === "room.connected");
+    await lifecycleB.next(
+      (message) =>
+        message.rematch.available && message.rematch.readyPlayerCount === 0,
+    );
+
+    const readyReconnect = reconnectLifecycle.next(
+      (message) => message.causedByCommandId === "ttl-ready-reconnect",
+    );
+    const readyForB = lifecycleB.next(
+      (message) => message.rematch.readyPlayerCount === 1,
+    );
+    reconnectedA.send(
+      ROOM_CONTROL_MESSAGE,
+      controlCommand("ttl-ready-reconnect", "REQUEST_REMATCH"),
+    );
+    await Promise.all([readyReconnect, readyForB]);
+    const clearedAfterTakeover = lifecycleB.next(
+      (message) => message.rematch.readyPlayerCount === 0,
+    );
+    const takeoverA = await new ColyseusClient(address.httpUrl).join(
+      GAME_ROOM_NAME,
+      {
+        type: "room.join",
+        protocolVersion: PROTOCOL_VERSION,
+        ticket: authority.issue("ttl-a"),
+        roomCode: "TTLM2345",
+      },
+    );
+    const takeoverLifecycle = new LifecycleInbox(takeoverA);
+    await clearedAfterTakeover;
+
+    const ttlClosedA = takeoverLifecycle.next(
+      (message) => message.closeReason === "REMATCH_TIMEOUT",
+    );
+    const ttlClosedB = lifecycleB.next(
+      (message) => message.closeReason === "REMATCH_TIMEOUT",
+    );
+    clock.advanceBy(300_000);
+    await Promise.all([ttlClosedA, ttlClosedB]);
+    expect(await roomStore.getByRoomCode("TTLM2345")).toMatchObject({
+      status: "completed",
+      roundNumber: 1,
+      revision: 5,
+    });
   });
 });

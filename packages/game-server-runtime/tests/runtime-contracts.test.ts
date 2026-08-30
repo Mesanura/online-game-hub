@@ -12,6 +12,7 @@ import { FakeRuntimeClock, TestTicketAuthority } from "../src/testing/index.js";
 const storedRoom = {
   roomId: "internal-1",
   roomCode: "ABCD2345",
+  roundNumber: 1,
   gameId: "tic-tac-toe",
   gameVersion: "1.0.0",
   initialConfig: null,
@@ -117,6 +118,14 @@ describe("in-memory platform ports", () => {
 
   it("rejects room id/code conflicts and unknown saves", async () => {
     const store = new InMemoryRoomStore();
+    await expect(
+      store.create({
+        ...storedRoom,
+        roomId: "invalid-round",
+        roomCode: "EFGH2345",
+        roundNumber: 0,
+      }),
+    ).rejects.toMatchObject({ code: "INVALID_ROOM" });
     await store.create(storedRoom);
     await expect(store.create(storedRoom)).rejects.toMatchObject({
       code: "ROOM_ALREADY_EXISTS",

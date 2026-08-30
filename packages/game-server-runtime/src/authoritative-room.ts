@@ -1,4 +1,4 @@
-import { Room, ServerError } from "@colyseus/core";
+import { CloseCode, Room, ServerError } from "@colyseus/core";
 import type { Client } from "@colyseus/core";
 import { REPLAY_FORMAT_VERSION, type ReplayStore } from "./replay.js";
 import {
@@ -15,17 +15,21 @@ import type {
 import {
   GAME_ACTION_MESSAGE,
   PROTOCOL_VERSION,
+  ROOM_CONTROL_MESSAGE,
   SERVER_PROTOCOL_MESSAGE,
   createGameRoomRequestSchema,
   gameActionCommandSchema,
   gameRoomRequestSchema,
+  roomControlCommandSchema,
 } from "@online-game-hub/protocol";
 import type {
   CommandRejected,
   MatchSnapshot,
   MatchStatus,
   ProtocolErrorCode,
+  RoomCloseReason,
   RoomConnected,
+  RoomLifecycleState,
   ServerMessage,
 } from "@online-game-hub/protocol";
 
@@ -53,9 +57,11 @@ import type {
 export {
   GAME_ACTION_MESSAGE,
   GAME_ROOM_NAME,
+  ROOM_CONTROL_MESSAGE,
   SERVER_PROTOCOL_MESSAGE,
 } from "@online-game-hub/protocol";
 export const DEFAULT_RECONNECT_GRACE_MILLISECONDS = 60_000;
+export const DEFAULT_TERMINAL_ROOM_TTL_MILLISECONDS = 300_000;
 
 export type CurrentGameDefinitionResolver = (
   gameId: string,
@@ -76,6 +82,7 @@ export interface AuthoritativeGameRoomDependencies {
   readonly metrics?: MetricsCollector;
   readonly logger?: RuntimeLogger;
   readonly reconnectGraceMilliseconds?: number;
+  readonly terminalRoomTtlMilliseconds?: number;
 }
 
 export interface GameRoomMetadata {
@@ -98,7 +105,8 @@ interface RuntimeSlot {
 interface RuntimeAggregate {
   readonly definition: UnknownGameDefinition;
   readonly initialConfig: JsonValue;
-  readonly replayId: string;
+  replayId: string;
+  roundNumber: number;
   readonly roomCode: string;
   readonly slots: RuntimeSlot[];
   state: JsonValue;
@@ -106,6 +114,14 @@ interface RuntimeAggregate {
   revision: number;
   status: MatchStatus;
   outcome: JsonValue | null;
+}
+
+interface PendingRound {
+  readonly replayId: string;
+  readonly roundNumber: number;
+  readonly initialRng: RngState;
+  readonly state: JsonValue;
+  readonly rng: RngState;
 }
 
 interface RuntimeClientData {
@@ -147,6 +163,12 @@ export function createAuthoritativeGameRoomClass(
   if (!Number.isSafeInteger(reconnectGrace) || reconnectGrace < 0) {
     throw new RangeError("Reconnect grace must be a non-negative integer.");
   }
+  const terminalRoomTtl =
+    dependencies.terminalRoomTtlMilliseconds ??
+    DEFAULT_TERMINAL_ROOM_TTL_MILLISECONDS;
+  if (!Number.isSafeInteger(terminalRoomTtl) || terminalRoomTtl < 0) {
+    throw new RangeError("Terminal room TTL must be a non-negative integer.");
+  }
 
   const gaugeValues = new Map<string, number>();
   const adjustGauge = (
@@ -167,7 +189,14 @@ export function createAuthoritativeGameRoomClass(
     #creatorSessionId: string | undefined;
     #queue: Promise<void> = Promise.resolve();
     readonly #activeClientBySession = new Map<string, Client>();
-    readonly #commandOutcomes = new Map<string, ServerMessage>();
+    readonly #commandOutcomes = new Map<
+      string,
+      ServerMessage | RoomLifecycleState
+    >();
+    readonly #readySessions = new Set<string>();
+    #terminalTimeout: CancelTimer | null = null;
+    #closedReason: RoomCloseReason | null = null;
+    #pendingRound: PendingRound | null = null;
     #disposed = false;
 
     public static override async onAuth(
@@ -272,6 +301,7 @@ export function createAuthoritativeGameRoomClass(
         definition,
         initialConfig: configResult.data,
         replayId,
+        roundNumber: 1,
         roomCode,
         slots,
         state: initialized.state,
@@ -303,6 +333,9 @@ export function createAuthoritativeGameRoomClass(
       adjustGauge("active_rooms", 1, labels);
       this.onMessage(GAME_ACTION_MESSAGE, (client, message: unknown) =>
         this.#enqueue(() => this.#handleAction(client, message)),
+      );
+      this.onMessage(ROOM_CONTROL_MESSAGE, (client, message: unknown) =>
+        this.#enqueue(() => this.#handleControl(client, message)),
       );
       logger.write({
         event: "room.created",
@@ -353,6 +386,9 @@ export function createAuthoritativeGameRoomClass(
           (candidate) => candidate.playerSessionId === playerSessionId,
         );
         if (slot === undefined) {
+          if (aggregate.status === "completed") {
+            throw protocolServerError("ROOM_NOT_JOINABLE");
+          }
           if (request.data.type !== "room.join") {
             throw protocolServerError("NOT_A_PLAYER");
           }
@@ -375,6 +411,7 @@ export function createAuthoritativeGameRoomClass(
         slot.reservedUntilMilliseconds = null;
 
         const previousClient = this.#activeClientBySession.get(playerSessionId);
+        this.#readySessions.delete(playerSessionId);
         this.#activeClientBySession.set(playerSessionId, client);
         const clientData: RuntimeClientData = {
           playerSessionId,
@@ -396,6 +433,7 @@ export function createAuthoritativeGameRoomClass(
         }
         await dependencies.roomStore.save(this.#storedRoom());
         this.#sendConnected(client, slot.slotId);
+        this.#broadcastLifecycle();
         if (becameActive) {
           this.#broadcastSnapshots();
         } else {
@@ -412,7 +450,10 @@ export function createAuthoritativeGameRoomClass(
       });
     }
 
-    public override async onLeave(client: Client): Promise<void> {
+    public override async onLeave(
+      client: Client,
+      code?: number,
+    ): Promise<void> {
       await this.#enqueue(async () => {
         const clientData = client.userData as RuntimeClientData | undefined;
         if (clientData === undefined) {
@@ -428,12 +469,25 @@ export function createAuthoritativeGameRoomClass(
           return;
         }
         this.#activeClientBySession.delete(clientData.playerSessionId);
+        this.#readySessions.delete(clientData.playerSessionId);
         const aggregate = this.#requireAggregate();
         if (
-          aggregate.status === "completed" ||
           aggregate.status === "abandoned" ||
+          this.#closedReason !== null ||
           this.#disposed
         ) {
+          return;
+        }
+        if (code === CloseCode.CONSENTED) {
+          if (aggregate.status === "waiting" || aggregate.status === "active") {
+            await this.#closeRoom("PLAYER_LEFT");
+          } else {
+            this.#broadcastLifecycle();
+          }
+          return;
+        }
+        if (aggregate.status === "completed") {
+          this.#broadcastLifecycle();
           return;
         }
         const slot = aggregate.slots.find(
@@ -471,6 +525,8 @@ export function createAuthoritativeGameRoomClass(
       for (const slot of aggregate.slots) {
         slot.timeout?.cancel();
       }
+      this.#terminalTimeout?.cancel();
+      this.#terminalTimeout = null;
       adjustGauge("active_rooms", -1, this.#labels());
     }
 
@@ -510,7 +566,7 @@ export function createAuthoritativeGameRoomClass(
       const commandKey = `${clientData.playerSessionId}\u0000${command.commandId}`;
       const duplicate = this.#commandOutcomes.get(commandKey);
       if (duplicate !== undefined) {
-        client.send(SERVER_PROTOCOL_MESSAGE, duplicate);
+        this.#sendCommandOutcome(client, duplicate);
         return;
       }
 
@@ -651,12 +707,16 @@ export function createAuthoritativeGameRoomClass(
       aggregate.outcome = outcome;
       if (outcome !== null) {
         aggregate.status = "completed";
+        this.#scheduleTerminalExpiry();
       }
 
       metrics.increment("actions_accepted_total", this.#labels());
       const result = this.#snapshotFor(client, command.commandId);
       this.#commandOutcomes.set(commandKey, result);
       this.#broadcastSnapshots(client, command.commandId);
+      if (outcome !== null) {
+        this.#broadcastLifecycle();
+      }
       logger.write({
         event: "action.accepted",
         roomId: this.roomId,
@@ -666,6 +726,186 @@ export function createAuthoritativeGameRoomClass(
         sessionCorrelationId: correlatePlayerSessionId(
           clientData.playerSessionId,
         ),
+      });
+    }
+
+    async #handleControl(client: Client, rawMessage: unknown): Promise<void> {
+      const parsed = roomControlCommandSchema.safeParse(rawMessage);
+      if (!parsed.success) {
+        this.#sendRejection(
+          client,
+          this.#requestProtocolCode(rawMessage, "INVALID_ACTION_PAYLOAD"),
+        );
+        return;
+      }
+      const command = parsed.data;
+      const clientData = client.userData as RuntimeClientData | undefined;
+      if (
+        clientData === undefined ||
+        this.#activeClientBySession.get(clientData.playerSessionId) !== client
+      ) {
+        this.#sendRejection(client, "NOT_A_PLAYER", command.commandId);
+        return;
+      }
+      const commandKey = `${clientData.playerSessionId}\u0000${command.commandId}`;
+      const duplicate = this.#commandOutcomes.get(commandKey);
+      if (duplicate !== undefined) {
+        this.#sendCommandOutcome(client, duplicate);
+        return;
+      }
+
+      const aggregate = this.#requireAggregate();
+      if (command.operation === "CLOSE_ROOM") {
+        if (clientData.playerSessionId !== this.#creatorSessionId) {
+          this.#rejectControlAndCache(
+            client,
+            commandKey,
+            "ROOM_CONTROL_NOT_ALLOWED",
+            command.commandId,
+          );
+          return;
+        }
+        try {
+          await this.#closeRoom(
+            "OWNER_CLOSED",
+            client,
+            command.commandId,
+            commandKey,
+          );
+        } catch {
+          this.#rejectControlAndCache(
+            client,
+            commandKey,
+            "INTERNAL_ERROR",
+            command.commandId,
+          );
+        }
+        return;
+      }
+
+      if (aggregate.status !== "completed" || this.#closedReason !== null) {
+        this.#rejectControlAndCache(
+          client,
+          commandKey,
+          "ROOM_CONTROL_NOT_ALLOWED",
+          command.commandId,
+        );
+        return;
+      }
+
+      let startedNextRound = false;
+      if (command.operation === "CANCEL_REMATCH") {
+        this.#readySessions.delete(clientData.playerSessionId);
+      } else {
+        this.#readySessions.add(clientData.playerSessionId);
+        if (this.#allParticipantsReadyAndConnected()) {
+          try {
+            await this.#startNextRound();
+            startedNextRound = true;
+          } catch {
+            this.#rejectControlAndCache(
+              client,
+              commandKey,
+              "INTERNAL_ERROR",
+              command.commandId,
+            );
+            return;
+          }
+        }
+      }
+
+      const lifecycle = this.#lifecycleFor(client, command.commandId);
+      this.#commandOutcomes.set(commandKey, lifecycle);
+      this.#broadcastLifecycle(client, command.commandId);
+      if (startedNextRound) {
+        this.#broadcastSnapshots();
+      }
+    }
+
+    async #startNextRound(): Promise<void> {
+      const aggregate = this.#requireAggregate();
+      if (
+        aggregate.status !== "completed" ||
+        !this.#allParticipantsReadyAndConnected()
+      ) {
+        throw new Error("A rematch cannot start from the current lifecycle.");
+      }
+      if (aggregate.roundNumber >= Number.MAX_SAFE_INTEGER) {
+        throw new Error("Room round number is exhausted.");
+      }
+
+      let pending = this.#pendingRound;
+      if (pending === null) {
+        const initialRng = createRng(ids.createRngSeed());
+        let initialized: ReturnType<
+          UnknownGameDefinition["createInitialState"]
+        >;
+        try {
+          initialized = aggregate.definition.createInitialState({
+            config: aggregate.initialConfig,
+            players: aggregate.slots.map((slot) => slot.slotId),
+            rng: initialRng,
+          });
+        } catch {
+          throw new Error("The game could not initialize the next round.");
+        }
+        if (
+          !isJsonValue(initialized.state) ||
+          !validReturnedRng(initialized.rng, initialRng)
+        ) {
+          throw new Error("The game returned an invalid next round.");
+        }
+        pending = {
+          replayId: ids.createReplayId(),
+          roundNumber: aggregate.roundNumber + 1,
+          initialRng,
+          state: initialized.state,
+          rng: initialized.rng,
+        };
+        this.#pendingRound = pending;
+      }
+
+      await dependencies.replayStore.create(pending.replayId, {
+        replayFormatVersion: REPLAY_FORMAT_VERSION,
+        gameId: aggregate.definition.manifest.id,
+        gameVersion: aggregate.definition.manifest.gameVersion,
+        rng: {
+          algorithm: pending.initialRng.algorithm,
+          seed: pending.initialRng.seed,
+        },
+        initialConfig: aggregate.initialConfig,
+        players: aggregate.slots.map((slot) => ({ slotId: slot.slotId })),
+      });
+      await dependencies.roomStore.save(
+        this.#storedRoom({
+          replayId: pending.replayId,
+          roundNumber: pending.roundNumber,
+          state: pending.state,
+          rng: pending.rng,
+          revision: 0,
+          status: "active",
+          outcome: null,
+        }),
+      );
+
+      aggregate.replayId = pending.replayId;
+      aggregate.roundNumber = pending.roundNumber;
+      aggregate.state = pending.state;
+      aggregate.rng = pending.rng;
+      aggregate.revision = 0;
+      aggregate.status = "active";
+      aggregate.outcome = null;
+      this.#pendingRound = null;
+      this.#readySessions.clear();
+      this.#commandOutcomes.clear();
+      this.#terminalTimeout?.cancel();
+      this.#terminalTimeout = null;
+      logger.write({
+        event: "room.round_started",
+        roomId: this.roomId,
+        ...this.#labels(),
+        revision: 0,
+        status: "active",
       });
     }
 
@@ -679,10 +919,8 @@ export function createAuthoritativeGameRoomClass(
         return;
       }
       slot.timeout = null;
-      aggregate.status = "abandoned";
       metrics.increment("reconnect_timeout_total", this.#labels());
-      await dependencies.roomStore.save(this.#storedRoom());
-      this.#broadcastSnapshots();
+      await this.#closeRoom("RECONNECT_TIMEOUT");
       logger.write({
         event: "connection.reconnect_timeout",
         roomId: this.roomId,
@@ -697,6 +935,86 @@ export function createAuthoritativeGameRoomClass(
               ),
             }),
       });
+    }
+
+    async #closeRoom(
+      reason: RoomCloseReason,
+      causingClient?: Client,
+      causedByCommandId?: string,
+      commandKey?: string,
+    ): Promise<void> {
+      if (this.#closedReason !== null || this.#disposed) {
+        return;
+      }
+      const aggregate = this.#requireAggregate();
+      const shouldAbandon =
+        aggregate.status === "waiting" || aggregate.status === "active";
+      if (shouldAbandon) {
+        await dependencies.roomStore.save(
+          this.#storedRoom({ status: "abandoned", outcome: null }),
+        );
+        aggregate.status = "abandoned";
+        aggregate.outcome = null;
+      }
+      this.#closedReason = reason;
+      this.#readySessions.clear();
+      this.#pendingRound = null;
+      this.#terminalTimeout?.cancel();
+      this.#terminalTimeout = null;
+      for (const slot of aggregate.slots) {
+        slot.timeout?.cancel();
+        slot.timeout = null;
+        slot.reservedUntilMilliseconds = null;
+      }
+      if (shouldAbandon) {
+        this.#broadcastSnapshots();
+      }
+      if (
+        causingClient !== undefined &&
+        causedByCommandId !== undefined &&
+        commandKey !== undefined
+      ) {
+        this.#commandOutcomes.set(
+          commandKey,
+          this.#lifecycleFor(causingClient, causedByCommandId),
+        );
+      }
+      this.#broadcastLifecycle(causingClient, causedByCommandId);
+      logger.write({
+        event: "room.closed",
+        roomId: this.roomId,
+        ...this.#labels(),
+        revision: aggregate.revision,
+        status: aggregate.status,
+        closeReason: reason,
+      });
+      setTimeout(() => {
+        if (!this.#disposed) {
+          void this.disconnect(CloseCode.CONSENTED).catch(() => undefined);
+        }
+      }, 25);
+    }
+
+    #scheduleTerminalExpiry(): void {
+      this.#terminalTimeout?.cancel();
+      this.#terminalTimeout = dependencies.clock.setTimeout(() => {
+        void this.#enqueue(() => this.#closeRoom("REMATCH_TIMEOUT"));
+      }, terminalRoomTtl);
+    }
+
+    #allParticipantsReadyAndConnected(): boolean {
+      const aggregate = this.#requireAggregate();
+      const participants = aggregate.slots
+        .map((slot) => slot.playerSessionId)
+        .filter((session): session is string => session !== null);
+      return (
+        participants.length >= aggregate.definition.manifest.minPlayers &&
+        participants.every(
+          (session) =>
+            this.#activeClientBySession.has(session) &&
+            this.#readySessions.has(session),
+        )
+      );
     }
 
     #enqueue(work: () => void | Promise<void>): Promise<void> {
@@ -715,6 +1033,44 @@ export function createAuthoritativeGameRoomClass(
             this.#activeClientBySession.has(slot.playerSessionId),
         ).length >= required
       );
+    }
+
+    #sendCommandOutcome(
+      client: Client,
+      outcome: ServerMessage | RoomLifecycleState,
+    ): void {
+      client.send(
+        outcome.type === "room.lifecycle"
+          ? ROOM_CONTROL_MESSAGE
+          : SERVER_PROTOCOL_MESSAGE,
+        outcome,
+      );
+    }
+
+    #rejectControlAndCache(
+      client: Client,
+      commandKey: string,
+      code: ProtocolErrorCode,
+      commandId: string,
+    ): void {
+      const rejection = this.#rejection(code, commandId);
+      this.#commandOutcomes.set(commandKey, rejection);
+      client.send(SERVER_PROTOCOL_MESSAGE, rejection);
+      const clientData = client.userData as RuntimeClientData | undefined;
+      logger.write({
+        event: "room.control_rejected",
+        roomId: this.roomId,
+        ...this.#labels(),
+        revision: this.#requireAggregate().revision,
+        code,
+        ...(clientData === undefined
+          ? {}
+          : {
+              sessionCorrelationId: correlatePlayerSessionId(
+                clientData.playerSessionId,
+              ),
+            }),
+      });
     }
 
     async #createUniqueRoomCode(): Promise<string> {
@@ -845,6 +1201,63 @@ export function createAuthoritativeGameRoomClass(
       client.send(SERVER_PROTOCOL_MESSAGE, message);
     }
 
+    #broadcastLifecycle(
+      causingClient?: Client,
+      causedByCommandId?: string,
+    ): void {
+      for (const client of this.clients) {
+        const clientData = client.userData as RuntimeClientData | undefined;
+        if (
+          clientData !== undefined &&
+          this.#activeClientBySession.get(clientData.playerSessionId) === client
+        ) {
+          client.send(
+            ROOM_CONTROL_MESSAGE,
+            this.#lifecycleFor(
+              client,
+              client === causingClient ? causedByCommandId : undefined,
+            ),
+          );
+        }
+      }
+    }
+
+    #lifecycleFor(
+      client: Client,
+      causedByCommandId?: string,
+    ): RoomLifecycleState {
+      const aggregate = this.#requireAggregate();
+      const clientData = client.userData as RuntimeClientData | undefined;
+      if (clientData === undefined) {
+        throw protocolServerError("NOT_A_PLAYER");
+      }
+      const participantCount = aggregate.slots.filter(
+        (slot) => slot.playerSessionId !== null,
+      ).length;
+      const requiredPlayerCount = Math.max(
+        aggregate.definition.manifest.minPlayers,
+        participantCount,
+      );
+      const available =
+        aggregate.status === "completed" && this.#closedReason === null;
+      return {
+        type: "room.lifecycle",
+        protocolVersion: PROTOCOL_VERSION,
+        roundNumber: aggregate.roundNumber,
+        isOwner: clientData.playerSessionId === this.#creatorSessionId,
+        rematch: {
+          available,
+          selfReady:
+            available && this.#readySessions.has(clientData.playerSessionId),
+          readyPlayerCount: available ? this.#readySessions.size : 0,
+          requiredPlayerCount,
+        },
+        closed: this.#closedReason !== null,
+        closeReason: this.#closedReason,
+        ...(causedByCommandId === undefined ? {} : { causedByCommandId }),
+      };
+    }
+
     #sendSnapshot(client: Client, causedByCommandId?: string): void {
       client.send(
         SERVER_PROTOCOL_MESSAGE,
@@ -925,7 +1338,13 @@ export function createAuthoritativeGameRoomClass(
       candidate: Partial<
         Pick<
           StoredGameRoom,
-          "state" | "rng" | "revision" | "status" | "outcome"
+          | "replayId"
+          | "roundNumber"
+          | "state"
+          | "rng"
+          | "revision"
+          | "status"
+          | "outcome"
         >
       > = {},
     ): StoredGameRoom {
@@ -938,6 +1357,7 @@ export function createAuthoritativeGameRoomClass(
       return {
         roomId: this.roomId,
         roomCode: aggregate.roomCode,
+        roundNumber: candidate.roundNumber ?? aggregate.roundNumber,
         gameId: aggregate.definition.manifest.id,
         gameVersion: aggregate.definition.manifest.gameVersion,
         initialConfig: aggregate.initialConfig,
@@ -951,7 +1371,7 @@ export function createAuthoritativeGameRoomClass(
           candidate.outcome === undefined
             ? aggregate.outcome
             : candidate.outcome,
-        replayId: aggregate.replayId,
+        replayId: candidate.replayId ?? aggregate.replayId,
       };
     }
 

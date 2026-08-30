@@ -11,6 +11,7 @@ export interface StoredPlayerSlot {
 export interface StoredGameRoom {
   readonly roomId: string;
   readonly roomCode: string;
+  readonly roundNumber: number;
   readonly gameId: string;
   readonly gameVersion: string;
   readonly initialConfig: JsonValue;
@@ -75,6 +76,8 @@ function validRoom(room: StoredGameRoom): boolean {
   return (
     room.roomId.length > 0 &&
     /^[A-HJ-NP-Z2-9]{8}$/u.test(room.roomCode) &&
+    Number.isSafeInteger(room.roundNumber) &&
+    room.roundNumber > 0 &&
     room.gameId.length > 0 &&
     room.gameVersion.length > 0 &&
     room.replayId.length > 0 &&

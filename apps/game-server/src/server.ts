@@ -53,6 +53,7 @@ export interface GameServerCompositionOptions {
   readonly metrics?: MetricsCollector;
   readonly logger?: RuntimeLogger;
   readonly reconnectGraceMilliseconds?: number;
+  readonly terminalRoomTtlMilliseconds?: number;
 }
 
 export interface GameServerApplication {
@@ -92,6 +93,9 @@ export function createGameServer(
     ...(options.reconnectGraceMilliseconds === undefined
       ? {}
       : { reconnectGraceMilliseconds: options.reconnectGraceMilliseconds }),
+    ...(options.terminalRoomTtlMilliseconds === undefined
+      ? {}
+      : { terminalRoomTtlMilliseconds: options.terminalRoomTtlMilliseconds }),
   });
   const rooms = {
     [GAME_ROOM_NAME]: defineRoom(RoomClass).filterBy(["roomCode"]),

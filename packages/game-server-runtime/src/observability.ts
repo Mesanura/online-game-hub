@@ -1,4 +1,8 @@
-import type { MatchStatus, ProtocolErrorCode } from "@online-game-hub/protocol";
+import type {
+  MatchStatus,
+  ProtocolErrorCode,
+  RoomCloseReason,
+} from "@online-game-hub/protocol";
 
 export type RuntimeMetricName =
   | "active_rooms"
@@ -89,6 +93,7 @@ export interface RuntimeLogEvent {
   readonly gameVersion?: string;
   readonly revision?: number;
   readonly code?: ProtocolErrorCode | "ROOM_CRASH";
+  readonly closeReason?: RoomCloseReason;
   readonly sessionCorrelationId?: string;
   readonly status?: MatchStatus;
 }
