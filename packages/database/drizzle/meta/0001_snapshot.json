@@ -50,12 +50,8 @@
           "name": "guest_user_associations_user_id_users_id_fk",
           "tableFrom": "guest_user_associations",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -156,12 +152,8 @@
           "name": "match_players_match_id_matches_id_fk",
           "tableFrom": "match_players",
           "tableTo": "matches",
-          "columnsFrom": [
-            "match_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["match_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -169,12 +161,8 @@
           "name": "match_players_user_id_users_id_fk",
           "tableFrom": "match_players",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -182,20 +170,14 @@
       "compositePrimaryKeys": {
         "match_players_match_slot_pk": {
           "name": "match_players_match_slot_pk",
-          "columns": [
-            "match_id",
-            "player_slot_id"
-          ]
+          "columns": ["match_id", "player_slot_id"]
         }
       },
       "uniqueConstraints": {
         "match_players_match_session_unique": {
           "name": "match_players_match_session_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "match_id",
-            "player_session_id"
-          ]
+          "columns": ["match_id", "player_session_id"]
         }
       },
       "policies": {},
@@ -320,12 +302,8 @@
           "name": "matches_replay_id_replays_id_fk",
           "tableFrom": "matches",
           "tableTo": "replays",
-          "columnsFrom": [
-            "replay_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["replay_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -335,17 +313,12 @@
         "matches_runtime_room_round_unique": {
           "name": "matches_runtime_room_round_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "runtime_room_id",
-            "round_number"
-          ]
+          "columns": ["runtime_room_id", "round_number"]
         },
         "matches_replay_id_unique": {
           "name": "matches_replay_id_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "replay_id"
-          ]
+          "columns": ["replay_id"]
         }
       },
       "policies": {},
@@ -419,12 +392,8 @@
           "name": "replay_actions_replay_id_replays_id_fk",
           "tableFrom": "replay_actions",
           "tableTo": "replays",
-          "columnsFrom": [
-            "replay_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["replay_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -432,10 +401,7 @@
       "compositePrimaryKeys": {
         "replay_actions_replay_sequence_pk": {
           "name": "replay_actions_replay_sequence_pk",
-          "columns": [
-            "replay_id",
-            "sequence"
-          ]
+          "columns": ["replay_id", "sequence"]
         }
       },
       "uniqueConstraints": {},
@@ -603,12 +569,7 @@
     "public.match_status": {
       "name": "match_status",
       "schema": "public",
-      "values": [
-        "waiting",
-        "active",
-        "completed",
-        "abandoned"
-      ]
+      "values": ["waiting", "active", "completed", "abandoned"]
     }
   },
   "schemas": {},
