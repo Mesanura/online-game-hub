@@ -14,10 +14,7 @@ import { configureGameServerCors } from "./cors.js";
 
 export type ProductionGameServerOverrides = Omit<
   GameServerCompositionOptions,
-  | "ticketVerifier"
-  | "reconnectGraceMilliseconds"
-  | "roomStore"
-  | "replayStore"
+  "ticketVerifier" | "reconnectGraceMilliseconds" | "roomStore" | "replayStore"
 >;
 
 export function createProductionGameServer(

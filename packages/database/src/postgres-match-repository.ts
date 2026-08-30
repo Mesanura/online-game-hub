@@ -1,12 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import {
-  and,
-  desc,
-  eq,
-  inArray,
-  sql,
-} from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
 
 import {
@@ -14,9 +8,7 @@ import {
   isGameVersion,
   isJsonValue,
 } from "@online-game-hub/game-sdk";
-import {
-  InMemoryRoomStore,
-} from "@online-game-hub/game-server-runtime";
+import { InMemoryRoomStore } from "@online-game-hub/game-server-runtime";
 import type {
   RoomStore,
   StoredGameRoom,
@@ -81,8 +73,7 @@ function validStoredRoom(room: StoredGameRoom): boolean {
     room.players.every(
       (player) =>
         player.slotId.length > 0 &&
-        (player.playerSessionId === null ||
-          player.playerSessionId.length > 0),
+        (player.playerSessionId === null || player.playerSessionId.length > 0),
     ) &&
     new Set(room.players.map((player) => player.slotId)).size ===
       room.players.length &&
@@ -107,9 +98,7 @@ async function recordAssignedPlayers(
   room: StoredGameRoom,
 ): Promise<void> {
   const assigned = room.players.filter(
-    (
-      player,
-    ): player is typeof player & { readonly playerSessionId: string } =>
+    (player): player is typeof player & { readonly playerSessionId: string } =>
       player.playerSessionId !== null,
   );
   await lockGuestSessions(
@@ -120,12 +109,7 @@ async function recordAssignedPlayers(
     const associationRows = await transaction
       .select({ userId: guestUserAssociations.userId })
       .from(guestUserAssociations)
-      .where(
-        eq(
-          guestUserAssociations.playerSessionId,
-          player.playerSessionId,
-        ),
-      )
+      .where(eq(guestUserAssociations.playerSessionId, player.playerSessionId))
       .limit(1);
     const userId = associationRows[0]?.userId ?? null;
     await transaction
@@ -187,8 +171,7 @@ function parseHistoryRow(row: {
     (row.startedAt !== null && !validDate(row.startedAt)) ||
     (row.completedAt !== null && !validDate(row.completedAt)) ||
     (row.abandonedAt !== null && !validDate(row.abandonedAt)) ||
-    (row.replayCompletedAt !== null &&
-      !validDate(row.replayCompletedAt))
+    (row.replayCompletedAt !== null && !validDate(row.replayCompletedAt))
   ) {
     throw new DatabaseError("DATABASE_DATA_INVALID");
   }
@@ -204,8 +187,7 @@ function parseHistoryRow(row: {
     startedAt: row.startedAt?.toISOString() ?? null,
     finishedAt: finishedAt?.toISOString() ?? null,
     replayAvailable:
-      parsedStatus.data === "completed" &&
-      row.replayCompletedAt !== null,
+      parsedStatus.data === "completed" && row.replayCompletedAt !== null,
   };
 }
 
@@ -378,10 +360,7 @@ export class PostgresMatchRepository {
     if (playerSessionId.length === 0) {
       throw new DatabaseError("DATABASE_CONFIGURATION_ERROR");
     }
-    return this.#list(
-      eq(matchPlayers.playerSessionId, playerSessionId),
-      limit,
-    );
+    return this.#list(eq(matchPlayers.playerSessionId, playerSessionId), limit);
   }
 
   public async listForUser(
@@ -399,13 +378,14 @@ export class PostgresMatchRepository {
     matchId: string,
   ): Promise<MatchHistoryItem | null> {
     if (playerSessionId.length === 0 || !validUuid(matchId)) return null;
-    const rows = await this.#historyRows(
-      and(
-        eq(matchPlayers.playerSessionId, playerSessionId),
-        eq(matches.id, matchId),
-      )!,
-      1,
+    const identityCondition = and(
+      eq(matchPlayers.playerSessionId, playerSessionId),
+      eq(matches.id, matchId),
     );
+    if (identityCondition === undefined) {
+      throw new DatabaseError("DATABASE_OPERATION_ERROR");
+    }
+    const rows = await this.#historyRows(identityCondition, 1);
     return rows[0] ?? null;
   }
 

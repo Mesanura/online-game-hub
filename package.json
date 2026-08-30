@@ -13,7 +13,7 @@
     "build": "turbo run build",
     "deps:check": "node tooling/repository-check/src/check-dependencies.ts",
     "db:check": "pnpm --filter @online-game-hub/database db:check",
-    "db:migrate": "pnpm --filter @online-game-hub/database db:migrate",
+    "db:migrate": "turbo run build --filter=@online-game-hub/database && pnpm --filter @online-game-hub/database db:migrate",
     "docs:check": "node tooling/repository-check/src/check-markdown-links.ts",
     "format": "prettier --write .",
     "format:check": "prettier --check .",

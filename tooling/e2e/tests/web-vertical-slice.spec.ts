@@ -162,9 +162,9 @@ async function assertCanonicalReplay(
       rebuiltClient.database,
     ).get(room.replayId);
     expect(rebuiltReplay?.actions).toHaveLength(expectedRevision);
-    expect(
-      verifyReplay(rebuiltReplay, resolveGameDefinition),
-    ).toMatchObject({ status: "verified" });
+    expect(verifyReplay(rebuiltReplay, resolveGameDefinition)).toMatchObject({
+      status: "verified",
+    });
   } finally {
     await rebuiltClient.close();
   }
@@ -190,8 +190,7 @@ async function assertPrivateCompletedHistory(
   };
   const matchA = bodyA.matches?.find(
     (match) =>
-      match.status === "completed" &&
-      match.finalRevision === expectedRevision,
+      match.status === "completed" && match.finalRevision === expectedRevision,
   );
   if (matchA === undefined || typeof matchA.matchId !== "string") {
     throw new Error("Guest A history did not contain the completed match.");
@@ -359,11 +358,7 @@ test("two isolated guests complete win/draw, converge on reconnect, and cannot s
   await expect(pageA.getByTestId("turn-status")).toContainText("胜者：你");
   await expect(pageB.getByTestId("turn-status")).toContainText("胜者：对手");
   await assertCanonicalReplay(winningRoom.roomCode, 5, "WIN");
-  const persistedMatchId = await assertPrivateCompletedHistory(
-    pageA,
-    pageB,
-    5,
-  );
+  const persistedMatchId = await assertPrivateCompletedHistory(pageA, pageB, 5);
 
   const unrelatedContext = await browser.newContext();
   const missingSession = await unrelatedContext.request.get(

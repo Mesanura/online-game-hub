@@ -173,10 +173,7 @@ export async function startE2eHarness(): Promise<E2eHarness> {
   try {
     await waitForWebApplication(webProcess, webUrl);
   } catch (error) {
-    await Promise.allSettled([
-      stopChildProcess(webProcess),
-      gameServer.stop(),
-    ]);
+    await Promise.allSettled([stopChildProcess(webProcess), gameServer.stop()]);
     await database.close().catch(() => undefined);
     throw error;
   }

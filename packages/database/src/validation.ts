@@ -77,9 +77,7 @@ export function parseReplayPlayers(
   if (!Array.isArray(input) || input.length === 0) return null;
   const players: { slotId: string; participantRef?: string }[] = [];
   for (const entry of input) {
-    const participantRef = isRecord(entry)
-      ? entry.participantRef
-      : undefined;
+    const participantRef = isRecord(entry) ? entry.participantRef : undefined;
     if (
       !isRecord(entry) ||
       Object.keys(entry).some(
@@ -88,8 +86,7 @@ export function parseReplayPlayers(
       typeof entry.slotId !== "string" ||
       entry.slotId.length === 0 ||
       (participantRef !== undefined &&
-        (typeof participantRef !== "string" ||
-          participantRef.length === 0))
+        (typeof participantRef !== "string" || participantRef.length === 0))
     ) {
       return null;
     }

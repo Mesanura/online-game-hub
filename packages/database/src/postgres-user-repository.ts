@@ -1,25 +1,13 @@
 import { randomUUID } from "node:crypto";
 
-import {
-  and,
-  eq,
-  isNotNull,
-  isNull,
-  ne,
-  sql,
-} from "drizzle-orm";
+import { and, eq, isNotNull, isNull, ne, sql } from "drizzle-orm";
 
 import type { OnlineGameHubDatabase } from "./client.js";
 import { DatabaseError } from "./errors.js";
-import {
-  guestUserAssociations,
-  matchPlayers,
-  users,
-} from "./schema.js";
+import { guestUserAssociations, matchPlayers, users } from "./schema.js";
 
 export type GuestAssociationErrorCode =
-  | "USER_NOT_FOUND"
-  | "GUEST_ASSOCIATION_CONFLICT";
+  "USER_NOT_FOUND" | "GUEST_ASSOCIATION_CONFLICT";
 
 export class GuestAssociationError extends Error {
   public constructor(public readonly code: GuestAssociationErrorCode) {
@@ -119,22 +107,12 @@ export class PostgresUserRepository {
         const associationRows = await transaction
           .select({ userId: guestUserAssociations.userId })
           .from(guestUserAssociations)
-          .where(
-            eq(
-              guestUserAssociations.playerSessionId,
-              playerSessionId,
-            ),
-          )
+          .where(eq(guestUserAssociations.playerSessionId, playerSessionId))
           .for("update")
           .limit(1);
         const association = associationRows[0];
-        if (
-          association === undefined ||
-          association.userId !== trustedUserId
-        ) {
-          throw new GuestAssociationError(
-            "GUEST_ASSOCIATION_CONFLICT",
-          );
+        if (association === undefined || association.userId !== trustedUserId) {
+          throw new GuestAssociationError("GUEST_ASSOCIATION_CONFLICT");
         }
 
         const conflictingPlayers = await transaction
@@ -149,9 +127,7 @@ export class PostgresUserRepository {
           )
           .limit(1);
         if (conflictingPlayers[0] !== undefined) {
-          throw new GuestAssociationError(
-            "GUEST_ASSOCIATION_CONFLICT",
-          );
+          throw new GuestAssociationError("GUEST_ASSOCIATION_CONFLICT");
         }
         await transaction
           .update(matchPlayers)

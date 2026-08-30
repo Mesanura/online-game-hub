@@ -20,8 +20,7 @@ export async function applyDatabaseMigrations(
 ): Promise<void> {
   try {
     await migrate(client.database, {
-      migrationsFolder:
-        options.migrationsFolder ?? DEFAULT_MIGRATIONS_FOLDER,
+      migrationsFolder: options.migrationsFolder ?? DEFAULT_MIGRATIONS_FOLDER,
       migrationsSchema: options.migrationsSchema ?? "drizzle",
       migrationsTable: "__drizzle_migrations",
     });

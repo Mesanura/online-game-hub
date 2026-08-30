@@ -27,8 +27,7 @@ function databaseUrl(baseUrl: string, databaseName: string): string {
     throw new DatabaseError("DATABASE_CONFIGURATION_ERROR");
   }
   if (
-    (parsed.protocol !== "postgres:" &&
-      parsed.protocol !== "postgresql:") ||
+    (parsed.protocol !== "postgres:" && parsed.protocol !== "postgresql:") ||
     parsed.hostname.length === 0
   ) {
     throw new DatabaseError("DATABASE_CONFIGURATION_ERROR");
@@ -40,8 +39,7 @@ function databaseUrl(baseUrl: string, databaseName: string): string {
 export async function createIsolatedTestDatabase(
   baseUrl: string,
 ): Promise<IsolatedTestDatabase> {
-  const databaseName =
-    TEST_DATABASE_PREFIX + randomBytes(12).toString("hex");
+  const databaseName = TEST_DATABASE_PREFIX + randomBytes(12).toString("hex");
   if (!TEST_DATABASE_PATTERN.test(databaseName)) {
     throw new DatabaseError("DATABASE_CONFIGURATION_ERROR");
   }

@@ -242,10 +242,7 @@ export const replayActions = pgTable(
       name: "replay_actions_replay_sequence_pk",
       columns: [table.replayId, table.sequence],
     }),
-    check(
-      "replay_actions_sequence_positive",
-      sql`${table.sequence} > 0`,
-    ),
+    check("replay_actions_sequence_positive", sql`${table.sequence} > 0`),
     check(
       "replay_actions_actor_not_empty",
       sql`length(${table.actorSlotId}) > 0`,

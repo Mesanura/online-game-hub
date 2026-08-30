@@ -1,9 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  DatabaseError,
-  createPostgresDatabaseClient,
-} from "../src/index.js";
+import { createPostgresDatabaseClient } from "../src/index.js";
+import type { DatabaseError } from "../src/index.js";
 
 describe("PostgreSQL client configuration", () => {
   it("creates an explicit closable client without connecting on import", async () => {

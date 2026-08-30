@@ -943,9 +943,7 @@ export function createAuthoritativeGameRoomClass(
         initialConfig: aggregate.initialConfig,
         players,
         state:
-          candidate.state === undefined
-            ? aggregate.state
-            : candidate.state,
+          candidate.state === undefined ? aggregate.state : candidate.state,
         rng: candidate.rng ?? aggregate.rng,
         revision: candidate.revision ?? aggregate.revision,
         status: candidate.status ?? aggregate.status,

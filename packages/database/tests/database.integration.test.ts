@@ -1,16 +1,7 @@
-import {
-  afterAll,
-  beforeAll,
-  describe,
-  expect,
-  it,
-} from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { eq, sql } from "drizzle-orm";
 
-import {
-  RNG_ALGORITHM_V1,
-  createRng,
-} from "@online-game-hub/game-sdk";
+import { RNG_ALGORITHM_V1, createRng } from "@online-game-hub/game-sdk";
 import {
   InMemoryRoomStore,
   REPLAY_FORMAT_VERSION,
@@ -24,8 +15,6 @@ import type {
 import { resolveGameDefinition } from "@online-game-hub/game-registry/server";
 
 import {
-  DatabaseError,
-  GuestAssociationError,
   PostgresMatchArchiveRoomStore,
   PostgresMatchRepository,
   PostgresReplayStore,
@@ -33,6 +22,7 @@ import {
   applyDatabaseMigrations,
   createPostgresDatabaseClient,
 } from "../src/index.js";
+import type { DatabaseError, GuestAssociationError } from "../src/index.js";
 import {
   createIsolatedTestDatabase,
   requireTestDatabaseUrl,
@@ -136,16 +126,12 @@ describe.sequential("PostgreSQL + Drizzle persistence", () => {
       requireTestDatabaseUrl(process.env),
     );
     replayStore = new PostgresReplayStore(isolated.client.database);
-    matchRepository = new PostgresMatchRepository(
-      isolated.client.database,
-    );
+    matchRepository = new PostgresMatchRepository(isolated.client.database);
     roomStore = new PostgresMatchArchiveRoomStore(
       matchRepository,
       new InMemoryRoomStore(),
     );
-    userRepository = new PostgresUserRepository(
-      isolated.client.database,
-    );
+    userRepository = new PostgresUserRepository(isolated.client.database);
   }, 120_000);
 
   afterAll(async () => {
@@ -175,11 +161,7 @@ describe.sequential("PostgreSQL + Drizzle persistence", () => {
   it("persists replay create/append/complete across new connections", async () => {
     await replayStore.create("replay-cross-connection", header);
     await replayStore.create("replay-cross-connection", header);
-    await replayStore.append(
-      "replay-cross-connection",
-      0,
-      winningActions[0],
-    );
+    await replayStore.append("replay-cross-connection", 0, winningActions[0]);
 
     const secondClient = createPostgresDatabaseClient({
       url: isolated.url,
@@ -245,12 +227,12 @@ describe.sequential("PostgreSQL + Drizzle persistence", () => {
       replayStore.append("replay-concurrency", 0, first),
       replayStore.append("replay-concurrency", 0, conflicting),
     ]);
-    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(
-      1,
-    );
-    expect(results.filter((result) => result.status === "rejected")).toHaveLength(
-      1,
-    );
+    expect(
+      results.filter((result) => result.status === "fulfilled"),
+    ).toHaveLength(1);
+    expect(
+      results.filter((result) => result.status === "rejected"),
+    ).toHaveLength(1);
     const persisted = await replayStore.get("replay-concurrency");
     expect(persisted?.actions).toHaveLength(1);
     const persistedAction = persisted?.actions[0];
@@ -260,19 +242,9 @@ describe.sequential("PostgreSQL + Drizzle persistence", () => {
     await expect(
       replayStore.append("replay-concurrency", 0, persistedAction),
     ).resolves.toBeUndefined();
-    await replayStore.complete(
-      "replay-concurrency",
-      1,
-      0,
-      { type: "DRAW" },
-    );
+    await replayStore.complete("replay-concurrency", 1, 0, { type: "DRAW" });
     await expect(
-      replayStore.complete(
-        "replay-concurrency",
-        1,
-        1,
-        { type: "DRAW" },
-      ),
+      replayStore.complete("replay-concurrency", 1, 1, { type: "DRAW" }),
     ).rejects.toMatchObject({ code: "COMPLETION_CONFLICT" });
     await expect(
       replayStore.append("replay-concurrency", 1, {
@@ -292,31 +264,26 @@ describe.sequential("PostgreSQL + Drizzle persistence", () => {
       "guest-history-a",
     );
     await roomStore.create(waiting);
+    const [firstPlayer, secondPlayer] = waiting.players;
+    if (firstPlayer === undefined || secondPlayer === undefined) {
+      throw new Error("Expected two preallocated player slots.");
+    }
     const active: StoredGameRoom = {
       ...waiting,
       status: "active",
       players: [
-        waiting.players[0]!,
+        firstPlayer,
         {
-          ...waiting.players[1]!,
+          ...secondPlayer,
           playerSessionId: "guest-history-b",
         },
       ],
     };
     await roomStore.save(active);
     for (const action of winningActions) {
-      await replayStore.append(
-        active.replayId,
-        action.sequence - 1,
-        action,
-      );
+      await replayStore.append(active.replayId, action.sequence - 1, action);
     }
-    await replayStore.complete(
-      active.replayId,
-      5,
-      0,
-      winningOutcome,
-    );
+    await replayStore.complete(active.replayId, 5, 0, winningOutcome);
     await roomStore.save({
       ...active,
       revision: 5,
@@ -324,12 +291,8 @@ describe.sequential("PostgreSQL + Drizzle persistence", () => {
       outcome: winningOutcome,
     });
 
-    const historyA = await matchRepository.listForGuest(
-      "guest-history-a",
-    );
-    const historyB = await matchRepository.listForGuest(
-      "guest-history-b",
-    );
+    const historyA = await matchRepository.listForGuest("guest-history-a");
+    const historyB = await matchRepository.listForGuest("guest-history-b");
     expect(historyA[0]).toMatchObject({
       gameId: "tic-tac-toe",
       gameVersion: "1.0.0",
@@ -356,9 +319,8 @@ describe.sequential("PostgreSQL + Drizzle persistence", () => {
       ...abandonedWaiting,
       status: "abandoned",
     });
-    const historyAfterAbandon = await matchRepository.listForGuest(
-      "guest-history-a",
-    );
+    const historyAfterAbandon =
+      await matchRepository.listForGuest("guest-history-a");
     expect(historyAfterAbandon).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -384,9 +346,7 @@ describe.sequential("PostgreSQL + Drizzle persistence", () => {
     );
     await roomStore.create(privateWaiting);
     await roomStore.save({ ...privateWaiting, status: "abandoned" });
-    const privateHistory = await matchRepository.listForGuest(
-      "guest-private",
-    );
+    const privateHistory = await matchRepository.listForGuest("guest-private");
     const privateMatchId = privateHistory[0]?.matchId;
     if (privateMatchId === undefined) {
       throw new Error("Private history match was not archived.");
@@ -401,20 +361,12 @@ describe.sequential("PostgreSQL + Drizzle persistence", () => {
       const rebuiltMatches = new PostgresMatchRepository(
         rebuiltClient.database,
       );
-      const rebuiltReplays = new PostgresReplayStore(
-        rebuiltClient.database,
-      );
+      const rebuiltReplays = new PostgresReplayStore(rebuiltClient.database);
       await expect(
-        rebuiltMatches.getForGuest(
-          "guest-history-a",
-          privateMatchId,
-        ),
+        rebuiltMatches.getForGuest("guest-history-a", privateMatchId),
       ).resolves.toBeNull();
       await expect(
-        rebuiltMatches.getForGuest(
-          "guest-private",
-          privateMatchId,
-        ),
+        rebuiltMatches.getForGuest("guest-private", privateMatchId),
       ).resolves.toMatchObject({ status: "abandoned" });
       const completedReplay = await rebuiltReplays.get(
         "replay-completed-match",
@@ -439,10 +391,7 @@ describe.sequential("PostgreSQL + Drizzle persistence", () => {
       userA.userId,
     );
     await expect(
-      userRepository.associateGuestWithUser(
-        "guest-history-a",
-        userB.userId,
-      ),
+      userRepository.associateGuestWithUser("guest-history-a", userB.userId),
     ).rejects.toEqual(
       expect.objectContaining<Partial<GuestAssociationError>>({
         code: "GUEST_ASSOCIATION_CONFLICT",
@@ -459,9 +408,7 @@ describe.sequential("PostgreSQL + Drizzle persistence", () => {
     expect(userHistory.some((item) => item.matchId === completedMatchId)).toBe(
       true,
     );
-    const guestHistory = await matchRepository.listForGuest(
-      "guest-history-a",
-    );
+    const guestHistory = await matchRepository.listForGuest("guest-history-a");
     expect(guestHistory.some((item) => item.matchId === completedMatchId)).toBe(
       true,
     );
@@ -478,8 +425,8 @@ describe.sequential("PostgreSQL + Drizzle persistence", () => {
     const futureUserHistory = await matchRepository.listForUser(userA.userId);
     expect(
       futureUserHistory.some(
-        (item) => item.status === "abandoned" &&
-          item.matchId !== completedMatchId,
+        (item) =>
+          item.status === "abandoned" && item.matchId !== completedMatchId,
       ),
     ).toBe(true);
   });

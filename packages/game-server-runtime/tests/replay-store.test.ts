@@ -81,7 +81,9 @@ describe("InMemoryReplayStore", () => {
       store.append("replay-1", 0, { ...firstAction, sequence: 2 }),
     ).rejects.toMatchObject({ code: "INVALID_SEQUENCE" });
     await store.append("replay-1", 0, firstAction);
-    await expect(store.append("replay-1", 0, firstAction)).resolves.toBeUndefined();
+    await expect(
+      store.append("replay-1", 0, firstAction),
+    ).resolves.toBeUndefined();
     await expect(
       store.append("replay-1", 0, {
         sequence: 1,

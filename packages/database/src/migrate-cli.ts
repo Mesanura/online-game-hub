@@ -13,9 +13,7 @@ async function main(): Promise<void> {
     return;
   }
 
-  let client:
-    | ReturnType<typeof createPostgresDatabaseClient>
-    | undefined;
+  let client: ReturnType<typeof createPostgresDatabaseClient> | undefined;
   try {
     client = createPostgresDatabaseClient({
       url,
@@ -23,9 +21,7 @@ async function main(): Promise<void> {
       maxConnections: 1,
     });
     await applyDatabaseMigrations(client);
-    process.stdout.write(
-      `${JSON.stringify({ event: "database.migrated" })}\n`,
-    );
+    process.stdout.write(`${JSON.stringify({ event: "database.migrated" })}\n`);
   } catch {
     process.stderr.write(
       `${JSON.stringify({ event: "database.migration_failed", code: "DATABASE_MIGRATION_ERROR" })}\n`,

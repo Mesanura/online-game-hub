@@ -16,9 +16,7 @@ import {
   SERVER_PROTOCOL_MESSAGE,
   verifyReplay,
 } from "@online-game-hub/game-server-runtime";
-import {
-  createDeterministicRuntimeIdSource,
-} from "@online-game-hub/game-server-runtime/testing";
+import { createDeterministicRuntimeIdSource } from "@online-game-hub/game-server-runtime/testing";
 import { createHmacGameServerTicketAuthority } from "@online-game-hub/game-server-ticket";
 import {
   PROTOCOL_VERSION,
@@ -107,224 +105,216 @@ function command(
 }
 
 describe("real PostgreSQL authoritative persistence", () => {
-  it(
-    "persists only accepted actions and rebuilds completed history after shutdown",
-    async () => {
-      const isolated = await createIsolatedTestDatabase(
-        requireTestDatabaseUrl(process.env),
-      );
-      const issuer = "database-integration-web";
-      const secret = "database-integration-ticket-secret-at-least-32-bytes";
-      const tickets = createHmacGameServerTicketAuthority({
-        issuer,
-        secret,
-        lifetimeSeconds: 60,
+  it("persists only accepted actions and rebuilds completed history after shutdown", async () => {
+    const isolated = await createIsolatedTestDatabase(
+      requireTestDatabaseUrl(process.env),
+    );
+    const issuer = "database-integration-web";
+    const secret = "database-integration-ticket-secret-at-least-32-bytes";
+    const tickets = createHmacGameServerTicketAuthority({
+      issuer,
+      secret,
+      lifetimeSeconds: 60,
+    });
+    const app = createProductionGameServer(
+      {
+        applicationEnvironment: "test",
+        databaseMode: "postgres",
+        databaseUrl: isolated.url,
+        hostname: "127.0.0.1",
+        port: 0,
+        ticketIssuer: issuer,
+        ticketSecret: secret,
+        allowedWebOrigins: ["http://127.0.0.1:3000"],
+        reconnectGraceMilliseconds: 0,
+      },
+      {
+        ids: createDeterministicRuntimeIdSource(["PERS2345"]),
+        logger: { write: () => undefined },
+      },
+    );
+    let roomA: ClientRoom | undefined;
+    let roomB: ClientRoom | undefined;
+    try {
+      const address = await app.start();
+      const clientA = new ColyseusClient(address.httpUrl);
+      const clientB = new ColyseusClient(address.httpUrl);
+      roomA = await clientA.create(GAME_ROOM_NAME, {
+        type: "room.create",
+        protocolVersion: PROTOCOL_VERSION,
+        ticket: tickets.issue("database-guest-a"),
+        gameId: "tic-tac-toe",
+        initialConfig: null,
       });
-      const app = createProductionGameServer(
-        {
-          applicationEnvironment: "test",
-          databaseMode: "postgres",
-          databaseUrl: isolated.url,
-          hostname: "127.0.0.1",
-          port: 0,
-          ticketIssuer: issuer,
-          ticketSecret: secret,
-          allowedWebOrigins: ["http://127.0.0.1:3000"],
-          reconnectGraceMilliseconds: 0,
-        },
-        {
-          ids: createDeterministicRuntimeIdSource(["PERS2345"]),
-          logger: { write: () => undefined },
-        },
+      const inboxA = new MessageInbox(roomA);
+      await inboxA.next(
+        (message) => message.type === "room.connected",
+        "creator connection",
       );
-      let roomA: ClientRoom | undefined;
-      let roomB: ClientRoom | undefined;
-      try {
-        const address = await app.start();
-        const clientA = new ColyseusClient(address.httpUrl);
-        const clientB = new ColyseusClient(address.httpUrl);
-        roomA = await clientA.create(GAME_ROOM_NAME, {
-          type: "room.create",
-          protocolVersion: PROTOCOL_VERSION,
-          ticket: tickets.issue("database-guest-a"),
-          gameId: "tic-tac-toe",
-          initialConfig: null,
-        });
-        const inboxA = new MessageInbox(roomA);
-        await inboxA.next(
+      await inboxA.next(
+        (message) => message.type === "match.snapshot",
+        "creator waiting snapshot",
+      );
+      const activeA = inboxA.next(
+        (message) =>
+          message.type === "match.snapshot" && message.status === "active",
+        "creator active snapshot",
+      );
+      roomB = await clientB.join(GAME_ROOM_NAME, {
+        type: "room.join",
+        protocolVersion: PROTOCOL_VERSION,
+        ticket: tickets.issue("database-guest-b"),
+        roomCode: "PERS2345",
+      });
+      const inboxB = new MessageInbox(roomB);
+      await Promise.all([
+        activeA,
+        inboxB.next(
           (message) => message.type === "room.connected",
-          "creator connection",
-        );
-        await inboxA.next(
-          (message) => message.type === "match.snapshot",
-          "creator waiting snapshot",
-        );
-        const activeA = inboxA.next(
+          "joiner connection",
+        ),
+        inboxB.next(
           (message) =>
             message.type === "match.snapshot" && message.status === "active",
-          "creator active snapshot",
-        );
-        roomB = await clientB.join(GAME_ROOM_NAME, {
-          type: "room.join",
-          protocolVersion: PROTOCOL_VERSION,
-          ticket: tickets.issue("database-guest-b"),
-          roomCode: "PERS2345",
-        });
-        const inboxB = new MessageInbox(roomB);
-        await Promise.all([
-          activeA,
-          inboxB.next(
-            (message) => message.type === "room.connected",
-            "joiner connection",
-          ),
-          inboxB.next(
-            (message) =>
-              message.type === "match.snapshot" &&
-              message.status === "active",
-            "joiner active snapshot",
-          ),
-        ]);
+          "joiner active snapshot",
+        ),
+      ]);
 
-        roomA.send(GAME_ACTION_MESSAGE, {
-          ...command("forged-actor", 0, {
-            type: "PLACE_MARK",
-            cell: 0,
-          }),
-          actorSlotId: "slot-2",
-        });
-        await inboxA.next(
-          (message) =>
-            message.type === "command.rejected" &&
-            message.code === "INVALID_ACTION_PAYLOAD",
-          "forged actor rejection",
-        );
-        roomA.send(
+      roomA.send(GAME_ACTION_MESSAGE, {
+        ...command("forged-actor", 0, {
+          type: "PLACE_MARK",
+          cell: 0,
+        }),
+        actorSlotId: "slot-2",
+      });
+      await inboxA.next(
+        (message) =>
+          message.type === "command.rejected" &&
+          message.code === "INVALID_ACTION_PAYLOAD",
+        "forged actor rejection",
+      );
+      roomA.send(
+        GAME_ACTION_MESSAGE,
+        command("accepted-1", 0, { type: "PLACE_MARK", cell: 0 }),
+      );
+      await inboxA.next(
+        (message) =>
+          message.type === "match.snapshot" &&
+          message.causedByCommandId === "accepted-1",
+        "first accepted snapshot",
+      );
+      roomA.send(
+        GAME_ACTION_MESSAGE,
+        command("accepted-1", 0, { type: "PLACE_MARK", cell: 0 }),
+      );
+      await inboxA.next(
+        (message) =>
+          message.type === "match.snapshot" &&
+          message.causedByCommandId === "accepted-1",
+        "duplicate command result",
+      );
+      roomB.send(
+        GAME_ACTION_MESSAGE,
+        command("stale", 0, { type: "PLACE_MARK", cell: 3 }),
+      );
+      await inboxB.next(
+        (message) =>
+          message.type === "command.rejected" && message.commandId === "stale",
+        "stale revision rejection",
+      );
+      roomA.send(
+        GAME_ACTION_MESSAGE,
+        command("rule-rejected", 1, {
+          type: "PLACE_MARK",
+          cell: 1,
+        }),
+      );
+      await inboxA.next(
+        (message) =>
+          message.type === "command.rejected" &&
+          message.commandId === "rule-rejected",
+        "game rule rejection",
+      );
+
+      const accepted = async (
+        room: ClientRoom,
+        inbox: MessageInbox,
+        id: string,
+        revision: number,
+        cell: number,
+      ) => {
+        room.send(
           GAME_ACTION_MESSAGE,
-          command("accepted-1", 0, { type: "PLACE_MARK", cell: 0 }),
+          command(id, revision, { type: "PLACE_MARK", cell }),
         );
-        await inboxA.next(
+        await inbox.next(
           (message) =>
             message.type === "match.snapshot" &&
-            message.causedByCommandId === "accepted-1",
-          "first accepted snapshot",
+            message.causedByCommandId === id,
+          `${id} accepted snapshot`,
         );
-        roomA.send(
-          GAME_ACTION_MESSAGE,
-          command("accepted-1", 0, { type: "PLACE_MARK", cell: 0 }),
-        );
-        await inboxA.next(
-          (message) =>
-            message.type === "match.snapshot" &&
-            message.causedByCommandId === "accepted-1",
-          "duplicate command result",
-        );
-        roomB.send(
-          GAME_ACTION_MESSAGE,
-          command("stale", 0, { type: "PLACE_MARK", cell: 3 }),
-        );
-        await inboxB.next(
-          (message) =>
-            message.type === "command.rejected" &&
-            message.commandId === "stale",
-          "stale revision rejection",
-        );
-        roomA.send(
-          GAME_ACTION_MESSAGE,
-          command("rule-rejected", 1, {
-            type: "PLACE_MARK",
-            cell: 1,
-          }),
-        );
-        await inboxA.next(
-          (message) =>
-            message.type === "command.rejected" &&
-            message.commandId === "rule-rejected",
-          "game rule rejection",
-        );
+      };
+      await accepted(roomB, inboxB, "accepted-2", 1, 3);
+      await accepted(roomA, inboxA, "accepted-3", 2, 1);
+      await accepted(roomB, inboxB, "accepted-4", 3, 4);
+      await accepted(roomA, inboxA, "accepted-5", 4, 2);
 
-        const accepted = async (
-          room: ClientRoom,
-          inbox: MessageInbox,
-          id: string,
-          revision: number,
-          cell: number,
-        ) => {
-          room.send(
-            GAME_ACTION_MESSAGE,
-            command(id, revision, { type: "PLACE_MARK", cell }),
-          );
-          await inbox.next(
-            (message) =>
-              message.type === "match.snapshot" &&
-              message.causedByCommandId === id,
-            `${id} accepted snapshot`,
-          );
-        };
-        await accepted(roomB, inboxB, "accepted-2", 1, 3);
-        await accepted(roomA, inboxA, "accepted-3", 2, 1);
-        await accepted(roomB, inboxB, "accepted-4", 3, 4);
-        await accepted(roomA, inboxA, "accepted-5", 4, 2);
+      const stored = await app.roomStore.getByRoomCode("PERS2345");
+      expect(stored).toMatchObject({ status: "completed", revision: 5 });
+      const replay = await app.replayStore.get(stored?.replayId ?? "");
+      expect(replay?.actions).toHaveLength(5);
+      expect(verifyReplay(replay, resolveGameDefinition)).toMatchObject({
+        status: "verified",
+      });
+      await roomA.leave();
+      await roomB.leave();
+      roomA = undefined;
+      roomB = undefined;
+      await app.stop();
 
-        const stored = await app.roomStore.getByRoomCode("PERS2345");
-        expect(stored).toMatchObject({ status: "completed", revision: 5 });
-        const replay = await app.replayStore.get(stored?.replayId ?? "");
-        expect(replay?.actions).toHaveLength(5);
-        expect(verifyReplay(replay, resolveGameDefinition)).toMatchObject({
-          status: "verified",
-        });
-        await roomA.leave();
-        await roomB.leave();
-        roomA = undefined;
-        roomB = undefined;
-        await app.stop();
-
-        const rebuiltClient = createPostgresDatabaseClient({
-          url: isolated.url,
-          applicationName: "game-server-database-integration-rebuilt",
-          maxConnections: 2,
-        });
-        try {
-          const rebuiltReplay = await new PostgresReplayStore(
-            rebuiltClient.database,
-          ).get(stored?.replayId ?? "");
-          expect(rebuiltReplay?.actions).toHaveLength(5);
-          expect(
-            verifyReplay(rebuiltReplay, resolveGameDefinition),
-          ).toMatchObject({ status: "verified" });
-          const matches = new PostgresMatchRepository(
-            rebuiltClient.database,
-          );
-          await expect(
-            matches.listForGuest("database-guest-a"),
-          ).resolves.toEqual([
+      const rebuiltClient = createPostgresDatabaseClient({
+        url: isolated.url,
+        applicationName: "game-server-database-integration-rebuilt",
+        maxConnections: 2,
+      });
+      try {
+        const rebuiltReplay = await new PostgresReplayStore(
+          rebuiltClient.database,
+        ).get(stored?.replayId ?? "");
+        expect(rebuiltReplay?.actions).toHaveLength(5);
+        expect(
+          verifyReplay(rebuiltReplay, resolveGameDefinition),
+        ).toMatchObject({ status: "verified" });
+        const matches = new PostgresMatchRepository(rebuiltClient.database);
+        await expect(matches.listForGuest("database-guest-a")).resolves.toEqual(
+          [
             expect.objectContaining({
               status: "completed",
               finalRevision: 5,
               playerSlotId: "slot-1",
               replayAvailable: true,
             }),
-          ]);
-          await expect(
-            matches.listForGuest("database-guest-b"),
-          ).resolves.toEqual([
+          ],
+        );
+        await expect(matches.listForGuest("database-guest-b")).resolves.toEqual(
+          [
             expect.objectContaining({
               status: "completed",
               playerSlotId: "slot-2",
             }),
-          ]);
-          await expect(
-            matches.listForGuest("database-unrelated-guest"),
-          ).resolves.toEqual([]);
-        } finally {
-          await rebuiltClient.close();
-        }
+          ],
+        );
+        await expect(
+          matches.listForGuest("database-unrelated-guest"),
+        ).resolves.toEqual([]);
       } finally {
-        await roomA?.leave().catch(() => undefined);
-        await roomB?.leave().catch(() => undefined);
-        await app.stop().catch(() => undefined);
-        await isolated.close();
+        await rebuiltClient.close();
       }
-    },
-    120_000,
-  );
+    } finally {
+      await roomA?.leave().catch(() => undefined);
+      await roomB?.leave().catch(() => undefined);
+      await app.stop().catch(() => undefined);
+      await isolated.close();
+    }
+  }, 120_000);
 });

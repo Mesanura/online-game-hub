@@ -1,15 +1,7 @@
-import {
-  and,
-  asc,
-  desc,
-  eq,
-  sql,
-} from "drizzle-orm";
+import { and, asc, desc, eq, sql } from "drizzle-orm";
 
 import { isJsonValue } from "@online-game-hub/game-sdk";
-import {
-  ReplayStoreError,
-} from "@online-game-hub/game-server-runtime";
+import { ReplayStoreError } from "@online-game-hub/game-server-runtime";
 import type {
   CanonicalReplay,
   ReplayAction,
@@ -19,11 +11,7 @@ import type {
 
 import type { OnlineGameHubDatabase } from "./client.js";
 import { DatabaseError } from "./errors.js";
-import {
-  matches,
-  replayActions,
-  replays,
-} from "./schema.js";
+import { matches, replayActions, replays } from "./schema.js";
 import {
   cloneJson,
   jsonEqual,
@@ -38,9 +26,7 @@ function safeReplayId(replayId: string): boolean {
   return replayId.length > 0 && replayId.length <= 128;
 }
 
-function storedHeader(
-  row: typeof replays.$inferSelect,
-): ReplayHeader | null {
+function storedHeader(row: typeof replays.$inferSelect): ReplayHeader | null {
   const players = parseReplayPlayers(row.players);
   if (!isJsonValue(row.initialConfig) || players === null) return null;
   const header: ReplayHeader = {
@@ -79,10 +65,7 @@ function rethrowSafe(error: unknown): never {
 export class PostgresReplayStore implements ReplayStore {
   public constructor(private readonly database: OnlineGameHubDatabase) {}
 
-  public async create(
-    replayId: string,
-    header: ReplayHeader,
-  ): Promise<void> {
+  public async create(replayId: string, header: ReplayHeader): Promise<void> {
     if (!safeReplayId(replayId)) {
       throw new ReplayStoreError(
         "INVALID_REPLAY_ID",
@@ -327,10 +310,7 @@ export class PostgresReplayStore implements ReplayStore {
           .for("update")
           .limit(1);
         const match = matchRows[0];
-        if (
-          match !== undefined &&
-          match.status !== "active"
-        ) {
+        if (match !== undefined && match.status !== "active") {
           throw new ReplayStoreError(
             "COMPLETION_CONFLICT",
             "Only an active match can complete its replay.",
@@ -409,10 +389,7 @@ export class PostgresReplayStore implements ReplayStore {
             throw new DatabaseError("DATABASE_DATA_INVALID");
           }
           const recordedOutcome = replay.recordedOutcome;
-          if (
-            recordedOutcome !== null &&
-            !isJsonValue(recordedOutcome)
-          ) {
+          if (recordedOutcome !== null && !isJsonValue(recordedOutcome)) {
             throw new DatabaseError("DATABASE_DATA_INVALID");
           }
           return {
@@ -420,9 +397,7 @@ export class PostgresReplayStore implements ReplayStore {
             actions: actions as ReplayAction[],
             recordedRngCursor: replay.recordedRngCursor,
             recordedOutcome:
-              recordedOutcome === null
-                ? null
-                : cloneJson(recordedOutcome),
+              recordedOutcome === null ? null : cloneJson(recordedOutcome),
           };
         },
         { isolationLevel: "repeatable read", accessMode: "read only" },

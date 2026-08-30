@@ -22,7 +22,7 @@
     "build": "tsc -p tsconfig.build.json",
     "db:check": "drizzle-kit check",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "node src/migrate-cli.ts",
+    "db:migrate": "node dist/migrate-cli.js",
     "test": "vitest run tests/config.test.ts",
     "test:database": "vitest run tests/database.integration.test.ts",
     "typecheck": "tsc -p tsconfig.json"
