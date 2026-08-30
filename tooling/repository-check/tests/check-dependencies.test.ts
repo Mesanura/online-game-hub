@@ -26,6 +26,7 @@ test("fixtures prove every M1 dependency boundary fails closed", async () => {
 
   assert.ok(codes.has("PLATFORM_TO_GAME_DEPENDENCY"));
   assert.ok(codes.has("CROSS_GAME_DEPENDENCY"));
+  assert.ok(codes.has("GAME_IMPORT_OUTSIDE_REGISTRY"));
   assert.ok(codes.has("CORE_FORBIDDEN_API"));
   assert.ok(codes.has("CORE_FORBIDDEN_IMPORT"));
   assert.ok(codes.has("INVALID_PACKAGE_EXPORT"));
@@ -64,6 +65,18 @@ test("fixtures prove every M1 dependency boundary fails closed", async () => {
   assert.match(
     messages,
     /@fixture\/alpha must not import another game @fixture\/beta/u,
+  );
+  assert.match(
+    messages,
+    /@fixture\/beta must not import another game @fixture\/alpha/u,
+  );
+  assert.match(
+    messages,
+    /@fixture\/alpha must access concrete games only through game-registry composition/u,
+  );
+  assert.match(
+    messages,
+    /@fixture\/beta must access concrete games only through game-registry composition/u,
   );
   assert.match(messages, /@fixture\/game-sdk\/src\/private\.js/u);
 });
