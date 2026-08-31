@@ -264,6 +264,7 @@ describe.sequential("authoritative Colyseus Game Server", () => {
         "CFLEAV45",
         "GMPLAY45",
         "HXPLAY45",
+        "RVPLAY45",
       ]),
       logger: { write: (event) => logs.push(event) },
     });
@@ -2106,6 +2107,398 @@ describe.sequential("authoritative Colyseus Game Server", () => {
         winnerSlotId: "slot-1",
         resignedSlotId: "slot-2",
       },
+    });
+  });
+
+  it("runs Reversi flips, forced skips, terminal scoring, and independent rounds authoritatively", async () => {
+    const roomA = await new ColyseusClient(address.httpUrl).create(
+      GAME_ROOM_NAME,
+      {
+        type: "room.create",
+        protocolVersion: PROTOCOL_VERSION,
+        ticket: authority.issue("reversi-a"),
+        gameId: "reversi",
+        initialConfig: null,
+      },
+    );
+    const inboxA = new MessageInbox(roomA);
+    const lifecycleA = new LifecycleInbox(roomA);
+    const connectedA = await inboxA.next(
+      (message) => message.type === "room.connected",
+    );
+    expect(connectedA).toMatchObject({
+      gameId: "reversi",
+      gameVersion: "1.0.0",
+      playerSlotId: "slot-1",
+    });
+    if (connectedA.type !== "room.connected") {
+      throw new Error("Reversi creator did not receive room metadata.");
+    }
+    const reversiRoomCode = connectedA.roomCode;
+    const waitingA = await inboxA.next(isSnapshot);
+    expect(waitingA).toMatchObject({
+      revision: 0,
+      status: "waiting",
+      view: {
+        yourDisc: "BLACK",
+        nextTurnSlotId: "slot-1",
+        legalMoves: [19, 26, 37, 44],
+        discCounts: { BLACK: 2, WHITE: 2 },
+      },
+    });
+    expect(
+      ((waitingA as MatchSnapshot).view as { board: unknown[] }).board,
+    ).toHaveLength(64);
+
+    const activeA = inboxA.next(
+      (message) => isSnapshot(message) && message.status === "active",
+    );
+    const roomB = await new ColyseusClient(address.httpUrl).join(
+      GAME_ROOM_NAME,
+      {
+        type: "room.join",
+        protocolVersion: PROTOCOL_VERSION,
+        ticket: authority.issue("reversi-b"),
+        roomCode: reversiRoomCode,
+      },
+    );
+    const inboxB = new MessageInbox(roomB);
+    const lifecycleB = new LifecycleInbox(roomB);
+    await expect(
+      inboxB.next((message) => message.type === "room.connected"),
+    ).resolves.toMatchObject({
+      gameId: "reversi",
+      gameVersion: "1.0.0",
+      roomCode: reversiRoomCode,
+      playerSlotId: "slot-2",
+    });
+    const [initialA, initialB] = await Promise.all([
+      activeA,
+      inboxB.next(
+        (message) => isSnapshot(message) && message.status === "active",
+      ),
+    ]);
+    expect(initialA).toMatchObject({
+      viewer: { kind: "player", slotId: "slot-1" },
+      view: { yourDisc: "BLACK", nextTurnSlotId: "slot-1" },
+    });
+    expect(initialB).toMatchObject({
+      viewer: { kind: "player", slotId: "slot-2" },
+      view: { yourDisc: "WHITE", nextTurnSlotId: "slot-1" },
+    });
+    expect((initialA as MatchSnapshot).view).not.toHaveProperty(
+      "nextPlayerIndex",
+    );
+    expect((initialA as MatchSnapshot).view).not.toHaveProperty("rng");
+
+    roomA.send(
+      GAME_ACTION_MESSAGE,
+      command(
+        "reversi-forged",
+        0,
+        { type: "PLACE_DISC", cell: 19, actorSlotId: "slot-2" },
+        1,
+      ),
+    );
+    await expect(
+      inboxA.next(
+        (message) =>
+          message.type === "command.rejected" &&
+          message.commandId === "reversi-forged",
+      ),
+    ).resolves.toMatchObject({
+      code: "INVALID_ACTION_PAYLOAD",
+      revision: 0,
+    });
+    roomA.send(
+      GAME_ACTION_MESSAGE,
+      command("reversi-invalid", 0, { type: "PLACE_DISC", cell: 64 }, 1),
+    );
+    await expect(
+      inboxA.next(
+        (message) =>
+          message.type === "command.rejected" &&
+          message.commandId === "reversi-invalid",
+      ),
+    ).resolves.toMatchObject({
+      code: "INVALID_ACTION_PAYLOAD",
+      revision: 0,
+    });
+    roomB.send(
+      GAME_ACTION_MESSAGE,
+      command("reversi-wrong-turn", 0, { type: "PLACE_DISC", cell: 19 }, 1),
+    );
+    await expect(
+      inboxB.next(
+        (message) =>
+          message.type === "command.rejected" &&
+          message.commandId === "reversi-wrong-turn",
+      ),
+    ).resolves.toMatchObject({
+      code: "GAME_RULE_REJECTED",
+      gameRuleCode: "NOT_YOUR_TURN",
+      revision: 0,
+    });
+    roomA.send(
+      GAME_ACTION_MESSAGE,
+      command("reversi-no-capture", 0, { type: "PLACE_DISC", cell: 0 }, 1),
+    );
+    await expect(
+      inboxA.next(
+        (message) =>
+          message.type === "command.rejected" &&
+          message.commandId === "reversi-no-capture",
+      ),
+    ).resolves.toMatchObject({
+      code: "GAME_RULE_REJECTED",
+      gameRuleCode: "NO_DISC_CAPTURED",
+      revision: 0,
+    });
+    const initialStored = await roomStore.getByRoomCode(reversiRoomCode);
+    const initialReplay = await replayStore.get(initialStored?.replayId ?? "");
+    expect(initialStored).toMatchObject({ revision: 0, status: "active" });
+    expect(initialReplay?.actions).toEqual([]);
+
+    const acceptReversiDisc = async (
+      room: ClientRoom,
+      inbox: MessageInbox,
+      id: string,
+      revision: number,
+      cell: number,
+      roundNumber: number,
+    ): Promise<MatchSnapshot> => {
+      const response = inbox.next(
+        (message) =>
+          (isSnapshot(message) && message.causedByCommandId === id) ||
+          (message.type === "command.rejected" && message.commandId === id),
+      );
+      room.send(
+        GAME_ACTION_MESSAGE,
+        command(id, revision, { type: "PLACE_DISC", cell }, roundNumber),
+      );
+      let message: ServerMessage;
+      try {
+        message = await response;
+      } catch {
+        throw new Error(`Timed out waiting for Reversi command ${id}.`);
+      }
+      if (message.type === "command.rejected") {
+        throw new Error(
+          `Reversi command ${id} was rejected: ${message.code}/${message.gameRuleCode ?? "none"}.`,
+        );
+      }
+      if (!isSnapshot(message)) {
+        throw new Error(
+          `Reversi command ${id} received an unexpected message.`,
+        );
+      }
+      return message;
+    };
+
+    const roundOneActions = [
+      [0, 19],
+      [1, 18],
+      [0, 17],
+      [1, 9],
+      [0, 1],
+      [1, 0],
+      [0, 26],
+      [1, 2],
+      [0, 10],
+      [1, 11],
+      [0, 3],
+      [1, 4],
+      [0, 8],
+      [1, 16],
+      [0, 37],
+      [1, 12],
+      [0, 5],
+      [1, 6],
+      [1, 45],
+      [0, 44],
+      [1, 53],
+      [0, 52],
+      [1, 46],
+      [0, 20],
+      [1, 60],
+    ] as const;
+    const rooms = [roomA, roomB] as const;
+    const inboxes = [inboxA, inboxB] as const;
+    let forcedSkip: MatchSnapshot | null = null;
+    let roundOneCompleted: MatchSnapshot | null = null;
+    for (const [index, [actorIndex, cell]] of roundOneActions.entries()) {
+      const snapshot = await acceptReversiDisc(
+        rooms[actorIndex],
+        inboxes[actorIndex],
+        `reversi-r1-${index + 1}`,
+        index,
+        cell,
+        1,
+      );
+      if (index === 0) {
+        const view = snapshot.view as {
+          board: (string | null)[];
+          discCounts: { BLACK: number; WHITE: number };
+        };
+        expect(view.board[19]).toBe("slot-1");
+        expect(view.board[27]).toBe("slot-1");
+        expect(view.discCounts).toEqual({ BLACK: 4, WHITE: 1 });
+      }
+      if (index === 17) forcedSkip = snapshot;
+      roundOneCompleted = snapshot;
+    }
+    expect(forcedSkip).toMatchObject({
+      revision: 18,
+      status: "active",
+      view: { nextTurnSlotId: "slot-2" },
+    });
+    expect(roundOneCompleted).toMatchObject({
+      roundNumber: 1,
+      revision: 25,
+      status: "completed",
+      outcome: {
+        type: "WIN",
+        winnerSlotId: "slot-2",
+        discCounts: { BLACK: 0, WHITE: 29 },
+      },
+    });
+
+    const storedRoundOne = await roomStore.getByRoomCode(reversiRoomCode);
+    const replayRoundOne = await replayStore.get(
+      storedRoundOne?.replayId ?? "",
+    );
+    expect(storedRoundOne).toMatchObject({
+      gameId: "reversi",
+      gameVersion: "1.0.0",
+      initialConfig: null,
+      roundNumber: 1,
+      revision: 25,
+      status: "completed",
+    });
+    expect(replayRoundOne?.actions).toHaveLength(25);
+    expect(
+      replayRoundOne?.actions.slice(17, 19).map((event) => event.actorSlotId),
+    ).toEqual(["slot-2", "slot-2"]);
+    expect(
+      replayRoundOne?.actions.every(
+        (event) =>
+          typeof event.action === "object" &&
+          event.action !== null &&
+          !Array.isArray(event.action) &&
+          "type" in event.action &&
+          event.action.type === "PLACE_DISC",
+      ),
+    ).toBe(true);
+    expect(verifyReplay(replayRoundOne, resolveGameDefinition)).toMatchObject({
+      status: "verified",
+      rng: { cursor: 0 },
+      outcome: {
+        type: "WIN",
+        winnerSlotId: "slot-2",
+        discCounts: { BLACK: 0, WHITE: 29 },
+      },
+    });
+
+    await Promise.all([
+      lifecycleA.next((message) => message.rematch.available),
+      lifecycleB.next((message) => message.rematch.available),
+    ]);
+    const readyA = lifecycleA.next(
+      (message) => message.causedByCommandId === "reversi-ready-a",
+    );
+    roomA.send(
+      ROOM_CONTROL_MESSAGE,
+      controlCommand("reversi-ready-a", "REQUEST_REMATCH"),
+    );
+    await readyA;
+    const roundTwoA = inboxA.next(
+      (message) =>
+        isSnapshot(message) &&
+        message.roundNumber === 2 &&
+        message.revision === 0,
+    );
+    const roundTwoB = inboxB.next(
+      (message) =>
+        isSnapshot(message) &&
+        message.roundNumber === 2 &&
+        message.revision === 0,
+    );
+    roomB.send(
+      ROOM_CONTROL_MESSAGE,
+      controlCommand("reversi-ready-b", "REQUEST_REMATCH"),
+    );
+    const [roundTwoSnapshotA, roundTwoSnapshotB] = await Promise.all([
+      roundTwoA,
+      roundTwoB,
+    ]);
+    expect(roundTwoSnapshotA).toMatchObject({
+      status: "active",
+      view: {
+        yourDisc: "BLACK",
+        nextTurnSlotId: "slot-1",
+        discCounts: { BLACK: 2, WHITE: 2 },
+      },
+    });
+    expect(roundTwoSnapshotB).toMatchObject({
+      status: "active",
+      view: {
+        yourDisc: "WHITE",
+        nextTurnSlotId: "slot-1",
+        discCounts: { BLACK: 2, WHITE: 2 },
+      },
+    });
+
+    const roundTwoCells = [37, 29, 21, 30, 23, 44, 19, 45, 53, 34, 33] as const;
+    let roundTwoCompleted: MatchSnapshot | null = null;
+    for (const [index, cell] of roundTwoCells.entries()) {
+      const actorIndex = (index % 2) as 0 | 1;
+      roundTwoCompleted = await acceptReversiDisc(
+        rooms[actorIndex],
+        inboxes[actorIndex],
+        `reversi-r2-${index + 1}`,
+        index,
+        cell,
+        2,
+      );
+    }
+    expect(roundTwoCompleted).toMatchObject({
+      roundNumber: 2,
+      revision: 11,
+      status: "completed",
+      outcome: {
+        type: "WIN",
+        winnerSlotId: "slot-1",
+        discCounts: { BLACK: 15, WHITE: 0 },
+      },
+    });
+    const terminalView = roundTwoCompleted?.view as
+      { board: (string | null)[]; legalMoves: number[] } | undefined;
+    expect(terminalView?.board.filter((owner) => owner === null)).toHaveLength(
+      49,
+    );
+    expect(terminalView?.legalMoves).toEqual([]);
+
+    const storedRoundTwo = await roomStore.getByRoomCode(reversiRoomCode);
+    const replayRoundTwo = await replayStore.get(
+      storedRoundTwo?.replayId ?? "",
+    );
+    expect(storedRoundTwo).toMatchObject({
+      roundNumber: 2,
+      revision: 11,
+      status: "completed",
+      players: [{ slotId: "slot-1" }, { slotId: "slot-2" }],
+    });
+    expect(storedRoundTwo?.replayId).not.toBe(storedRoundOne?.replayId);
+    expect(replayRoundTwo?.actions).toHaveLength(11);
+    expect(verifyReplay(replayRoundTwo, resolveGameDefinition)).toMatchObject({
+      status: "verified",
+      rng: { cursor: 0 },
+      outcome: {
+        type: "WIN",
+        winnerSlotId: "slot-1",
+        discCounts: { BLACK: 15, WHITE: 0 },
+      },
+      state: { nextPlayerIndex: 0 },
     });
   });
 });
