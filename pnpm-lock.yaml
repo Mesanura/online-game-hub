@@ -389,6 +389,8 @@ importers:
         specifier: 6.0.3
         version: 6.0.3
 
+  tools/create-game: {}
+
 packages:
 
   '@better-auth/utils@0.3.1':

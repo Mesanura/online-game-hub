@@ -11,6 +11,7 @@
   },
   "scripts": {
     "build": "turbo run build",
+    "create-game": "node tools/create-game/src/cli.ts",
     "deps:check": "node tooling/repository-check/src/check-dependencies.ts",
     "db:check": "pnpm --filter @online-game-hub/database db:check",
     "db:migrate": "turbo run build --filter=@online-game-hub/database && pnpm --filter @online-game-hub/database db:migrate",
