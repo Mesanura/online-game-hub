@@ -5,6 +5,7 @@ import { gomokuManifest } from "@online-game-hub/gomoku/manifest";
 import { hexManifest } from "@online-game-hub/hex/manifest";
 import { reversiManifest } from "@online-game-hub/reversi/manifest";
 import { ticTacToeManifest } from "@online-game-hub/tic-tac-toe/manifest";
+// create-game:client-manifest-import
 
 const loadConnectFourEntrypoint = () =>
   import("@online-game-hub/connect-four/client");
@@ -13,6 +14,7 @@ const loadHexEntrypoint = () => import("@online-game-hub/hex/client");
 const loadReversiEntrypoint = () => import("@online-game-hub/reversi/client");
 const loadTicTacToeEntrypoint = () =>
   import("@online-game-hub/tic-tac-toe/client");
+// create-game:client-loader
 
 interface ClientRegistration {
   readonly gameId: string;
@@ -63,6 +65,7 @@ const clientRegistrations = Object.freeze([
         (await loadReversiEntrypoint()).reversiClientModule,
       ),
   },
+  // create-game:client-registration
 ]) satisfies readonly ClientRegistration[];
 
 function findRegistration(gameId: string, gameVersion: string) {

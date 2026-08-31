@@ -16,6 +16,7 @@ const nextConfig: NextConfig = {
     "@online-game-hub/hex",
     "@online-game-hub/reversi",
     "@online-game-hub/tic-tac-toe",
+    // create-game:transpile-package
   ],
 };
 

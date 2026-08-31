@@ -3,6 +3,7 @@ import { gomokuManifest } from "@online-game-hub/gomoku/manifest";
 import { hexManifest } from "@online-game-hub/hex/manifest";
 import { reversiManifest } from "@online-game-hub/reversi/manifest";
 import { ticTacToeManifest } from "@online-game-hub/tic-tac-toe/manifest";
+// create-game:catalog-import
 import type { GameManifest } from "@online-game-hub/game-sdk";
 
 export const gameCatalog = Object.freeze([
@@ -11,6 +12,7 @@ export const gameCatalog = Object.freeze([
   gomokuManifest,
   hexManifest,
   reversiManifest,
+  // create-game:catalog-entry
 ]) satisfies readonly GameManifest[];
 
 export function resolveGameManifest(
