@@ -128,7 +128,9 @@ test("two guests complete Hex by connection, then cancel and confirm off-turn re
   );
   await hexCard.getByRole("link", { name: "创建或加入房间" }).click();
   await expect(pageA).toHaveURL(/\/games\/hex$/u);
-  await expect(pageA.getByRole("heading", { level: 1 })).toHaveText("六贯棋");
+  await expect(pageA.getByRole("heading", { level: 1 })).toHaveText(
+    "创建或加入房间",
+  );
   await pageA.getByTestId("create-room").click();
   await expect(pageA.getByTestId("connection-state")).toHaveText("已连接");
   await expect(pageA.getByTestId("game-stage")).toHaveCount(0);
@@ -139,10 +141,10 @@ test("two guests complete Hex by connection, then cancel and confirm off-turn re
   if (inviteUrl === null)
     throw new Error("Hex did not expose an invitation URL.");
   const invitation = new URL(inviteUrl);
-  expect(invitation.pathname).toBe("/games/hex");
-  const roomCode = invitation.searchParams.get("roomCode");
-  if (roomCode === null)
-    throw new Error("Hex invitation omitted its room code.");
+  expect(invitation.pathname).toMatch(
+    /^\/games\/hex\/rooms\/[A-HJ-NP-Z2-9]{8}$/u,
+  );
+  const roomCode = invitation.pathname.split("/").at(-1) ?? "";
 
   await pageB.goto(inviteUrl);
   await expect(pageB.getByTestId("connection-state")).toHaveText("已连接");
@@ -260,6 +262,11 @@ test("two guests complete Hex by connection, then cancel and confirm off-turn re
     "CONNECTION",
   );
 
+  await Promise.all(
+    [pageA, pageB].map((page) =>
+      page.getByTestId("next-round-settings").click(),
+    ),
+  );
   await pageA.getByTestId("starter-owner").click();
   await pageA.getByTestId("toggle-round-ready").click();
   await expect(pageB.getByTestId("round-setup-status")).toHaveText(
@@ -362,6 +369,7 @@ test("two guests complete Hex by connection, then cancel and confirm off-turn re
     });
   }
 
+  await pageA.getByTestId("game-menu").click();
   await pageA.getByTestId("close-room").click();
   await Promise.all(
     [pageA, pageB].map((page) =>

@@ -79,7 +79,9 @@ test("two guests complete authoritative Reversi with flips and a non-full termin
   );
   await reversiCard.getByRole("link", { name: "创建或加入房间" }).click();
   await expect(pageA).toHaveURL(/\/games\/reversi$/u);
-  await expect(pageA.getByRole("heading", { level: 1 })).toHaveText("黑白棋");
+  await expect(pageA.getByRole("heading", { level: 1 })).toHaveText(
+    "创建或加入房间",
+  );
   await pageA.getByTestId("create-room").click();
   await expect(pageA.getByTestId("connection-state")).toHaveText("已连接");
   await expect(pageA.getByTestId("game-stage")).toHaveCount(0);
@@ -91,9 +93,11 @@ test("two guests complete authoritative Reversi with flips and a non-full termin
     throw new Error("Reversi did not expose an invitation URL.");
   }
   const invitation = new URL(inviteUrl);
-  expect(invitation.pathname).toBe("/games/reversi");
-  const roomCode = invitation.searchParams.get("roomCode");
-  if (roomCode === null) {
+  expect(invitation.pathname).toMatch(
+    /^\/games\/reversi\/rooms\/[A-HJ-NP-Z2-9]{8}$/u,
+  );
+  const roomCode = invitation.pathname.split("/").at(-1);
+  if (roomCode === undefined || roomCode.length === 0) {
     throw new Error("Reversi invitation omitted its room code.");
   }
 
@@ -298,6 +302,7 @@ test("two guests complete authoritative Reversi with flips and a non-full termin
     expect(match).not.toHaveProperty("seed");
   }
 
+  await pageA.getByTestId("game-menu").click();
   await pageA.getByTestId("close-room").click();
   await Promise.all(
     [pageA, pageB].map((page) =>

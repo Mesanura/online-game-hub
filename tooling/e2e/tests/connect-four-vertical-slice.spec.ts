@@ -165,11 +165,10 @@ test("two guests play two authoritative Connect Four rounds with independent rep
     throw new Error("Connect Four did not expose an invitation URL.");
   }
   const invitation = new URL(inviteUrl);
-  expect(invitation.pathname).toBe("/games/connect-four");
-  const roomCode = invitation.searchParams.get("roomCode");
-  if (roomCode === null) {
-    throw new Error("Connect Four invitation did not contain a room code.");
-  }
+  expect(invitation.pathname).toMatch(
+    /^\/games\/connect-four\/rooms\/[A-HJ-NP-Z2-9]{8}$/u,
+  );
+  const roomCode = invitation.pathname.split("/").at(-1) ?? "";
 
   await pageB.goto(`${harness.webUrl}/games`);
   await expect(
@@ -185,10 +184,7 @@ test("two guests play two authoritative Connect Four rounds with independent rep
   await Promise.all(
     [pageA, pageB].map(async (page) => {
       await expect(page.getByTestId("connection-state")).toHaveText("已连接");
-      await expect(page.locator(".game-page > :first-child")).toHaveAttribute(
-        "data-testid",
-        "game-stage",
-      );
+      await expect(page.getByTestId("game-stage")).toBeVisible();
       await expect(page.getByTestId("player-count-notice")).toHaveAttribute(
         "data-state",
         "ready",
@@ -285,6 +281,11 @@ test("two guests play two authoritative Connect Four rounds with independent rep
     }),
   ]);
 
+  await Promise.all(
+    [pageA, pageB].map((page) =>
+      page.getByTestId("next-round-settings").click(),
+    ),
+  );
   await pageA.getByTestId("starter-owner").click();
   await pageA.getByTestId("toggle-round-ready").click();
   await expect(pageB.getByTestId("round-setup-status")).toHaveText(
@@ -362,6 +363,7 @@ test("two guests play two authoritative Connect Four rounds with independent rep
   await expect(unrelatedHistory.json()).resolves.toEqual({ matches: [] });
   await unrelatedContext.close();
 
+  await pageA.getByTestId("game-menu").click();
   await pageA.getByTestId("close-room").click();
   await Promise.all(
     [pageA, pageB].map((page) =>

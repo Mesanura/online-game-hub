@@ -75,7 +75,9 @@ test("two guests create, join, synchronize, and complete authoritative Gomoku", 
   await expect(gomokuCard).toContainText("2–2");
   await gomokuCard.getByRole("link", { name: "创建或加入房间" }).click();
   await expect(pageA).toHaveURL(/\/games\/gomoku$/u);
-  await expect(pageA.getByRole("heading", { level: 1 })).toHaveText("五子棋");
+  await expect(pageA.getByRole("heading", { level: 1 })).toHaveText(
+    "创建或加入房间",
+  );
   await expect(pageA.getByTestId("game-stage")).toHaveCount(0);
   await pageA.getByTestId("create-room").click();
   await expect(pageA.getByTestId("connection-state")).toHaveText("已连接");
@@ -91,10 +93,10 @@ test("two guests create, join, synchronize, and complete authoritative Gomoku", 
   if (inviteUrl === null)
     throw new Error("Gomoku did not expose an invitation URL.");
   const invitation = new URL(inviteUrl);
-  expect(invitation.pathname).toBe("/games/gomoku");
-  const roomCode = invitation.searchParams.get("roomCode");
-  if (roomCode === null)
-    throw new Error("Gomoku invitation omitted its room code.");
+  expect(invitation.pathname).toMatch(
+    /^\/games\/gomoku\/rooms\/[A-HJ-NP-Z2-9]{8}$/u,
+  );
+  const roomCode = invitation.pathname.split("/").at(-1) ?? "";
 
   await pageB.goto(inviteUrl);
   await expect(pageB.getByTestId("connection-state")).toHaveText("已连接");
@@ -106,10 +108,7 @@ test("two guests create, join, synchronize, and complete authoritative Gomoku", 
   await Promise.all(
     [pageA, pageB].map(async (page) => {
       await expect(page.getByTestId("connection-state")).toHaveText("已连接");
-      await expect(page.locator(".game-page > :first-child")).toHaveAttribute(
-        "data-testid",
-        "game-stage",
-      );
+      await expect(page.getByTestId("game-stage")).toBeVisible();
       await expect(page.getByTestId("player-count-notice")).toHaveAttribute(
         "data-state",
         "ready",
@@ -251,6 +250,7 @@ test("two guests create, join, synchronize, and complete authoritative Gomoku", 
     }),
   ]);
 
+  await pageA.getByTestId("game-menu").click();
   await pageA.getByTestId("close-room").click();
   await Promise.all(
     [pageA, pageB].map((page) =>

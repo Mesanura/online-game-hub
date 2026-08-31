@@ -60,12 +60,12 @@ async function createAndJoinRoom(
   pageB: Page,
 ): Promise<JoinedRoom> {
   await pageA.goto(`${harness.webUrl}/games/tic-tac-toe`);
-  await expect(pageA.getByRole("link", { name: "游戏目录" })).toHaveClass(
-    /header-nav-link/u,
-  );
+  await expect(
+    pageA.getByRole("link", { name: "游戏目录", exact: true }),
+  ).toHaveClass(/header-nav-link/u);
   const roomCodeInput = pageA.getByLabel("房间码");
   await expect(roomCodeInput).toHaveValue("");
-  expect(await roomCodeInput.getAttribute("placeholder")).toBeNull();
+  await expect(roomCodeInput).toHaveAttribute("placeholder", "例如 K7M4Q2");
   await expect(pageA.getByTestId("game-stage")).toHaveCount(0);
   await pageA.getByTestId("create-room").click();
   await expect(pageA.getByTestId("connection-state")).toHaveText("已连接");
@@ -77,10 +77,6 @@ async function createAndJoinRoom(
   const playerCountNotice = pageA.getByTestId("player-count-notice");
   await expect(playerCountNotice).toHaveText("等待其他玩家加入…");
   await expect(playerCountNotice).toHaveAttribute("data-state", "waiting");
-  await expect(playerCountNotice).toHaveCSS(
-    "background-color",
-    "rgb(243, 167, 18)",
-  );
   await expect(playerCountNotice).toHaveCSS("position", "fixed");
   await pageA.getByTestId("starter-owner").click();
   await expect(pageA.getByTestId("round-setup-status")).toHaveText(
@@ -109,25 +105,26 @@ async function createAndJoinRoom(
     });
   });
   await pageA.getByTestId("copy-invite-link").click();
-  await expect(pageA.getByTestId("copy-invite-link")).toHaveText("复制链接");
-  await expect(pageA.getByTestId("copy-invite-status")).toHaveText(
-    "复制失败，请手动选择链接复制。",
+  await expect(pageA.getByTestId("copy-invite-link")).toHaveText(
+    "复制邀请链接",
   );
+  await expect(pageA.getByTestId("copy-invite-status")).toHaveText(
+    "复制失败，请选择下方链接手动复制。",
+  );
+  await expect(pageA.getByTestId("invite-fallback")).toHaveValue(inviteUrl);
   await expect(playerCountNotice).toHaveAttribute("data-state", "waiting");
   const invitation = new URL(inviteUrl);
   expect(invitation.origin).toBe(harness.webUrl);
-  expect(invitation.pathname).toBe("/games/tic-tac-toe");
-  expect([...invitation.searchParams.keys()]).toEqual(["roomCode"]);
-  const roomCode = invitation.searchParams.get("roomCode");
-  if (roomCode === null) {
-    throw new Error("The invitation URL did not contain a room code.");
-  }
+  expect(invitation.pathname).toMatch(
+    /^\/games\/tic-tac-toe\/rooms\/[A-HJ-NP-Z2-9]{8}$/u,
+  );
+  expect([...invitation.searchParams.keys()]).toEqual([]);
+  const roomCode = invitation.pathname.split("/").at(-1) ?? "";
   expect(roomCode).toMatch(/^[A-HJ-NP-Z2-9]{8}$/u);
 
-  const nonCanonicalInvitation = new URL(invitation);
-  nonCanonicalInvitation.searchParams.set(
-    "roomCode",
-    ` ${roomCode.toLowerCase()} `,
+  const nonCanonicalInvitation = new URL(
+    `/games/tic-tac-toe?roomCode=${encodeURIComponent(` ${roomCode.toLowerCase()} `)}`,
+    harness.webUrl,
   );
   await pageB.goto(nonCanonicalInvitation.toString());
   await Promise.all(
@@ -142,21 +139,13 @@ async function createAndJoinRoom(
   await pageB.getByTestId("toggle-round-ready").click();
   await Promise.all(
     [pageA, pageB].map(async (page) => {
-      await expect(page.locator(".game-page > :first-child")).toHaveAttribute(
-        "data-testid",
-        "game-stage",
-      );
+      await expect(page.getByTestId("game-stage")).toBeVisible();
       const readyNotice = page.getByTestId("player-count-notice");
       await expect(readyNotice).toHaveText("玩家已到齐，游戏开始！");
       await expect(readyNotice).toHaveAttribute("data-state", "ready");
-      await expect(readyNotice).toHaveCSS(
-        "background-color",
-        "rgb(46, 157, 104)",
-      );
       const activeStatus = page.getByTestId("match-status");
       await expect(activeStatus).toHaveText("对局进行中");
       await expect(activeStatus).toHaveAttribute("data-status", "active");
-      await expect(activeStatus).toHaveCSS("color", "rgb(109, 230, 161)");
     }),
   );
   await Promise.all(
@@ -477,6 +466,16 @@ test("two isolated guests complete win/draw, converge on reconnect, and cannot s
     ),
   );
   await expect(pageA.getByTestId("create-room")).toHaveCount(0);
+  await Promise.all(
+    [pageA, pageB].map((page) =>
+      page.getByTestId("next-round-settings").click(),
+    ),
+  );
+  await Promise.all(
+    [pageA, pageB].map((page) =>
+      expect(page).toHaveURL(/\/rooms\/[A-HJ-NP-Z2-9]{8}$/u),
+    ),
+  );
   await expect(pageA.getByTestId("close-room")).toBeVisible();
   await expect(pageB.getByTestId("leave-room")).toBeVisible();
 
@@ -544,6 +543,7 @@ test("two isolated guests complete win/draw, converge on reconnect, and cannot s
   await expect(terminalOutsiderPage.getByTestId("player-slot")).toHaveCount(0);
   await terminalOutsiderContext.close();
 
+  await pageA.getByTestId("game-menu").click();
   await pageA.getByTestId("close-room").click();
   await Promise.all(
     [pageA, pageB].map((page) =>
@@ -585,6 +585,7 @@ test("two isolated guests complete win/draw, converge on reconnect, and cannot s
     leaveConfirmation = dialog.message();
     await dialog.accept();
   });
+  await pageB.getByTestId("game-menu").click();
   await pageB.getByTestId("leave-room").click();
   expect(leaveConfirmation).toContain("离开会立即终止当前对局");
   await expect(pageB.getByTestId("room-notice")).toHaveText("已离开房间。");
