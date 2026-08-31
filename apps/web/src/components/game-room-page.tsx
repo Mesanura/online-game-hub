@@ -1,65 +1,46 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  useSyncExternalStore,
-} from "react";
+  ArrowLeft,
+  ArrowRight,
+  Check,
+  CheckCircle,
+  Copy,
+  Crown,
+  DotsThree,
+  GameController,
+  House,
+  Link as LinkIcon,
+  LockKeyOpen,
+  SignOut,
+  Sparkle,
+  Trophy,
+  UserCircle,
+  UserPlus,
+  UsersThree,
+  WarningCircle,
+  WifiHigh,
+  X,
+} from "@phosphor-icons/react";
+import Link from "next/link";
+import { useMemo, useState, type ReactNode } from "react";
+
+import type { GameClientHostState } from "@online-game-hub/game-client-sdk";
 
 import {
-  GameClientHost,
-  createHttpTicketProvider,
-} from "@online-game-hub/game-client-sdk";
-import type {
-  GameClientHostState,
-  UnknownGameClientModule,
-} from "@online-game-hub/game-client-sdk";
-import { loadGameClientModule } from "@online-game-hub/game-registry/client";
+  connectionLabels,
+  useGameRoomHost,
+  type InviteCopyState,
+} from "./game-room-host";
+
+export type GameRoomPageMode = "entry" | "room" | "play";
 
 interface GameRoomPageProps {
   readonly gameId: string;
   readonly title: string;
-  readonly gameServerUrl: string;
-  readonly initialConfig: unknown;
-  readonly initialRoomCode?: string | undefined;
+  readonly description: string;
+  readonly mode: GameRoomPageMode;
 }
-
-const connectionLabels = {
-  idle: "尚未连接",
-  loading: "准备连接",
-  connecting: "正在连接",
-  connected: "已连接",
-  reconnecting: "正在重连",
-  closed: "连接已关闭",
-} as const;
-
-const closeReasonLabels = {
-  OWNER_CLOSED: "房主已关闭房间。",
-  PLAYER_LEFT: "有玩家主动离开，本局已终止。",
-  RECONNECT_TIMEOUT: "有玩家未在重连期限内返回，房间已关闭。",
-  REMATCH_TIMEOUT: "终局后 5 分钟内未开始下一局，房间已关闭。",
-} as const;
-
-const matchLabels = {
-  waiting: "等待另一位玩家",
-  active: "对局进行中",
-  completed: "对局已完成",
-  abandoned: "对局已终止",
-} as const;
-
-const playerCountNoticeLabels = {
-  waiting: "等待其他玩家加入…",
-  ready: "玩家已到齐，游戏开始！",
-} as const;
-
-const PLAYER_READY_NOTICE_MILLISECONDS = 4_000;
-
-type InviteCopyState = "idle" | "copying" | "copied" | "failed";
-type PlayerCountNotice = keyof typeof playerCountNoticeLabels;
 
 function rejectionLabel(state: GameClientHostState): string | null {
   const rejection = state.rejection;
@@ -81,510 +62,808 @@ function rejectionLabel(state: GameClientHostState): string | null {
   return `服务器拒绝了操作（${rejection.code}）。`;
 }
 
-export function GameRoomPage(props: GameRoomPageProps) {
-  const router = useRouter();
-  const host = useMemo(
-    () =>
-      new GameClientHost({
-        gameServerUrl: props.gameServerUrl,
-        ticketProvider: createHttpTicketProvider(),
-      }),
-    [props.gameServerUrl],
-  );
-  const subscribe = useCallback(
-    (listener: () => void) => host.subscribe(listener),
-    [host],
-  );
-  const getSnapshot = useCallback(() => host.getState(), [host]);
-  const state = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
-  const liveRoomCode = state.room?.roomCode ?? null;
-  const roundStatus = state.roomLifecycle?.currentRound?.status ?? null;
-  const [roomCode, setRoomCode] = useState(props.initialRoomCode ?? "");
-  const [localError, setLocalError] = useState<string | null>(null);
-  const [localNotice, setLocalNotice] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [clientModule, setClientModule] =
-    useState<UnknownGameClientModule | null>(null);
-  const [inviteUrl, setInviteUrl] = useState<string | null>(null);
-  const [inviteCopyState, setInviteCopyState] =
-    useState<InviteCopyState>("idle");
-  const [playerCountNotice, setPlayerCountNotice] =
-    useState<PlayerCountNotice | null>(null);
-  const autoJoinStarted = useRef(false);
-  const handledCloseReason = useRef<string | null>(null);
-
-  useEffect(() => () => void host.close(), [host]);
-
-  useEffect(() => {
-    if (
-      props.initialRoomCode === undefined ||
-      props.initialRoomCode.length === 0 ||
-      autoJoinStarted.current
-    ) {
-      return;
-    }
-    autoJoinStarted.current = true;
-    setBusy(true);
-    void host
-      .joinRoom(props.gameId, props.initialRoomCode)
-      .catch(() => setLocalError("房间码格式无效。"))
-      .finally(() => setBusy(false));
-  }, [host, props.gameId, props.initialRoomCode]);
-
-  useEffect(() => {
-    if (state.room === null) return;
-    const path = `/games/${encodeURIComponent(state.room.gameId)}?roomCode=${encodeURIComponent(state.room.roomCode)}`;
-    router.replace(path, { scroll: false });
-    setRoomCode(state.room.roomCode);
-    setInviteUrl(`${window.location.origin}${path}`);
-    setInviteCopyState("idle");
-  }, [router, state.room]);
-
-  useEffect(() => {
-    const lifecycle = state.roomLifecycle;
-    if (
-      lifecycle?.closed !== true ||
-      lifecycle.closeReason === null ||
-      handledCloseReason.current === lifecycle.closeReason
-    ) {
-      return;
-    }
-    handledCloseReason.current = lifecycle.closeReason;
-    setInviteUrl(null);
-    setInviteCopyState("idle");
-    setRoomCode("");
-    setLocalNotice(closeReasonLabels[lifecycle.closeReason]);
-    router.replace(`/games/${encodeURIComponent(props.gameId)}`, {
-      scroll: false,
-    });
-  }, [props.gameId, router, state.roomLifecycle]);
-
-  useEffect(() => {
-    const snapshot = state.snapshot;
-    if (snapshot === null) return;
-    let active = true;
-    void loadGameClientModule(snapshot.gameId, snapshot.gameVersion).then(
-      (module) => {
-        if (active) setClientModule(module ?? null);
-      },
-    );
-    return () => {
-      active = false;
-    };
-  }, [state.snapshot?.gameId, state.snapshot?.gameVersion]);
-
-  useEffect(() => {
-    if (liveRoomCode === null) {
-      setPlayerCountNotice(null);
-      return;
-    }
-    if (roundStatus === null) {
-      setPlayerCountNotice("waiting");
-      return;
-    }
-    if (roundStatus !== "active") {
-      setPlayerCountNotice(null);
-      return;
-    }
-
-    setPlayerCountNotice("ready");
-    const dismissTimeout = window.setTimeout(() => {
-      setPlayerCountNotice((current) => (current === "ready" ? null : current));
-    }, PLAYER_READY_NOTICE_MILLISECONDS);
-    return () => window.clearTimeout(dismissTimeout);
-  }, [liveRoomCode, roundStatus]);
-
-  const createRoom = async (): Promise<void> => {
-    setBusy(true);
-    setLocalError(null);
-    setLocalNotice(null);
-    handledCloseReason.current = null;
-    try {
-      await host.createRoom(props.gameId, props.initialConfig);
-    } catch {
-      setLocalError("无法创建房间。");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const joinRoom = async (): Promise<void> => {
-    setBusy(true);
-    setLocalError(null);
-    setLocalNotice(null);
-    handledCloseReason.current = null;
-    try {
-      await host.joinRoom(props.gameId, roomCode);
-    } catch {
-      setLocalError("请输入有效的 8 位房间码。");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const selectStarter = async (
-    starter: "OWNER" | "NON_OWNER",
-  ): Promise<void> => {
-    setBusy(true);
-    setLocalError(null);
-    try {
-      await host.selectStarter(starter);
-    } catch {
-      setLocalError("无法更新下一局先手方。");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const toggleRoundReady = async (): Promise<void> => {
-    setBusy(true);
-    setLocalError(null);
-    try {
-      if (state.roomLifecycle?.nextRound?.selfReady === true) {
-        await host.cancelRoundReady();
-      } else {
-        await host.readyForRound();
-      }
-    } catch {
-      setLocalError("无法更新下一局准备状态。");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const copyInviteLink = async (): Promise<void> => {
-    if (inviteUrl === null) return;
-    setInviteCopyState("copying");
-    try {
-      await navigator.clipboard.writeText(inviteUrl);
-      setInviteCopyState("copied");
-    } catch {
-      setInviteCopyState("failed");
-    }
-  };
-
-  const closeRoom = async (): Promise<void> => {
-    if (
-      state.snapshot?.status === "active" &&
-      !window.confirm("关闭房间会立即终止当前对局，确定继续吗？")
-    ) {
-      return;
-    }
-    setBusy(true);
-    setLocalError(null);
-    try {
-      await host.closeRoom();
-    } catch {
-      setLocalError("无法关闭房间。");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const leaveRoom = async (): Promise<void> => {
-    if (
-      state.snapshot?.status === "active" &&
-      !window.confirm("离开会立即终止当前对局，确定继续吗？")
-    ) {
-      return;
-    }
-    setBusy(true);
-    setLocalError(null);
-    try {
-      await host.leaveRoom();
-      setInviteUrl(null);
-      setInviteCopyState("idle");
-      setRoomCode("");
-      setLocalNotice("已离开房间。");
-      router.replace(`/games/${encodeURIComponent(props.gameId)}`, {
-        scroll: false,
-      });
-    } catch {
-      setLocalError("无法离开房间。");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  let parsedView: Readonly<unknown> = {};
-  let viewError = false;
-  if (state.snapshot !== null && clientModule !== null) {
-    try {
-      parsedView = clientModule.parseView(
-        state.snapshot.view,
-      ) as Readonly<unknown>;
-    } catch {
-      viewError = true;
-    }
-  }
-  const GameComponent = clientModule?.Component;
-  const rejection = rejectionLabel(state);
-  const lifecycle = state.roomLifecycle;
-  const nextRound = lifecycle?.nextRound ?? null;
-  const hasLiveRoom = liveRoomCode !== null;
-  const displayedRoundNumber =
-    lifecycle?.currentRound?.roundNumber ?? nextRound?.roundNumber ?? null;
-
+function IconButton({
+  label,
+  children,
+  onClick,
+  testId,
+  disabled = false,
+}: {
+  readonly label: string;
+  readonly children: ReactNode;
+  readonly onClick?: () => void;
+  readonly testId?: string;
+  readonly disabled?: boolean;
+}) {
   return (
-    <div className="page-shell game-page">
-      {hasLiveRoom &&
-      state.snapshot !== null &&
-      GameComponent !== undefined &&
-      !viewError ? (
-        <div className="game-stage" data-testid="game-stage">
-          <GameComponent
-            connectionState={state.connectionState}
-            revision={state.snapshot.revision}
-            submitAction={(action) => host.submitAction(action)}
-            view={parsedView}
-          />
+    <button
+      aria-label={label}
+      className="icon-button"
+      data-testid={testId}
+      disabled={disabled}
+      onClick={onClick}
+      type="button"
+    >
+      {children}
+    </button>
+  );
+}
+
+function ConnectionBadge({
+  state,
+  testId,
+}: {
+  readonly state: GameClientHostState;
+  readonly testId?: string;
+}) {
+  const label = connectionLabels[state.connectionState];
+  const tone = state.connectionState === "connected" ? "online" : "quiet";
+  return (
+    <span className={`connection-badge connection-badge-${tone}`}>
+      <WifiHigh size={16} weight="bold" aria-hidden="true" />
+      <span data-testid={testId}>{label}</span>
+    </span>
+  );
+}
+
+export function InviteButton({
+  inviteUrl,
+  copyState,
+  onCopy,
+  onFallback,
+}: {
+  readonly inviteUrl: string | null;
+  readonly copyState: InviteCopyState;
+  readonly onCopy: () => void;
+  readonly onFallback: () => void;
+}) {
+  const label =
+    copyState === "copying"
+      ? "复制中…"
+      : copyState === "copied"
+        ? "已复制"
+        : "复制邀请链接";
+  return (
+    <div className="invite-control">
+      {inviteUrl === null ? null : (
+        <a
+          aria-hidden="true"
+          className="sr-only"
+          data-testid="invite-link"
+          href={inviteUrl}
+          tabIndex={-1}
+        >
+          邀请链接
+        </a>
+      )}
+      <button
+        className={`clay-button invite-button ${copyState === "copied" ? "is-success" : ""}`}
+        data-testid="copy-invite-link"
+        disabled={inviteUrl === null || copyState === "copying"}
+        onClick={onCopy}
+        type="button"
+      >
+        {copyState === "copied" ? (
+          <Check size={18} weight="bold" aria-hidden="true" />
+        ) : (
+          <Copy size={18} weight="bold" aria-hidden="true" />
+        )}
+        {label}
+      </button>
+      <p
+        aria-atomic="true"
+        aria-live="polite"
+        className={`invite-status invite-status-${copyState}`}
+        data-testid="copy-invite-status"
+        role={copyState === "failed" ? "alert" : "status"}
+      >
+        {copyState === "copied"
+          ? "邀请链接已复制。"
+          : copyState === "failed"
+            ? "复制失败，请选择下方链接手动复制。"
+            : ""}
+      </p>
+      {copyState === "failed" && inviteUrl !== null ? (
+        <div className="invite-fallback">
+          <label htmlFor="invite-fallback">手动复制邀请链接</label>
+          <div className="invite-fallback-row">
+            <input
+              data-testid="invite-fallback"
+              id="invite-fallback"
+              onFocus={(event) => event.currentTarget.select()}
+              readOnly
+              value={inviteUrl}
+            />
+            <button
+              className="clay-button clay-button-secondary"
+              onClick={onFallback}
+              type="button"
+            >
+              选择链接
+            </button>
+          </div>
         </div>
       ) : null}
+    </div>
+  );
+}
 
-      <div>
-        <p className="eyebrow">私人房间</p>
-        <h1>{props.title}</h1>
-        <p>创建私人房间并邀请朋友，或输入房间码加入已有对局。</p>
-      </div>
-
-      {hasLiveRoom ? null : (
-        <section aria-labelledby="room-entry" className="room-entry-panel">
-          <h2 id="room-entry">创建或加入</h2>
-          <button
-            data-testid="create-room"
-            disabled={busy || state.connectionState === "connecting"}
-            onClick={() => void createRoom()}
-            type="button"
-          >
-            创建新房间
-          </button>
-          <form
-            onSubmit={(event) => {
-              event.preventDefault();
-              void joinRoom();
-            }}
-          >
-            <label htmlFor="room-code">房间码</label>
-            <input
-              autoComplete="off"
-              id="room-code"
-              maxLength={16}
-              onChange={(event) => setRoomCode(event.target.value)}
-              value={roomCode}
-            />
-            <button data-testid="join-room" disabled={busy} type="submit">
-              加入房间
-            </button>
-          </form>
-        </section>
-      )}
-
-      <section aria-label="连接与房间状态" className="connection-panel">
-        <p>
-          连接：
-          <strong data-testid="connection-state">
-            {connectionLabels[state.connectionState]}
-          </strong>
+function PageAlerts() {
+  const { localError, localNotice, state } = useGameRoomHost();
+  const rejection = rejectionLabel(state);
+  return (
+    <div className="page-alerts" aria-live="polite">
+      {localNotice === null ? null : (
+        <p className="notice-banner" data-testid="room-notice" role="status">
+          <CheckCircle size={18} weight="bold" aria-hidden="true" />
+          {localNotice}
         </p>
-        {state.room === null ? null : (
-          <>
-            <p>
-              房间码：
-              <strong data-testid="room-code">{state.room.roomCode}</strong>
+      )}
+      {localError === null ? null : (
+        <p className="error-banner" role="alert">
+          <WarningCircle size={18} weight="bold" aria-hidden="true" />
+          {localError}
+        </p>
+      )}
+      {state.error === null ? null : (
+        <p className="error-banner" data-testid="connection-error" role="alert">
+          <WarningCircle size={18} weight="bold" aria-hidden="true" />
+          {state.error.message}
+        </p>
+      )}
+      {rejection === null ? null : (
+        <p
+          className="error-banner"
+          data-testid="command-rejection"
+          role="status"
+        >
+          <WarningCircle size={18} weight="bold" aria-hidden="true" />
+          {rejection}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function RoomToast() {
+  const { playerCountNotice } = useGameRoomHost();
+  if (playerCountNotice === null) return null;
+  return (
+    <p
+      aria-atomic="true"
+      aria-live="polite"
+      className={`player-count-notice player-count-notice-${playerCountNotice}`}
+      data-state={playerCountNotice}
+      data-testid="player-count-notice"
+      role="status"
+    >
+      {playerCountNotice === "ready"
+        ? "玩家已到齐，游戏开始！"
+        : "等待其他玩家加入…"}
+    </p>
+  );
+}
+
+function EntryView({
+  title,
+  description,
+}: Pick<GameRoomPageProps, "title" | "description">) {
+  const {
+    busy,
+    clearLocalError,
+    createRoom,
+    joinRoom,
+    roomCode,
+    setRoomCode,
+    state,
+  } = useGameRoomHost();
+  return (
+    <div className="page-shell console-page game-entry-page">
+      <aside className="game-rail clay-surface">
+        <Link aria-label="返回游戏目录" className="icon-button" href="/games">
+          <ArrowLeft size={22} weight="bold" aria-hidden="true" />
+        </Link>
+        <div className="game-mark game-mark-large" aria-hidden="true">
+          <GameController size={34} weight="duotone" />
+        </div>
+        <div className="game-rail-copy">
+          <p className="eyebrow">私人房间</p>
+          <h2>{title}</h2>
+          <p>{description}</p>
+        </div>
+        <span className="rail-current-item">
+          <House size={18} weight="fill" aria-hidden="true" /> 房间
+        </span>
+        <span className="rail-footnote">
+          <WifiHigh size={16} weight="bold" aria-hidden="true" /> 随时可用
+        </span>
+      </aside>
+      <main className="entry-main-stage">
+        <header className="stage-heading">
+          <p className="eyebrow">{title}</p>
+          <h1 id="room-entry-heading">创建或加入房间</h1>
+          <p>与好友一起对弈，创建新房间或使用房间码加入。</p>
+        </header>
+        <section aria-labelledby="room-entry-heading" className="entry-actions">
+          <div className="entry-action-bay entry-action-create clay-surface">
+            <span className="action-bay-icon" aria-hidden="true">
+              <UserPlus size={30} weight="bold" />
+            </span>
+            <div>
+              <p className="eyebrow">开始一局</p>
+              <h2>创建房间</h2>
+              <p>创建新房间，邀请朋友对战。</p>
+            </div>
+            <button
+              className="clay-button clay-button-primary clay-button-large"
+              data-testid="create-room"
+              disabled={busy || state.connectionState === "connecting"}
+              onClick={() => {
+                clearLocalError();
+                void createRoom();
+              }}
+              type="button"
+            >
+              创建房间 <ArrowRight size={20} weight="bold" aria-hidden="true" />
+            </button>
+          </div>
+          <div className="entry-action-bay entry-action-join clay-surface">
+            <span
+              className="action-bay-icon action-bay-icon-muted"
+              aria-hidden="true"
+            >
+              <LinkIcon size={30} weight="bold" />
+            </span>
+            <div>
+              <p className="eyebrow">已有邀请</p>
+              <h2>加入房间</h2>
+              <p>输入朋友分享的 8 位房间码。</p>
+            </div>
+            <form
+              className="join-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void joinRoom();
+              }}
+            >
+              <label htmlFor="room-code">房间码</label>
+              <div className="recessed-input-wrap">
+                <LockKeyOpen size={18} weight="bold" aria-hidden="true" />
+                <input
+                  autoComplete="off"
+                  id="room-code"
+                  maxLength={16}
+                  onChange={(event) =>
+                    setRoomCode(event.target.value.toUpperCase())
+                  }
+                  placeholder="例如 K7M4Q2"
+                  value={roomCode}
+                />
+              </div>
+              <button
+                className="clay-button clay-button-secondary"
+                data-testid="join-room"
+                disabled={busy}
+                type="submit"
+              >
+                加入房间{" "}
+                <ArrowRight size={18} weight="bold" aria-hidden="true" />
+              </button>
+            </form>
+          </div>
+        </section>
+      </main>
+      <PageAlerts />
+    </div>
+  );
+}
+
+function PlayerPod({
+  index,
+  owner,
+  self,
+  ready,
+  online,
+  slotLabel,
+}: {
+  readonly index: number;
+  readonly owner: boolean;
+  readonly self: boolean;
+  readonly ready: boolean;
+  readonly online: boolean;
+  readonly slotLabel: string;
+}) {
+  return (
+    <article className={`player-pod ${self ? "player-pod-self" : ""}`}>
+      <div className="player-avatar" aria-hidden="true">
+        <UserCircle size={42} weight="duotone" />
+      </div>
+      <div className="player-pod-copy">
+        <div className="player-name-row">
+          <h3>玩家 {index}</h3>
+          {owner ? (
+            <span className="owner-badge">
+              <Crown size={14} weight="fill" aria-hidden="true" /> 房主
+            </span>
+          ) : null}
+        </div>
+        <span className={`player-status ${online ? "is-online" : "is-away"}`}>
+          <span className="status-dot" aria-hidden="true" />
+          {online ? "在线" : "等待加入"}
+        </span>
+        <span
+          className={`player-status ${ready ? "is-ready" : "is-not-ready"}`}
+        >
+          {ready ? (
+            <CheckCircle size={16} weight="fill" aria-hidden="true" />
+          ) : (
+            <span className="status-ring" aria-hidden="true" />
+          )}
+          {ready ? "已准备" : "未准备"}
+        </span>
+        <span className="player-slot-label">稳定席位：{slotLabel}</span>
+      </div>
+    </article>
+  );
+}
+
+function RoomView({ title }: Pick<GameRoomPageProps, "title">) {
+  const {
+    busy,
+    closeRoom,
+    copyInviteLink,
+    inviteCopyState,
+    inviteUrl,
+    leaveRoom,
+    selectInviteFallback,
+    selectStarter,
+    state,
+    toggleRoundReady,
+  } = useGameRoomHost();
+  const lifecycle = state.roomLifecycle;
+  const nextRound = lifecycle?.nextRound ?? null;
+  const room = state.room;
+  if (room === null || lifecycle === null || lifecycle.closed) {
+    return <LoadingView label="正在连接房间…" />;
+  }
+  const roundNumber =
+    nextRound?.roundNumber ?? lifecycle.currentRound?.roundNumber ?? 1;
+  const selfReady = nextRound?.selfReady ?? false;
+  const required = nextRound?.requiredPlayerCount ?? 2;
+  const readyCount = nextRound?.readyPlayerCount ?? 0;
+  const otherReady = readyCount === required || (readyCount > 0 && !selfReady);
+  return (
+    <div className="page-shell console-page room-page">
+      <aside className="game-rail clay-surface">
+        <Link aria-label="返回游戏目录" className="icon-button" href="/games">
+          <ArrowLeft size={22} weight="bold" aria-hidden="true" />
+        </Link>
+        <div className="game-mark game-mark-large" aria-hidden="true">
+          <GameController size={32} weight="duotone" />
+        </div>
+        <div className="game-rail-copy">
+          <p className="eyebrow">等待房间</p>
+          <h2>{title}</h2>
+        </div>
+        <div className="rail-meta">
+          <span>房间码</span>
+          <strong data-testid="room-code">{room.roomCode}</strong>
+        </div>
+        <div className="rail-meta">
+          <span>当前局数</span>
+          <strong data-testid="round-number">第 {roundNumber} 局</strong>
+        </div>
+        <InviteButton
+          inviteUrl={inviteUrl}
+          copyState={inviteCopyState}
+          onCopy={() => void copyInviteLink()}
+          onFallback={selectInviteFallback}
+        />
+        <ConnectionBadge state={state} testId="connection-state" />
+      </aside>
+      <main className="room-console">
+        <header className="stage-heading">
+          <p className="eyebrow">房间设置</p>
+          <h1>准备下一局</h1>
+          <p>确认先手与双方准备状态，全部就绪后自动进入对局。</p>
+        </header>
+        <section aria-labelledby="players-heading" className="player-bays">
+          <div className="section-heading">
+            <div>
+              <p className="eyebrow">固定席位</p>
+              <h2 id="players-heading">玩家准备</h2>
+            </div>
+            <ConnectionBadge state={state} />
+          </div>
+          <div className="player-pod-grid">
+            <PlayerPod
+              index={lifecycle.isOwner ? 1 : 2}
+              owner={lifecycle.isOwner}
+              ready={selfReady}
+              self
+              online={state.connectionState === "connected"}
+              slotLabel={room.playerSlotId}
+            />
+            <PlayerPod
+              index={lifecycle.isOwner ? 2 : 1}
+              owner={!lifecycle.isOwner}
+              ready={otherReady}
+              self={false}
+              online={otherReady}
+              slotLabel={otherReady ? "已连接" : "等待分配"}
+            />
+          </div>
+        </section>
+        <section
+          aria-labelledby="round-settings-heading"
+          className="round-dock clay-surface"
+        >
+          <div className="round-dock-header">
+            <div>
+              <p className="eyebrow">第 {roundNumber} 局</p>
+              <h2 id="round-settings-heading">房主选择先手</h2>
+            </div>
+            <span className="round-dock-note">
+              <UsersThree size={18} weight="bold" aria-hidden="true" />
+              {readyCount}/{required} 人已准备
+            </span>
+          </div>
+          {lifecycle.isOwner && nextRound !== null ? (
+            <div aria-label="选择先手方" className="starter-options">
+              <button
+                aria-pressed={nextRound.starter === "OWNER"}
+                className="starter-choice"
+                data-testid="starter-owner"
+                disabled={busy}
+                onClick={() => void selectStarter("OWNER")}
+                type="button"
+              >
+                <span className="stone stone-black" aria-hidden="true" />
+                我先
+              </button>
+              <button
+                aria-pressed={nextRound.starter === "NON_OWNER"}
+                className="starter-choice"
+                data-testid="starter-non-owner"
+                disabled={busy}
+                onClick={() => void selectStarter("NON_OWNER")}
+                type="button"
+              >
+                <span className="stone stone-white" aria-hidden="true" />
+                对方先
+              </button>
+            </div>
+          ) : (
+            <p className="waiting-copy">
+              {nextRound?.starter === null
+                ? "等待房主选择先手方。"
+                : nextRound?.starter === "OWNER"
+                  ? "房主选择由房主先手。"
+                  : "房主选择由另一位玩家先手。"}
             </p>
-          </>
-        )}
-        {state.snapshot === null ? null : (
-          <p>
-            比赛状态：
-            <strong
-              aria-atomic="true"
-              aria-live="polite"
-              className="match-status"
-              data-status={state.snapshot.status}
-              data-testid="match-status"
+          )}
+          <div className="round-dock-actions">
+            <p
+              className="round-setup-status"
+              data-testid="round-setup-status"
               role="status"
             >
-              {matchLabels[state.snapshot.status]}
-            </strong>
-          </p>
-        )}
-        {displayedRoundNumber === null || !hasLiveRoom ? null : (
-          <p>
-            当前轮次：
-            <strong data-testid="round-number">
-              第 {displayedRoundNumber} 局
-            </strong>
-          </p>
-        )}
-        {inviteUrl === null ? null : (
-          <div className="invite-block">
-            <p>邀请链接：</p>
-            <div className="invite-link-row">
-              <a data-testid="invite-link" href={inviteUrl}>
-                {inviteUrl}
-              </a>
-              <button
-                className="secondary-button copy-invite-button"
-                data-testid="copy-invite-link"
-                disabled={inviteCopyState === "copying"}
-                onClick={() => void copyInviteLink()}
-                type="button"
-              >
-                {inviteCopyState === "copying"
-                  ? "复制中…"
-                  : inviteCopyState === "copied"
-                    ? "已复制"
-                    : "复制链接"}
-              </button>
-            </div>
-            {inviteCopyState === "copied" ? (
-              <p
-                className="copy-feedback copy-feedback-success"
-                data-testid="copy-invite-status"
-                role="status"
-              >
-                邀请链接已复制。
-              </p>
-            ) : null}
-            {inviteCopyState === "failed" ? (
-              <p
-                className="copy-feedback copy-feedback-error"
-                data-testid="copy-invite-status"
-                role="alert"
-              >
-                复制失败，请手动选择链接复制。
-              </p>
-            ) : null}
-          </div>
-        )}
-        {state.room === null ? null : (
-          <details className="connection-details">
-            <summary>连接详情</summary>
-            <p>
-              稳定席位：
-              <strong data-testid="player-slot">
-                {state.room.playerSlotId}
-              </strong>
+              {nextRound?.starter === null
+                ? "房主尚未选择先手方"
+                : `${selfReady ? "你已准备；" : ""}${readyCount}/${required} 人已准备`}
             </p>
-            {state.snapshot === null ? null : (
-              <p>
-                同步版本：
-                <strong data-testid="revision">
-                  {state.snapshot.revision}
-                </strong>
-              </p>
-            )}
-          </details>
-        )}
-      </section>
-
-      {lifecycle === null || !hasLiveRoom ? null : (
-        <section aria-label="房间操作" className="room-controls-panel">
-          {nextRound === null ? null : (
-            <div className="round-setup-panel">
-              <h2>第 {nextRound.roundNumber} 局设置</h2>
-              {lifecycle.isOwner ? (
-                <div aria-label="选择先手方" className="starter-options">
-                  <button
-                    aria-pressed={nextRound.starter === "OWNER"}
-                    className="secondary-button"
-                    data-testid="starter-owner"
-                    disabled={busy}
-                    onClick={() => void selectStarter("OWNER")}
-                    type="button"
-                  >
-                    我先
-                  </button>
-                  <button
-                    aria-pressed={nextRound.starter === "NON_OWNER"}
-                    className="secondary-button"
-                    data-testid="starter-non-owner"
-                    disabled={busy}
-                    onClick={() => void selectStarter("NON_OWNER")}
-                    type="button"
-                  >
-                    对方先
-                  </button>
-                </div>
+            <button
+              className="clay-button clay-button-primary"
+              data-testid="toggle-round-ready"
+              disabled={busy || nextRound?.starter === null}
+              onClick={() => void toggleRoundReady()}
+              type="button"
+            >
+              {selfReady ? (
+                <X size={19} weight="bold" aria-hidden="true" />
               ) : (
-                <p>
-                  {nextRound.starter === null
-                    ? "等待房主选择先手方。"
-                    : nextRound.starter === "OWNER"
-                      ? "房主选择由房主先手。"
-                      : "房主选择由你先手。"}
-                </p>
+                <Check size={19} weight="bold" aria-hidden="true" />
               )}
-              <button
-                data-testid="toggle-round-ready"
-                disabled={busy || nextRound.starter === null}
-                onClick={() => void toggleRoundReady()}
-                type="button"
-              >
-                {nextRound.selfReady ? "取消准备" : "准备开始"}
-              </button>
-              <p data-testid="round-setup-status" role="status">
-                {nextRound.starter === null
-                  ? "房主尚未选择先手方"
-                  : `${nextRound.selfReady ? "你已准备；" : ""}${nextRound.readyPlayerCount}/${nextRound.requiredPlayerCount} 人已准备`}
-              </p>
-            </div>
-          )}
+              {selfReady ? "取消准备" : "准备开始"}
+            </button>
+          </div>
+        </section>
+        <div className="room-danger-row">
           {lifecycle.isOwner ? (
             <button
-              className="danger-button"
+              className="clay-button clay-button-danger"
               data-testid="close-room"
               disabled={busy}
               onClick={() => void closeRoom()}
               type="button"
             >
-              关闭房间
+              <X size={18} weight="bold" aria-hidden="true" /> 关闭房间
             </button>
           ) : (
             <button
-              className="secondary-button"
+              className="clay-button clay-button-danger"
               data-testid="leave-room"
               disabled={busy}
               onClick={() => void leaveRoom()}
               type="button"
             >
-              离开房间
+              <SignOut size={18} weight="bold" aria-hidden="true" /> 离开房间
             </button>
           )}
-        </section>
-      )}
-
-      {localNotice === null ? null : (
-        <p data-testid="room-notice" role="status">
-          {localNotice}
-        </p>
-      )}
-      {localError === null ? null : <p role="alert">{localError}</p>}
-      {state.error === null ? null : (
-        <p data-testid="connection-error" role="alert">
-          {state.error.message}
-        </p>
-      )}
-      {rejection === null ? null : (
-        <p data-testid="command-rejection" role="status">
-          {rejection}
-        </p>
-      )}
-      {viewError ? <p role="alert">服务器返回的游戏视图无效。</p> : null}
-
-      {playerCountNotice === null ? null : (
-        <p
-          aria-atomic="true"
-          aria-live="polite"
-          className={`player-count-notice player-count-notice-${playerCountNotice}`}
-          data-state={playerCountNotice}
-          data-testid="player-count-notice"
-          role="status"
-        >
-          {playerCountNoticeLabels[playerCountNotice]}
-        </p>
-      )}
+          <p className="room-help-copy">
+            {nextRound?.starter === null
+              ? "准备开始前，需要由房主选定先手。"
+              : readyCount === required
+                ? "玩家已到齐，正在进入对局…"
+                : "等待另一位玩家完成准备。"}
+          </p>
+        </div>
+      </main>
+      <PageAlerts />
+      <RoomToast />
+      <span className="sr-only" data-testid="player-slot">
+        {room.playerSlotId}
+      </span>
+      <span className="sr-only" data-testid="revision">
+        {state.snapshot?.revision ?? 0}
+      </span>
     </div>
   );
+}
+
+function scalarLabel(value: unknown): string {
+  if (typeof value !== "string") return "";
+  const labels: Record<string, string> = {
+    BLACK: "黑方",
+    WHITE: "白方",
+    RED: "红方",
+    YELLOW: "黄方",
+    BLUE: "蓝方",
+  };
+  return labels[value] ?? value;
+}
+
+function viewSummary(view: unknown) {
+  if (view === null || typeof view !== "object") {
+    return { players: [], current: "等待同步", counts: [], result: null };
+  }
+  const record = view as Record<string, unknown>;
+  const players = Array.isArray(record.players)
+    ? record.players.map((player, index) => {
+        const item = player as Record<string, unknown>;
+        const marker = item.stone ?? item.disc ?? item.color ?? item.mark;
+        return {
+          index: index + 1,
+          slotId: item.slotId,
+          marker: scalarLabel(marker),
+        };
+      })
+    : [];
+  const board = Array.isArray(record.board) ? record.board : [];
+  const counts = players.map((player) => ({
+    ...player,
+    count: board.filter((cell) => cell === player.slotId).length,
+  }));
+  const current =
+    players.find((player) => player.slotId === record.nextTurnSlotId)?.marker ??
+    "等待同步";
+  const outcome = record.outcome;
+  let result: string | null = null;
+  if (outcome !== null && typeof outcome === "object") {
+    const outcomeRecord = outcome as Record<string, unknown>;
+    if (outcomeRecord.type === "DRAW") result = "平局";
+    if (outcomeRecord.type === "WIN") {
+      const winner = players.find(
+        (player) => player.slotId === outcomeRecord.winnerSlotId,
+      );
+      result = winner === undefined ? "对局完成" : `玩家 ${winner.index} 胜利`;
+    }
+  }
+  return { players, current, counts, result };
+}
+
+function LoadingView({ label }: { readonly label: string }) {
+  return (
+    <div className="page-shell loading-page">
+      <div className="clay-spinner" aria-hidden="true" />
+      <p>{label}</p>
+      <PageAlerts />
+    </div>
+  );
+}
+
+function PlayView({ title }: Pick<GameRoomPageProps, "title">) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const {
+    busy,
+    closeRoom,
+    clientModule,
+    copyInviteLink,
+    host,
+    inviteCopyState,
+    inviteUrl,
+    leaveRoom,
+    openNextRoundSetup,
+    selectInviteFallback,
+    state,
+  } = useGameRoomHost();
+  const snapshot = state.snapshot;
+  const lifecycle = state.roomLifecycle;
+  const room = state.room;
+  const [viewError, parsedView] = useMemo(() => {
+    if (snapshot === null || clientModule === null)
+      return [false, null] as const;
+    try {
+      return [
+        false,
+        clientModule.parseView(snapshot.view) as Readonly<unknown>,
+      ] as const;
+    } catch {
+      return [true, null] as const;
+    }
+  }, [clientModule, snapshot]);
+  if (
+    room === null ||
+    lifecycle === null ||
+    snapshot === null ||
+    parsedView === null ||
+    clientModule === null
+  ) {
+    return <LoadingView label="正在同步对局…" />;
+  }
+  const GameComponent = clientModule.Component;
+  const summary = viewSummary(parsedView);
+  const isCompleted = snapshot.status === "completed";
+  return (
+    <div className="page-shell console-page play-page">
+      <aside className="game-rail play-rail clay-surface">
+        <IconButton label="打开离开房间菜单" onClick={() => setMenuOpen(true)}>
+          <ArrowLeft size={22} weight="bold" aria-hidden="true" />
+        </IconButton>
+        <div className="game-mark game-mark-large" aria-hidden="true">
+          <GameController size={32} weight="duotone" />
+        </div>
+        <div className="game-rail-copy">
+          <p className="eyebrow">实际对局</p>
+          <h1>{title}</h1>
+          <span data-testid="round-number">第 {snapshot.roundNumber} 局</span>
+        </div>
+        <div className="rail-player-list">
+          {summary.players.map((player) => (
+            <div className="hud-player" key={player.index}>
+              <span
+                className={`stone stone-${player.index === 1 ? "black" : "white"}`}
+                aria-hidden="true"
+              />
+              <span>玩家 {player.index}</span>
+              <strong>{player.marker}</strong>
+              <small>{summary.counts[player.index - 1]?.count ?? 0} 子</small>
+            </div>
+          ))}
+        </div>
+        <div className="turn-pill">
+          <Sparkle size={17} weight="fill" aria-hidden="true" />
+          <span>{isCompleted ? "对局已完成" : `当前：${summary.current}`}</span>
+        </div>
+        <ConnectionBadge state={state} testId="connection-state" />
+        <IconButton
+          label="打开房间菜单"
+          onClick={() => setMenuOpen((open) => !open)}
+          testId="game-menu"
+        >
+          <DotsThree size={25} weight="bold" aria-hidden="true" />
+        </IconButton>
+        <span className="sr-only" data-testid="room-code">
+          {room.roomCode}
+        </span>
+        <span className="sr-only" data-testid="player-slot">
+          {room.playerSlotId}
+        </span>
+        <span className="sr-only" data-testid="revision">
+          {snapshot.revision}
+        </span>
+        <span
+          className="sr-only"
+          data-status={snapshot.status}
+          data-testid="match-status"
+        >
+          {snapshot.status === "completed" ? "对局已完成" : "对局进行中"}
+        </span>
+      </aside>
+      {menuOpen ? (
+        <aside aria-label="房间菜单" className="play-menu clay-surface">
+          <div className="play-menu-heading">
+            <h2>房间菜单</h2>
+            <IconButton label="关闭房间菜单" onClick={() => setMenuOpen(false)}>
+              <X size={21} weight="bold" aria-hidden="true" />
+            </IconButton>
+          </div>
+          <p className="menu-room-code">
+            房间码 <strong>{room.roomCode}</strong>
+          </p>
+          <InviteButton
+            inviteUrl={inviteUrl}
+            copyState={inviteCopyState}
+            onCopy={() => void copyInviteLink()}
+            onFallback={selectInviteFallback}
+          />
+          <details className="connection-details">
+            <summary>连接详情</summary>
+            <p>
+              <ConnectionBadge state={state} />
+            </p>
+            <p>当前同步版本：{snapshot.revision}</p>
+          </details>
+          {lifecycle.isOwner ? (
+            <button
+              className="menu-danger"
+              data-testid="close-room"
+              disabled={busy}
+              onClick={() => void closeRoom()}
+              type="button"
+            >
+              <X size={18} weight="bold" aria-hidden="true" /> 关闭房间
+            </button>
+          ) : (
+            <button
+              className="menu-danger"
+              data-testid="leave-room"
+              disabled={busy}
+              onClick={() => void leaveRoom()}
+              type="button"
+            >
+              <SignOut size={18} weight="bold" aria-hidden="true" /> 离开房间
+            </button>
+          )}
+        </aside>
+      ) : null}
+      <main className="play-stage-layout">
+        <div className="game-stage" data-testid="game-stage">
+          <GameComponent
+            connectionState={state.connectionState}
+            revision={snapshot.revision}
+            submitAction={(action) => host.submitAction(action)}
+            view={parsedView}
+          />
+        </div>
+        {viewError ? (
+          <p className="error-banner" role="alert">
+            服务器返回的游戏视图无效。
+          </p>
+        ) : null}
+        {isCompleted ? (
+          <section
+            aria-labelledby="result-heading"
+            className="result-dock clay-surface"
+          >
+            <div className="result-icon" aria-hidden="true">
+              <Trophy size={30} weight="fill" />
+            </div>
+            <div>
+              <p className="eyebrow">本局结果</p>
+              <h2 id="result-heading">{summary.result ?? "对局已完成"}</h2>
+            </div>
+            <button
+              className="clay-button clay-button-primary"
+              data-testid="next-round-settings"
+              onClick={openNextRoundSetup}
+              type="button"
+            >
+              下一局设置{" "}
+              <ArrowRight size={20} weight="bold" aria-hidden="true" />
+            </button>
+          </section>
+        ) : null}
+      </main>
+      <PageAlerts />
+      <RoomToast />
+    </div>
+  );
+}
+
+export function GameRoomPage(props: GameRoomPageProps) {
+  if (props.mode === "entry")
+    return <EntryView title={props.title} description={props.description} />;
+  if (props.mode === "room") return <RoomView title={props.title} />;
+  return <PlayView title={props.title} />;
 }

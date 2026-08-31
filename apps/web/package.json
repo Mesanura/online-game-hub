@@ -15,6 +15,7 @@
     "@online-game-hub/game-client-sdk": "workspace:*",
     "@online-game-hub/game-registry": "workspace:*",
     "@online-game-hub/game-server-ticket": "workspace:*",
+    "@phosphor-icons/react": "^2.1.10",
     "next": "16.3.3",
     "react": "19.2.8",
     "react-dom": "19.2.8",

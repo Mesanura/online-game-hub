@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import type { ReactNode } from "react";
 
 import "./styles.css";
+import { SiteHeader } from "../components/site-header";
 
 export const metadata: Metadata = {
   title: "Online Game Hub",
@@ -17,16 +17,7 @@ export default function RootLayout({
   return (
     <html lang="zh-Hans">
       <body>
-        <header className="site-header">
-          <Link className="brand" href="/">
-            Online Game Hub
-          </Link>
-          <nav aria-label="主导航">
-            <Link className="header-nav-link" href="/games">
-              游戏目录
-            </Link>
-          </nav>
-        </header>
+        <SiteHeader />
         <main>{children}</main>
       </body>
     </html>

@@ -1,10 +1,8 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 
 import { gameCatalog } from "@online-game-hub/game-registry/catalog";
 
 import { GameRoomPage } from "../../../components/game-room-page";
-import { getWebServerConfig } from "../../../server/runtime-config";
-
 export const dynamic = "force-dynamic";
 
 export function generateStaticParams() {
@@ -24,14 +22,17 @@ export default async function GamePage({
   const query = await searchParams;
   const roomCode =
     typeof query.roomCode === "string" ? query.roomCode : undefined;
-  const config = getWebServerConfig();
+  if (roomCode !== undefined && roomCode.trim().length > 0) {
+    redirect(
+      `/games/${encodeURIComponent(game.id)}/rooms/${encodeURIComponent(roomCode.trim().toUpperCase())}`,
+    );
+  }
 
   return (
     <GameRoomPage
+      description={game.description}
       gameId={game.id}
-      gameServerUrl={config.gameServerPublicUrl}
-      initialConfig={game.defaultConfig}
-      initialRoomCode={roomCode}
+      mode="entry"
       title={game.title}
     />
   );
