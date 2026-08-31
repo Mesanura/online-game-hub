@@ -1,0 +1,134 @@
+{
+  "header": {
+    "replayFormatVersion": 1,
+    "gameId": "hex",
+    "gameVersion": "1.0.0",
+    "rng": {
+      "algorithm": "fnv1a32-counter-v1",
+      "seed": "golden-hex-1"
+    },
+    "initialConfig": null,
+    "players": [
+      {
+        "slotId": "player-blue"
+      },
+      {
+        "slotId": "player-red"
+      }
+    ]
+  },
+  "actions": [
+    {
+      "sequence": 1,
+      "actorSlotId": "player-blue",
+      "action": { "type": "PLACE_STONE", "cell": 0 }
+    },
+    {
+      "sequence": 2,
+      "actorSlotId": "player-red",
+      "action": { "type": "PLACE_STONE", "cell": 1 }
+    },
+    {
+      "sequence": 3,
+      "actorSlotId": "player-blue",
+      "action": { "type": "PLACE_STONE", "cell": 11 }
+    },
+    {
+      "sequence": 4,
+      "actorSlotId": "player-red",
+      "action": { "type": "PLACE_STONE", "cell": 2 }
+    },
+    {
+      "sequence": 5,
+      "actorSlotId": "player-blue",
+      "action": { "type": "PLACE_STONE", "cell": 22 }
+    },
+    {
+      "sequence": 6,
+      "actorSlotId": "player-red",
+      "action": { "type": "PLACE_STONE", "cell": 3 }
+    },
+    {
+      "sequence": 7,
+      "actorSlotId": "player-blue",
+      "action": { "type": "PLACE_STONE", "cell": 33 }
+    },
+    {
+      "sequence": 8,
+      "actorSlotId": "player-red",
+      "action": { "type": "PLACE_STONE", "cell": 4 }
+    },
+    {
+      "sequence": 9,
+      "actorSlotId": "player-blue",
+      "action": { "type": "PLACE_STONE", "cell": 44 }
+    },
+    {
+      "sequence": 10,
+      "actorSlotId": "player-red",
+      "action": { "type": "PLACE_STONE", "cell": 5 }
+    },
+    {
+      "sequence": 11,
+      "actorSlotId": "player-blue",
+      "action": { "type": "PLACE_STONE", "cell": 55 }
+    },
+    {
+      "sequence": 12,
+      "actorSlotId": "player-red",
+      "action": { "type": "PLACE_STONE", "cell": 6 }
+    },
+    {
+      "sequence": 13,
+      "actorSlotId": "player-blue",
+      "action": { "type": "PLACE_STONE", "cell": 66 }
+    },
+    {
+      "sequence": 14,
+      "actorSlotId": "player-red",
+      "action": { "type": "PLACE_STONE", "cell": 7 }
+    },
+    {
+      "sequence": 15,
+      "actorSlotId": "player-blue",
+      "action": { "type": "PLACE_STONE", "cell": 77 }
+    },
+    {
+      "sequence": 16,
+      "actorSlotId": "player-red",
+      "action": { "type": "PLACE_STONE", "cell": 8 }
+    },
+    {
+      "sequence": 17,
+      "actorSlotId": "player-blue",
+      "action": { "type": "PLACE_STONE", "cell": 88 }
+    },
+    {
+      "sequence": 18,
+      "actorSlotId": "player-red",
+      "action": { "type": "PLACE_STONE", "cell": 9 }
+    },
+    {
+      "sequence": 19,
+      "actorSlotId": "player-blue",
+      "action": { "type": "PLACE_STONE", "cell": 99 }
+    },
+    {
+      "sequence": 20,
+      "actorSlotId": "player-red",
+      "action": { "type": "PLACE_STONE", "cell": 10 }
+    },
+    {
+      "sequence": 21,
+      "actorSlotId": "player-blue",
+      "action": { "type": "PLACE_STONE", "cell": 110 }
+    }
+  ],
+  "recordedRngCursor": 0,
+  "recordedOutcome": {
+    "type": "WIN",
+    "reason": "CONNECTION",
+    "winnerSlotId": "player-blue",
+    "winningPath": [0, 11, 22, 33, 44, 55, 66, 77, 88, 99, 110]
+  }
+}
