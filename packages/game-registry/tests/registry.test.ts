@@ -25,6 +25,15 @@ describe("explicit game registry", () => {
   it("uses each game's single manifest source in the catalog and server", () => {
     expect(Object.isFrozen(gameCatalog)).toBe(true);
     expect(gameCatalog).not.toHaveLength(0);
+    expect(
+      gameCatalog.slice(0, 5).map(({ id, title }) => ({ id, title })),
+    ).toEqual([
+      { id: "tic-tac-toe", title: "井字棋" },
+      { id: "connect-four", title: "四子棋" },
+      { id: "gomoku", title: "五子棋" },
+      { id: "hex", title: "六贯棋" },
+      { id: "reversi", title: "黑白棋" },
+    ]);
     expect(new Set(gameCatalog.map(({ id }) => id)).size).toBe(
       gameCatalog.length,
     );
