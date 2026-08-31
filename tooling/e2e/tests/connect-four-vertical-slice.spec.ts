@@ -153,6 +153,10 @@ test("two guests play two authoritative Connect Four rounds with independent rep
     "game-stage",
   );
   await expect(pageA.getByTestId("match-status")).toHaveText("等待另一位玩家");
+  await expect(pageA.getByTestId("player-count-notice")).toHaveAttribute(
+    "data-state",
+    "waiting",
+  );
 
   const inviteUrl = await pageA.getByTestId("invite-link").getAttribute("href");
   if (inviteUrl === null) {
@@ -176,6 +180,10 @@ test("two guests play two authoritative Connect Four rounds with independent rep
       await expect(page.locator(".game-page > :first-child")).toHaveAttribute(
         "data-testid",
         "game-stage",
+      );
+      await expect(page.getByTestId("player-count-notice")).toHaveAttribute(
+        "data-state",
+        "ready",
       );
       await expect(page.getByTestId("match-status")).toHaveText("对局进行中");
       await expect(page.getByTestId("room-code")).toHaveText(roomCode);

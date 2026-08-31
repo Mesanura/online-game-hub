@@ -154,6 +154,37 @@ summary:focus-visible {
   min-width: 0;
 }
 
+.player-count-notice {
+  border: 1px solid;
+  border-radius: 999px;
+  bottom: max(1rem, env(safe-area-inset-bottom));
+  box-shadow: 0 0.7rem 2rem rgb(0 0 0 / 35%);
+  font-size: 0.9rem;
+  font-weight: 800;
+  margin: 0;
+  max-width: calc(100vw - 2rem);
+  padding: 0.65rem 0.9rem;
+  position: fixed;
+  right: max(1rem, env(safe-area-inset-right));
+  transition:
+    background-color 180ms ease,
+    border-color 180ms ease,
+    color 180ms ease;
+  z-index: 30;
+}
+
+.player-count-notice-waiting {
+  background: #f3a712;
+  border-color: #ffd36b;
+  color: #251700;
+}
+
+.player-count-notice-ready {
+  background: #2e9d68;
+  border-color: #6de6a1;
+  color: #f3fff8;
+}
+
 .room-entry-panel form {
   align-items: end;
   display: grid;

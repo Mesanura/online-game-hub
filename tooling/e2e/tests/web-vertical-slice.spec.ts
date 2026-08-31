@@ -63,6 +63,9 @@ async function createAndJoinRoom(
   await expect(pageA.getByRole("link", { name: "游戏目录" })).toHaveClass(
     /header-nav-link/u,
   );
+  const roomCodeInput = pageA.getByLabel("房间码");
+  await expect(roomCodeInput).toHaveValue("");
+  expect(await roomCodeInput.getAttribute("placeholder")).toBeNull();
   await expect(pageA.getByTestId("game-stage")).toHaveCount(0);
   await pageA.getByTestId("create-room").click();
   await expect(pageA.getByTestId("connection-state")).toHaveText("已连接");
@@ -74,6 +77,14 @@ async function createAndJoinRoom(
   await expect(waitingStatus).toHaveText("等待另一位玩家");
   await expect(waitingStatus).toHaveAttribute("data-status", "waiting");
   await expect(waitingStatus).toHaveCSS("color", "rgb(255, 123, 135)");
+  const playerCountNotice = pageA.getByTestId("player-count-notice");
+  await expect(playerCountNotice).toHaveText("等待其他玩家加入…");
+  await expect(playerCountNotice).toHaveAttribute("data-state", "waiting");
+  await expect(playerCountNotice).toHaveCSS(
+    "background-color",
+    "rgb(243, 167, 18)",
+  );
+  await expect(playerCountNotice).toHaveCSS("position", "fixed");
 
   const inviteUrl = await pageA.getByTestId("invite-link").getAttribute("href");
   if (inviteUrl === null) {
@@ -101,6 +112,7 @@ async function createAndJoinRoom(
   await expect(pageA.getByTestId("copy-invite-status")).toHaveText(
     "复制失败，请手动选择链接复制。",
   );
+  await expect(playerCountNotice).toHaveAttribute("data-state", "waiting");
   const invitation = new URL(inviteUrl);
   expect(invitation.origin).toBe(harness.webUrl);
   expect(invitation.pathname).toBe("/games/tic-tac-toe");
@@ -128,11 +140,25 @@ async function createAndJoinRoom(
         "data-testid",
         "game-stage",
       );
+      const readyNotice = page.getByTestId("player-count-notice");
+      await expect(readyNotice).toHaveText("玩家已到齐，游戏开始！");
+      await expect(readyNotice).toHaveAttribute("data-state", "ready");
+      await expect(readyNotice).toHaveCSS(
+        "background-color",
+        "rgb(46, 157, 104)",
+      );
       const activeStatus = page.getByTestId("match-status");
       await expect(activeStatus).toHaveText("对局进行中");
       await expect(activeStatus).toHaveAttribute("data-status", "active");
       await expect(activeStatus).toHaveCSS("color", "rgb(109, 230, 161)");
     }),
+  );
+  await Promise.all(
+    [pageA, pageB].map((page) =>
+      expect(page.getByTestId("player-count-notice")).toHaveCount(0, {
+        timeout: 6_000,
+      }),
+    ),
   );
   await expect(pageB.getByTestId("room-code")).toHaveText(roomCode);
 

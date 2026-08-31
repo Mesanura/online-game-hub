@@ -51,7 +51,15 @@ const matchLabels = {
   abandoned: "对局已终止",
 } as const;
 
+const playerCountNoticeLabels = {
+  waiting: "等待其他玩家加入…",
+  ready: "玩家已到齐，游戏开始！",
+} as const;
+
+const PLAYER_READY_NOTICE_MILLISECONDS = 4_000;
+
 type InviteCopyState = "idle" | "copying" | "copied" | "failed";
+type PlayerCountNotice = keyof typeof playerCountNoticeLabels;
 
 function rejectionLabel(state: GameClientHostState): string | null {
   const rejection = state.rejection;
@@ -89,6 +97,8 @@ export function GameRoomPage(props: GameRoomPageProps) {
   );
   const getSnapshot = useCallback(() => host.getState(), [host]);
   const state = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+  const liveRoomCode = state.room?.roomCode ?? null;
+  const matchStatus = state.snapshot?.status ?? null;
   const [roomCode, setRoomCode] = useState(props.initialRoomCode ?? "");
   const [localError, setLocalError] = useState<string | null>(null);
   const [localNotice, setLocalNotice] = useState<string | null>(null);
@@ -98,6 +108,8 @@ export function GameRoomPage(props: GameRoomPageProps) {
   const [inviteUrl, setInviteUrl] = useState<string | null>(null);
   const [inviteCopyState, setInviteCopyState] =
     useState<InviteCopyState>("idle");
+  const [playerCountNotice, setPlayerCountNotice] =
+    useState<PlayerCountNotice | null>(null);
   const autoJoinStarted = useRef(false);
   const handledCloseReason = useRef<string | null>(null);
 
@@ -160,6 +172,27 @@ export function GameRoomPage(props: GameRoomPageProps) {
       active = false;
     };
   }, [state.snapshot?.gameId, state.snapshot?.gameVersion]);
+
+  useEffect(() => {
+    if (liveRoomCode === null || matchStatus === null) {
+      setPlayerCountNotice(null);
+      return;
+    }
+    if (matchStatus === "waiting") {
+      setPlayerCountNotice("waiting");
+      return;
+    }
+    if (matchStatus !== "active") {
+      setPlayerCountNotice(null);
+      return;
+    }
+
+    setPlayerCountNotice("ready");
+    const dismissTimeout = window.setTimeout(() => {
+      setPlayerCountNotice((current) => (current === "ready" ? null : current));
+    }, PLAYER_READY_NOTICE_MILLISECONDS);
+    return () => window.clearTimeout(dismissTimeout);
+  }, [liveRoomCode, matchStatus]);
 
   const createRoom = async (): Promise<void> => {
     setBusy(true);
@@ -273,7 +306,7 @@ export function GameRoomPage(props: GameRoomPageProps) {
   const GameComponent = clientModule?.Component;
   const rejection = rejectionLabel(state);
   const lifecycle = state.roomLifecycle;
-  const hasLiveRoom = state.room !== null;
+  const hasLiveRoom = liveRoomCode !== null;
 
   return (
     <div className="page-shell game-page">
@@ -320,7 +353,6 @@ export function GameRoomPage(props: GameRoomPageProps) {
               id="room-code"
               maxLength={16}
               onChange={(event) => setRoomCode(event.target.value)}
-              placeholder="ABCD2345"
               value={roomCode}
             />
             <button data-testid="join-room" disabled={busy} type="submit">
@@ -493,6 +525,19 @@ export function GameRoomPage(props: GameRoomPageProps) {
         </p>
       )}
       {viewError ? <p role="alert">服务器返回的游戏视图无效。</p> : null}
+
+      {playerCountNotice === null ? null : (
+        <p
+          aria-atomic="true"
+          aria-live="polite"
+          className={`player-count-notice player-count-notice-${playerCountNotice}`}
+          data-state={playerCountNotice}
+          data-testid="player-count-notice"
+          role="status"
+        >
+          {playerCountNoticeLabels[playerCountNotice]}
+        </p>
+      )}
     </div>
   );
 }
