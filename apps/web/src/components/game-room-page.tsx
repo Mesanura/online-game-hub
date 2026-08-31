@@ -277,6 +277,20 @@ export function GameRoomPage(props: GameRoomPageProps) {
 
   return (
     <div className="page-shell game-page">
+      {hasLiveRoom &&
+      state.snapshot !== null &&
+      GameComponent !== undefined &&
+      !viewError ? (
+        <div className="game-stage" data-testid="game-stage">
+          <GameComponent
+            connectionState={state.connectionState}
+            revision={state.snapshot.revision}
+            submitAction={(action) => host.submitAction(action)}
+            view={parsedView}
+          />
+        </div>
+      ) : null}
+
       <div>
         <p className="eyebrow">私人房间</p>
         <h1>{props.title}</h1>
@@ -479,15 +493,6 @@ export function GameRoomPage(props: GameRoomPageProps) {
         </p>
       )}
       {viewError ? <p role="alert">服务器返回的游戏视图无效。</p> : null}
-
-      {state.snapshot !== null && GameComponent !== undefined && !viewError ? (
-        <GameComponent
-          connectionState={state.connectionState}
-          revision={state.snapshot.revision}
-          submitAction={(action) => host.submitAction(action)}
-          view={parsedView}
-        />
-      ) : null}
     </div>
   );
 }

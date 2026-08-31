@@ -63,8 +63,13 @@ async function createAndJoinRoom(
   await expect(pageA.getByRole("link", { name: "游戏目录" })).toHaveClass(
     /header-nav-link/u,
   );
+  await expect(pageA.getByTestId("game-stage")).toHaveCount(0);
   await pageA.getByTestId("create-room").click();
   await expect(pageA.getByTestId("connection-state")).toHaveText("已连接");
+  await expect(pageA.locator(".game-page > :first-child")).toHaveAttribute(
+    "data-testid",
+    "game-stage",
+  );
   const waitingStatus = pageA.getByTestId("match-status");
   await expect(waitingStatus).toHaveText("等待另一位玩家");
   await expect(waitingStatus).toHaveAttribute("data-status", "waiting");
@@ -119,6 +124,10 @@ async function createAndJoinRoom(
   );
   await Promise.all(
     [pageA, pageB].map(async (page) => {
+      await expect(page.locator(".game-page > :first-child")).toHaveAttribute(
+        "data-testid",
+        "game-stage",
+      );
       const activeStatus = page.getByTestId("match-status");
       await expect(activeStatus).toHaveText("对局进行中");
       await expect(activeStatus).toHaveAttribute("data-status", "active");

@@ -150,6 +150,10 @@ summary:focus-visible {
   gap: 1.25rem;
 }
 
+.game-stage {
+  min-width: 0;
+}
+
 .room-entry-panel form {
   align-items: end;
   display: grid;

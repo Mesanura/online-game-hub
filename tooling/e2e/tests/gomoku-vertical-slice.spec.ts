@@ -76,8 +76,13 @@ test("two guests create, join, synchronize, and complete authoritative Gomoku", 
   await gomokuCard.getByRole("link", { name: "创建或加入房间" }).click();
   await expect(pageA).toHaveURL(/\/games\/gomoku$/u);
   await expect(pageA.getByRole("heading", { level: 1 })).toHaveText("五子棋");
+  await expect(pageA.getByTestId("game-stage")).toHaveCount(0);
   await pageA.getByTestId("create-room").click();
   await expect(pageA.getByTestId("connection-state")).toHaveText("已连接");
+  await expect(pageA.locator(".game-page > :first-child")).toHaveAttribute(
+    "data-testid",
+    "game-stage",
+  );
   await expect(pageA.getByTestId("match-status")).toHaveText("等待另一位玩家");
 
   const inviteUrl = await pageA.getByTestId("invite-link").getAttribute("href");
@@ -93,6 +98,10 @@ test("two guests create, join, synchronize, and complete authoritative Gomoku", 
   await Promise.all(
     [pageA, pageB].map(async (page) => {
       await expect(page.getByTestId("connection-state")).toHaveText("已连接");
+      await expect(page.locator(".game-page > :first-child")).toHaveAttribute(
+        "data-testid",
+        "game-stage",
+      );
       await expect(page.getByTestId("match-status")).toHaveText("对局进行中");
       await expect(page.getByTestId("room-code")).toHaveText(roomCode);
       await expect(
