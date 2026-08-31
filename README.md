@@ -57,7 +57,7 @@ pnpm test:integration
 pnpm test:e2e
 ```
 
-`pnpm lint` 同时执行格式、ESLint、本地 Markdown 链接和依赖边界检查。`pnpm test` 包含 Game SDK、Protocol、井字棋/四子棋/五子棋/六贯棋/黑白棋 Core、Client 与 golden replay、registry、runtime ports、replay/store tests、Game Server unit tests，以及故意违规的隔离 fixture。`pnpm db:check` 静态检查 checked-in migration；`pnpm db:migrate` 只在调用者显式提供 `DATABASE_URL` 时应用 migration。`pnpm test:database` 需要 `TEST_DATABASE_URL` 指向测试可创建数据库的 PostgreSQL 管理库，并为每个 suite 创建、验证和删除随机 `ogh_test_*` 数据库。`pnpm test:integration` 在随机本地端口运行真实 Colyseus 双客户端 tests；`pnpm test:e2e` 先构建 workspace，再以随机回环端口启动真实 Next production app、真实 Colyseus Server 和隔离 PostgreSQL 数据库，运行双 browser-context Playwright。三个测试脚本都不是空脚本，CI 都会执行。
+`pnpm lint` 同时执行格式、ESLint、本地 Markdown 链接和依赖边界检查。`pnpm test` 包含 Game SDK、Protocol、井字棋/四子棋/五子棋/六贯棋/黑白棋 Core、Client 与 golden replay、registry、runtime ports、replay/store tests、Game Server unit tests、create-game 临时 workspace fixtures，以及故意违规的 repository-check 隔离 fixture。`pnpm db:check` 静态检查 checked-in migration；`pnpm db:migrate` 只在调用者显式提供 `DATABASE_URL` 时应用 migration。`pnpm test:database` 需要 `TEST_DATABASE_URL` 指向测试可创建数据库的 PostgreSQL 管理库，并为每个 suite 创建、验证和删除随机 `ogh_test_*` 数据库。`pnpm test:integration` 在随机本地端口运行真实 Colyseus 双客户端 tests；`pnpm test:e2e` 先构建 workspace，再以随机回环端口启动真实 Next production app、真实 Colyseus Server 和隔离 PostgreSQL 数据库，运行双 browser-context Playwright。三个测试脚本都不是空脚本，CI 都会执行。
 
 所有当前支持 `gameVersion` 的 golden replay 可单独运行：
 
@@ -72,6 +72,19 @@ pnpm --filter @online-game-hub/reversi test:golden
 首次在本机运行浏览器测试前执行 `pnpm exec playwright install chromium`；CI 使用 `--with-deps chromium` 安装精确匹配的浏览器。
 
 Colyseus 的可选 `msgpackr-extract` 原生加速不影响协议正确性，仓库在 `pnpm-workspace.yaml#allowBuilds` 中明确拒绝其 install script，使用纯 JavaScript fallback。依赖版本与 lockfile 必须继续由 pnpm 维护。
+
+## 新游戏机械骨架
+
+五款游戏已验证稳定的 package/export/registry/Next 登记可通过窄版 CLI 自动完成：
+
+```sh
+pnpm create-game --help
+pnpm create-game --game-id example-game
+```
+
+CLI 只接受稳定 lowercase kebab-case，并在写入前检查路径、保留名、目录、workspace package、gameId、export symbol 和全部显式登记冲突。同一完整输入重复运行零写入；部分登记或内容冲突 fail closed。`pnpm-lock.yaml` 只由根目录固定 pnpm 以 lockfile-only 模式更新，失败会回滚本轮文件并返回非零退出码。
+
+生成器只创建未完成 package/config/export 骨架，登记 catalog、lazy client loader、exact/current server resolver 和 Next transpile package。它不生成或猜测 manifest 产品字段、规则、Core、Client、CSS、golden replay、integration 或 E2E 对局。成功输出的人工清单全部完成并满足 [Game Plugin 规范](./docs/GAME_PLUGIN_SPEC.md) 前，新游戏不属于已完成插件。完整参数、退出码、保留名和恢复语义见 [Tools](./tools/README.md)。
 
 ## M4/M5 依赖 ownership
 
@@ -151,7 +164,8 @@ games/
 tooling/
   e2e/                     # 随机端口真实 Next/Colyseus 双 context Playwright
   repository-check/        # 依赖、循环、Markdown 链接检查及 fixture tests
-tools/                     # 未来面向开发者的 CLI；当前不创建生成器
+tools/
+  create-game/             # 窄版机械骨架与显式登记 CLI；不生成游戏语义
 ```
 
 不要创建 `packages/shared`。新增 workspace package 必须声明 public exports，并接入根 typecheck、test 和 build 图；跨 package 只能通过 manifest 中声明的依赖与 export map 导入。
@@ -162,7 +176,7 @@ M6 五子棋没有新增外部依赖，也没有修改当时的 `protocol`、`ga
 
 黑白棋 1.0.0 固定 8×8 与 null Config；`players[0]` 为 BLACK 并先手，客户端只提交 `PLACE_DISC(cell)`。Protocol V2 由逐局设置决定哪个 stable slot 成为该轮 `players[0]`，不会修改黑白棋规则或 game version。Core 同时翻转全部合法方向；若对方无合法行动则保持当前 slot，双方均无合法行动或棋盘填满时按棋子数产生 WIN/DRAW。强制跳过不增加 revision、不产生 PASS 或 replay Action。Client 只渲染服务器 View 提供的合法落点、当前行动方、棋子数和 Outcome。该游戏上线时没有新增外部依赖，也没有修改当时的 `game-sdk`、Protocol V1、Replay Format V1、`game-client-sdk`、`game-server-runtime`、`game-server-ticket`、database source/schema/migration 或既有游戏版本。
 
-M6 黑白棋 package 内仍为 16 个文件；游戏外非文档改动为 10 个唯一文件：registry package/catalog/client/server、lockfile 和 Next transpile 共 6 个机械登记文件，Web CSS 1 个，registry/integration/E2E 验证 3 个。连续多个游戏已证明 package 骨架和显式登记稳定，因此后续独立任务可以实现窄 `tools/create-game`，只自动化 package/export/tsconfig 与上述 registry/build 登记并保持幂等；具体规则、样式、golden、integration 和 E2E 序列仍不应模板化。本轮只完成证据复盘，不实现生成器。
+M6 黑白棋 package 内仍为 16 个文件；游戏外非文档改动为 10 个唯一文件：registry package/catalog/client/server、lockfile 和 Next transpile 共 6 个机械登记文件，Web CSS 1 个，registry/integration/E2E 验证 3 个。连续多个游戏证明 package 骨架和显式登记稳定后，现已独立实现窄 `tools/create-game`，只自动化 package/export/tsconfig 与上述 registry/build 登记并保持幂等；具体规则、样式、golden、integration 和 E2E 序列仍不模板化。
 
 ## 自动化边界
 

@@ -1,6 +1,6 @@
 # 系统架构
 
-> 状态：架构基线（Protocol V2，M1–M6 与逐局先手增强已完成）
+> 状态：架构基线（Protocol V2，M1–M6、逐局先手、三阶段 Web 与窄版 create-game 已完成）
 > 本文是系统职责、目录结构、依赖方向和部署基线的权威来源。产品范围见 [PRODUCT.md](./PRODUCT.md)。
 
 ## 1. 架构目标
@@ -114,7 +114,7 @@ Package export map 提供：
 - `/client`：按 `gameId` 懒加载 Client Module，避免首页打包全部游戏；
 - `/server`：按 `gameId + gameVersion` 解析服务端 `GameDefinition`。
 
-`game-registry` 是唯一允许指向所有具体游戏的 composition package。添加游戏需要新增游戏 package 并显式更新注册表；未来 `tools/create-game` 只自动执行这些可见、可审查的机械步骤，不引入运行时插件发现。
+`game-registry` 是唯一允许指向所有具体游戏的 composition package。添加游戏需要新增游戏 package 并显式更新注册表；`tools/create-game` 只自动执行这些可见、可审查的机械步骤，不引入目录扫描或运行时插件发现。
 
 每个 `GameManifest` 同时声明 JSON-safe `defaultConfig`。通用 Web 只把它作为创建房间的默认输入，runtime 仍使用 exact definition 的 `configSchema` 校验并保存 canonical Config；manifest contract test 要求默认值已规范化且 parse 后不变化。合法的非默认 Config 继续通过同一 create request 传递，不需要平台识别具体字段。
 
@@ -217,7 +217,16 @@ Room 必须串行处理 Action。任何未来多实例方案都必须维持“�
 - 黑白棋同样直接使用 `defaultConfig: null` 和现有 opaque Action envelope。一次 accepted placement 内完成全部翻转和跳过判断；只有该 placement 递增一次 revision 并进入 replay，平台不理解 PASS 或翻转列表。`game-sdk`、`protocol`、`game-client-sdk`、`game-server-runtime`、`game-server-ticket`、database source/schema/migration 继续零修改。
 - 通用 Action pipeline、`projectView`、replay verifier、PostgreSQL adapters、多轮/关闭/reconnect 行为没有 `connect-four`、`gomoku`、`hex` 或其他 gameId 规则分支。真实 Colyseus integration 直接验证六贯棋 21-action 连接胜局、同房间第二轮再次选择相同先手时的角色一致性与 off-turn `RESIGN`。
 - presentation 仍需在 Next transpile allowlist 与 Web 全局 CSS 显式登记；通用 `GameRoomPage` 继续只按稳定领域错误码提供少量文案映射，没有新增 gameId 规则分支。
-- 黑白棋涉及游戏外非文档 10 个唯一文件：registry package/catalog/client/server、lockfile、Next transpile 共 6 个机械登记文件，CSS 1 个，registry/integration/E2E 验证 3 个。连续多个游戏已证明 package 骨架和登记步骤稳定，后续独立任务可实现只覆盖机械部分且幂等的窄 `tools/create-game`；规则、样式与验收序列继续由游戏 owner 设计。本轮不实现生成器。
+- 黑白棋涉及游戏外非文档 10 个唯一文件：registry package/catalog/client/server、lockfile、Next transpile 共 6 个机械登记文件，CSS 1 个，registry/integration/E2E 验证 3 个。连续多个游戏证明 package 骨架和登记步骤稳定后，窄版 `tools/create-game` 已作为独立工具实现；规则、样式与验收序列继续由游戏 owner 设计。
+
+### 8.6 `tools/create-game` 边界
+
+- 工具是独立 workspace package，接入既有 Turbo `build`、`typecheck`、`test` 图；根命令只负责非交互参数与稳定退出码。
+- gameId 经严格 lowercase kebab-case、路径/保留名、workspace package、manifest id 和确定性 export symbol preflight；`sample-game` 固定推导 `sampleGameManifest`、`sampleGameDefinition` 与 `sampleGameClientModule`。符号碰撞即使 package path 不同也 fail closed。
+- 生成内容仅为 package/export map、TypeScript configs、必要目录和未完成说明；manifest、Config、玩家数、capabilities、规则 Core、Client、CSS、golden 与纵切序列不属于模板。
+- registry package dependency、catalog、lazy client loader、exact/current server definitions 和 Next transpile 继续使用显式静态条目。固定 marker 只是开发工具的审查锚点，不参与应用运行，也不构成插件发现协议。
+- preflight 在任何写入前构造全部目标内容。完整重复输入为零写入；已有内容冲突、重复条目或部分登记均拒绝。写入阶段记录原文件，仅由 workspace root 固定 pnpm 执行离线 lockfile-only 更新；失败恢复原登记与 lockfile，并只清理本轮已确认创建的目标目录。
+- 新骨架在 owner 完成 manifest/Core/Client/文档/样式/unit/golden/integration/E2E 前有意不可构建为可玩游戏，也不满足 Plugin Definition of Done。工具没有改变 Protocol V2、Replay Format V1、database schema、既有 gameVersion 或任何平台 public runtime API。
 
 ## 9. 存储与部署
 

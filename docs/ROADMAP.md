@@ -1,6 +1,6 @@
 # 开发路线图
 
-> 状态：M1–M6、Protocol V2 逐局先手增强与三阶段 Web 体验重构已完成
+> 状态：M1–M6、Protocol V2 逐局先手、三阶段 Web 与窄版 create-game 已完成
 > 本文是项目阶段顺序和里程碑退出条件的权威来源。里程碑按依赖排序，不承诺具体日期。
 
 ## 原则
@@ -159,7 +159,7 @@
 - 游戏外非文档改动为 10 个唯一文件：registry package/catalog/client/server、lockfile、Next transpile 共 6 个机械登记，Web CSS 1 个，registry/integration/E2E 验证 3 个；
 - 现有 Action pipeline 可让一次 accepted placement 同时完成多方向翻转和回合推进；强制跳过不产生 PASS、不增加额外 revision、不写 replay。`game-sdk`、Protocol V1、Replay Format V1、`game-client-sdk`、`game-server-runtime`、`game-server-ticket`、database source/schema/migration 与全部既有游戏版本均零修改；
 - 60-action golden 在连续 WHITE actor 处证明 PASS-free replay；真实 Colyseus integration 以 25-action 对局覆盖强制跳过、35 个空格的非满盘终局和同房间第二轮独立 replay；PostgreSQL-backed E2E 以 11-action 对局覆盖权威翻转、49 个空格终局、新连接 replay verification 与双方安全 private history；
-- 连续多个游戏的 16 文件骨架及 registry/package/lock/Next 登记已经稳定，证据足以在后续独立任务实现窄 `tools/create-game`。生成器只应自动化 package/export/tsconfig 和显式登记，具备幂等/冲突失败/检查提示；规则、CSS、golden、integration、E2E 序列仍由游戏 owner 设计。本轮按范围只复盘，不实现生成器。
+- 连续多个游戏的 16 文件骨架及 registry/package/lock/Next 登记已经稳定；M6 当时据此把窄 `tools/create-game` 留给后续独立任务，并限定它只自动化 package/export/tsconfig 与显式登记。该独立任务现已按下文“已完成开发工具增强”落地，规则、CSS、golden、integration、E2E 序列仍由游戏 owner 设计。
 
 ## 已完成平台增强：Protocol V2 与逐局先手
 
@@ -187,6 +187,18 @@
 - 桌面对局页面本身不因 HUD 滚动；大型棋盘在专属容器内滚动，移动端有效落点至少 44px；终局保留最终棋盘并从“下一局设置”回到等待页；
 - PostgreSQL-backed 五套 Playwright 继续覆盖双方准备、两轮、reconnect、completed/closed、canonical replay 和私有 history，未新增观战、昵称、计时、Matchmaking 或规则配置。
 
+## 已完成开发工具增强：窄版 `tools/create-game`
+
+> 实施状态：已完成（2026-09-01）。只自动化五款游戏反复验证的机械骨架和显式登记，不改变产品或运行时能力。
+
+- 新增独立 `@online-game-hub/create-game` workspace package 与根 `pnpm create-game --game-id <id>` 非交互命令，接入 Turbo build/typecheck/test；
+- 严格验证 lowercase kebab-case、路径/保留名、已有目录、workspace package、manifest gameId 和确定性 export symbols；
+- 只生成 package/public exports、三套 tsconfig、必要目录和未完成说明；不生成 manifest 语义、规则/Core/Client、CSS、golden 或纵切对局；
+- 通过固定静态 marker 幂等更新 registry dependency、catalog、lazy client loader、exact/current server definitions 和 Next transpile allowlist，继续禁止目录扫描与运行时插件发现；
+- 在写入前完成全量 preflight，冲突/部分登记零写入；写入或根目录固定 pnpm lockfile-only 更新失败时回滚本轮目标；
+- 隔离临时 fixture 覆盖精确输出、第二次零 diff、非法输入、目录/package/gameId/symbol 冲突、部分/重复登记、lockfile 失败回滚、CLI help/退出码和稳定输出；
+- 成功后只打印人工 Definition of Done 清单。Protocol V2、Replay Format V1、database schema、五款游戏 `gameVersion 1.0.0` 与平台 public runtime API 均未改变。
+
 ## M7：按证据扩展平台
 
 以下能力不预先排序，在产品需求和运行指标出现后单独立项：
@@ -201,4 +213,4 @@
 
 ## 下一轮建议
 
-M6 与逐局先手增强已完成，不再追加同里程碑游戏。下一轮应由产品证据在“独立实现窄 `tools/create-game`”与 M7 候选能力中单独立项；不要把生成器与 OAuth、Lobby、Matchmaking、排行榜、观战、公开 replay、durable active room、Redis 或多实例混成同一任务。
+M6、逐局先手、三阶段 Web 与窄版 `tools/create-game` 均已完成，不再向这些已收敛任务追加产品能力。下一轮由产品证据从 M7 候选能力中单独立项；不要把 OAuth、Lobby、Matchmaking、排行榜、观战、公开 replay、durable active room、Redis 或多实例混成同一任务。

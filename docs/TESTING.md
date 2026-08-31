@@ -45,6 +45,19 @@
 
 依赖边界以 [ARCHITECTURE.md](./ARCHITECTURE.md) 为准。检查必须自动化，不能只依赖 code review 记忆。
 
+### 3.1 `tools/create-game` Generator Tests
+
+生成器测试只使用系统临时目录中的最小隔离 workspace，并注入本地 lockfile runner；不得写真实 `games/`、访问网络、启动数据库或调用外部服务。最低覆盖：
+
+- 合法 gameId 产生精确 package/export/tsconfig/目录和显式 registry/Next 登记；不产生 manifest、Core 或 Client 假实现；
+- 第二次运行返回成功且整个 fixture 零 diff，dependency、imports、catalog/definition/client arrays 与 transpile entry 都只出现一次；
+- 大小写、空段、路径穿越、绝对路径、保留名、已有目录，以及 package/gameId/derived symbol 冲突全部在写入前拒绝；
+- 已有文件内容冲突、重复登记和部分登记 fail closed，fixture 不新增任何写入；
+- 固定 pnpm lockfile runner 失败后，package、registry、Next 与 lockfile 全部恢复，且不误删 preflight 前已存在的目录；
+- `--help`、参数缺失、成功/失败退出码、人工清单顺序、LF 换行和输出格式保持稳定。
+
+该 suite 验证机械生成器自身，不替代新游戏必须拥有的 Core、Client、golden、authoritative integration 和 Playwright 场景。generator-only 改动若未触及 database、Protocol、transport 或浏览器行为，按 change-to-test matrix 不要求运行真实 PostgreSQL、Colyseus integration 或 E2E。
+
 ## 4. Game Core Unit Tests
 
 每个游戏在自己的 package 中使用 Vitest 测试，不启动浏览器、网络或数据库。
@@ -234,18 +247,19 @@ Harness 为 Web 预留随机 loopback port，并用 `port: 0` 启动正式 ticke
 
 ## 11. Change-to-Test Matrix
 
-| 改动                    | 最低检查                                                            |
-| ----------------------- | ------------------------------------------------------------------- |
-| 单游戏 Core             | 该游戏 unit + determinism + replay fixtures + typecheck             |
-| Game manifest/client    | registry contract + client component + relevant E2E                 |
-| `game-sdk`              | 全部游戏 Core/replay + public API type tests + dependency checks    |
-| `protocol`              | protocol contract + server integration + multiplayer/E2E smoke      |
-| `game-server-runtime`   | server integration + multiplayer + replay store tests               |
-| database/schema         | migrations + real PostgreSQL integration + restart reads + shutdown |
-| match/history/identity  | PostgreSQL integration + API authorization/privacy + relevant E2E   |
-| session/ticket          | auth contract + join/reconnect + security negative cases            |
-| replay format/version   | reader compatibility + all supported golden replays                 |
-| build/dependency config | full typecheck/lint/unit + affected build graph                     |
+| 改动                    | 最低检查                                                              |
+| ----------------------- | --------------------------------------------------------------------- |
+| 单游戏 Core             | 该游戏 unit + determinism + replay fixtures + typecheck               |
+| Game manifest/client    | registry contract + client component + relevant E2E                   |
+| `game-sdk`              | 全部游戏 Core/replay + public API type tests + dependency checks      |
+| `protocol`              | protocol contract + server integration + multiplayer/E2E smoke        |
+| `game-server-runtime`   | server integration + multiplayer + replay store tests                 |
+| database/schema         | migrations + real PostgreSQL integration + restart reads + shutdown   |
+| match/history/identity  | PostgreSQL integration + API authorization/privacy + relevant E2E     |
+| session/ticket          | auth contract + join/reconnect + security negative cases              |
+| replay format/version   | reader compatibility + all supported golden replays                   |
+| build/dependency config | full typecheck/lint/unit + affected build graph                       |
+| `tools/create-game`     | package test/typecheck/build + registry contract + root quality gates |
 
 ## 12. Root Commands
 
@@ -264,7 +278,7 @@ pnpm db:migrate
 pnpm test:database
 ```
 
-`pnpm lint` 包含格式、ESLint、本地 Markdown 链接与依赖边界检查。`pnpm test` 纳入 Game SDK、Protocol、井字棋/四子棋/五子棋/六贯棋/黑白棋 Core/client/golden、registry、ticket authority、Web guest/config、runtime/replay stores、Game Server unit tests 和 repository-check 的全部故意违规 fixture tests。`pnpm test:integration` 执行真实 Colyseus SDK tests。`pnpm test:e2e` 先执行完整 workspace build，再执行 PostgreSQL-backed Playwright。`pnpm test:database` 执行真实 PostgreSQL tests；这些命令都不是空脚本。
+`pnpm lint` 包含格式、ESLint、本地 Markdown 链接与依赖边界检查。`pnpm test` 纳入 Game SDK、Protocol、井字棋/四子棋/五子棋/六贯棋/黑白棋 Core/client/golden、registry、ticket authority、Web guest/config、runtime/replay stores、Game Server unit tests、create-game 隔离 fixture 和 repository-check 的全部故意违规 fixture tests。`pnpm test:integration` 执行真实 Colyseus SDK tests。`pnpm test:e2e` 先执行完整 workspace build，再执行 PostgreSQL-backed Playwright。`pnpm test:database` 执行真实 PostgreSQL tests；这些命令都不是空脚本。
 
 `pnpm db:check` 是只读 migration/schema 一致性检查。`pnpm db:migrate` 只在调用者显式提供 `DATABASE_URL` 时应用 checked-in migrations；应用 import 或 production startup 都不会自动 migration。本地创建、迁移与停止 PostgreSQL 的命令见根 README。测试必须使用独立 database/schema，禁止对默认 development `DATABASE_URL` 执行 destructive reset。
 
@@ -281,6 +295,15 @@ pnpm --filter @online-game-hub/reversi test:golden
 首次本机运行 E2E 前执行 `pnpm exec playwright install chromium`。CI 在 frozen-lockfile install 后以 `pnpm exec playwright install --with-deps chromium` 安装与 Playwright 1.62.1 精确匹配的浏览器，使用固定 PostgreSQL 17.6 service，然后运行 lint、typecheck、unit、database、integration、build 和 E2E。
 
 新增 package 必须接入 Turbo task graph，而不是要求 Agent 记忆私有脚本。
+
+`tools/create-game` 可单独检查：
+
+```text
+pnpm --filter @online-game-hub/create-game test
+pnpm --filter @online-game-hub/create-game typecheck
+pnpm --filter @online-game-hub/create-game build
+pnpm --filter @online-game-hub/game-registry test
+```
 
 ## 13. Definition of Done
 
