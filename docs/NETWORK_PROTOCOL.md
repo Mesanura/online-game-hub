@@ -1,6 +1,6 @@
 # 网络协议
 
-> 状态：V1 协议（M6 五子棋 Config 与额外六贯棋继续复用 Protocol V1）
+> 状态：V1 协议（M6 全部游戏继续复用 Protocol V1）
 > 本文是 Web、Game Server 与浏览器之间身份、房间、消息、revision 和重连语义的权威来源。游戏规则 payload 见 [GAME_PLUGIN_SPEC.md](./GAME_PLUGIN_SPEC.md)。
 
 ## 1. 协议目标
@@ -249,10 +249,13 @@ M6 五子棋同样通过 Protocol V1 创建请求传递 `{ boardSize: 15 | 19, w
 
 额外六贯棋以 `initialConfig: null` 创建，并通过同一 envelope 发送 strict `{ type: "PLACE_STONE", cell } | { type: "RESIGN" }`。Transport 不知道六边邻接、连接路径、颜色、投降是否受回合限制或胜者；schema-invalid/extra fields 仍是 `INVALID_ACTION_PAYLOAD`，合法形状的错轮、占用、越界和终局由 Core/现有 lifecycle 错误处理。accepted `RESIGN` 与 accepted placement 一样递增 revision 并进入 replay，因此不需要新的 wire 字段或 `protocolVersion`。
 
+黑白棋以 `initialConfig: null` 创建，并通过同一 envelope 只发送 strict `{ type: "PLACE_DISC", cell }`。Transport 不知道八方向夹线、翻转列表、合法落点、棋子数、强制跳过或终局；这些只存在于 Core/服务器 View。schema-invalid/extra fields 使用 `INVALID_ACTION_PAYLOAD`，错回合、占用或不能翻转使用 opaque `gameRuleCode`。一次 accepted placement 同时完成全部翻转和回合推进，只递增一次 revision 并记录一个 replay Action；自动跳过不产生 `PASS` wire message 或额外 revision，因此 `protocolVersion` 保持 `1`。
+
 ## 8. Revision、Ordering 与 Idempotency
 
 - 每轮初始 match snapshot 的 revision 为 `0`。
 - 每个 accepted Action 恰好使 revision 增加 `1`。
+- 黑白棋强制跳过是 accepted `PLACE_DISC` 内的 Core 推进，不是 Action，不额外增加 revision。
 - schema invalid、platform rejected、game-rule rejected 和 duplicate Action 不增加 revision。
 - Room 在单一串行队列中处理命令，不并发调用 Core。
 - `expectedRevision` 不等于当前 revision 时返回 `STALE_REVISION` 和最新 snapshot，命令不进入 Core。

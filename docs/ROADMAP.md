@@ -116,13 +116,13 @@
 
 ## M6：验证插件扩展性
 
-> 实施状态：第一阶段四子棋已完成（2026-08-30），第二阶段五子棋已完成（2026-08-31），用户确认的额外六贯棋已完成（2026-08-31）；黑白棋和整个 M6 尚未完成。
+> 实施状态：已完成（2026-08-31）。四子棋、五子棋、用户确认的额外六贯棋与黑白棋均已通过各自 Core、Client、golden、authoritative integration、PostgreSQL-backed E2E 和全仓质量门禁。
 
 按顺序增加少量规则类型不同的游戏：
 
 1. 四子棋：验证不同棋盘和胜负扫描（**第一阶段已完成**）；
 2. 五子棋：验证更大棋盘与规则变体 Config（**第二阶段已完成**）；
-3. 黑白棋：验证翻转、无合法行动和跳过回合。
+3. 黑白棋：验证翻转、无合法行动和跳过回合（**第三阶段已完成**）。
 
 每新增一个游戏前复盘：需要修改多少平台文件、registry 步骤是否机械、SDK 是否出现游戏特例。只有流程稳定后才实现 `tools/create-game`。
 
@@ -146,11 +146,20 @@
 
 额外六贯棋复盘结果：
 
-- 六贯棋以 `gameId: hex`、exact `gameVersion 1.0.0` 作为额外游戏加入，不替代按序计划的黑白棋；固定 11×11、BLUE 先手、RED/BLUE 连接边、无交换规则与无 DRAW；
+- 六贯棋以 `gameId: hex`、exact `gameVersion 1.0.0` 作为额外游戏加入，当时不替代按序计划的黑白棋；固定 11×11、BLUE 先手、RED/BLUE 连接边、无交换规则与无 DRAW；
 - 游戏 package 自身 16 个文件拥有 null Config、strict `PLACE_STONE | RESIGN`、canonical multi-source BFS path、Core、Client Module、局部文档、unit/client/golden tests；没有新增外部依赖；
 - 现有 Protocol V1、Action pipeline、exact registry、`projectView`、Replay Format V1、多轮 stable slots、PostgreSQL archive/history 都能直接承载不受回合限制的投降与变长连接路径；
 - `game-sdk`、`protocol`、`game-client-sdk`、`game-server-runtime`、`game-server-ticket`、database source/schema/migration 与既有游戏版本均零修改；真实 Colyseus integration 覆盖连接胜局与第二轮 off-turn resignation；
-- 仍需显式 registry、Next transpile、Web CSS 和纵切测试登记；第四游戏并未验证黑白棋的翻转、无合法行动与跳过回合，因此继续不创建 `tools/create-game`。
+- 仍需显式 registry、Next transpile、Web CSS 和纵切测试登记；第四游戏在当时尚未验证黑白棋的翻转、无合法行动与跳过回合，因此继续不创建 `tools/create-game`。
+
+黑白棋与 M6 收尾复盘结果：
+
+- 黑白棋以 `gameId: reversi`、exact `gameVersion 1.0.0` 上线；固定 8×8、BLACK 先手、八方向全部翻转、对方无合法行动时同 slot 续行、双方无行动的非满盘终局与按棋子数 WIN/DRAW；
+- 游戏 package 内 16 个文件拥有 null Config、strict `PLACE_DISC(cell)`、Core、服务器 View 的合法落点/棋子数/Outcome、Client Module、局部文档、unit/client/golden tests；没有新增外部依赖；
+- 游戏外非文档改动为 10 个唯一文件：registry package/catalog/client/server、lockfile、Next transpile 共 6 个机械登记，Web CSS 1 个，registry/integration/E2E 验证 3 个；
+- 现有 Action pipeline 可让一次 accepted placement 同时完成多方向翻转和回合推进；强制跳过不产生 PASS、不增加额外 revision、不写 replay。`game-sdk`、Protocol V1、Replay Format V1、`game-client-sdk`、`game-server-runtime`、`game-server-ticket`、database source/schema/migration 与全部既有游戏版本均零修改；
+- 60-action golden 在连续 WHITE actor 处证明 PASS-free replay；真实 Colyseus integration 以 25-action 对局覆盖强制跳过、35 个空格的非满盘终局和同房间第二轮独立 replay；PostgreSQL-backed E2E 以 11-action 对局覆盖权威翻转、49 个空格终局、新连接 replay verification 与双方安全 private history；
+- 连续多个游戏的 16 文件骨架及 registry/package/lock/Next 登记已经稳定，证据足以在后续独立任务实现窄 `tools/create-game`。生成器只应自动化 package/export/tsconfig 和显式登记，具备幂等/冲突失败/检查提示；规则、CSS、golden、integration、E2E 序列仍由游戏 owner 设计。本轮按范围只复盘，不实现生成器。
 
 ## M7：按证据扩展平台
 
@@ -166,4 +175,4 @@
 
 ## 下一轮建议
 
-M6 五子棋第二阶段与额外六贯棋已完成。下一轮仍只评估并实现 M6 的黑白棋，以翻转、无合法行动和跳过回合检验现有契约；六贯棋不改变路线图顺序。不要混入 `tools/create-game`、M7、OAuth、Lobby、Matchmaking、排行榜、观战、公开 replay、durable active room、Redis 或多实例。
+M6 已完成，不再追加同里程碑游戏。下一轮应由产品证据在“独立实现窄 `tools/create-game`”与 M7 候选能力中单独立项；不要把生成器与 OAuth、Lobby、Matchmaking、排行榜、观战、公开 replay、durable active room、Redis 或多实例混成同一任务。

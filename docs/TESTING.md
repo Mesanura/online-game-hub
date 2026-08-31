@@ -1,6 +1,6 @@
 # 测试策略
 
-> 状态：V1 策略（M6 五子棋与额外六贯棋 Core、integration、E2E 已纳入）
+> 状态：V1 策略（M6 黑白棋 Core、integration、E2E 已纳入）
 > 本文是测试层级、职责、最低场景和质量门禁的权威来源。具体业务范围见 [PRODUCT.md](./PRODUCT.md)。
 
 ## 1. 目标
@@ -69,6 +69,8 @@
 五子棋至少覆盖 15×15/19×19 strict Config、默认 Config、初始化、轮次、越界/占用 cell、非当前玩家、横向/纵向/双对角胜局、连续五子以上长连、合法 225-action 满盘平局、终局拒绝、Config/State/Action/RNG immutability、serialization、projection 和零 RNG cursor seeded determinism。
 
 六贯棋至少覆盖 null Config、strict `PLACE_STONE | RESIGN`、固定 11×11 初始化、BLUE 先手、六方向邻接、四边/四角、禁止 row wrap、BLUE/RED 连接、未完成路径、canonical 最短路径与 tie-break、所有领域拒绝顺序、off-turn resignation、无 DRAW、终局拒绝、损坏 State 不变量、immutability、serialization、player/spectator projection 和零 RNG cursor seeded determinism。
+
+黑白棋至少覆盖 null Config、标准 8×8 初始四子与 BLACK/WHITE slot 映射、八方向单线/多线同时翻转、边界/角落/禁止 row wrap、错误 slot/回合/越界/占用/无翻转落子、对方无行动时同 slot 续行、双方无行动的非满盘终局、满盘 BLACK/WHITE 胜局与平局、终局拒绝、Config/State/Action/RNG immutability、serialization、player/spectator projection、服务器 View 的合法落点/棋子数/Outcome 和零 RNG cursor seeded determinism。
 
 ### 4.2 Property 与 Table-driven Tests
 
@@ -150,7 +152,9 @@ Multiplayer integration 使用两个独立客户端连接同一真实 room，验
 
 这些测试覆盖网络时序，不承担穷举游戏规则的职责。
 
-真实 integration cases 覆盖：health/metrics 与 ticket trust boundary；井字棋、四子棋、五子棋和六贯棋双客户端 stable slots、waiting/active/completed、invalid/rule-rejected commands、per-viewer snapshot 与 verified canonical replay；replay append failure 不确认/不提交；新 ticket + 新 reservation 的 reconnect、connection takeover、错误 session theft 和 fake-clock 60 秒 abandoned；同房间 ready/cancel 开第二轮、跨轮 duplicate/错轮防护、terminal outsider、房主关闭、非房主 active leave 和 terminal TTL。井字棋/四子棋继续承担伪造 actor、stale/duplicate/concurrent 等通用 pipeline 全矩阵；四子棋额外覆盖满列、横向胜局、42-action 平局、两轮独立 replay 与 abandoned 无伪造 Outcome；五子棋额外以 19×19 Config 覆盖创建/加入、361-cell View、错误回合、占用 cell、9-action 五连胜与 canonical replay；六贯棋额外覆盖 BLUE/RED stable colors、schema-invalid、错轮、stale、占用、duplicate、21-action canonical path 胜局、同房间第二轮颜色不交换与 RED off-turn `RESIGN` replay。ticket verifier、ports、composition logger 另有无 transport 的 contract/unit tests。
+真实 integration cases 覆盖：health/metrics 与 ticket trust boundary；井字棋、四子棋、五子棋、六贯棋和黑白棋双客户端 stable slots、waiting/active/completed、invalid/rule-rejected commands、per-viewer snapshot 与 verified canonical replay；replay append failure 不确认/不提交；新 ticket + 新 reservation 的 reconnect、connection takeover、错误 session theft 和 fake-clock 60 秒 abandoned；同房间 ready/cancel 开第二轮、跨轮 duplicate/错轮防护、terminal outsider、房主关闭、非房主 active leave 和 terminal TTL。井字棋/四子棋继续承担伪造 actor、stale/duplicate/concurrent 等通用 pipeline 全矩阵；四子棋额外覆盖满列、横向胜局、42-action 平局、两轮独立 replay 与 abandoned 无伪造 Outcome；五子棋额外以 19×19 Config 覆盖创建/加入、361-cell View、错误回合、占用 cell、9-action 五连胜与 canonical replay；六贯棋额外覆盖 BLUE/RED stable colors、schema-invalid、错轮、stale、占用、duplicate、21-action canonical path 胜局、同房间第二轮颜色不交换与 RED off-turn `RESIGN` replay。ticket verifier、ports、composition logger 另有无 transport 的 contract/unit tests。
+
+黑白棋 integration 额外覆盖 BLACK/WHITE stable colors、schema-invalid/伪造 actor、错回合与无翻转拒绝不推进 revision/replay、权威翻转、revision 18 后 WHITE 强制连续行动、25-action 非满盘终局、PASS-free canonical replay，以及同房间第二轮 revision 重置、颜色不交换、独立 Match/replay 与 11-action 非满盘终局。
 
 ## 9. PostgreSQL Integration Tests
 
@@ -211,6 +215,14 @@ Multiplayer integration 使用两个独立客户端连接同一真实 room，验
 5. RED 再次确认投降后产生 1-revision RESIGNATION WIN，不显示连接路径 glow；
 6. 两轮独立 Match/replay 从 PostgreSQL 新 connection 重读并验证，双方 private history 返回两条安全 metadata。
 
+`tooling/e2e/tests/reversi-vertical-slice.spec.ts` 使用相同真实 harness，独立验证：
+
+1. 目录卡片、中文标题、`/games/reversi`、8×8 可访问棋盘、BLACK/WHITE stable colors、棋子数和服务器合法落点；
+2. 两个隔离 guest 创建/加入真实 room，越过 WHITE 的 disabled UX 提交错回合 intent，服务器拒绝且 revision、棋盘和棋子数保持不变；
+3. 两方完成 11-revision 真实对局，验证落子后的权威翻转，以及 WHITE 被清空时仍有 49 个空格的非满盘终局；
+4. completed replay 从新 PostgreSQL connection 重读并通过 exact registry verifier，RNG cursor 为 0；
+5. 双方 private history 只含完全相同的安全 metadata key 集合，不返回 Config、Action、Outcome、seed 或 canonical replay。
+
 Harness 为 Web 预留随机 loopback port，并用 `port: 0` 启动正式 ticket verifier/CORS composition 的真实 Colyseus Server；随后启动真实 Next production server 和 Chromium。M5/M6 E2E 使用测试 owner 创建的隔离 PostgreSQL database 和正式 adapters，只注入 fake clock、deterministic IDs 与测试 logger 等已有可控 ports，不 mock 数据库、浏览器、ticket route、matchmaking、WebSocket 或 Action pipeline，也不访问外部服务。活动 RoomStore 仍在内存中，因此该测试只验证 archive/replay 跨 adapter 重建，不声称恢复活动 room。
 
 断言优先使用可访问 role/test id 和用户可见文本；恶意 intent case 明确调用实际 React click handler 以绕过 UX disable，但仍通过真实 client host/transport/server。Playwright trace/video 关闭，避免 bearer ticket 进入测试制品；失败 screenshot 只包含不显示 credential 的 UI。harness 在 `afterAll` 对两个进程执行停止清理。
@@ -247,7 +259,7 @@ pnpm db:migrate
 pnpm test:database
 ```
 
-`pnpm lint` 包含格式、ESLint、本地 Markdown 链接与依赖边界检查。`pnpm test` 纳入 Game SDK、Protocol、井字棋/四子棋/五子棋/六贯棋 Core/client/golden、registry、ticket authority、Web guest/config、runtime/replay stores、Game Server unit tests 和 repository-check 的全部故意违规 fixture tests。`pnpm test:integration` 执行真实 Colyseus SDK tests。`pnpm test:e2e` 先执行完整 workspace build，再执行 PostgreSQL-backed Playwright。`pnpm test:database` 执行真实 PostgreSQL tests；这些命令都不是空脚本。
+`pnpm lint` 包含格式、ESLint、本地 Markdown 链接与依赖边界检查。`pnpm test` 纳入 Game SDK、Protocol、井字棋/四子棋/五子棋/六贯棋/黑白棋 Core/client/golden、registry、ticket authority、Web guest/config、runtime/replay stores、Game Server unit tests 和 repository-check 的全部故意违规 fixture tests。`pnpm test:integration` 执行真实 Colyseus SDK tests。`pnpm test:e2e` 先执行完整 workspace build，再执行 PostgreSQL-backed Playwright。`pnpm test:database` 执行真实 PostgreSQL tests；这些命令都不是空脚本。
 
 `pnpm db:check` 是只读 migration/schema 一致性检查。`pnpm db:migrate` 只在调用者显式提供 `DATABASE_URL` 时应用 checked-in migrations；应用 import 或 production startup 都不会自动 migration。本地创建、迁移与停止 PostgreSQL 的命令见根 README。测试必须使用独立 database/schema，禁止对默认 development `DATABASE_URL` 执行 destructive reset。
 
@@ -258,6 +270,7 @@ pnpm --filter @online-game-hub/tic-tac-toe test:golden
 pnpm --filter @online-game-hub/connect-four test:golden
 pnpm --filter @online-game-hub/gomoku test:golden
 pnpm --filter @online-game-hub/hex test:golden
+pnpm --filter @online-game-hub/reversi test:golden
 ```
 
 首次本机运行 E2E 前执行 `pnpm exec playwright install chromium`。CI 在 frozen-lockfile install 后以 `pnpm exec playwright install --with-deps chromium` 安装与 Playwright 1.62.1 精确匹配的浏览器，使用固定 PostgreSQL 17.6 service，然后运行 lint、typecheck、unit、database、integration、build 和 E2E。

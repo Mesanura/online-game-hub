@@ -1,6 +1,6 @@
 # Replay 设计
 
-> 状态：V1 设计（M6 五子棋与额外六贯棋 1.0.0 golden 已纳入）
+> 状态：V1 设计（M6 黑白棋 1.0.0 golden 已纳入）
 > 本文是 canonical replay 内容、确定性重建、版本兼容和存储端口的权威来源。Core 随机性规则见 [GAME_PLUGIN_SPEC.md](./GAME_PLUGIN_SPEC.md)。
 
 ## 1. 目标
@@ -167,12 +167,15 @@ Bug fix 是否提升版本以“相同 replay 是否可能得到不同 State、R
 - `connect-four@1.0.0`：`games/connect-four/tests/fixtures/connect-four-1.0.0-win.json`
 - `gomoku@1.0.0`：`games/gomoku/tests/fixtures/gomoku-1.0.0-win.json`
 - `hex@1.0.0`：`games/hex/tests/fixtures/hex-1.0.0-win.json`
+- `reversi@1.0.0`：`games/reversi/tests/fixtures/reversi-1.0.0-win.json`
 
 四子棋 golden replay 仍使用 Replay Format V1，只记录规范化 `DROP_DISC(column)` 与服务器推导的 actor slot。Exact registry 可重建相同 7×6 State、WIN Outcome 和零 RNG cursor；真实 Colyseus/PostgreSQL tests 同时证明错轮、满列、schema-invalid、duplicate、stale 与终局后命令不进入 actions。无需 `replayFormatVersion` 或井字棋 `gameVersion` 变化。
 
 五子棋 golden replay 也使用 Replay Format V1，header 保存规范化 `{ boardSize: 15, winLength: 5 }`，actions 只保存 accepted `PLACE_STONE(cell)` 与服务器推导的 slot。Exact registry 可重建相同 225-cell State、WIN Outcome 和零 RNG cursor；19×19 Config 由真实 Colyseus integration 验证，默认 15×15 canonical replay 由 PostgreSQL-backed E2E 从新 connection 重读并验证。无需修改 replay envelope、`replayFormatVersion` 或既有游戏版本。
 
 六贯棋 golden replay 使用 `initialConfig: null`，记录 21 个 accepted `PLACE_STONE(cell)` 并重建 BLUE 的 canonical `winningPath`、WIN Outcome 与零 RNG cursor。`RESIGN` 也是规范化且 accepted 的游戏 Action，按实际 actor slot 进入 replay；客户端取消确认、错轮/占用/越界、stale、duplicate 和 schema-invalid command 都不记录。BFS source/neighbor/tie-break 顺序属于 `hex@1.0.0` replay 兼容契约；改变它必须评估新 `gameVersion`，但无需改变 Replay Format V1。
+
+黑白棋 golden replay 使用 `initialConfig: null`，记录 60 个 accepted `PLACE_DISC(cell)` 并重建相同 64-cell State、WHITE 45–19 WIN Outcome 与零 RNG cursor。fixture 在 sequence 18 后出现 BLACK 无合法行动，因此 sequence 19 仍由 WHITE 行动；没有 `PASS` Action、sequence gap 或额外 revision。真实 Colyseus integration 另以 25 个 accepted placement 验证强制跳过与 35 个空格的非满盘终局，PostgreSQL-backed E2E 以 11 个 placement 验证 49 个空格的终局和新连接 exact verification。翻转、跳过和终局规则属于 `reversi@1.0.0` replay 兼容契约；改变重建结果必须评估新 `gameVersion`，但无需改变 Replay Format V1。
 
 ## 8. Hidden Information 与访问控制
 
@@ -183,7 +186,7 @@ Canonical replay 是服务器内部记录，可能通过 seed、Action 或 Confi
 - 日志、监控和错误响应不得包含完整 replay payload。
 - M5 的 `GET /api/matches` 只用完成标记计算 `replayAvailable`，不返回 replay ID、header、actions、Config、Outcome 或 seed，也不提供下载端点。
 - 举报审查、玩家下载和公开分享可能拥有不同访问级别，具体策略暂缓。
-- V1 井字棋、四子棋、五子棋与六贯棋都没有隐藏信息，但仍按内部 canonical record 处理。
+- V1 井字棋、四子棋、五子棋、六贯棋与黑白棋都没有隐藏信息，但仍按内部 canonical record 处理。
 
 ## 9. Checkpoint
 

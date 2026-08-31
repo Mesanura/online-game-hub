@@ -1,6 +1,6 @@
 # 产品目标与范围
 
-> 状态：V1 产品基线（M5 已完成，M6 四子棋与五子棋前两阶段及额外六贯棋已完成）
+> 状态：V1 产品基线（M1–M6 已完成）
 > 本文是产品目标、范围和非目标的权威来源。技术实现边界见 [ARCHITECTURE.md](./ARCHITECTURE.md)。
 
 ## 1. 产品愿景
@@ -15,7 +15,7 @@
 2. **平台能力复用**：房间、连接、玩家席位、重连、比赛生命周期和 replay 不在每个游戏中重复实现。
 3. **游戏独立演进**：一个 Agent 应能以单个游戏目录为主要上下文完成规则或表现层修改。
 4. **公平且可复现**：客户端只提交意图，服务器裁定结果；一场比赛可由版本、配置、seed 和 accepted actions 重建。
-5. **先验证架构**：先用井字棋打通最小纵向链路，再用四子棋与五子棋依次验证第二、第三游戏扩展成本；黑白棋继续按证据顺序推进。
+5. **先验证架构**：井字棋打通最小纵向链路，四子棋、五子棋、额外六贯棋与黑白棋已依次验证不同规则类型的扩展成本。
 
 ## 3. 目标用户流程
 
@@ -79,7 +79,13 @@
 
 六贯棋 1.0.0 作为用户确认的额外游戏提供固定 11×11 菱形六边格棋盘。创建者固定为蓝方并先手，蓝方连接上右/下左两边，加入者固定为红方并连接上左/下右两边；不启用交换规则。玩家每回合只提交 `PLACE_STONE(cell)`，也可在任一活跃时刻提交不受回合限制的 `RESIGN`，由 Core 产生连接或投降 WIN Outcome；不存在 DRAW。
 
-连接 Outcome 使用确定性的 multi-source BFS 保存 canonical 最短 `winningPath`，客户端只按服务器 View 对该路径显示白色模糊发光边框。投降按钮由客户端二次确认，取消不产生 Action；断线、关闭、主动离开和 reconnect timeout 仍由平台 lifecycle 产生 `abandoned`。六贯棋复用既有双人房间、stable slots、多轮、reconnect、Replay V1、PostgreSQL archive/history 和通用 Web 页面，不新增观战连接、交换、AI、计时、悔棋或公开 replay，也不替代 M6 的黑白棋阶段。
+连接 Outcome 使用确定性的 multi-source BFS 保存 canonical 最短 `winningPath`，客户端只按服务器 View 对该路径显示白色模糊发光边框。投降按钮由客户端二次确认，取消不产生 Action；断线、关闭、主动离开和 reconnect timeout 仍由平台 lifecycle 产生 `abandoned`。六贯棋复用既有双人房间、stable slots、多轮、reconnect、Replay V1、PostgreSQL archive/history 和通用 Web 页面，不新增观战连接、交换、AI、计时、悔棋或公开 replay；该额外游戏在实现当时也不替代随后独立完成的 M6 黑白棋阶段。
+
+### 4.4 黑白棋与 M6 收尾
+
+黑白棋 1.0.0 提供固定 8×8 标准双人规则。创建者对应 BLACK 并先手，加入者对应 WHITE；初始四子固定，玩家只提交 `PLACE_DISC(cell)`。服务器在全部八方向计算夹线并同时翻转；若下一方没有合法行动则由 Core 自动保持当前行动方，双方均无合法行动时即使棋盘未满也立即按棋子数产生 WIN/DRAW。
+
+Web View 明确提供合法落点、当前行动 slot、BLACK/WHITE 棋子数和 Outcome；客户端不扫描夹线、不判断跳过或终局。强制跳过不是 PASS Action，不增加额外 revision，也不进入 canonical replay。黑白棋复用既有双人房间、多轮、stable slots、projection、Replay V1、PostgreSQL archive/history 和通用 Web 页面，M6 因此完成。
 
 ## 5. 长期产品能力
 
@@ -100,7 +106,7 @@
 
 ## 6. 当前明确非目标
 
-M6 五子棋第二阶段完成后当前仍不实现：
+M6 完成后当前仍不实现：
 
 - 完整 Lobby 或公开房间浏览；
 - 正式用户注册、登录、密码和第三方 OAuth；
@@ -109,7 +115,7 @@ M6 五子棋第二阶段完成后当前仍不实现：
 - 观战功能；
 - Redis、Kubernetes、微服务拆分或多区域部署；
 - 完整 replay 播放器；
-- 黑白棋或一批并行开发的游戏；
+- 一批并行开发的新游戏；
 - 为尚未验证的未来游戏提前设计通用脚本系统或复杂 ECS。
 
 ## 7. 成功标准
