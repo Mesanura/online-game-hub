@@ -263,6 +263,7 @@ describe.sequential("authoritative Colyseus Game Server", () => {
         "CFDRAW45",
         "CFLEAV45",
         "GMPLAY45",
+        "HXPLAY45",
       ]),
       logger: { write: (event) => logs.push(event) },
     });
@@ -1775,6 +1776,336 @@ describe.sequential("authoritative Colyseus Game Server", () => {
       status: "verified",
       rng: { cursor: 0 },
       outcome: { type: "WIN", winnerSlotId: "slot-1" },
+    });
+  });
+
+  it("runs Hex connection and off-turn resignation rounds authoritatively", async () => {
+    const roomA = await new ColyseusClient(address.httpUrl).create(
+      GAME_ROOM_NAME,
+      {
+        type: "room.create",
+        protocolVersion: PROTOCOL_VERSION,
+        ticket: authority.issue("hex-a"),
+        gameId: "hex",
+        initialConfig: null,
+      },
+    );
+    const inboxA = new MessageInbox(roomA);
+    const lifecycleA = new LifecycleInbox(roomA);
+    await expect(
+      inboxA.next((message) => message.type === "room.connected"),
+    ).resolves.toMatchObject({
+      gameId: "hex",
+      gameVersion: "1.0.0",
+      roomCode: "HXPLAY45",
+      playerSlotId: "slot-1",
+    });
+    const waitingA = await inboxA.next(isSnapshot);
+    expect(waitingA).toMatchObject({
+      revision: 0,
+      status: "waiting",
+      view: {
+        yourColor: "BLUE",
+        nextTurnSlotId: "slot-1",
+      },
+    });
+    expect(
+      ((waitingA as MatchSnapshot).view as { board: unknown[] }).board,
+    ).toHaveLength(121);
+
+    const activeA = inboxA.next(
+      (message) => isSnapshot(message) && message.status === "active",
+    );
+    const roomB = await new ColyseusClient(address.httpUrl).join(
+      GAME_ROOM_NAME,
+      {
+        type: "room.join",
+        protocolVersion: PROTOCOL_VERSION,
+        ticket: authority.issue("hex-b"),
+        roomCode: "HXPLAY45",
+      },
+    );
+    const inboxB = new MessageInbox(roomB);
+    const lifecycleB = new LifecycleInbox(roomB);
+    await expect(
+      inboxB.next((message) => message.type === "room.connected"),
+    ).resolves.toMatchObject({
+      gameId: "hex",
+      gameVersion: "1.0.0",
+      roomCode: "HXPLAY45",
+      playerSlotId: "slot-2",
+    });
+    const [initialA, initialB] = await Promise.all([
+      activeA,
+      inboxB.next(
+        (message) => isSnapshot(message) && message.status === "active",
+      ),
+    ]);
+    expect(initialA).toMatchObject({
+      viewer: { kind: "player", slotId: "slot-1" },
+      view: {
+        yourColor: "BLUE",
+        nextTurnSlotId: "slot-1",
+      },
+    });
+    expect(initialB).toMatchObject({
+      viewer: { kind: "player", slotId: "slot-2" },
+      view: {
+        yourColor: "RED",
+        nextTurnSlotId: "slot-1",
+      },
+    });
+    expect((initialA as MatchSnapshot).view).not.toHaveProperty(
+      "nextPlayerIndex",
+    );
+    expect((initialA as MatchSnapshot).view).not.toHaveProperty(
+      "resignedSlotId",
+    );
+    expect((initialA as MatchSnapshot).view).not.toHaveProperty("rng");
+
+    roomA.send(
+      GAME_ACTION_MESSAGE,
+      command("hex-invalid", 0, { type: "PLACE_STONE", cell: 121 }, 1),
+    );
+    await expect(
+      inboxA.next(
+        (message) =>
+          message.type === "command.rejected" &&
+          message.commandId === "hex-invalid",
+      ),
+    ).resolves.toMatchObject({
+      code: "INVALID_ACTION_PAYLOAD",
+      revision: 0,
+    });
+
+    roomB.send(
+      GAME_ACTION_MESSAGE,
+      command("hex-wrong-turn", 0, { type: "PLACE_STONE", cell: 0 }, 1),
+    );
+    await expect(
+      inboxB.next(
+        (message) =>
+          message.type === "command.rejected" &&
+          message.commandId === "hex-wrong-turn",
+      ),
+    ).resolves.toMatchObject({
+      code: "GAME_RULE_REJECTED",
+      gameRuleCode: "NOT_YOUR_TURN",
+      revision: 0,
+    });
+
+    const acceptHexAction = async (
+      room: ClientRoom,
+      inbox: MessageInbox,
+      id: string,
+      revision: number,
+      action: unknown,
+      roundNumber: number,
+    ): Promise<MatchSnapshot> => {
+      const accepted = inbox.next(
+        (message) => isSnapshot(message) && message.causedByCommandId === id,
+      );
+      room.send(
+        GAME_ACTION_MESSAGE,
+        command(id, revision, action, roundNumber),
+      );
+      return (await accepted) as MatchSnapshot;
+    };
+
+    await acceptHexAction(
+      roomA,
+      inboxA,
+      "hex-1",
+      0,
+      { type: "PLACE_STONE", cell: 0 },
+      1,
+    );
+    roomB.send(
+      GAME_ACTION_MESSAGE,
+      command("hex-stale", 0, { type: "PLACE_STONE", cell: 1 }, 1),
+    );
+    await expect(
+      inboxB.next(
+        (message) =>
+          message.type === "command.rejected" &&
+          message.commandId === "hex-stale",
+      ),
+    ).resolves.toMatchObject({
+      code: "STALE_REVISION",
+      revision: 1,
+      snapshot: { roundNumber: 1, revision: 1 },
+    });
+    roomB.send(
+      GAME_ACTION_MESSAGE,
+      command("hex-occupied", 1, { type: "PLACE_STONE", cell: 0 }, 1),
+    );
+    await expect(
+      inboxB.next(
+        (message) =>
+          message.type === "command.rejected" &&
+          message.commandId === "hex-occupied",
+      ),
+    ).resolves.toMatchObject({
+      code: "GAME_RULE_REJECTED",
+      gameRuleCode: "CELL_OCCUPIED",
+      revision: 1,
+    });
+    await acceptHexAction(
+      roomB,
+      inboxB,
+      "hex-2",
+      1,
+      { type: "PLACE_STONE", cell: 1 },
+      1,
+    );
+    roomB.send(
+      GAME_ACTION_MESSAGE,
+      command("hex-2", 1, { type: "PLACE_STONE", cell: 1 }, 1),
+    );
+    await expect(
+      inboxB.next(
+        (message) =>
+          isSnapshot(message) && message.causedByCommandId === "hex-2",
+      ),
+    ).resolves.toMatchObject({ roundNumber: 1, revision: 2 });
+
+    const winningCells = [
+      0, 1, 11, 2, 22, 3, 33, 4, 44, 5, 55, 6, 66, 7, 77, 8, 88, 9, 99, 10, 110,
+    ] as const;
+    let completed: MatchSnapshot | null = null;
+    for (let index = 2; index < winningCells.length; index += 1) {
+      const cell = winningCells[index];
+      if (cell === undefined) throw new Error("Hex winning cell missing.");
+      completed = await acceptHexAction(
+        index % 2 === 0 ? roomA : roomB,
+        index % 2 === 0 ? inboxA : inboxB,
+        `hex-${index + 1}`,
+        index,
+        { type: "PLACE_STONE", cell },
+        1,
+      );
+    }
+    expect(completed).toMatchObject({
+      roundNumber: 1,
+      revision: 21,
+      status: "completed",
+      outcome: {
+        type: "WIN",
+        reason: "CONNECTION",
+        winnerSlotId: "slot-1",
+        winningPath: [0, 11, 22, 33, 44, 55, 66, 77, 88, 99, 110],
+      },
+    });
+
+    const storedRoundOne = await roomStore.getByRoomCode("HXPLAY45");
+    const replayRoundOne = await replayStore.get(
+      storedRoundOne?.replayId ?? "",
+    );
+    expect(storedRoundOne).toMatchObject({
+      gameId: "hex",
+      gameVersion: "1.0.0",
+      initialConfig: null,
+      roundNumber: 1,
+      revision: 21,
+      status: "completed",
+    });
+    expect(replayRoundOne?.actions).toHaveLength(21);
+    expect(verifyReplay(replayRoundOne, resolveGameDefinition)).toMatchObject({
+      status: "verified",
+      rng: { cursor: 0 },
+      outcome: {
+        reason: "CONNECTION",
+        winnerSlotId: "slot-1",
+        winningPath: [0, 11, 22, 33, 44, 55, 66, 77, 88, 99, 110],
+      },
+    });
+
+    await Promise.all([
+      lifecycleA.next((message) => message.rematch.available),
+      lifecycleB.next((message) => message.rematch.available),
+    ]);
+    const readyA = lifecycleA.next(
+      (message) => message.causedByCommandId === "hex-ready-a",
+    );
+    roomA.send(
+      ROOM_CONTROL_MESSAGE,
+      controlCommand("hex-ready-a", "REQUEST_REMATCH"),
+    );
+    await readyA;
+    const roundTwoA = inboxA.next(
+      (message) =>
+        isSnapshot(message) &&
+        message.roundNumber === 2 &&
+        message.revision === 0,
+    );
+    const roundTwoB = inboxB.next(
+      (message) =>
+        isSnapshot(message) &&
+        message.roundNumber === 2 &&
+        message.revision === 0,
+    );
+    roomB.send(
+      ROOM_CONTROL_MESSAGE,
+      controlCommand("hex-ready-b", "REQUEST_REMATCH"),
+    );
+    const [roundTwoSnapshotA, roundTwoSnapshotB] = await Promise.all([
+      roundTwoA,
+      roundTwoB,
+    ]);
+    expect(roundTwoSnapshotA).toMatchObject({
+      status: "active",
+      view: { yourColor: "BLUE", nextTurnSlotId: "slot-1" },
+    });
+    expect(roundTwoSnapshotB).toMatchObject({
+      status: "active",
+      view: { yourColor: "RED", nextTurnSlotId: "slot-1" },
+    });
+
+    const resigned = await acceptHexAction(
+      roomB,
+      inboxB,
+      "hex-resign-r2",
+      0,
+      { type: "RESIGN" },
+      2,
+    );
+    expect(resigned).toMatchObject({
+      roundNumber: 2,
+      revision: 1,
+      status: "completed",
+      outcome: {
+        type: "WIN",
+        reason: "RESIGNATION",
+        winnerSlotId: "slot-1",
+        resignedSlotId: "slot-2",
+      },
+    });
+    const storedRoundTwo = await roomStore.getByRoomCode("HXPLAY45");
+    const replayRoundTwo = await replayStore.get(
+      storedRoundTwo?.replayId ?? "",
+    );
+    expect(storedRoundTwo).toMatchObject({
+      roundNumber: 2,
+      revision: 1,
+      status: "completed",
+      players: [{ slotId: "slot-1" }, { slotId: "slot-2" }],
+    });
+    expect(storedRoundTwo?.replayId).not.toBe(storedRoundOne?.replayId);
+    expect(replayRoundTwo?.actions).toEqual([
+      {
+        sequence: 1,
+        actorSlotId: "slot-2",
+        action: { type: "RESIGN" },
+      },
+    ]);
+    expect(verifyReplay(replayRoundTwo, resolveGameDefinition)).toMatchObject({
+      status: "verified",
+      rng: { cursor: 0 },
+      outcome: {
+        reason: "RESIGNATION",
+        winnerSlotId: "slot-1",
+        resignedSlotId: "slot-2",
+      },
     });
   });
 });
