@@ -4,6 +4,8 @@ import { connectFourDefinition } from "@online-game-hub/connect-four/core";
 import { connectFourManifest } from "@online-game-hub/connect-four/manifest";
 import { gomokuDefinition } from "@online-game-hub/gomoku/core";
 import { gomokuManifest } from "@online-game-hub/gomoku/manifest";
+import { hexDefinition } from "@online-game-hub/hex/core";
+import { hexManifest } from "@online-game-hub/hex/manifest";
 import { ticTacToeDefinition } from "@online-game-hub/tic-tac-toe/core";
 import { ticTacToeManifest } from "@online-game-hub/tic-tac-toe/manifest";
 
@@ -23,11 +25,13 @@ describe("explicit game registry", () => {
       ticTacToeManifest,
       connectFourManifest,
       gomokuManifest,
+      hexManifest,
     ]);
     expect(gameCatalog.map(({ id, title }) => ({ id, title }))).toEqual([
       { id: "tic-tac-toe", title: "井字棋" },
       { id: "connect-four", title: "四子棋" },
       { id: "gomoku", title: "五子棋" },
+      { id: "hex", title: "六贯棋" },
     ]);
     expect(resolveGameManifest("tic-tac-toe", "1.0.0")).toBe(ticTacToeManifest);
     expect(resolveGameDefinition("tic-tac-toe", "1.0.0")).toBe(
@@ -44,6 +48,9 @@ describe("explicit game registry", () => {
     expect(resolveGameManifest("gomoku", "1.0.0")).toBe(gomokuManifest);
     expect(resolveGameDefinition("gomoku", "1.0.0")).toBe(gomokuDefinition);
     expect(gomokuDefinition.manifest).toBe(gomokuManifest);
+    expect(resolveGameManifest("hex", "1.0.0")).toBe(hexManifest);
+    expect(resolveGameDefinition("hex", "1.0.0")).toBe(hexDefinition);
+    expect(hexDefinition.manifest).toBe(hexManifest);
     for (const manifest of gameCatalog) {
       const definition = resolveGameDefinition(
         manifest.id,
@@ -61,6 +68,7 @@ describe("explicit game registry", () => {
     expect(resolveGameDefinition("tic-tac-toe", "^1.0.0")).toBeUndefined();
     expect(resolveGameDefinition("connect-four", "1.0.1")).toBeUndefined();
     expect(resolveGameDefinition("gomoku", "1.0.1")).toBeUndefined();
+    expect(resolveGameDefinition("hex", "1.0.1")).toBeUndefined();
     expect(resolveGameManifest("tic-tac-toe", "latest")).toBeUndefined();
   });
 
@@ -72,6 +80,7 @@ describe("explicit game registry", () => {
       connectFourDefinition,
     );
     expect(resolveCurrentGameDefinition("gomoku")).toBe(gomokuDefinition);
+    expect(resolveCurrentGameDefinition("hex")).toBe(hexDefinition);
     expect(resolveCurrentGameDefinition("unknown")).toBeUndefined();
   });
 
@@ -129,5 +138,19 @@ describe("explicit game registry", () => {
     await expect(
       loadGameClientModule("gomoku", "1.0.1"),
     ).resolves.toBeUndefined();
+
+    const hexEntrypoint = await loadGameClientEntrypoint("hex", "1.0.0");
+    expect(hexEntrypoint).toBeDefined();
+    expect(hexEntrypoint).toHaveProperty("hexClientModule");
+    expect(hexEntrypoint).not.toHaveProperty("transition");
+    expect(hexEntrypoint).not.toHaveProperty("createInitialState");
+
+    const hexClient = await loadGameClientModule("hex", "1.0.0");
+    expect(hexClient).toMatchObject({
+      gameId: "hex",
+      gameVersion: "1.0.0",
+    });
+    expect(hexClient?.parseView).toEqual(expect.any(Function));
+    await expect(loadGameClientModule("hex", "1.0.1")).resolves.toBeUndefined();
   });
 });

@@ -12,6 +12,7 @@ const nextConfig: NextConfig = {
     "@online-game-hub/protocol",
     "@online-game-hub/connect-four",
     "@online-game-hub/gomoku",
+    "@online-game-hub/hex",
     "@online-game-hub/tic-tac-toe",
   ],
 };
