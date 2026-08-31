@@ -1,0 +1,29 @@
+# 黑白棋规则规范
+
+> 状态：`gameVersion 1.0.0`
+> 展示名：黑白棋
+> 本文是黑白棋 Core 规则与 JSON 数据形状的权威来源；通用契约见 [Game Plugin 规范](../../docs/GAME_PLUGIN_SPEC.md)。
+
+## 规则
+
+- 比赛恰好包含两个不同的稳定 `PlayerSlotId`。`players[0]` 使用 BLACK 并先手，`players[1]` 使用 WHITE；同房间后续轮次不交换颜色。
+- 棋盘固定为 8×8，cell 使用 row-major `row * 8 + column`，范围为 `0..63`。
+- 初始 D4/E5 为 WHITE（27、36），E4/D5 为 BLACK（28、35）。
+- 玩家只在自己的回合向空格提交 `{ type: "PLACE_DISC", cell }`。该落子必须在八个方向至少一个方向上夹住一段连续的对方棋子，并同时翻转所有合法夹线。
+- 八方向按 row/column 邻接解释；越界候选终止该方向，首尾行不会相连。
+- 落子后若对方有合法行动则换手；若对方没有、当前玩家仍有合法行动，则当前玩家继续行动；若双方都没有合法行动则立即终局。强制跳过是一次 accepted transition 内的规则推进，不是 Action。
+- 棋盘填满同样终局。终局按 BLACK/WHITE 棋子数量产生 `WIN` 或 `DRAW`；终局后所有 Action 均被拒绝。
+
+## JSON 契约
+
+- Config 与 manifest `defaultConfig` 固定为 `null`。
+- State 只在服务器保存固定 slots、64 项 board 和 `nextPlayerIndex`。
+- Action 是 strict `PLACE_DISC(cell)`，不含 actor、State、翻转列表、Outcome、revision、PASS 或随机结果。
+- View 包含 BLACK/WHITE slot 对应关系、完整公开 board、服务器计算的 `legalMoves`、当前行动 slot、棋子数、Outcome 与 viewer 颜色；公开棋盘仍只通过 `projectView` 产生。
+- `WIN` Outcome 保存 winner stable slot 与最终棋子数；`DRAW` 保存相等的最终棋子数。
+
+## 领域拒绝码
+
+按顺序判断：`MATCH_ALREADY_FINISHED`、`NOT_A_PLAYER`、`NOT_YOUR_TURN`、`CELL_OUT_OF_BOUNDS`、`CELL_OCCUPIED`、`NO_DISC_CAPTURED`。
+
+黑白棋不使用 RNG；初始化、accepted transition 和 rejected transition 都保持 cursor 为 `0`。Canonical replay 只记录规范化且 accepted 的 `PLACE_DISC`；自动跳过不增加平台 revision，也不产生伪造 `PASS` replay Action。

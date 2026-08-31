@@ -197,6 +197,34 @@ importers:
         specifier: 19.2.8
         version: 19.2.8(react@19.2.8)
 
+  games/reversi:
+    dependencies:
+      '@online-game-hub/game-client-sdk':
+        specifier: workspace:*
+        version: link:../../packages/game-client-sdk
+      '@online-game-hub/game-sdk':
+        specifier: workspace:*
+        version: link:../../packages/game-sdk
+      zod:
+        specifier: 4.4.3
+        version: 4.4.3
+    devDependencies:
+      '@online-game-hub/game-server-runtime':
+        specifier: workspace:*
+        version: link:../../packages/game-server-runtime
+      '@types/react':
+        specifier: 19.2.18
+        version: 19.2.18
+      '@types/react-dom':
+        specifier: 19.2.5
+        version: 19.2.5(@types/react@19.2.18)
+      react:
+        specifier: 19.2.8
+        version: 19.2.8
+      react-dom:
+        specifier: 19.2.8
+        version: 19.2.8(react@19.2.8)
+
   games/tic-tac-toe:
     dependencies:
       '@online-game-hub/game-client-sdk':

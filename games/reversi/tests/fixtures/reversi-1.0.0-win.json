@@ -1,0 +1,318 @@
+{
+  "header": {
+    "replayFormatVersion": 1,
+    "gameId": "reversi",
+    "gameVersion": "1.0.0",
+    "rng": { "algorithm": "fnv1a32-counter-v1", "seed": "golden-reversi-1" },
+    "initialConfig": null,
+    "players": [{ "slotId": "player-black" }, { "slotId": "player-white" }]
+  },
+  "actions": [
+    {
+      "sequence": 1,
+      "actorSlotId": "player-black",
+      "action": { "type": "PLACE_DISC", "cell": 19 }
+    },
+    {
+      "sequence": 2,
+      "actorSlotId": "player-white",
+      "action": { "type": "PLACE_DISC", "cell": 18 }
+    },
+    {
+      "sequence": 3,
+      "actorSlotId": "player-black",
+      "action": { "type": "PLACE_DISC", "cell": 17 }
+    },
+    {
+      "sequence": 4,
+      "actorSlotId": "player-white",
+      "action": { "type": "PLACE_DISC", "cell": 9 }
+    },
+    {
+      "sequence": 5,
+      "actorSlotId": "player-black",
+      "action": { "type": "PLACE_DISC", "cell": 1 }
+    },
+    {
+      "sequence": 6,
+      "actorSlotId": "player-white",
+      "action": { "type": "PLACE_DISC", "cell": 0 }
+    },
+    {
+      "sequence": 7,
+      "actorSlotId": "player-black",
+      "action": { "type": "PLACE_DISC", "cell": 26 }
+    },
+    {
+      "sequence": 8,
+      "actorSlotId": "player-white",
+      "action": { "type": "PLACE_DISC", "cell": 2 }
+    },
+    {
+      "sequence": 9,
+      "actorSlotId": "player-black",
+      "action": { "type": "PLACE_DISC", "cell": 10 }
+    },
+    {
+      "sequence": 10,
+      "actorSlotId": "player-white",
+      "action": { "type": "PLACE_DISC", "cell": 11 }
+    },
+    {
+      "sequence": 11,
+      "actorSlotId": "player-black",
+      "action": { "type": "PLACE_DISC", "cell": 3 }
+    },
+    {
+      "sequence": 12,
+      "actorSlotId": "player-white",
+      "action": { "type": "PLACE_DISC", "cell": 4 }
+    },
+    {
+      "sequence": 13,
+      "actorSlotId": "player-black",
+      "action": { "type": "PLACE_DISC", "cell": 8 }
+    },
+    {
+      "sequence": 14,
+      "actorSlotId": "player-white",
+      "action": { "type": "PLACE_DISC", "cell": 16 }
+    },
+    {
+      "sequence": 15,
+      "actorSlotId": "player-black",
+      "action": { "type": "PLACE_DISC", "cell": 37 }
+    },
+    {
+      "sequence": 16,
+      "actorSlotId": "player-white",
+      "action": { "type": "PLACE_DISC", "cell": 12 }
+    },
+    {
+      "sequence": 17,
+      "actorSlotId": "player-black",
+      "action": { "type": "PLACE_DISC", "cell": 5 }
+    },
+    {
+      "sequence": 18,
+      "actorSlotId": "player-white",
+      "action": { "type": "PLACE_DISC", "cell": 6 }
+    },
+    {
+      "sequence": 19,
+      "actorSlotId": "player-white",
+      "action": { "type": "PLACE_DISC", "cell": 13 }
+    },
+    {
+      "sequence": 20,
+      "actorSlotId": "player-white",
+      "action": { "type": "PLACE_DISC", "cell": 20 }
+    },
+    {
+      "sequence": 21,
+      "actorSlotId": "player-white",
+      "action": { "type": "PLACE_DISC", "cell": 33 }
+    },
+    {
+      "sequence": 22,
+      "actorSlotId": "player-black",
+      "action": { "type": "PLACE_DISC", "cell": 25 }
+    },
+    {
+      "sequence": 23,
+      "actorSlotId": "player-white",
+      "action": { "type": "PLACE_DISC", "cell": 32 }
+    },
+    {
+      "sequence": 24,
+      "actorSlotId": "player-black",
+      "action": { "type": "PLACE_DISC", "cell": 24 }
+    },
+    {
+      "sequence": 25,
+      "actorSlotId": "player-white",
+      "action": { "type": "PLACE_DISC", "cell": 34 }
+    },
+    {
+      "sequence": 26,
+      "actorSlotId": "player-black",
+      "action": { "type": "PLACE_DISC", "cell": 40 }
+    },
+    {
+      "sequence": 27,
+      "actorSlotId": "player-white",
+      "action": { "type": "PLACE_DISC", "cell": 29 }
+    },
+    {
+      "sequence": 28,
+      "actorSlotId": "player-black",
+      "action": { "type": "PLACE_DISC", "cell": 21 }
+    },
+    {
+      "sequence": 29,
+      "actorSlotId": "player-white",
+      "action": { "type": "PLACE_DISC", "cell": 22 }
+    },
+    {
+      "sequence": 30,
+      "actorSlotId": "player-black",
+      "action": { "type": "PLACE_DISC", "cell": 14 }
+    },
+    {
+      "sequence": 31,
+      "actorSlotId": "player-white",
+      "action": { "type": "PLACE_DISC", "cell": 15 }
+    },
+    {
+      "sequence": 32,
+      "actorSlotId": "player-black",
+      "action": { "type": "PLACE_DISC", "cell": 7 }
+    },
+    {
+      "sequence": 33,
+      "actorSlotId": "player-white",
+      "action": { "type": "PLACE_DISC", "cell": 23 }
+    },
+    {
+      "sequence": 34,
+      "actorSlotId": "player-black",
+      "action": { "type": "PLACE_DISC", "cell": 31 }
+    },
+    {
+      "sequence": 35,
+      "actorSlotId": "player-white",
+      "action": { "type": "PLACE_DISC", "cell": 30 }
+    },
+    {
+      "sequence": 36,
+      "actorSlotId": "player-black",
+      "action": { "type": "PLACE_DISC", "cell": 42 }
+    },
+    {
+      "sequence": 37,
+      "actorSlotId": "player-white",
+      "action": { "type": "PLACE_DISC", "cell": 38 }
+    },
+    {
+      "sequence": 38,
+      "actorSlotId": "player-black",
+      "action": { "type": "PLACE_DISC", "cell": 39 }
+    },
+    {
+      "sequence": 39,
+      "actorSlotId": "player-white",
+      "action": { "type": "PLACE_DISC", "cell": 41 }
+    },
+    {
+      "sequence": 40,
+      "actorSlotId": "player-black",
+      "action": { "type": "PLACE_DISC", "cell": 50 }
+    },
+    {
+      "sequence": 41,
+      "actorSlotId": "player-white",
+      "action": { "type": "PLACE_DISC", "cell": 43 }
+    },
+    {
+      "sequence": 42,
+      "actorSlotId": "player-black",
+      "action": { "type": "PLACE_DISC", "cell": 44 }
+    },
+    {
+      "sequence": 43,
+      "actorSlotId": "player-white",
+      "action": { "type": "PLACE_DISC", "cell": 45 }
+    },
+    {
+      "sequence": 44,
+      "actorSlotId": "player-black",
+      "action": { "type": "PLACE_DISC", "cell": 46 }
+    },
+    {
+      "sequence": 45,
+      "actorSlotId": "player-white",
+      "action": { "type": "PLACE_DISC", "cell": 47 }
+    },
+    {
+      "sequence": 46,
+      "actorSlotId": "player-black",
+      "action": { "type": "PLACE_DISC", "cell": 55 }
+    },
+    {
+      "sequence": 47,
+      "actorSlotId": "player-white",
+      "action": { "type": "PLACE_DISC", "cell": 48 }
+    },
+    {
+      "sequence": 48,
+      "actorSlotId": "player-white",
+      "action": { "type": "PLACE_DISC", "cell": 49 }
+    },
+    {
+      "sequence": 49,
+      "actorSlotId": "player-black",
+      "action": { "type": "PLACE_DISC", "cell": 56 }
+    },
+    {
+      "sequence": 50,
+      "actorSlotId": "player-white",
+      "action": { "type": "PLACE_DISC", "cell": 51 }
+    },
+    {
+      "sequence": 51,
+      "actorSlotId": "player-black",
+      "action": { "type": "PLACE_DISC", "cell": 52 }
+    },
+    {
+      "sequence": 52,
+      "actorSlotId": "player-white",
+      "action": { "type": "PLACE_DISC", "cell": 53 }
+    },
+    {
+      "sequence": 53,
+      "actorSlotId": "player-black",
+      "action": { "type": "PLACE_DISC", "cell": 54 }
+    },
+    {
+      "sequence": 54,
+      "actorSlotId": "player-white",
+      "action": { "type": "PLACE_DISC", "cell": 62 }
+    },
+    {
+      "sequence": 55,
+      "actorSlotId": "player-black",
+      "action": { "type": "PLACE_DISC", "cell": 57 }
+    },
+    {
+      "sequence": 56,
+      "actorSlotId": "player-white",
+      "action": { "type": "PLACE_DISC", "cell": 58 }
+    },
+    {
+      "sequence": 57,
+      "actorSlotId": "player-black",
+      "action": { "type": "PLACE_DISC", "cell": 59 }
+    },
+    {
+      "sequence": 58,
+      "actorSlotId": "player-white",
+      "action": { "type": "PLACE_DISC", "cell": 60 }
+    },
+    {
+      "sequence": 59,
+      "actorSlotId": "player-black",
+      "action": { "type": "PLACE_DISC", "cell": 61 }
+    },
+    {
+      "sequence": 60,
+      "actorSlotId": "player-white",
+      "action": { "type": "PLACE_DISC", "cell": 63 }
+    }
+  ],
+  "recordedRngCursor": 0,
+  "recordedOutcome": {
+    "type": "WIN",
+    "winnerSlotId": "player-white",
+    "discCounts": { "BLACK": 19, "WHITE": 45 }
+  }
+}
