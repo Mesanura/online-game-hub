@@ -262,6 +262,7 @@ describe.sequential("authoritative Colyseus Game Server", () => {
         "CFPLAY45",
         "CFDRAW45",
         "CFLEAV45",
+        "GMPLAY45",
       ]),
       logger: { write: (event) => logs.push(event) },
     });
@@ -1598,6 +1599,182 @@ describe.sequential("authoritative Colyseus Game Server", () => {
       actions: [],
       recordedRngCursor: null,
       recordedOutcome: null,
+    });
+  });
+
+  it("creates, joins, synchronizes, and completes configured Gomoku authoritatively", async () => {
+    const roomA = await new ColyseusClient(address.httpUrl).create(
+      GAME_ROOM_NAME,
+      {
+        type: "room.create",
+        protocolVersion: PROTOCOL_VERSION,
+        ticket: authority.issue("gomoku-a"),
+        gameId: "gomoku",
+        initialConfig: { boardSize: 19, winLength: 5 },
+      },
+    );
+    const inboxA = new MessageInbox(roomA);
+    await expect(
+      inboxA.next((message) => message.type === "room.connected"),
+    ).resolves.toMatchObject({
+      gameId: "gomoku",
+      gameVersion: "1.0.0",
+      roomCode: "GMPLAY45",
+      playerSlotId: "slot-1",
+    });
+    await expect(inboxA.next(isSnapshot)).resolves.toMatchObject({
+      revision: 0,
+      status: "waiting",
+      view: {
+        boardSize: 19,
+        winLength: 5,
+        yourStone: "BLACK",
+      },
+    });
+
+    const activeA = inboxA.next(
+      (message) => isSnapshot(message) && message.status === "active",
+    );
+    const roomB = await new ColyseusClient(address.httpUrl).join(
+      GAME_ROOM_NAME,
+      {
+        type: "room.join",
+        protocolVersion: PROTOCOL_VERSION,
+        ticket: authority.issue("gomoku-b"),
+        roomCode: "GMPLAY45",
+      },
+    );
+    const inboxB = new MessageInbox(roomB);
+    await expect(
+      inboxB.next((message) => message.type === "room.connected"),
+    ).resolves.toMatchObject({
+      gameId: "gomoku",
+      gameVersion: "1.0.0",
+      roomCode: "GMPLAY45",
+      playerSlotId: "slot-2",
+    });
+    const [initialA, initialB] = await Promise.all([
+      activeA,
+      inboxB.next(
+        (message) => isSnapshot(message) && message.status === "active",
+      ),
+    ]);
+    expect(initialA).toMatchObject({
+      viewer: { kind: "player", slotId: "slot-1" },
+      view: {
+        boardSize: 19,
+        yourStone: "BLACK",
+        nextTurnSlotId: "slot-1",
+      },
+    });
+    expect(initialB).toMatchObject({
+      viewer: { kind: "player", slotId: "slot-2" },
+      view: {
+        boardSize: 19,
+        yourStone: "WHITE",
+        nextTurnSlotId: "slot-1",
+      },
+    });
+    expect((initialA as MatchSnapshot).view).not.toHaveProperty(
+      "nextPlayerIndex",
+    );
+    expect((initialA as MatchSnapshot).view).not.toHaveProperty("config");
+    expect((initialA as MatchSnapshot).view).not.toHaveProperty("rng");
+    expect(
+      ((initialA as MatchSnapshot).view as { board: unknown[] }).board,
+    ).toHaveLength(361);
+
+    roomB.send(
+      GAME_ACTION_MESSAGE,
+      command("gomoku-wrong-turn", 0, { type: "PLACE_STONE", cell: 171 }),
+    );
+    await expect(
+      inboxB.next(
+        (message) =>
+          message.type === "command.rejected" &&
+          message.commandId === "gomoku-wrong-turn",
+      ),
+    ).resolves.toMatchObject({
+      code: "GAME_RULE_REJECTED",
+      gameRuleCode: "NOT_YOUR_TURN",
+      revision: 0,
+    });
+
+    const acceptStone = async (
+      room: ClientRoom,
+      inbox: MessageInbox,
+      id: string,
+      revision: number,
+      cell: number,
+    ): Promise<MatchSnapshot> => {
+      const accepted = inbox.next(
+        (message) => isSnapshot(message) && message.causedByCommandId === id,
+      );
+      room.send(
+        GAME_ACTION_MESSAGE,
+        command(id, revision, { type: "PLACE_STONE", cell }, 1),
+      );
+      return (await accepted) as MatchSnapshot;
+    };
+
+    await acceptStone(roomA, inboxA, "gomoku-1", 0, 171);
+    roomB.send(
+      GAME_ACTION_MESSAGE,
+      command("gomoku-occupied", 1, { type: "PLACE_STONE", cell: 171 }, 1),
+    );
+    await expect(
+      inboxB.next(
+        (message) =>
+          message.type === "command.rejected" &&
+          message.commandId === "gomoku-occupied",
+      ),
+    ).resolves.toMatchObject({
+      code: "GAME_RULE_REJECTED",
+      gameRuleCode: "CELL_OCCUPIED",
+      revision: 1,
+    });
+
+    const winningCells = [171, 0, 172, 1, 173, 2, 174, 3, 175] as const;
+    let completed: MatchSnapshot | null = null;
+    for (let index = 1; index < winningCells.length; index += 1) {
+      const cell = winningCells[index];
+      if (cell === undefined) throw new Error("Gomoku winning cell missing.");
+      completed = await acceptStone(
+        index % 2 === 0 ? roomA : roomB,
+        index % 2 === 0 ? inboxA : inboxB,
+        `gomoku-${index + 1}`,
+        index,
+        cell,
+      );
+    }
+    expect(completed).toMatchObject({
+      revision: 9,
+      status: "completed",
+      outcome: {
+        type: "WIN",
+        winnerSlotId: "slot-1",
+        winningCells: [171, 172, 173, 174, 175],
+      },
+    });
+
+    const stored = await roomStore.getByRoomCode("GMPLAY45");
+    const replay = await replayStore.get(stored?.replayId ?? "");
+    expect(stored).toMatchObject({
+      gameId: "gomoku",
+      gameVersion: "1.0.0",
+      initialConfig: { boardSize: 19, winLength: 5 },
+      revision: 9,
+      status: "completed",
+    });
+    expect(replay?.actions).toHaveLength(9);
+    expect(replay?.header.initialConfig).toEqual({
+      boardSize: 19,
+      winLength: 5,
+    });
+    expect(verifyReplay(replay, resolveGameDefinition)).toMatchObject({
+      status: "verified",
+      rng: { cursor: 0 },
+      outcome: { type: "WIN", winnerSlotId: "slot-1" },
     });
   });
 });
