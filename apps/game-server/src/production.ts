@@ -1,5 +1,5 @@
 import {
-  PostgresMatchArchiveRoomStore,
+  PostgresMatchArchive,
   PostgresMatchRepository,
   PostgresReplayStore,
   createPostgresDatabaseClient,
@@ -14,7 +14,11 @@ import { configureGameServerCors } from "./cors.js";
 
 export type ProductionGameServerOverrides = Omit<
   GameServerCompositionOptions,
-  "ticketVerifier" | "reconnectGraceMilliseconds" | "roomStore" | "replayStore"
+  | "ticketVerifier"
+  | "reconnectGraceMilliseconds"
+  | "roomStore"
+  | "replayStore"
+  | "matchArchive"
 >;
 
 export function createProductionGameServer(
@@ -38,13 +42,13 @@ export function createProductionGameServer(
     databaseClient === null
       ? undefined
       : new PostgresReplayStore(databaseClient.database);
-  const roomStore =
+  const matchArchive =
     matchRepository === null
       ? undefined
-      : new PostgresMatchArchiveRoomStore(matchRepository);
+      : new PostgresMatchArchive(matchRepository);
   const application = createGameServer({
     ...overrides,
-    ...(roomStore === undefined ? {} : { roomStore }),
+    ...(matchArchive === undefined ? {} : { matchArchive }),
     ...(replayStore === undefined ? {} : { replayStore }),
     ticketVerifier: createGameServerTicketVerifier({
       issuer: config.ticketIssuer,

@@ -10,6 +10,7 @@ import {
 } from "@online-game-hub/game-sdk";
 import { InMemoryRoomStore } from "@online-game-hub/game-server-runtime";
 import type {
+  MatchArchive,
   RoomStore,
   StoredGameRoom,
 } from "@online-game-hub/game-server-runtime";
@@ -563,6 +564,18 @@ export class PostgresMatchRepository {
       if (error instanceof DatabaseError) throw error;
       throw new DatabaseError("DATABASE_OPERATION_ERROR");
     }
+  }
+}
+
+export class PostgresMatchArchive implements MatchArchive {
+  public constructor(private readonly repository: PostgresMatchRepository) {}
+
+  public createRound(room: StoredGameRoom): Promise<void> {
+    return this.repository.recordRoomCreated(room);
+  }
+
+  public saveRound(room: StoredGameRoom): Promise<void> {
+    return this.repository.recordRoomSaved(room);
   }
 }
 

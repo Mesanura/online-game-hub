@@ -37,6 +37,8 @@ import type { TicketVerifier } from "./auth.js";
 import type { CancelTimer, RuntimeClock } from "./clock.js";
 import type { RuntimeIdSource } from "./ids.js";
 import { secureRuntimeIdSource } from "./ids.js";
+import { NoopMatchArchive } from "./match-archive.js";
+import type { MatchArchive } from "./match-archive.js";
 import {
   correlatePlayerSessionId,
   noopRuntimeLogger,
@@ -77,6 +79,7 @@ export interface AuthoritativeGameRoomDependencies {
   readonly resolveDefinition: ExactGameDefinitionResolver;
   readonly roomStore: RoomStore;
   readonly replayStore: ReplayStore;
+  readonly matchArchive?: MatchArchive;
   readonly clock: RuntimeClock;
   readonly ids?: RuntimeIdSource;
   readonly metrics?: MetricsCollector;
@@ -155,6 +158,7 @@ export function createAuthoritativeGameRoomClass(
   dependencies: AuthoritativeGameRoomDependencies,
 ): AuthoritativeGameRoomClass {
   const ids = dependencies.ids ?? secureRuntimeIdSource;
+  const matchArchive = dependencies.matchArchive ?? new NoopMatchArchive();
   const metrics = dependencies.metrics ?? new InMemoryMetricsCollector();
   const logger = dependencies.logger ?? noopRuntimeLogger;
   const reconnectGrace =
@@ -322,7 +326,9 @@ export function createAuthoritativeGameRoomClass(
         initialConfig: configResult.data,
         players: slots.map((slot) => ({ slotId: slot.slotId })),
       });
-      await dependencies.roomStore.create(this.#storedRoom());
+      const storedRoom = this.#storedRoom();
+      await dependencies.roomStore.create(storedRoom);
+      await matchArchive.createRound(storedRoom);
       await this.setMetadata({
         roomCode,
         gameId: definition.manifest.id,
@@ -431,7 +437,9 @@ export function createAuthoritativeGameRoomClass(
         if (becameActive) {
           aggregate.status = "active";
         }
-        await dependencies.roomStore.save(this.#storedRoom());
+        const storedRoom = this.#storedRoom();
+        await matchArchive.saveRound(storedRoom);
+        await dependencies.roomStore.save(storedRoom);
         this.#sendConnected(client, slot.slotId);
         this.#broadcastLifecycle();
         if (becameActive) {
@@ -502,7 +510,9 @@ export function createAuthoritativeGameRoomClass(
         slot.timeout = dependencies.clock.setTimeout(() => {
           void this.#enqueue(() => this.#expireDisconnectedSlot(slot));
         }, reconnectGrace);
-        await dependencies.roomStore.save(this.#storedRoom());
+        const storedRoom = this.#storedRoom();
+        await matchArchive.saveRound(storedRoom);
+        await dependencies.roomStore.save(storedRoom);
         logger.write({
           event: "connection.left",
           roomId: this.roomId,
@@ -691,15 +701,15 @@ export function createAuthoritativeGameRoomClass(
             outcome,
           );
         }
-        await dependencies.roomStore.save(
-          this.#storedRoom({
-            state: transitioned.state,
-            rng: transitioned.rng,
-            revision: nextRevision,
-            status: outcome === null ? aggregate.status : "completed",
-            outcome,
-          }),
-        );
+        const storedRoom = this.#storedRoom({
+          state: transitioned.state,
+          rng: transitioned.rng,
+          revision: nextRevision,
+          status: outcome === null ? aggregate.status : "completed",
+          outcome,
+        });
+        await matchArchive.saveRound(storedRoom);
+        await dependencies.roomStore.save(storedRoom);
       } catch {
         metrics.increment("replay_append_failure_total", this.#labels());
         this.#rejectAndCache(
@@ -886,17 +896,17 @@ export function createAuthoritativeGameRoomClass(
         initialConfig: aggregate.initialConfig,
         players: aggregate.slots.map((slot) => ({ slotId: slot.slotId })),
       });
-      await dependencies.roomStore.save(
-        this.#storedRoom({
-          replayId: pending.replayId,
-          roundNumber: pending.roundNumber,
-          state: pending.state,
-          rng: pending.rng,
-          revision: 0,
-          status: "active",
-          outcome: null,
-        }),
-      );
+      const storedRoom = this.#storedRoom({
+        replayId: pending.replayId,
+        roundNumber: pending.roundNumber,
+        state: pending.state,
+        rng: pending.rng,
+        revision: 0,
+        status: "active",
+        outcome: null,
+      });
+      await matchArchive.saveRound(storedRoom);
+      await dependencies.roomStore.save(storedRoom);
 
       aggregate.replayId = pending.replayId;
       aggregate.roundNumber = pending.roundNumber;
@@ -959,9 +969,12 @@ export function createAuthoritativeGameRoomClass(
       const shouldAbandon =
         aggregate.status === "waiting" || aggregate.status === "active";
       if (shouldAbandon) {
-        await dependencies.roomStore.save(
-          this.#storedRoom({ status: "abandoned", outcome: null }),
-        );
+        const storedRoom = this.#storedRoom({
+          status: "abandoned",
+          outcome: null,
+        });
+        await matchArchive.saveRound(storedRoom);
+        await dependencies.roomStore.save(storedRoom);
         aggregate.status = "abandoned";
         aggregate.outcome = null;
       }

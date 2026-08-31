@@ -17,6 +17,7 @@ import {
 import type {
   ExactGameDefinitionResolver,
   CurrentGameDefinitionResolver,
+  MatchArchive,
   MetricsCollector,
   ReplayStore,
   RoomStore,
@@ -48,6 +49,7 @@ export interface GameServerCompositionOptions {
   readonly resolveDefinition?: ExactGameDefinitionResolver;
   readonly roomStore?: RoomStore;
   readonly replayStore?: ReplayStore;
+  readonly matchArchive?: MatchArchive;
   readonly clock?: RuntimeClock;
   readonly ids?: RuntimeIdSource;
   readonly metrics?: MetricsCollector;
@@ -86,6 +88,9 @@ export function createGameServer(
     resolveDefinition: options.resolveDefinition ?? resolveGameDefinition,
     roomStore,
     replayStore,
+    ...(options.matchArchive === undefined
+      ? {}
+      : { matchArchive: options.matchArchive }),
     clock: options.clock ?? systemRuntimeClock,
     ids: options.ids ?? secureRuntimeIdSource,
     metrics,
