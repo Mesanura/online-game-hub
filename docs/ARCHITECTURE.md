@@ -1,6 +1,6 @@
 # 系统架构
 
-> 状态：架构基线（V1，M6 四子棋与五子棋前两阶段已实现）
+> 状态：架构基线（V1，M6 四子棋与五子棋前两阶段及额外六贯棋已实现）
 > 本文是系统职责、目录结构、依赖方向和部署基线的权威来源。产品范围见 [PRODUCT.md](./PRODUCT.md)。
 
 ## 1. 架构目标
@@ -169,7 +169,7 @@ Room 必须串行处理 Action。任何未来多实例方案都必须维持“�
 ### 8.1 M3 实现不变量
 
 - Room 创建时通过 registry 的 current resolver 选择一个 exact `gameId + gameVersion`，校验并保存规范化 Config；加入和 replay 继续使用 exact resolver。
-- Room 在 Core 初始化前预分配 `maxPlayers` 个服务器生成的 stable slots；客户端请求没有 `gameVersion`、slot 或内部 `roomId` 字段。井字棋、四子棋与五子棋 1.0.0 都是 `minPlayers = maxPlayers = 2`，第二个有效 session 连接后从 `waiting` 进入 `active`。
+- Room 在 Core 初始化前预分配 `maxPlayers` 个服务器生成的 stable slots；客户端请求没有 `gameVersion`、slot 或内部 `roomId` 字段。井字棋、四子棋、五子棋与六贯棋 1.0.0 都是 `minPlayers = maxPlayers = 2`，第二个有效 session 连接后从 `waiting` 进入 `active`。
 - Colyseus join/leave/Action 共用每 room Promise queue；连接 session、active connection generation 和 slot ownership 都在进入 Core 前验证。
 - accepted candidate 先以 `expectedSequence = current revision` append replay；终局再 complete replay；随后保存 candidate room record；三个 port 调用全部成功后才提交内存 aggregate、缓存结果和发送 snapshot。任一步失败都返回 `INTERNAL_ERROR`，不提前推进内存 State/RNG/revision。
 - PostgreSQL replay append 在单事务中写 action 并推进 Match final revision；terminal complete 在单事务中写 RNG/Outcome 并把 Match 标记 completed。相同 header/action/completion 重试幂等，不同内容冲突失败；replay row lock 与 `(replay_id, sequence)` 主键串行化 concurrent append。
@@ -185,7 +185,7 @@ Room 必须串行处理 Action。任何未来多实例方案都必须维持“�
 - host 只保存当前 per-viewer View snapshot、`roomLifecycle`、round/revision、连接/拒绝状态。`submitAction` 生成 `commandId` 并从最新 lifecycle/snapshot 填充 `roundNumber` 和 `expectedRevision`；它不持有或重演 authoritative State。
 - 所有 server payload 都先通过 Protocol V1 schema。duplicate、stale、schema-invalid 和 game-rule rejection 不在浏览器模拟；host 接受服务器附带或随后发送的完整 snapshot 收敛。
 - transport 非主动关闭时，host 在 60 秒窗口内以指数退避获取新 ticket 并重新执行 room-code join，生成新的 seat reservation；不使用 SDK reconnection token 证明席位所有权。
-- 井字棋 Client Module 只解析 View，渲染 3×3 棋盘并提交 `{ type: "PLACE_MARK", cell }`；四子棋 Client Module 不导入 Core，只解析 View、渲染 7×6 棋盘并提交 `{ type: "DROP_DISC", column }`；五子棋 Client Module 同样不导入 Core，按 View 的 `boardSize` 渲染 15×15/19×19 棋盘并提交 `{ type: "PLACE_STONE", cell }`。三者都不计算 authoritative 落点/Outcome/revision；按钮禁用仅是 UX，不能代替 authoritative rejection。
+- 井字棋 Client Module 只解析 View，渲染 3×3 棋盘并提交 `{ type: "PLACE_MARK", cell }`；四子棋 Client Module 不导入 Core，只解析 View、渲染 7×6 棋盘并提交 `{ type: "DROP_DISC", column }`；五子棋 Client Module 按 View 的 `boardSize` 渲染 15×15/19×19 棋盘并提交 `{ type: "PLACE_STONE", cell }`；六贯棋 Client Module 渲染固定 11×11 菱形六边格，只提交 `PLACE_STONE(cell)` 或经二次确认的 `RESIGN`。四者都不计算 authoritative 落点/Outcome/revision；按钮禁用与投降确认仅是 UX，不能代替 authoritative rejection。
 
 ### 8.3 同房间多轮与关闭
 
@@ -206,13 +206,14 @@ Room 必须串行处理 Action。任何未来多实例方案都必须维持“�
 
 ### 8.5 M6 插件扩展性实证
 
-- 四子棋与五子棋都只通过 `game-registry` 显式加入 catalog、lazy client loader、exact/current server resolver；没有运行时目录扫描，游戏之间没有依赖。
+- 四子棋、五子棋与额外六贯棋都只通过 `game-registry` 显式加入 catalog、lazy client loader、exact/current server resolver；没有运行时目录扫描，游戏之间没有依赖。
 - 五子棋 package 自身为 16 个文件，拥有 15×15/19×19 Config、manifest、Core、Client Module、局部文档、unit/client/golden tests；规则 Core 只依赖 `game-sdk` 与 Zod。
+- 六贯棋 package 同样为 16 个文件，拥有固定 11×11 六边邻接、连接/投降 Outcome、canonical BFS path、manifest、Core、Client Module、局部文档和 unit/client/golden tests；Core 仍只依赖 `game-sdk` 与 Zod。
 - 现有 Protocol V1 `initialConfig: unknown`、definition `configSchema`、room/replay canonical Config 和 exact resolver 无需变化即可处理 `{ boardSize: 15 | 19, winLength: 5 }`。通用 Web 原先固定传 `null`，无法发现每游戏默认值，因此 `GameManifest` 新增必填 JSON-safe `defaultConfig`；该 shared API 迁移同步更新全部 manifest、消费者、contract tests 与文档。
-- `protocol`、`game-client-sdk`、`game-server-runtime`、`game-server-ticket`、database source/schema/migration 均零修改；Protocol V1、Replay Format V1、井字棋 1.0.0 和四子棋 1.0.0 保持兼容。
-- 通用 Action pipeline、`projectView`、replay verifier、PostgreSQL adapters、多轮/关闭/reconnect 行为没有 `connect-four`、`gomoku` 或 gameId 规则分支。真实 Colyseus 以 19×19 Config 完成五子棋，PostgreSQL-backed Playwright 以默认 15×15 完成中文目录到 canonical replay/history 的 vertical slice。
-- presentation 仍需在 Next transpile allowlist 与 Web 全局 CSS 显式登记；通用 `GameRoomPage` 继续只按稳定领域错误码提供少量文案映射，其中 `CELL_OCCUPIED` 同时适用于井字棋与五子棋，不新增 Gomoku 分支。
-- 第三个游戏刚促成一次必要的 manifest API 收敛，模板边界仍未稳定；本阶段明确不创建 `tools/create-game`，留待黑白棋验证后重新评估。
+- 六贯棋直接使用 `defaultConfig: null` 和现有 opaque Action envelope；`game-sdk`、`protocol`、`game-client-sdk`、`game-server-runtime`、`game-server-ticket`、database source/schema/migration 均零修改。Protocol V1、Replay Format V1 与全部既有游戏版本保持兼容。
+- 通用 Action pipeline、`projectView`、replay verifier、PostgreSQL adapters、多轮/关闭/reconnect 行为没有 `connect-four`、`gomoku`、`hex` 或其他 gameId 规则分支。真实 Colyseus integration 直接验证六贯棋 21-action 连接胜局、同房间第二轮 stable colors 与 off-turn `RESIGN`。
+- presentation 仍需在 Next transpile allowlist 与 Web 全局 CSS 显式登记；通用 `GameRoomPage` 继续只按稳定领域错误码提供少量文案映射，六贯棋没有新增 gameId 文案分支。
+- 第四个游戏仍需上述显式机械登记，且黑白棋尚未验证翻转/无合法行动/跳过回合；本阶段明确不创建 `tools/create-game`，留待黑白棋后重新评估。
 
 ## 9. 存储与部署
 

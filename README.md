@@ -1,6 +1,6 @@
 # Online Game Hub
 
-这是一个 server-authoritative、replay-first 的多人网页游戏平台 monorepo。M1–M5 已完成，M6 前两阶段已新增四子棋与五子棋：第三个完整游戏用 15×15/19×19 Config、更大棋盘和长连规则验证既有 Game Plugin、显式 registry、Client Module、authoritative runtime、projection、Replay V1、PostgreSQL Match/history 和 Web vertical slice。两名原玩家可在同一 live room 内 ready/cancel 并无缝开始下一轮；每轮拥有独立 Match、Replay 和 history，房主可关闭房间，非房主可主动离开，终局房间有 5 分钟回收期限。Protocol V1、replay format V1、井字棋 1.0.0、四子棋 1.0.0 和五子棋 1.0.0 均保持 exact version；黑白棋、OAuth、公开 replay 与活动房间恢复仍未实现。
+这是一个 server-authoritative、replay-first 的多人网页游戏平台 monorepo。M1–M5 已完成，M6 前两阶段已新增四子棋与五子棋；额外游戏六贯棋以固定 11×11 六边形邻接、canonical 最短连接路径和不受回合限制的投降 Action 继续验证既有 Game Plugin、显式 registry、Client Module、authoritative runtime、projection、Replay V1、PostgreSQL Match/history 和 Web vertical slice。两名原玩家可在同一 live room 内 ready/cancel 并无缝开始下一轮；每轮拥有独立 Match、Replay 和 history，房主可关闭房间，非房主可主动离开，终局房间有 5 分钟回收期限。Protocol V1、replay format V1 与井字棋/四子棋/五子棋/六贯棋 1.0.0 均保持 exact version；六贯棋不替代 M6 计划中的黑白棋，OAuth、公开 replay 与活动房间恢复仍未实现。
 
 ## 开始之前
 
@@ -57,7 +57,7 @@ pnpm test:integration
 pnpm test:e2e
 ```
 
-`pnpm lint` 同时执行格式、ESLint、本地 Markdown 链接和依赖边界检查。`pnpm test` 包含 Game SDK、Protocol、井字棋 Core、registry、runtime ports、replay/store tests、Game Server unit tests，以及故意违规的隔离 fixture。`pnpm db:check` 静态检查 checked-in migration；`pnpm db:migrate` 只在调用者显式提供 `DATABASE_URL` 时应用 migration。`pnpm test:database` 需要 `TEST_DATABASE_URL` 指向测试可创建数据库的 PostgreSQL 管理库，并为每个 suite 创建、验证和删除随机 `ogh_test_*` 数据库。`pnpm test:integration` 在随机本地端口运行真实 Colyseus 双客户端 tests；`pnpm test:e2e` 先构建 workspace，再以随机回环端口启动真实 Next production app、真实 Colyseus Server 和隔离 PostgreSQL 数据库，运行双 browser-context Playwright。三个测试脚本都不是空脚本，CI 都会执行。
+`pnpm lint` 同时执行格式、ESLint、本地 Markdown 链接和依赖边界检查。`pnpm test` 包含 Game SDK、Protocol、井字棋/四子棋/五子棋/六贯棋 Core、Client 与 golden replay、registry、runtime ports、replay/store tests、Game Server unit tests，以及故意违规的隔离 fixture。`pnpm db:check` 静态检查 checked-in migration；`pnpm db:migrate` 只在调用者显式提供 `DATABASE_URL` 时应用 migration。`pnpm test:database` 需要 `TEST_DATABASE_URL` 指向测试可创建数据库的 PostgreSQL 管理库，并为每个 suite 创建、验证和删除随机 `ogh_test_*` 数据库。`pnpm test:integration` 在随机本地端口运行真实 Colyseus 双客户端 tests；`pnpm test:e2e` 先构建 workspace，再以随机回环端口启动真实 Next production app、真实 Colyseus Server 和隔离 PostgreSQL 数据库，运行双 browser-context Playwright。三个测试脚本都不是空脚本，CI 都会执行。
 
 所有当前支持 `gameVersion` 的 golden replay 可单独运行：
 
@@ -65,6 +65,7 @@ pnpm test:e2e
 pnpm --filter @online-game-hub/tic-tac-toe test:golden
 pnpm --filter @online-game-hub/connect-four test:golden
 pnpm --filter @online-game-hub/gomoku test:golden
+pnpm --filter @online-game-hub/hex test:golden
 ```
 
 首次在本机运行浏览器测试前执行 `pnpm exec playwright install chromium`；CI 使用 `--with-deps chromium` 安装精确匹配的浏览器。
@@ -143,6 +144,7 @@ packages/
 games/
   connect-four/             # 单 package：7×6 manifest/core/client + 1.0.0 golden replay
   gomoku/                   # 单 package：15×15/19×19 Config、core/client + 1.0.0 golden replay
+  hex/                      # 单 package：11×11 六贯棋、投降、canonical path + 1.0.0 golden replay
   tic-tac-toe/             # 单 package：manifest/core/client + 1.0.0 golden replay
 tooling/
   e2e/                     # 随机端口真实 Next/Colyseus 双 context Playwright
@@ -153,6 +155,8 @@ tools/                     # 未来面向开发者的 CLI；当前不创建生�
 不要创建 `packages/shared`。新增 workspace package 必须声明 public exports，并接入根 typecheck、test 和 build 图；跨 package 只能通过 manifest 中声明的依赖与 export map 导入。
 
 M6 五子棋没有新增外部依赖，也没有修改 `protocol`、`game-client-sdk`、`game-server-runtime`、`game-server-ticket`、database schema 或 migration。现有 create request、Config schema normalization、canonical replay 与 exact resolver 可直接承载 15×15/19×19 Config；通用 Web 页面唯一缺少的是按游戏取得默认 Config，因此 `GameManifest` 新增必填 JSON-safe `defaultConfig`，井字棋/四子棋迁移为 `null`，五子棋默认 `{ boardSize: 15, winLength: 5 }`。该 manifest API 变更不进入 wire 或 replay envelope，不提升 Protocol V1、Replay Format V1 或既有游戏版本。第三游戏仍暴露显式 registry、Next transpile 与 Web game CSS 的机械步骤，且 shared manifest 刚发生一次有证据的收敛，因此本阶段仍不创建 `tools/create-game`。
+
+额外六贯棋继续复用 `defaultConfig: null`、双人 stable slots、完整 per-viewer snapshot、同房间多轮、accepted Action replay 和 PostgreSQL archive；`PLACE_STONE` 与 `RESIGN` 都只作为游戏 intent 进入现有 envelope。它没有新增外部依赖，也没有修改 `game-sdk`、Protocol V1、Replay Format V1、`game-client-sdk`、`game-server-runtime`、database schema 或 migration。六贯棋仍需显式 registry、Next transpile 和 Web CSS 登记，因此不据此创建 `tools/create-game`，也不替代下一阶段黑白棋对翻转/跳过回合的验证。
 
 ## 自动化边界
 

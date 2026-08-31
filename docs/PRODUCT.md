@@ -1,6 +1,6 @@
 # 产品目标与范围
 
-> 状态：V1 产品基线（M5 已完成，M6 四子棋与五子棋前两阶段已完成）
+> 状态：V1 产品基线（M5 已完成，M6 四子棋与五子棋前两阶段及额外六贯棋已完成）
 > 本文是产品目标、范围和非目标的权威来源。技术实现边界见 [ARCHITECTURE.md](./ARCHITECTURE.md)。
 
 ## 1. 产品愿景
@@ -74,6 +74,12 @@
 五子棋 1.0.0 已从同一目录和通用游戏页提供默认 15×15 棋盘，并由 strict Config 支持 19×19；`winLength` 固定为 5，连续五子或以上获胜。两名玩家按 stable slot 顺序轮流在 row-major cell 落子，浏览器只提交 `{ type: "PLACE_STONE", cell }`，服务端决定回合、占用、长连、平局与 Outcome。
 
 五子棋复用既有 create/join/reconnect、多轮、close/leave、per-viewer `projectView`、canonical replay、PostgreSQL archive/history 和真实双浏览器链路。通用 Web 从 manifest 的 JSON-safe `defaultConfig` 创建默认房间，不在平台代码中加入五子棋规则分支。该阶段不包含 AI、禁手、交换规则、计时、悔棋、观战、公开 replay 或 Matchmaking。
+
+### 4.3 额外游戏：六贯棋
+
+六贯棋 1.0.0 作为用户确认的额外游戏提供固定 11×11 菱形六边格棋盘。创建者固定为蓝方并先手，蓝方连接上右/下左两边，加入者固定为红方并连接上左/下右两边；不启用交换规则。玩家每回合只提交 `PLACE_STONE(cell)`，也可在任一活跃时刻提交不受回合限制的 `RESIGN`，由 Core 产生连接或投降 WIN Outcome；不存在 DRAW。
+
+连接 Outcome 使用确定性的 multi-source BFS 保存 canonical 最短 `winningPath`，客户端只按服务器 View 对该路径显示白色模糊发光边框。投降按钮由客户端二次确认，取消不产生 Action；断线、关闭、主动离开和 reconnect timeout 仍由平台 lifecycle 产生 `abandoned`。六贯棋复用既有双人房间、stable slots、多轮、reconnect、Replay V1、PostgreSQL archive/history 和通用 Web 页面，不新增观战连接、交换、AI、计时、悔棋或公开 replay，也不替代 M6 的黑白棋阶段。
 
 ## 5. 长期产品能力
 

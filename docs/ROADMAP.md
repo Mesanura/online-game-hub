@@ -116,7 +116,7 @@
 
 ## M6：验证插件扩展性
 
-> 实施状态：第一阶段四子棋已完成（2026-08-30），第二阶段五子棋已完成（2026-08-31）；黑白棋和整个 M6 尚未完成。
+> 实施状态：第一阶段四子棋已完成（2026-08-30），第二阶段五子棋已完成（2026-08-31），用户确认的额外六贯棋已完成（2026-08-31）；黑白棋和整个 M6 尚未完成。
 
 按顺序增加少量规则类型不同的游戏：
 
@@ -144,6 +144,14 @@
 - 五子棋真实 Colyseus integration 使用 19×19 Config，Playwright 使用默认 15×15，从中文目录完成创建、加入、权威拒绝、状态同步、胜局、PostgreSQL replay 重读与私有 history；
 - 第三游戏仍需显式 registry、Next transpile 与 Web CSS 登记，且 manifest contract 本轮才因 Config 证据收敛，因此继续暂缓 `tools/create-game`，不在同一阶段固化模板。
 
+额外六贯棋复盘结果：
+
+- 六贯棋以 `gameId: hex`、exact `gameVersion 1.0.0` 作为额外游戏加入，不替代按序计划的黑白棋；固定 11×11、BLUE 先手、RED/BLUE 连接边、无交换规则与无 DRAW；
+- 游戏 package 自身 16 个文件拥有 null Config、strict `PLACE_STONE | RESIGN`、canonical multi-source BFS path、Core、Client Module、局部文档、unit/client/golden tests；没有新增外部依赖；
+- 现有 Protocol V1、Action pipeline、exact registry、`projectView`、Replay Format V1、多轮 stable slots、PostgreSQL archive/history 都能直接承载不受回合限制的投降与变长连接路径；
+- `game-sdk`、`protocol`、`game-client-sdk`、`game-server-runtime`、`game-server-ticket`、database source/schema/migration 与既有游戏版本均零修改；真实 Colyseus integration 覆盖连接胜局与第二轮 off-turn resignation；
+- 仍需显式 registry、Next transpile、Web CSS 和纵切测试登记；第四游戏并未验证黑白棋的翻转、无合法行动与跳过回合，因此继续不创建 `tools/create-game`。
+
 ## M7：按证据扩展平台
 
 以下能力不预先排序，在产品需求和运行指标出现后单独立项：
@@ -158,4 +166,4 @@
 
 ## 下一轮建议
 
-M6 五子棋第二阶段已完成。下一轮只评估并实现 M6 的黑白棋，以翻转、无合法行动和跳过回合检验现有契约；不要混入 `tools/create-game`、M7、OAuth、Lobby、Matchmaking、排行榜、观战、公开 replay、durable active room、Redis 或多实例。
+M6 五子棋第二阶段与额外六贯棋已完成。下一轮仍只评估并实现 M6 的黑白棋，以翻转、无合法行动和跳过回合检验现有契约；六贯棋不改变路线图顺序。不要混入 `tools/create-game`、M7、OAuth、Lobby、Matchmaking、排行榜、观战、公开 replay、durable active room、Redis 或多实例。

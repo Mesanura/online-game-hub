@@ -242,6 +242,8 @@ interface GameClientModule<View, Action> {
 
 五子棋 1.0.0 继续使用同一 Client Module contract：View 明确携带 15 或 19 的 `boardSize` 与固定 `winLength: 5`，客户端按完整 View 渲染 225/361 个 cell 并只提交 `PLACE_STONE(cell)`。客户端不导入 Core、不扫描连续棋子，也不把 View、actor、Outcome 或 revision 放入 Action。
 
+六贯棋 1.0.0 使用同一 contract 渲染固定 121-cell 公开 View，并只提交 `PLACE_STONE(cell)` 或经二次确认的 `RESIGN`。连接路径完全来自服务器 Outcome；客户端不扫描连通性、不自行选择 winning path，取消投降确认也不提交 Action。`RESIGN` 是否不受回合限制仍由 Core 裁定，通用 host/runtime 无需理解其语义。
+
 ## 9. Manifest 与 Export Map
 
 `src/manifest.ts` 是单一 manifest 来源，必须无副作用且不导入 client 或 server runtime。避免同时维护 `game.json` 与 TypeScript manifest 造成重复。
@@ -285,6 +287,6 @@ Registry 必须能够按 exact `gameVersion` 读取旧 replay 所需的 definiti
 - `projectView` 的信息泄漏测试通过；
 - package 只通过声明的 public subpath exports 被消费。
 
-M6 五子棋是第三个满足以上清单的 package。非 `null` Config 可直接通过既有 create/runtime/replay 契约；为让通用 Web 无游戏分支地取得创建默认值，`GameManifest` 新增必填 `defaultConfig`，并同步迁移所有游戏与消费者。该兼容迁移不修改 `GameDefinition`、`GameClientModule`、Protocol V1 或 replay envelope。
+M6 五子棋是第三个满足以上清单的 package。非 `null` Config 可直接通过既有 create/runtime/replay 契约；为让通用 Web 无游戏分支地取得创建默认值，`GameManifest` 新增必填 `defaultConfig`，并同步迁移所有游戏与消费者。额外六贯棋是第四个 package，证明 strict Action union 可同时承载落子与投降、Outcome 可保存变长 canonical path，而无需修改 `GameDefinition`、`GameClientModule`、Protocol V1 或 replay envelope。
 
 完整测试矩阵见 [TESTING.md](./TESTING.md)。

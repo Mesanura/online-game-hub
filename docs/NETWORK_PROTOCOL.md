@@ -1,6 +1,6 @@
 # 网络协议
 
-> 状态：V1 协议（M6 五子棋 Config 继续复用 Protocol V1）
+> 状态：V1 协议（M6 五子棋 Config 与额外六贯棋继续复用 Protocol V1）
 > 本文是 Web、Game Server 与浏览器之间身份、房间、消息、revision 和重连语义的权威来源。游戏规则 payload 见 [GAME_PLUGIN_SPEC.md](./GAME_PLUGIN_SPEC.md)。
 
 ## 1. 协议目标
@@ -246,6 +246,8 @@ interface GameActionCommand {
 M6 四子棋通过同一 Protocol V1 envelope 发送 `{ type: "DROP_DISC", column }`。越界 column 属于 `INVALID_ACTION_PAYLOAD`，合法形状但错误回合/满列属于带 opaque `gameRuleCode` 的 `GAME_RULE_REJECTED`；duplicate、stale、错轮和终局拒绝继续使用现有平台语义。Transport 不知道重力、row 或四连规则，因此 `protocolVersion` 保持 `1`。
 
 M6 五子棋同样通过 Protocol V1 创建请求传递 `{ boardSize: 15 | 19, winLength: 5 }` Config，并用 Action envelope 发送 `{ type: "PLACE_STONE", cell }`。Action 不含 actor、State、Outcome、revision 或随机结果；transport 不知道棋盘坐标、占用、五连/长连或平局。Config/Action schema-invalid payload 使用现有错误，合法形状但错误回合、占用或按当前 Config 越界由 Core 以 opaque `gameRuleCode` 拒绝，因此 `protocolVersion` 仍为 `1`。
+
+额外六贯棋以 `initialConfig: null` 创建，并通过同一 envelope 发送 strict `{ type: "PLACE_STONE", cell } | { type: "RESIGN" }`。Transport 不知道六边邻接、连接路径、颜色、投降是否受回合限制或胜者；schema-invalid/extra fields 仍是 `INVALID_ACTION_PAYLOAD`，合法形状的错轮、占用、越界和终局由 Core/现有 lifecycle 错误处理。accepted `RESIGN` 与 accepted placement 一样递增 revision 并进入 replay，因此不需要新的 wire 字段或 `protocolVersion`。
 
 ## 8. Revision、Ordering 与 Idempotency
 
