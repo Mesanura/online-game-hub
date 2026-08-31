@@ -79,15 +79,13 @@ test("two guests create, join, synchronize, and complete authoritative Gomoku", 
   await expect(pageA.getByTestId("game-stage")).toHaveCount(0);
   await pageA.getByTestId("create-room").click();
   await expect(pageA.getByTestId("connection-state")).toHaveText("已连接");
-  await expect(pageA.locator(".game-page > :first-child")).toHaveAttribute(
-    "data-testid",
-    "game-stage",
-  );
-  await expect(pageA.getByTestId("match-status")).toHaveText("等待另一位玩家");
+  await expect(pageA.getByTestId("game-stage")).toHaveCount(0);
+  await expect(pageA.getByTestId("match-status")).toHaveCount(0);
   await expect(pageA.getByTestId("player-count-notice")).toHaveAttribute(
     "data-state",
     "waiting",
   );
+  await pageA.getByTestId("starter-owner").click();
 
   const inviteUrl = await pageA.getByTestId("invite-link").getAttribute("href");
   if (inviteUrl === null)
@@ -99,6 +97,12 @@ test("two guests create, join, synchronize, and complete authoritative Gomoku", 
     throw new Error("Gomoku invitation omitted its room code.");
 
   await pageB.goto(inviteUrl);
+  await expect(pageB.getByTestId("connection-state")).toHaveText("已连接");
+  await pageA.getByTestId("toggle-round-ready").click();
+  await expect(pageB.getByTestId("round-setup-status")).toHaveText(
+    "1/2 人已准备",
+  );
+  await pageB.getByTestId("toggle-round-ready").click();
   await Promise.all(
     [pageA, pageB].map(async (page) => {
       await expect(page.getByTestId("connection-state")).toHaveText("已连接");
@@ -187,10 +191,15 @@ test("two guests create, join, synchronize, and complete authoritative Gomoku", 
     gameId: "gomoku",
     gameVersion: "1.0.0",
     initialConfig: { boardSize: 15, winLength: 5 },
-    revision: 9,
-    status: "completed",
+    currentRound: { revision: 9, status: "completed" },
   });
-  const replay = await harness.gameServer.replayStore.get(room.replayId);
+  const currentRound = room.currentRound;
+  if (currentRound === null) {
+    throw new Error("The completed Gomoku round was not stored.");
+  }
+  const replay = await harness.gameServer.replayStore.get(
+    currentRound.replayId,
+  );
   expect(replay?.actions).toHaveLength(9);
   expect(verifyReplay(replay, resolveGameDefinition)).toMatchObject({
     status: "verified",
@@ -206,7 +215,7 @@ test("two guests create, join, synchronize, and complete authoritative Gomoku", 
   try {
     const rebuiltReplay = await new PostgresReplayStore(
       rebuiltClient.database,
-    ).get(room.replayId);
+    ).get(currentRound.replayId);
     expect(rebuiltReplay?.header).toMatchObject({
       replayFormatVersion: 1,
       gameId: "gomoku",

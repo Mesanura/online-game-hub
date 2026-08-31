@@ -1,6 +1,6 @@
 # 测试策略
 
-> 状态：V1 策略（M6 黑白棋 Core、integration、E2E 已纳入）
+> 状态：Protocol V2 测试策略（逐局先手与 Room/Round 分离已纳入）
 > 本文是测试层级、职责、最低场景和质量门禁的权威来源。具体业务范围见 [PRODUCT.md](./PRODUCT.md)。
 
 ## 1. 目标
@@ -103,7 +103,7 @@ Golden fixture 只在确认规则或版本策略变化后更新。不能通过�
 - 确认 `action` 在通用层保持 `unknown`，并由选中的 game schema 再解析；
 - server response 不包含 stack、ticket、cookie、完整 State 或 RNG seed；
 - encode/decode round trip 保持稳定字段；
-- `room.control`/`room.lifecycle` 拒绝 identity 字段和不一致 ready/closed 状态；Action/snapshot 的可选 `roundNumber` 保持 V1 首轮兼容并拒绝非法值；
+- Protocol V2 exact schemas 拒绝 V1、缺字段和 extra fields；`room.control` 严格区分 starter 选择/ready/cancel/close，拒绝非法 starter 与 identity 字段；`room.lifecycle` 拒绝不一致 current/next Round、ready/closed 状态；Action/snapshot 的 `roundNumber` 必填并拒绝非法值；
 - platform error 与 `gameRuleCode` 的映射不混淆。
 
 ## 7. Game Server Integration Tests
@@ -125,9 +125,10 @@ Server integration tests 位于 `apps/game-server/tests/game-server.integration.
 
 - 每个连接只收到 `projectView` 产生的 View。
 - M3 使用两个 viewer slot 验证每个 snapshot 都来自 `projectView`，且不含 State、RNG seed 或 Core-only 字段。第一个隐藏信息游戏加入时，再提供最小 fixture 证明不同 slots 不会互相看到秘密字段；不为 M3 虚构新游戏。
-- 每轮 waiting/active → completed/abandoned 转换合法且不可逆；同 live room 下一轮创建新的 Match/replay 和 revision 序列，不重写上一轮。
+- 首局允许 `currentRound = null` 且没有 snapshot；满足全部设置条件后直接创建 active Round，active → completed/abandoned 合法且不可逆；同 live room 下一轮创建新的 Match/replay/RNG/revision 序列，不重写上一轮。
 - Outcome 只由 Core 产生，断线状态只由平台 lifecycle 处理。
-- ready/cancel、断线/takeover 清 ready、双方 ready 开新轮、terminal outsider 拒绝、owner close、non-owner leave 和 5 分钟 terminal TTL 都由平台处理。
+- 房主加入前预选/提前 ready、非房主伪造选择、未选 starter 时拒绝 ready、不同选择清全部 ready、重复选择保留 ready、断线/takeover 只清对应 ready、双方 ready 开新轮、terminal outsider 拒绝、owner close、non-owner leave 和 5 分钟 terminal TTL 都由平台处理。
+- 首局与后续轮都注入 Round 启动失败，验证 replay header 已创建而 Match archive 失败时保留相同 pending replay ID/seed/playerOrder，并以新 command ID 幂等重试。
 
 ### 7.3 Reconnect
 
@@ -135,7 +136,7 @@ Server integration tests 位于 `apps/game-server/tests/game-server.integration.
 - 新有效连接接管后旧连接无法继续提交 Action。
 - 不同 session 不能窃取保留 slot。
 - 超时后执行房间策略，旧 reconnection token 不再恢复席位。
-- V1 明确不测试进程重启后的活动房间恢复；M5 只验证重启后已完成 replay、match history 仍可读取，并验证启动协调会把单实例遗留的 `waiting`/`active` archive 标记为 `abandoned`。
+- V2 明确不测试进程重启后的 live room 恢复；只验证重启后已完成 replay、match history 仍可读取，并验证启动协调会把单实例遗留的旧 `waiting`/当前 `active` archive 标记为 `abandoned`。从未开始 Round 的 room 不应产生 archive。
 
 使用 fake clock 驱动 60 秒超时，测试不得真实等待一分钟。
 
@@ -152,9 +153,9 @@ Multiplayer integration 使用两个独立客户端连接同一真实 room，验
 
 这些测试覆盖网络时序，不承担穷举游戏规则的职责。
 
-真实 integration cases 覆盖：health/metrics 与 ticket trust boundary；井字棋、四子棋、五子棋、六贯棋和黑白棋双客户端 stable slots、waiting/active/completed、invalid/rule-rejected commands、per-viewer snapshot 与 verified canonical replay；replay append failure 不确认/不提交；新 ticket + 新 reservation 的 reconnect、connection takeover、错误 session theft 和 fake-clock 60 秒 abandoned；同房间 ready/cancel 开第二轮、跨轮 duplicate/错轮防护、terminal outsider、房主关闭、非房主 active leave 和 terminal TTL。井字棋/四子棋继续承担伪造 actor、stale/duplicate/concurrent 等通用 pipeline 全矩阵；四子棋额外覆盖满列、横向胜局、42-action 平局、两轮独立 replay 与 abandoned 无伪造 Outcome；五子棋额外以 19×19 Config 覆盖创建/加入、361-cell View、错误回合、占用 cell、9-action 五连胜与 canonical replay；六贯棋额外覆盖 BLUE/RED stable colors、schema-invalid、错轮、stale、占用、duplicate、21-action canonical path 胜局、同房间第二轮颜色不交换与 RED off-turn `RESIGN` replay。ticket verifier、ports、composition logger 另有无 transport 的 contract/unit tests。
+真实 integration cases 覆盖：health/metrics 与 Protocol V2 ticket trust boundary；井字棋、四子棋、五子棋、六贯棋和黑白棋双客户端 stable slots、无 snapshot setup、active/completed、invalid/rule-rejected commands、per-viewer snapshot 与 verified canonical replay；replay append failure 不确认/不提交；新 ticket + 新 reservation 的 reconnect、connection takeover、错误 session theft 和 fake-clock 60 秒 abandoned；逐局 starter/ready/cancel、相反 `playerOrder`、跨轮 duplicate/错轮防护、terminal outsider、房主关闭、非房主 active leave 和 terminal TTL。井字棋还覆盖房主预选/提前 ready、权限伪造、选择清 ready、首局/后续轮 archive 失败重试；四子棋继续覆盖满列、横向胜局、42-action 平局、两轮独立 replay 与 abandoned 无伪造 Outcome；五子棋以 19×19 Config 覆盖创建/加入、361-cell View、错误回合、占用 cell、9-action 五连胜与 canonical replay；六贯棋覆盖本轮 BLUE/RED role、schema-invalid、错轮、stale、占用、duplicate、21-action canonical path 胜局、再次选择同一先手的第二轮与 RED off-turn `RESIGN` replay。ticket verifier、ports、composition logger 另有无 transport 的 contract/unit tests。
 
-黑白棋 integration 额外覆盖 BLACK/WHITE stable colors、schema-invalid/伪造 actor、错回合与无翻转拒绝不推进 revision/replay、权威翻转、revision 18 后 WHITE 强制连续行动、25-action 非满盘终局、PASS-free canonical replay，以及同房间第二轮 revision 重置、颜色不交换、独立 Match/replay 与 11-action 非满盘终局。
+黑白棋 integration 额外覆盖本轮 BLACK/WHITE role、schema-invalid/伪造 actor、错回合与无翻转拒绝不推进 revision/replay、权威翻转、revision 18 后 WHITE 强制连续行动、25-action 非满盘终局、PASS-free canonical replay，以及同房间第二轮 revision 重置、独立 Match/replay 与 11-action 非满盘终局。
 
 ## 9. PostgreSQL Integration Tests
 
@@ -169,7 +170,9 @@ Multiplayer integration 使用两个独立客户端连接同一真实 room，验
 - sequence gap、重复/冲突 payload、并发 append 和冲突 completion fail closed；相同重试幂等；
 - schema-invalid、stale、duplicate、game-rule rejected command 不增加 `replay_actions`；
 - Match/MatchPlayer waiting、active、completed、abandoned archive 及 final revision 正确；completed 必须关联已完成 replay，abandoned 不伪造 Outcome；
+- 创建但未开始首局的 live room 没有 Match/MatchPlayer；首局真正启动时直接创建 active Match，旧 waiting rows 继续兼容；
 - 同一 `runtime_room_id` 可有连续正整数轮次，但 `(runtime_room_id, round_number)` 唯一；后续轮只接受与 completed 前轮相同 game/version/slot/session 的参与者，并持有独立 replay；
+- participants 集合不随 `playerOrder` 反转；两轮 Replay header 的有序 players 与各自 Core 初始化顺序一致；
 - guest history 只返回当前 server-verified guest 的安全 metadata，猜测其他 guest 的 match ID 不泄漏参与关系；
 - guest-to-account association 在事务中幂等，且不能把已关联记录覆盖到另一 User；
 - adapter/connection shutdown 后无遗留 client；数据库错误经稳定 code 清洗，不泄漏 SQL、DSN、session、ticket、State、seed 或 canonical replay。
@@ -178,13 +181,13 @@ Multiplayer integration 使用两个独立客户端连接同一真实 room，验
 
 `tooling/e2e/tests/web-vertical-slice.spec.ts` 使用两个隔离 browser contexts，代表两个匿名访客：
 
-1. A 创建井字棋 room，B 以规范化 room code 加入；两者获得不同 stable slots、相同 room code/revision 和各自完整 View；
+1. A 创建井字棋 room 后在无 snapshot 页面预选“我先”，B 以规范化 room code 加入；双方 ready 后才获得不同 stable slots、相同 room code/revision 和各自完整 View；
 2. 越过 disabled affordance 提交非当前玩家 intent 和重复点击，真实 Server 不产生额外 revision、棋盘或 replay action；
 3. 两者完成第 1 局 5-revision 胜局并验证 WIN；临时断线仍以同一 guest、新 ticket/new reservation 恢复原 slot；
-4. A ready、cancel、再次 ready，B ready 后在同一 room code 和 slots 无缝进入第 2 局，页面显示轮次且 revision 重置为 `0`；
-5. 两者完成第 2 局 9-revision 平局并验证 DRAW；两轮各有独立 Match/replay/history，均通过现有 `verifyReplay`，history 返回 `roundNumber`；
+4. A 为第 2 局选择“对方先”，ready、cancel、再次 ready，B ready 后在同一 room code 和 stable slots 进入新 `playerOrder`，页面显示轮次且 revision 重置为 `0`；
+5. 两者以交换后的 X/O 角色完成第 2 局 9-revision 平局并验证 DRAW；两轮各有独立 Match/replay/history，Replay header 顺序相反且均通过 `verifyReplay`，history 返回 `roundNumber`；
 6. 第三 guest 猜到 completed room code 仍被 `ROOM_NOT_JOINABLE` 拒绝；A/B 的 HttpOnly guest cookies 与私有 history 授权继续隔离；
-7. completed room 由房主关闭并返回入口；另一个 waiting room 由房主无确认关闭；
+7. completed room 由房主关闭并返回入口；另一个尚未开始首局的 room 由房主无确认关闭，且不产生 abandoned Match；
 8. active room 中非房主确认离开后当前 Match abandoned、双方返回入口；取消确认不会离开；
 9. 另一 active room 用 fake clock 前进 60,001 ms，验证 `RECONNECT_TIMEOUT` abandoned 并关闭 live room；
 10. 关闭并重建 database adapter 后，两轮 history metadata 和 completed canonical replays 仍存在；浏览器只看到安全 metadata，不看到数据库或 replay 细节。
@@ -194,30 +197,30 @@ Multiplayer integration 使用两个独立客户端连接同一真实 room，验
 1. 两个 guest contexts 从统一目录进入四子棋，并以同一通用游戏页创建/加入真实 room；
 2. 越过非当前玩家 disabled column 操作提交真实恶意 intent，双方 revision/棋盘保持 `0`；
 3. 双方完成 7-revision 权威横向胜局，浏览器只显示服务器 View；
-4. 双方 ready 后在相同 room code/stable slots 进入第 2 局并再次完成胜局；
+4. 房主再次选择先手，双方 ready 后在相同 room code/stable slots 进入第 2 局并再次完成胜局；
 5. 两轮使用不同 Match/replay，均由新 PostgreSQL connection 读取并通过 exact registry verifier；
 6. 两个 guest 的 history 只含各自 slot 的安全平台 metadata，第三 guest 与伪造 query 无法读取。
 
 `tooling/e2e/tests/gomoku-vertical-slice.spec.ts` 使用相同真实 harness，独立验证：
 
 1. 目录卡片、页面标题与棋盘无障碍名称统一显示“五子棋”，URL 为 `/games/gomoku`；
-2. 通用 Web 从 manifest 传递默认 `{ boardSize: 15, winLength: 5 }`，两个 guest 创建/加入后同步 225-cell View 与不同 stable slots；
+2. 通用 Web 从 manifest 传递默认 `{ boardSize: 15, winLength: 5 }`，两个 guest 创建/加入、选择先手并 ready 后同步 225-cell View 与不同 stable slots；
 3. 越过 disabled cell 的非当前玩家 intent 被真实 Server 拒绝且 revision/棋盘保持 `0`；
 4. 双方完成 9-revision 权威横向胜局，浏览器只显示服务器 View；
 5. completed replay 从 PostgreSQL 新 connection 重读并由 exact registry 验证，双方 private history 只返回安全 metadata。
 
 `tooling/e2e/tests/hex-vertical-slice.spec.ts` 使用相同真实 harness，独立验证：
 
-1. 目录、页面、11×11 菱形棋盘、四条红蓝边、A–K/1–11 坐标和 BLUE/RED stable colors；
+1. 目录、页面、11×11 菱形棋盘、四条红蓝边、A–K/1–11 坐标和本轮 BLUE/RED roles；
 2. 越过 disabled cell 的 RED 错轮 intent 被真实 Server 拒绝且 revision 保持 `0`；
 3. 第一轮完成 21-revision BLUE 连接胜局，11-cell canonical path 只以白色模糊发光边框高亮；
-4. 双方在同一 room/stable slots 开始第二轮且颜色不交换，RED 在 BLUE 回合取消投降确认时不产生 Action；
+4. 房主再次选择自己先手，双方在同一 room/stable slots 开始第二轮，因此该测试中角色保持不变；RED 在 BLUE 回合取消投降确认时不产生 Action；
 5. RED 再次确认投降后产生 1-revision RESIGNATION WIN，不显示连接路径 glow；
 6. 两轮独立 Match/replay 从 PostgreSQL 新 connection 重读并验证，双方 private history 返回两条安全 metadata。
 
 `tooling/e2e/tests/reversi-vertical-slice.spec.ts` 使用相同真实 harness，独立验证：
 
-1. 目录卡片、中文标题、`/games/reversi`、8×8 可访问棋盘、BLACK/WHITE stable colors、棋子数和服务器合法落点；
+1. 目录卡片、中文标题、`/games/reversi`、8×8 可访问棋盘、本轮 BLACK/WHITE roles、棋子数和服务器合法落点；
 2. 两个隔离 guest 创建/加入真实 room，越过 WHITE 的 disabled UX 提交错回合 intent，服务器拒绝且 revision、棋盘和棋子数保持不变；
 3. 两方完成 11-revision 真实对局，验证落子后的权威翻转，以及 WHITE 被清空时仍有 49 个空格的非满盘终局；
 4. completed replay 从新 PostgreSQL connection 重读并通过 exact registry verifier，RNG cursor 为 0；

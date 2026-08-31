@@ -1,6 +1,6 @@
 # 产品目标与范围
 
-> 状态：V1 产品基线（M1–M6 已完成）
+> 状态：产品基线（M1–M6 已完成，当前使用 Protocol V2）
 > 本文是产品目标、范围和非目标的权威来源。技术实现边界见 [ARCHITECTURE.md](./ARCHITECTURE.md)。
 
 ## 1. 产品愿景
@@ -24,8 +24,9 @@
 1. 用户打开统一主页并查看已上线游戏。
 2. 用户进入某个游戏详情或房间入口。
 3. 用户创建私人房间，获得房间码和邀请链接。
-4. 另一位用户通过房间码或邀请链接加入。
-5. 所需席位就绪后开始比赛。
+4. 房主为下一局选择“我先”或“对方先”；该选择可以在另一位用户加入前完成。
+5. 另一位用户通过房间码或邀请链接加入。
+6. 双方都在线并准备后，平台按房主选择创建新一局并开始比赛。
 
 ### 3.2 在线对局
 
@@ -33,7 +34,7 @@
 2. 当前玩家提交一个游戏 Action。
 3. 服务器接受或拒绝该 Action，并同步新的权威视图。
 4. 比赛结束后平台产生结构化 Outcome 和 canonical replay。
-5. 两名原玩家可以分别准备或取消；双方都准备且仍在线时，在同一房间和 stable slots 下无缝开始下一轮。
+5. 一局结束后回到统一的下一局设置：房主重新选择先手方，两名原玩家分别准备或取消；双方都准备且仍在线时，在同一房间和 stable slots 下开始下一局。
 6. 每轮都是独立的 Match、canonical replay 和私有 history 记录，不把多轮合并成一场比赛。
 7. 房主可以关闭房间，非房主可以主动离开；终止 active 对局前界面必须要求确认。
 
@@ -58,32 +59,32 @@
 - 完整的按玩家 View snapshot 同步；
 - 60 秒席位保留和重连后的完整同步；
 - canonical replay 记录、确定性重建和自动化验证；
-- 同一 live room 多轮、终局 ready/cancel、房主关闭、非房主离开和有界回收；
+- 首局及后续局统一选择先手、ready/cancel，同一 live room 多轮、房主关闭、非房主离开和有界回收；
 - 每轮独立 PostgreSQL Match/Replay archive，以及当前 guest 私有的最小 history metadata。
 
-当前生产 composition 使用内存 active `RoomStore` 和 PostgreSQL `ReplayStore`/Match archive。已完成轮次可跨进程读取，但进程重启仍不会恢复 waiting/active live room、socket、timer 或 authoritative State；启动协调只会把残留 archive 诚实标记为 `abandoned`。
+当前生产 composition 使用内存 live `RoomStore` 和 PostgreSQL `ReplayStore`/`MatchArchive`。创建房间只产生 room code、Config 与 stable slots；首局尚未开始的房间没有 Core State、Replay 或 Match，也不进入历史。已开始/完成轮次可持久化读取，但进程重启仍不会恢复 live room、socket、timer 或 authoritative State；启动协调只会把旧 schema 中遗留的 `waiting` 和当前 `active` archive 诚实标记为 `abandoned`。
 
 ### 4.1 第二游戏扩展验证
 
-四子棋 1.0.0 已从同一目录和通用游戏页提供标准 7 列 × 6 行、两人轮流重力落子、横/纵/双对角四连胜与满盘平局。它复用与井字棋相同的 create/join/reconnect、stable slots、多轮 ready/cancel、close/leave、canonical replay、PostgreSQL archive 和私有 history 行为；浏览器只提交 column intent，服务端决定落点和 Outcome。
+四子棋 1.0.0 已从同一目录和通用游戏页提供标准 7 列 × 6 行、两人轮流重力落子、横/纵/双对角四连胜与满盘平局。它复用与井字棋相同的 create/join/reconnect、逐局先手选择、stable slots、多轮 ready/cancel、close/leave、canonical replay、PostgreSQL archive 和私有 history 行为；浏览器只提交 column intent，服务端决定落点和 Outcome。
 
 该阶段没有新增平台产品能力，不包含 AI、计时、悔棋、公开房间、Matchmaking、观战或公开 replay。
 
 ### 4.2 第三游戏与 Config 扩展验证
 
-五子棋 1.0.0 已从同一目录和通用游戏页提供默认 15×15 棋盘，并由 strict Config 支持 19×19；`winLength` 固定为 5，连续五子或以上获胜。两名玩家按 stable slot 顺序轮流在 row-major cell 落子，浏览器只提交 `{ type: "PLACE_STONE", cell }`，服务端决定回合、占用、长连、平局与 Outcome。
+五子棋 1.0.0 已从同一目录和通用游戏页提供默认 15×15 棋盘，并由 strict Config 支持 19×19；`winLength` 固定为 5，连续五子或以上获胜。两名玩家按本轮 `playerOrder` 轮流在 row-major cell 落子；房间内 stable slot 不变，但房主可逐局指定自己或对方获得标准先手角色。浏览器只提交 `{ type: "PLACE_STONE", cell }`，服务端决定回合、占用、长连、平局与 Outcome。
 
 五子棋复用既有 create/join/reconnect、多轮、close/leave、per-viewer `projectView`、canonical replay、PostgreSQL archive/history 和真实双浏览器链路。通用 Web 从 manifest 的 JSON-safe `defaultConfig` 创建默认房间，不在平台代码中加入五子棋规则分支。该阶段不包含 AI、禁手、交换规则、计时、悔棋、观战、公开 replay 或 Matchmaking。
 
 ### 4.3 额外游戏：六贯棋
 
-六贯棋 1.0.0 作为用户确认的额外游戏提供固定 11×11 菱形六边格棋盘。创建者固定为蓝方并先手，蓝方连接上右/下左两边，加入者固定为红方并连接上左/下右两边；不启用交换规则。玩家每回合只提交 `PLACE_STONE(cell)`，也可在任一活跃时刻提交不受回合限制的 `RESIGN`，由 Core 产生连接或投降 WIN Outcome；不存在 DRAW。
+六贯棋 1.0.0 作为用户确认的额外游戏提供固定 11×11 菱形六边格棋盘。本轮 `players[0]` 为蓝方并先手、连接上右/下左两边，`players[1]` 为红方并连接上左/下右两边；房主选择谁先手，就由谁在该局获得蓝方，不改变 stable slot 或规则，也不启用交换规则。玩家每回合只提交 `PLACE_STONE(cell)`，也可在任一活跃时刻提交不受回合限制的 `RESIGN`，由 Core 产生连接或投降 WIN Outcome；不存在 DRAW。
 
 连接 Outcome 使用确定性的 multi-source BFS 保存 canonical 最短 `winningPath`，客户端只按服务器 View 对该路径显示白色模糊发光边框。投降按钮由客户端二次确认，取消不产生 Action；断线、关闭、主动离开和 reconnect timeout 仍由平台 lifecycle 产生 `abandoned`。六贯棋复用既有双人房间、stable slots、多轮、reconnect、Replay V1、PostgreSQL archive/history 和通用 Web 页面，不新增观战连接、交换、AI、计时、悔棋或公开 replay；该额外游戏在实现当时也不替代随后独立完成的 M6 黑白棋阶段。
 
 ### 4.4 黑白棋与 M6 收尾
 
-黑白棋 1.0.0 提供固定 8×8 标准双人规则。创建者对应 BLACK 并先手，加入者对应 WHITE；初始四子固定，玩家只提交 `PLACE_DISC(cell)`。服务器在全部八方向计算夹线并同时翻转；若下一方没有合法行动则由 Core 自动保持当前行动方，双方均无合法行动时即使棋盘未满也立即按棋子数产生 WIN/DRAW。
+黑白棋 1.0.0 提供固定 8×8 标准双人规则。本轮 `players[0]` 对应 BLACK 并先手、`players[1]` 对应 WHITE；房主选择谁先手，就由谁在该局获得 BLACK，不改变 stable slot 或黑白棋规则。初始四子固定，玩家只提交 `PLACE_DISC(cell)`。服务器在全部八方向计算夹线并同时翻转；若下一方没有合法行动则由 Core 自动保持当前行动方，双方均无合法行动时即使棋盘未满也立即按棋子数产生 WIN/DRAW。
 
 Web View 明确提供合法落点、当前行动 slot、BLACK/WHITE 棋子数和 Outcome；客户端不扫描夹线、不判断跳过或终局。强制跳过不是 PASS Action，不增加额外 revision，也不进入 canonical replay。黑白棋复用既有双人房间、多轮、stable slots、projection、Replay V1、PostgreSQL archive/history 和通用 Web 页面，M6 因此完成。
 
@@ -127,6 +128,7 @@ M6 完成后当前仍不实现：
 - Game Core 可在无浏览器、网络和数据库的环境中单独测试；
 - 客户端无法通过伪造 State、actor 或 revision 改写权威结果；
 - 相同 `gameVersion`、配置、seed、玩家席位和 actions 可重建相同结果；
+- 创建房间但尚未开始一局时不产生 Match/history；每轮 Replay header 与 Core 初始化使用完全相同的 `playerOrder`；
 - 模块职责、公开 API 和依赖方向在文档与自动化检查中保持一致。
 
 测试职责与验收矩阵见 [TESTING.md](./TESTING.md)，开发顺序见 [ROADMAP.md](./ROADMAP.md)。

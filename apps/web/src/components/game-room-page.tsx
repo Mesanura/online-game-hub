@@ -98,7 +98,7 @@ export function GameRoomPage(props: GameRoomPageProps) {
   const getSnapshot = useCallback(() => host.getState(), [host]);
   const state = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
   const liveRoomCode = state.room?.roomCode ?? null;
-  const matchStatus = state.snapshot?.status ?? null;
+  const roundStatus = state.roomLifecycle?.currentRound?.status ?? null;
   const [roomCode, setRoomCode] = useState(props.initialRoomCode ?? "");
   const [localError, setLocalError] = useState<string | null>(null);
   const [localNotice, setLocalNotice] = useState<string | null>(null);
@@ -174,15 +174,15 @@ export function GameRoomPage(props: GameRoomPageProps) {
   }, [state.snapshot?.gameId, state.snapshot?.gameVersion]);
 
   useEffect(() => {
-    if (liveRoomCode === null || matchStatus === null) {
+    if (liveRoomCode === null) {
       setPlayerCountNotice(null);
       return;
     }
-    if (matchStatus === "waiting") {
+    if (roundStatus === null) {
       setPlayerCountNotice("waiting");
       return;
     }
-    if (matchStatus !== "active") {
+    if (roundStatus !== "active") {
       setPlayerCountNotice(null);
       return;
     }
@@ -192,7 +192,7 @@ export function GameRoomPage(props: GameRoomPageProps) {
       setPlayerCountNotice((current) => (current === "ready" ? null : current));
     }, PLAYER_READY_NOTICE_MILLISECONDS);
     return () => window.clearTimeout(dismissTimeout);
-  }, [liveRoomCode, matchStatus]);
+  }, [liveRoomCode, roundStatus]);
 
   const createRoom = async (): Promise<void> => {
     setBusy(true);
@@ -222,14 +222,28 @@ export function GameRoomPage(props: GameRoomPageProps) {
     }
   };
 
-  const toggleRematch = async (): Promise<void> => {
+  const selectStarter = async (
+    starter: "OWNER" | "NON_OWNER",
+  ): Promise<void> => {
     setBusy(true);
     setLocalError(null);
     try {
-      if (state.roomLifecycle?.rematch.selfReady === true) {
-        await host.cancelRematch();
+      await host.selectStarter(starter);
+    } catch {
+      setLocalError("无法更新下一局先手方。");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const toggleRoundReady = async (): Promise<void> => {
+    setBusy(true);
+    setLocalError(null);
+    try {
+      if (state.roomLifecycle?.nextRound?.selfReady === true) {
+        await host.cancelRoundReady();
       } else {
-        await host.requestRematch();
+        await host.readyForRound();
       }
     } catch {
       setLocalError("无法更新下一局准备状态。");
@@ -306,7 +320,10 @@ export function GameRoomPage(props: GameRoomPageProps) {
   const GameComponent = clientModule?.Component;
   const rejection = rejectionLabel(state);
   const lifecycle = state.roomLifecycle;
+  const nextRound = lifecycle?.nextRound ?? null;
   const hasLiveRoom = liveRoomCode !== null;
+  const displayedRoundNumber =
+    lifecycle?.currentRound?.roundNumber ?? nextRound?.roundNumber ?? null;
 
   return (
     <div className="page-shell game-page">
@@ -392,11 +409,11 @@ export function GameRoomPage(props: GameRoomPageProps) {
             </strong>
           </p>
         )}
-        {lifecycle === null || !hasLiveRoom ? null : (
+        {displayedRoundNumber === null || !hasLiveRoom ? null : (
           <p>
             当前轮次：
             <strong data-testid="round-number">
-              第 {lifecycle.roundNumber} 局
+              第 {displayedRoundNumber} 局
             </strong>
           </p>
         )}
@@ -462,28 +479,58 @@ export function GameRoomPage(props: GameRoomPageProps) {
         )}
       </section>
 
-      {state.snapshot === null || lifecycle === null || !hasLiveRoom ? null : (
+      {lifecycle === null || !hasLiveRoom ? null : (
         <section aria-label="房间操作" className="room-controls-panel">
-          {state.snapshot.status === "completed" &&
-          lifecycle.rematch.available ? (
-            <>
+          {nextRound === null ? null : (
+            <div className="round-setup-panel">
+              <h2>第 {nextRound.roundNumber} 局设置</h2>
+              {lifecycle.isOwner ? (
+                <div aria-label="选择先手方" className="starter-options">
+                  <button
+                    aria-pressed={nextRound.starter === "OWNER"}
+                    className="secondary-button"
+                    data-testid="starter-owner"
+                    disabled={busy}
+                    onClick={() => void selectStarter("OWNER")}
+                    type="button"
+                  >
+                    我先
+                  </button>
+                  <button
+                    aria-pressed={nextRound.starter === "NON_OWNER"}
+                    className="secondary-button"
+                    data-testid="starter-non-owner"
+                    disabled={busy}
+                    onClick={() => void selectStarter("NON_OWNER")}
+                    type="button"
+                  >
+                    对方先
+                  </button>
+                </div>
+              ) : (
+                <p>
+                  {nextRound.starter === null
+                    ? "等待房主选择先手方。"
+                    : nextRound.starter === "OWNER"
+                      ? "房主选择由房主先手。"
+                      : "房主选择由你先手。"}
+                </p>
+              )}
               <button
-                data-testid="toggle-rematch"
-                disabled={busy}
-                onClick={() => void toggleRematch()}
+                data-testid="toggle-round-ready"
+                disabled={busy || nextRound.starter === null}
+                onClick={() => void toggleRoundReady()}
                 type="button"
               >
-                {lifecycle.rematch.selfReady ? "取消再来一局" : "再来一局"}
+                {nextRound.selfReady ? "取消准备" : "准备开始"}
               </button>
-              <p data-testid="rematch-status" role="status">
-                {lifecycle.rematch.selfReady &&
-                lifecycle.rematch.readyPlayerCount <
-                  lifecycle.rematch.requiredPlayerCount
-                  ? `已准备，等待其他玩家（${lifecycle.rematch.readyPlayerCount}/${lifecycle.rematch.requiredPlayerCount}）`
-                  : `${lifecycle.rematch.readyPlayerCount}/${lifecycle.rematch.requiredPlayerCount} 人已准备`}
+              <p data-testid="round-setup-status" role="status">
+                {nextRound.starter === null
+                  ? "房主尚未选择先手方"
+                  : `${nextRound.selfReady ? "你已准备；" : ""}${nextRound.readyPlayerCount}/${nextRound.requiredPlayerCount} 人已准备`}
               </p>
-            </>
-          ) : null}
+            </div>
+          )}
           {lifecycle.isOwner ? (
             <button
               className="danger-button"

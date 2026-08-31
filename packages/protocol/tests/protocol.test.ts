@@ -49,7 +49,8 @@ const snapshot = {
 } as const;
 
 describe("transport conventions", () => {
-  it("keeps Protocol V1 room and custom message names stable", () => {
+  it("keeps Protocol V2 room and custom message names stable", () => {
+    expect(PROTOCOL_VERSION).toBe(2);
     expect(GAME_ROOM_NAME).toBe("game");
     expect(GAME_ACTION_MESSAGE).toBe("game.action");
     expect(ROOM_CONTROL_MESSAGE).toBe("room.control");
@@ -58,10 +59,19 @@ describe("transport conventions", () => {
 });
 
 describe("room control", () => {
-  it("parses strict rematch and close commands without identity fields", () => {
+  it("parses strict setup and close commands without identity fields", () => {
+    expect(
+      roomControlCommandSchema.parse({
+        type: "room.control",
+        protocolVersion: PROTOCOL_VERSION,
+        commandId: "select-owner",
+        operation: "SELECT_STARTER",
+        starter: "OWNER",
+      }),
+    ).toMatchObject({ operation: "SELECT_STARTER", starter: "OWNER" });
     for (const operation of [
-      "REQUEST_REMATCH",
-      "CANCEL_REMATCH",
+      "READY_FOR_ROUND",
+      "CANCEL_ROUND_READY",
       "CLOSE_ROOM",
     ] as const) {
       expect(
@@ -82,23 +92,33 @@ describe("room control", () => {
         playerSessionId: "another-player",
       }).success,
     ).toBe(false);
+    expect(
+      roomControlCommandSchema.safeParse({
+        type: "room.control",
+        protocolVersion: PROTOCOL_VERSION,
+        commandId: "invalid-starter",
+        operation: "SELECT_STARTER",
+        starter: "RANDOM",
+      }).success,
+    ).toBe(false);
   });
 
   it("validates per-viewer lifecycle state without exposing participant ids", () => {
     const lifecycle = roomLifecycleStateSchema.parse({
       type: "room.lifecycle",
       protocolVersion: PROTOCOL_VERSION,
-      roundNumber: 2,
       isOwner: false,
-      rematch: {
-        available: true,
+      currentRound: { roundNumber: 1, status: "completed" },
+      nextRound: {
+        roundNumber: 2,
+        starter: "NON_OWNER",
         selfReady: true,
         readyPlayerCount: 1,
         requiredPlayerCount: 2,
       },
       closed: false,
       closeReason: null,
-      causedByCommandId: "rematch-1",
+      causedByCommandId: "ready-1",
     });
     expect(lifecycle).not.toHaveProperty("playerSessionId");
     expect(JSON.stringify(lifecycle)).not.toContain("another-player");
@@ -109,10 +129,11 @@ describe("room control", () => {
       {
         type: "room.lifecycle",
         protocolVersion: PROTOCOL_VERSION,
-        roundNumber: 1,
         isOwner: true,
-        rematch: {
-          available: true,
+        currentRound: null,
+        nextRound: {
+          roundNumber: 1,
+          starter: "OWNER",
           selfReady: false,
           readyPlayerCount: 3,
           requiredPlayerCount: 2,
@@ -125,10 +146,11 @@ describe("room control", () => {
       {
         type: "room.lifecycle",
         protocolVersion: PROTOCOL_VERSION,
-        roundNumber: 1,
         isOwner: true,
-        rematch: {
-          available: false,
+        currentRound: { roundNumber: 1, status: "active" },
+        nextRound: {
+          roundNumber: 2,
+          starter: "OWNER",
           selfReady: true,
           readyPlayerCount: 1,
           requiredPlayerCount: 2,
@@ -141,14 +163,9 @@ describe("room control", () => {
       {
         type: "room.lifecycle",
         protocolVersion: PROTOCOL_VERSION,
-        roundNumber: 1,
         isOwner: true,
-        rematch: {
-          available: false,
-          selfReady: false,
-          readyPlayerCount: 0,
-          requiredPlayerCount: 2,
-        },
+        currentRound: null,
+        nextRound: null,
         closed: true,
         closeReason: null,
       },
@@ -159,7 +176,7 @@ describe("room control", () => {
 });
 
 describe("GameActionCommand", () => {
-  it("parses a strict V1 envelope and keeps action unknown", () => {
+  it("parses a strict V2 envelope and keeps action unknown", () => {
     const parsed = gameActionCommandSchema.parse(actionCommand);
     expect(parsed).toEqual(actionCommand);
     expectTypeOf<GameActionCommand["action"]>().toBeUnknown();
@@ -171,11 +188,11 @@ describe("GameActionCommand", () => {
         expectedRevision: actionCommand.expectedRevision,
         action: actionCommand.action,
       }).success,
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it.each([
-    [{ ...actionCommand, protocolVersion: 2 }],
+    [{ ...actionCommand, protocolVersion: 1 }],
     [{ ...actionCommand, expectedRevision: -1 }],
     [{ ...actionCommand, expectedRevision: 1.5 }],
     [{ ...actionCommand, expectedRevision: Number.MAX_SAFE_INTEGER + 1 }],
@@ -195,6 +212,11 @@ describe("GameActionCommand", () => {
       expectedRevision: actionCommand.expectedRevision,
     };
     expect(gameActionCommandSchema.safeParse(missingAction).success).toBe(
+      false,
+    );
+    const { roundNumber, ...missingRoundNumber } = actionCommand;
+    expect(roundNumber).toBe(1);
+    expect(gameActionCommandSchema.safeParse(missingRoundNumber).success).toBe(
       false,
     );
     expect(
@@ -240,6 +262,14 @@ describe("server envelopes", () => {
     ],
   ])("rejects invalid or private snapshot field %#", (candidate) => {
     expect(matchSnapshotSchema.safeParse(candidate).success).toBe(false);
+  });
+
+  it("requires a round number in every snapshot", () => {
+    const { roundNumber, ...missingRoundNumber } = snapshot;
+    expect(roundNumber).toBe(1);
+    expect(matchSnapshotSchema.safeParse(missingRoundNumber).success).toBe(
+      false,
+    );
   });
 
   it("parses platform and game-rule rejection without conflating codes", () => {
@@ -307,7 +337,7 @@ describe("ticket and room matchmaking contracts", () => {
     expect(
       gameServerTicketClaimsSchema.safeParse({
         ...claims,
-        protocolVersion: 2,
+        protocolVersion: 1,
       }).success,
     ).toBe(false);
     expect(

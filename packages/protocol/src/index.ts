@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const PROTOCOL_VERSION = 1 as const;
+export const PROTOCOL_VERSION = 2 as const;
 export const MAX_GAME_ACTION_BYTES = 16_384;
 export const GAME_ROOM_NAME = "game" as const;
 export const GAME_ACTION_MESSAGE = "game.action" as const;
@@ -144,29 +144,56 @@ export const gameActionCommandSchema = z
     type: z.literal("game.action"),
     protocolVersion: protocolVersionSchema,
     commandId: commandIdSchema,
-    roundNumber: roundNumberSchema.optional(),
+    roundNumber: roundNumberSchema,
     expectedRevision: revisionSchema,
     action: gameActionPayloadSchema,
   })
   .strict();
 export type GameActionCommand = z.infer<typeof gameActionCommandSchema>;
 
-export const roomControlOperationSchema = z.enum([
-  "REQUEST_REMATCH",
-  "CANCEL_REMATCH",
-  "CLOSE_ROOM",
-]);
-export type RoomControlOperation = z.infer<typeof roomControlOperationSchema>;
+export const starterChoiceSchema = z.enum(["OWNER", "NON_OWNER"]);
+export type StarterChoice = z.infer<typeof starterChoiceSchema>;
 
-export const roomControlCommandSchema = z
+const roomControlBaseSchema = z.object({
+  type: z.literal("room.control"),
+  protocolVersion: protocolVersionSchema,
+  commandId: commandIdSchema,
+});
+
+export const roomControlCommandSchema = z.discriminatedUnion("operation", [
+  roomControlBaseSchema
+    .extend({
+      operation: z.literal("SELECT_STARTER"),
+      starter: starterChoiceSchema,
+    })
+    .strict(),
+  roomControlBaseSchema
+    .extend({ operation: z.literal("READY_FOR_ROUND") })
+    .strict(),
+  roomControlBaseSchema
+    .extend({ operation: z.literal("CANCEL_ROUND_READY") })
+    .strict(),
+  roomControlBaseSchema.extend({ operation: z.literal("CLOSE_ROOM") }).strict(),
+]);
+export type RoomControlCommand = z.infer<typeof roomControlCommandSchema>;
+export type RoomControlOperation = RoomControlCommand["operation"];
+
+const currentRoundLifecycleSchema = z
   .object({
-    type: z.literal("room.control"),
-    protocolVersion: protocolVersionSchema,
-    commandId: commandIdSchema,
-    operation: roomControlOperationSchema,
+    roundNumber: roundNumberSchema,
+    status: z.enum(["active", "completed", "abandoned"]),
   })
   .strict();
-export type RoomControlCommand = z.infer<typeof roomControlCommandSchema>;
+
+const nextRoundLifecycleSchema = z
+  .object({
+    roundNumber: roundNumberSchema,
+    starter: starterChoiceSchema.nullable(),
+    selfReady: z.boolean(),
+    readyPlayerCount: z.number().int().nonnegative(),
+    requiredPlayerCount: z.number().int().positive(),
+  })
+  .strict();
 
 export const roomCloseReasonSchema = z.enum([
   "OWNER_CLOSED",
@@ -180,44 +207,42 @@ export const roomLifecycleStateSchema = z
   .object({
     type: z.literal("room.lifecycle"),
     protocolVersion: protocolVersionSchema,
-    roundNumber: roundNumberSchema,
     isOwner: z.boolean(),
-    rematch: z
-      .object({
-        available: z.boolean(),
-        selfReady: z.boolean(),
-        readyPlayerCount: z.number().int().nonnegative(),
-        requiredPlayerCount: z.number().int().positive(),
-      })
-      .strict(),
+    currentRound: currentRoundLifecycleSchema.nullable(),
+    nextRound: nextRoundLifecycleSchema.nullable(),
     closed: z.boolean(),
     closeReason: roomCloseReasonSchema.nullable(),
     causedByCommandId: commandIdSchema.optional(),
   })
   .strict()
   .superRefine((state, context) => {
-    if (state.rematch.readyPlayerCount > state.rematch.requiredPlayerCount) {
-      context.addIssue({
-        code: "custom",
-        message: "Ready player count cannot exceed the required count.",
-        path: ["rematch", "readyPlayerCount"],
-      });
-    }
-    if (state.rematch.selfReady && state.rematch.readyPlayerCount === 0) {
-      context.addIssue({
-        code: "custom",
-        message: "A ready viewer must be included in the ready count.",
-        path: ["rematch", "selfReady"],
-      });
-    }
+    const nextRound = state.nextRound;
     if (
-      !state.rematch.available &&
-      (state.rematch.selfReady || state.rematch.readyPlayerCount !== 0)
+      nextRound !== null &&
+      nextRound.readyPlayerCount > nextRound.requiredPlayerCount
     ) {
       context.addIssue({
         code: "custom",
-        message: "Unavailable rematch state cannot contain ready players.",
-        path: ["rematch"],
+        message: "Ready player count cannot exceed the required count.",
+        path: ["nextRound", "readyPlayerCount"],
+      });
+    }
+    if (nextRound?.selfReady === true && nextRound.readyPlayerCount === 0) {
+      context.addIssue({
+        code: "custom",
+        message: "A ready viewer must be included in the ready count.",
+        path: ["nextRound", "selfReady"],
+      });
+    }
+    if (
+      nextRound !== null &&
+      nextRound.starter === null &&
+      (nextRound.selfReady || nextRound.readyPlayerCount !== 0)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "A round without a starter cannot contain ready players.",
+        path: ["nextRound"],
       });
     }
     if (state.closed !== (state.closeReason !== null)) {
@@ -227,11 +252,40 @@ export const roomLifecycleStateSchema = z
         path: ["closeReason"],
       });
     }
-    if (state.closed && state.rematch.available) {
+    if (state.closed && nextRound !== null) {
       context.addIssue({
         code: "custom",
-        message: "A closed room cannot offer a rematch.",
-        path: ["rematch", "available"],
+        message: "A closed room cannot offer a next round.",
+        path: ["nextRound"],
+      });
+    }
+    if (
+      !state.closed &&
+      nextRound === null &&
+      state.currentRound?.status !== "active"
+    ) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "An open room without an active round must offer a next round.",
+        path: ["nextRound"],
+      });
+    }
+    if (state.currentRound?.status === "active" && nextRound !== null) {
+      context.addIssue({
+        code: "custom",
+        message: "An active round cannot offer a next round.",
+        path: ["nextRound"],
+      });
+    }
+    if (
+      nextRound !== null &&
+      nextRound.roundNumber !== (state.currentRound?.roundNumber ?? 0) + 1
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "The next round number must follow the current round.",
+        path: ["nextRound", "roundNumber"],
       });
     }
   });
@@ -301,7 +355,7 @@ export const matchSnapshotSchema = z
     protocolVersion: protocolVersionSchema,
     gameId: gameIdSchema,
     gameVersion: gameVersionSchema,
-    roundNumber: roundNumberSchema.optional(),
+    roundNumber: roundNumberSchema,
     revision: revisionSchema,
     status: matchStatusSchema,
     viewer: viewerSchema,

@@ -21,7 +21,7 @@ function encodeUnsafeClaims(claims: unknown): string {
 }
 
 describe("HMAC Game Server ticket authority", () => {
-  it("issues short-lived Protocol V1 claims controlled by the server", () => {
+  it("issues short-lived Protocol V2 claims controlled by the server", () => {
     const authority = createHmacGameServerTicketAuthority({
       issuer: "web-test",
       secret: SECRET,
@@ -90,7 +90,7 @@ describe("HMAC Game Server ticket authority", () => {
     ).toEqual({ status: "rejected", code: "WRONG_AUDIENCE" });
     expect(
       authority.verify(
-        encodeUnsafeClaims({ ...validClaims, protocolVersion: 2 }),
+        encodeUnsafeClaims({ ...validClaims, protocolVersion: 1 }),
       ),
     ).toEqual({
       status: "rejected",

@@ -30,6 +30,7 @@ import type {
   RoomControlOperation,
   RoomLifecycleState,
   ServerMessage,
+  StarterChoice,
 } from "@online-game-hub/protocol";
 import { describe, expect, it } from "vitest";
 
@@ -148,13 +149,13 @@ function command(
   commandId: string,
   expectedRevision: number,
   action: unknown,
-  roundNumber?: number,
+  roundNumber = 1,
 ): GameActionCommand {
   return {
     type: "game.action",
     protocolVersion: PROTOCOL_VERSION,
     commandId,
-    ...(roundNumber === undefined ? {} : { roundNumber }),
+    roundNumber,
     expectedRevision,
     action,
   };
@@ -163,13 +164,46 @@ function command(
 function controlCommand(
   commandId: string,
   operation: RoomControlOperation,
+  starter?: StarterChoice,
 ): RoomControlCommand {
+  if (operation === "SELECT_STARTER") {
+    if (starter === undefined) {
+      throw new Error("SELECT_STARTER requires a starter.");
+    }
+    return {
+      type: "room.control",
+      protocolVersion: PROTOCOL_VERSION,
+      commandId,
+      operation,
+      starter,
+    };
+  }
   return {
     type: "room.control",
     protocolVersion: PROTOCOL_VERSION,
     commandId,
     operation,
   };
+}
+
+function startRound(
+  ownerRoom: ClientRoom,
+  nonOwnerRoom: ClientRoom,
+  commandPrefix: string,
+  starter: StarterChoice = "OWNER",
+): void {
+  ownerRoom.send(
+    ROOM_CONTROL_MESSAGE,
+    controlCommand(`${commandPrefix}-starter`, "SELECT_STARTER", starter),
+  );
+  ownerRoom.send(
+    ROOM_CONTROL_MESSAGE,
+    controlCommand(`${commandPrefix}-owner-ready`, "READY_FOR_ROUND"),
+  );
+  nonOwnerRoom.send(
+    ROOM_CONTROL_MESSAGE,
+    controlCommand(`${commandPrefix}-non-owner-ready`, "READY_FOR_ROUND"),
+  );
 }
 
 describe("real PostgreSQL authoritative persistence", () => {
@@ -219,10 +253,6 @@ describe("real PostgreSQL authoritative persistence", () => {
         (message) => message.type === "room.connected",
         "creator connection",
       );
-      await inboxA.next(
-        (message) => message.type === "match.snapshot",
-        "creator waiting snapshot",
-      );
       const activeA = inboxA.next(
         (message) =>
           message.type === "match.snapshot" && message.status === "active",
@@ -235,12 +265,13 @@ describe("real PostgreSQL authoritative persistence", () => {
         roomCode: "PERS2345",
       });
       const inboxB = new MessageInbox(roomB);
+      await inboxB.next(
+        (message) => message.type === "room.connected",
+        "joiner connection",
+      );
+      startRound(roomA, roomB, "database-tic-tac-toe-round-1");
       await Promise.all([
         activeA,
-        inboxB.next(
-          (message) => message.type === "room.connected",
-          "joiner connection",
-        ),
         inboxB.next(
           (message) =>
             message.type === "match.snapshot" && message.status === "active",
@@ -328,8 +359,12 @@ describe("real PostgreSQL authoritative persistence", () => {
       await accepted(roomA, inboxA, "accepted-5", 4, 2);
 
       const stored = await app.roomStore.getByRoomCode("PERS2345");
-      expect(stored).toMatchObject({ status: "completed", revision: 5 });
-      const replay = await app.replayStore.get(stored?.replayId ?? "");
+      expect(stored).toMatchObject({
+        currentRound: { status: "completed", revision: 5 },
+      });
+      const replay = await app.replayStore.get(
+        stored?.currentRound?.replayId ?? "",
+      );
       expect(replay?.actions).toHaveLength(5);
       expect(verifyReplay(replay, resolveGameDefinition)).toMatchObject({
         status: "verified",
@@ -348,7 +383,7 @@ describe("real PostgreSQL authoritative persistence", () => {
       try {
         const rebuiltReplay = await new PostgresReplayStore(
           rebuiltClient.database,
-        ).get(stored?.replayId ?? "");
+        ).get(stored?.currentRound?.replayId ?? "");
         expect(rebuiltReplay?.actions).toHaveLength(5);
         expect(
           verifyReplay(rebuiltReplay, resolveGameDefinition),
@@ -433,10 +468,6 @@ describe("real PostgreSQL authoritative persistence", () => {
         (message) => message.type === "room.connected",
         "Connect Four creator connection",
       );
-      await inboxA.next(
-        (message) => message.type === "match.snapshot",
-        "Connect Four waiting snapshot",
-      );
       const activeA = inboxA.next(
         (message) =>
           message.type === "match.snapshot" && message.status === "active",
@@ -450,12 +481,13 @@ describe("real PostgreSQL authoritative persistence", () => {
       });
       const inboxB = new MessageInbox(roomB);
       const lifecycleB = new LifecycleInbox(roomB);
+      await inboxB.next(
+        (message) => message.type === "room.connected",
+        "Connect Four joiner connection",
+      );
+      startRound(roomA, roomB, "database-connect-four-round-1");
       await Promise.all([
         activeA,
-        inboxB.next(
-          (message) => message.type === "room.connected",
-          "Connect Four joiner connection",
-        ),
         inboxB.next(
           (message) =>
             message.type === "match.snapshot" && message.status === "active",
@@ -495,43 +527,23 @@ describe("real PostgreSQL authoritative persistence", () => {
         );
       }
       const storedRoundOne = await app.roomStore.getByRoomCode("CFDB2345");
-      const replayRoundOneId = storedRoundOne?.replayId ?? "";
+      const replayRoundOneId = storedRoundOne?.currentRound?.replayId ?? "";
       expect(storedRoundOne).toMatchObject({
         gameId: "connect-four",
         gameVersion: "1.0.0",
-        roundNumber: 1,
-        revision: 7,
-        status: "completed",
+        currentRound: { roundNumber: 1, revision: 7, status: "completed" },
       });
 
       await Promise.all([
         lifecycleA.next(
-          (message) => message.rematch.available,
+          (message) => message.nextRound?.roundNumber === 2,
           "round one rematch lifecycle for creator",
         ),
         lifecycleB.next(
-          (message) => message.rematch.available,
+          (message) => message.nextRound?.roundNumber === 2,
           "round one rematch lifecycle for joiner",
         ),
       ]);
-      roomA.send(
-        ROOM_CONTROL_MESSAGE,
-        controlCommand("connect-four-ready-a", "REQUEST_REMATCH"),
-      );
-      await lifecycleA.next(
-        (message) => message.causedByCommandId === "connect-four-ready-a",
-        "creator ready",
-      );
-      const roundTwoLifecycleA = lifecycleA.next(
-        (message) => message.roundNumber === 2,
-        "creator round two lifecycle",
-      );
-      const roundTwoLifecycleB = lifecycleB.next(
-        (message) =>
-          message.roundNumber === 2 &&
-          message.causedByCommandId === "connect-four-ready-b",
-        "joiner round two lifecycle",
-      );
       const roundTwoSnapshotA = inboxA.next(
         (message) =>
           message.type === "match.snapshot" &&
@@ -546,16 +558,8 @@ describe("real PostgreSQL authoritative persistence", () => {
           message.revision === 0,
         "joiner round two snapshot",
       );
-      roomB.send(
-        ROOM_CONTROL_MESSAGE,
-        controlCommand("connect-four-ready-b", "REQUEST_REMATCH"),
-      );
-      await Promise.all([
-        roundTwoLifecycleA,
-        roundTwoLifecycleB,
-        roundTwoSnapshotA,
-        roundTwoSnapshotB,
-      ]);
+      startRound(roomA, roomB, "database-connect-four-round-2");
+      await Promise.all([roundTwoSnapshotA, roundTwoSnapshotB]);
       for (const [index, column] of winningColumns.entries()) {
         await acceptedDrop(
           index % 2 === 0 ? roomA : roomB,
@@ -567,13 +571,11 @@ describe("real PostgreSQL authoritative persistence", () => {
         );
       }
       const storedRoundTwo = await app.roomStore.getByRoomCode("CFDB2345");
-      const replayRoundTwoId = storedRoundTwo?.replayId ?? "";
+      const replayRoundTwoId = storedRoundTwo?.currentRound?.replayId ?? "";
       expect(storedRoundTwo).toMatchObject({
         gameId: "connect-four",
         gameVersion: "1.0.0",
-        roundNumber: 2,
-        revision: 7,
-        status: "completed",
+        currentRound: { roundNumber: 2, revision: 7, status: "completed" },
       });
       expect(replayRoundTwoId).not.toBe(replayRoundOneId);
 
@@ -606,6 +608,16 @@ describe("real PostgreSQL authoritative persistence", () => {
           roomCode: "CFAB2345",
         },
       );
+      const abandonedInboxB = new MessageInbox(abandonedRoomB);
+      await abandonedInboxB.next(
+        (message) => message.type === "room.connected",
+        "abandoned joiner connection",
+      );
+      startRound(
+        abandonedRoomA,
+        abandonedRoomB,
+        "database-connect-four-abandoned-round-1",
+      );
       await abandonedActiveA;
       await abandonedRoomB.leave(true);
       abandonedRoomB = undefined;
@@ -615,13 +627,11 @@ describe("real PostgreSQL authoritative persistence", () => {
         "abandoned snapshot",
       );
       const abandonedStored = await app.roomStore.getByRoomCode("CFAB2345");
-      const abandonedReplayId = abandonedStored?.replayId ?? "";
+      const abandonedReplayId = abandonedStored?.currentRound?.replayId ?? "";
       expect(abandonedStored).toMatchObject({
         gameId: "connect-four",
         gameVersion: "1.0.0",
-        roundNumber: 1,
-        revision: 0,
-        status: "abandoned",
+        currentRound: { roundNumber: 1, revision: 0, status: "abandoned" },
       });
 
       await roomA.leave();

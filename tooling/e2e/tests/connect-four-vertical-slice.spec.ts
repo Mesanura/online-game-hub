@@ -77,11 +77,15 @@ async function assertCompletedReplay(
   expect(room).toMatchObject({
     gameId: "connect-four",
     gameVersion: "1.0.0",
-    roundNumber,
-    revision: 7,
-    status: "completed",
+    currentRound: { roundNumber, revision: 7, status: "completed" },
   });
-  const replay = await harness.gameServer.replayStore.get(room.replayId);
+  const currentRound = room.currentRound;
+  if (currentRound === null) {
+    throw new Error("The completed Connect Four round was not persisted.");
+  }
+  const replay = await harness.gameServer.replayStore.get(
+    currentRound.replayId,
+  );
   expect(replay?.actions).toHaveLength(7);
   expect(verifyReplay(replay, resolveGameDefinition)).toMatchObject({
     status: "verified",
@@ -97,7 +101,7 @@ async function assertCompletedReplay(
   try {
     const rebuiltReplay = await new PostgresReplayStore(
       rebuiltClient.database,
-    ).get(room.replayId);
+    ).get(currentRound.replayId);
     expect(rebuiltReplay?.header).toMatchObject({
       replayFormatVersion: 1,
       gameId: "connect-four",
@@ -112,7 +116,7 @@ async function assertCompletedReplay(
   } finally {
     await rebuiltClient.close();
   }
-  return room.replayId;
+  return currentRound.replayId;
 }
 
 async function readHistory(
@@ -148,15 +152,13 @@ test("two guests play two authoritative Connect Four rounds with independent rep
   await expect(pageA.getByTestId("game-stage")).toHaveCount(0);
   await pageA.getByTestId("create-room").click();
   await expect(pageA.getByTestId("connection-state")).toHaveText("已连接");
-  await expect(pageA.locator(".game-page > :first-child")).toHaveAttribute(
-    "data-testid",
-    "game-stage",
-  );
-  await expect(pageA.getByTestId("match-status")).toHaveText("等待另一位玩家");
+  await expect(pageA.getByTestId("game-stage")).toHaveCount(0);
+  await expect(pageA.getByTestId("match-status")).toHaveCount(0);
   await expect(pageA.getByTestId("player-count-notice")).toHaveAttribute(
     "data-state",
     "waiting",
   );
+  await pageA.getByTestId("starter-owner").click();
 
   const inviteUrl = await pageA.getByTestId("invite-link").getAttribute("href");
   if (inviteUrl === null) {
@@ -174,6 +176,12 @@ test("two guests play two authoritative Connect Four rounds with independent rep
     pageB.getByRole("article").filter({ hasText: "四子棋" }),
   ).toBeVisible();
   await pageB.goto(inviteUrl);
+  await expect(pageB.getByTestId("connection-state")).toHaveText("已连接");
+  await pageA.getByTestId("toggle-round-ready").click();
+  await expect(pageB.getByTestId("round-setup-status")).toHaveText(
+    "1/2 人已准备",
+  );
+  await pageB.getByTestId("toggle-round-ready").click();
   await Promise.all(
     [pageA, pageB].map(async (page) => {
       await expect(page.getByTestId("connection-state")).toHaveText("已连接");
@@ -277,9 +285,12 @@ test("two guests play two authoritative Connect Four rounds with independent rep
     }),
   ]);
 
-  await pageA.getByTestId("toggle-rematch").click();
-  await expect(pageB.getByTestId("rematch-status")).toHaveText("1/2 人已准备");
-  await pageB.getByTestId("toggle-rematch").click();
+  await pageA.getByTestId("starter-owner").click();
+  await pageA.getByTestId("toggle-round-ready").click();
+  await expect(pageB.getByTestId("round-setup-status")).toHaveText(
+    "1/2 人已准备",
+  );
+  await pageB.getByTestId("toggle-round-ready").click();
   await Promise.all(
     [pageA, pageB].map(async (page) => {
       await expect(page.getByTestId("round-number")).toHaveText("第 2 局");

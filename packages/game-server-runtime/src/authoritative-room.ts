@@ -31,6 +31,7 @@ import type {
   RoomConnected,
   RoomLifecycleState,
   ServerMessage,
+  StarterChoice,
 } from "@online-game-hub/protocol";
 
 import type { TicketVerifier } from "./auth.js";
@@ -52,6 +53,7 @@ import type {
 import { InMemoryMetricsCollector } from "./observability.js";
 import type {
   RoomStore,
+  StoredGameRound,
   StoredGameRoom,
   StoredPlayerSlot,
 } from "./room-store.js";
@@ -108,23 +110,31 @@ interface RuntimeSlot {
 interface RuntimeAggregate {
   readonly definition: UnknownGameDefinition;
   readonly initialConfig: JsonValue;
-  replayId: string;
-  roundNumber: number;
   readonly roomCode: string;
   readonly slots: RuntimeSlot[];
+  currentRound: RuntimeRound | null;
+}
+
+interface RuntimeRound {
+  readonly replayId: string;
+  readonly roundNumber: number;
+  readonly playerOrder: readonly PlayerSlotId[];
   state: JsonValue;
   rng: RngState;
   revision: number;
-  status: MatchStatus;
+  status: Exclude<MatchStatus, "waiting">;
   outcome: JsonValue | null;
 }
 
 interface PendingRound {
   readonly replayId: string;
   readonly roundNumber: number;
+  readonly playerOrder: readonly PlayerSlotId[];
   readonly initialRng: RngState;
-  readonly state: JsonValue;
-  readonly rng: RngState;
+  readonly initialized: {
+    readonly state: JsonValue;
+    readonly rng: RngState;
+  } | null;
 }
 
 interface RuntimeClientData {
@@ -200,6 +210,7 @@ export function createAuthoritativeGameRoomClass(
     readonly #readySessions = new Set<string>();
     #terminalTimeout: CancelTimer | null = null;
     #closedReason: RoomCloseReason | null = null;
+    #starterChoice: StarterChoice | null = null;
     #pendingRound: PendingRound | null = null;
     #disposed = false;
 
@@ -261,7 +272,9 @@ export function createAuthoritativeGameRoomClass(
         !Number.isSafeInteger(minPlayers) ||
         !Number.isSafeInteger(maxPlayers) ||
         minPlayers <= 0 ||
-        maxPlayers < minPlayers
+        maxPlayers < minPlayers ||
+        minPlayers !== 2 ||
+        maxPlayers !== 2
       ) {
         throw new ServerError(500, "INTERNAL_ERROR");
       }
@@ -277,58 +290,21 @@ export function createAuthoritativeGameRoomClass(
         throw new ServerError(500, "INTERNAL_ERROR");
       }
 
-      const initialRng = createRng(ids.createRngSeed());
-      let initialized: ReturnType<UnknownGameDefinition["createInitialState"]>;
-      try {
-        initialized = definition.createInitialState({
-          config: configResult.data,
-          players: slots.map((slot) => slot.slotId),
-          rng: initialRng,
-        });
-      } catch {
-        throw new ServerError(500, "INTERNAL_ERROR");
-      }
-      if (
-        !isJsonValue(initialized.state) ||
-        !validReturnedRng(initialized.rng, initialRng)
-      ) {
-        throw new ServerError(500, "INTERNAL_ERROR");
-      }
-
       this.autoDispose = false;
       this.patchRate = null;
       this.maxClients = maxPlayers * 2;
       this.maxMessagesPerSecond = 30;
-      const replayId = ids.createReplayId();
       this.#creatorSessionId = verification.playerSessionId;
       this.#aggregate = {
         definition,
         initialConfig: configResult.data,
-        replayId,
-        roundNumber: 1,
         roomCode,
         slots,
-        state: initialized.state,
-        rng: initialized.rng,
-        revision: 0,
-        status: "waiting",
-        outcome: null,
+        currentRound: null,
       };
 
-      await dependencies.replayStore.create(replayId, {
-        replayFormatVersion: REPLAY_FORMAT_VERSION,
-        gameId: definition.manifest.id,
-        gameVersion: definition.manifest.gameVersion,
-        rng: {
-          algorithm: initialRng.algorithm,
-          seed: initialRng.seed,
-        },
-        initialConfig: configResult.data,
-        players: slots.map((slot) => ({ slotId: slot.slotId })),
-      });
       const storedRoom = this.#storedRoom();
       await dependencies.roomStore.create(storedRoom);
-      await matchArchive.createRound(storedRoom);
       await this.setMetadata({
         roomCode,
         gameId: definition.manifest.id,
@@ -384,7 +360,7 @@ export function createAuthoritativeGameRoomClass(
         ) {
           throw protocolServerError("NOT_A_PLAYER");
         }
-        if (aggregate.status === "abandoned") {
+        if (this.#closedReason !== null) {
           throw protocolServerError("MATCH_NOT_ACTIVE");
         }
 
@@ -392,7 +368,7 @@ export function createAuthoritativeGameRoomClass(
           (candidate) => candidate.playerSessionId === playerSessionId,
         );
         if (slot === undefined) {
-          if (aggregate.status === "completed") {
+          if (aggregate.currentRound?.status === "completed") {
             throw protocolServerError("ROOM_NOT_JOINABLE");
           }
           if (request.data.type !== "room.join") {
@@ -401,7 +377,7 @@ export function createAuthoritativeGameRoomClass(
           slot = aggregate.slots.find(
             (candidate) => candidate.playerSessionId === null,
           );
-          if (slot === undefined || aggregate.status !== "waiting") {
+          if (slot === undefined || aggregate.currentRound !== null) {
             throw protocolServerError("ROOM_FULL");
           }
           slot.playerSessionId = playerSessionId;
@@ -432,27 +408,22 @@ export function createAuthoritativeGameRoomClass(
           previousClient.leave(4001, "connection replaced");
         }
 
-        const becameActive =
-          aggregate.status === "waiting" && this.#allRequiredPlayersConnected();
-        if (becameActive) {
-          aggregate.status = "active";
-        }
         const storedRoom = this.#storedRoom();
-        await matchArchive.saveRound(storedRoom);
+        if (aggregate.currentRound !== null) {
+          await matchArchive.saveRound(storedRoom);
+        }
         await dependencies.roomStore.save(storedRoom);
         this.#sendConnected(client, slot.slotId);
         this.#broadcastLifecycle();
-        if (becameActive) {
-          this.#broadcastSnapshots();
-        } else {
+        if (aggregate.currentRound !== null) {
           this.#sendSnapshot(client);
         }
         logger.write({
           event: wasReconnect ? "connection.reconnected" : "connection.joined",
           roomId: this.roomId,
           ...this.#labels(),
-          revision: aggregate.revision,
-          status: aggregate.status,
+          revision: aggregate.currentRound?.revision ?? 0,
+          status: aggregate.currentRound?.status ?? "waiting",
           sessionCorrelationId: correlatePlayerSessionId(playerSessionId),
         });
       });
@@ -479,22 +450,21 @@ export function createAuthoritativeGameRoomClass(
         this.#activeClientBySession.delete(clientData.playerSessionId);
         this.#readySessions.delete(clientData.playerSessionId);
         const aggregate = this.#requireAggregate();
-        if (
-          aggregate.status === "abandoned" ||
-          this.#closedReason !== null ||
-          this.#disposed
-        ) {
+        if (this.#closedReason !== null || this.#disposed) {
           return;
         }
         if (code === CloseCode.CONSENTED) {
-          if (aggregate.status === "waiting" || aggregate.status === "active") {
+          if (
+            aggregate.currentRound === null ||
+            aggregate.currentRound.status === "active"
+          ) {
             await this.#closeRoom("PLAYER_LEFT");
           } else {
             this.#broadcastLifecycle();
           }
           return;
         }
-        if (aggregate.status === "completed") {
+        if (aggregate.currentRound?.status === "completed") {
           this.#broadcastLifecycle();
           return;
         }
@@ -511,14 +481,16 @@ export function createAuthoritativeGameRoomClass(
           void this.#enqueue(() => this.#expireDisconnectedSlot(slot));
         }, reconnectGrace);
         const storedRoom = this.#storedRoom();
-        await matchArchive.saveRound(storedRoom);
+        if (aggregate.currentRound !== null) {
+          await matchArchive.saveRound(storedRoom);
+        }
         await dependencies.roomStore.save(storedRoom);
         logger.write({
           event: "connection.left",
           roomId: this.roomId,
           ...this.#labels(),
-          revision: aggregate.revision,
-          status: aggregate.status,
+          revision: aggregate.currentRound?.revision ?? 0,
+          status: aggregate.currentRound?.status ?? "waiting",
           sessionCorrelationId: correlatePlayerSessionId(
             clientData.playerSessionId,
           ),
@@ -550,7 +522,10 @@ export function createAuthoritativeGameRoomClass(
         event: "room.crashed",
         roomId: this.roomId,
         ...(aggregate === undefined ? {} : this.#labels()),
-        ...(aggregate === undefined ? {} : { revision: aggregate.revision }),
+        ...(aggregate?.currentRound === undefined ||
+        aggregate.currentRound === null
+          ? {}
+          : { revision: aggregate.currentRound.revision }),
         code: "ROOM_CRASH",
       });
     }
@@ -581,7 +556,8 @@ export function createAuthoritativeGameRoomClass(
       }
 
       const aggregate = this.#requireAggregate();
-      if (aggregate.status !== "active") {
+      const round = aggregate.currentRound;
+      if (round === null || round.status !== "active") {
         this.#rejectAndCache(
           client,
           commandKey,
@@ -590,7 +566,7 @@ export function createAuthoritativeGameRoomClass(
         );
         return;
       }
-      if ((command.roundNumber ?? 1) !== aggregate.roundNumber) {
+      if (command.roundNumber !== round.roundNumber) {
         this.#rejectAndCache(
           client,
           commandKey,
@@ -615,7 +591,7 @@ export function createAuthoritativeGameRoomClass(
         );
         return;
       }
-      if (command.expectedRevision !== aggregate.revision) {
+      if (command.expectedRevision !== round.revision) {
         this.#rejectAndCache(
           client,
           commandKey,
@@ -642,10 +618,10 @@ export function createAuthoritativeGameRoomClass(
       let transitioned: ReturnType<UnknownGameDefinition["transition"]>;
       try {
         transitioned = aggregate.definition.transition({
-          state: aggregate.state,
+          state: round.state,
           actorSlotId: slot.slotId,
           action: actionResult.data,
-          rng: aggregate.rng,
+          rng: round.rng,
         });
       } catch {
         this.#roomCrash(client, command.commandId);
@@ -664,7 +640,7 @@ export function createAuthoritativeGameRoomClass(
       }
       if (
         !isJsonValue(transitioned.state) ||
-        !validReturnedRng(transitioned.rng, aggregate.rng)
+        !validReturnedRng(transitioned.rng, round.rng)
       ) {
         this.#roomCrash(client, command.commandId);
         return;
@@ -682,20 +658,16 @@ export function createAuthoritativeGameRoomClass(
         return;
       }
 
-      const nextRevision = aggregate.revision + 1;
+      const nextRevision = round.revision + 1;
       try {
-        await dependencies.replayStore.append(
-          aggregate.replayId,
-          aggregate.revision,
-          {
-            sequence: nextRevision,
-            actorSlotId: slot.slotId,
-            action: actionResult.data,
-          },
-        );
+        await dependencies.replayStore.append(round.replayId, round.revision, {
+          sequence: nextRevision,
+          actorSlotId: slot.slotId,
+          action: actionResult.data,
+        });
         if (outcome !== null) {
           await dependencies.replayStore.complete(
-            aggregate.replayId,
+            round.replayId,
             nextRevision,
             transitioned.rng.cursor,
             outcome,
@@ -705,7 +677,7 @@ export function createAuthoritativeGameRoomClass(
           state: transitioned.state,
           rng: transitioned.rng,
           revision: nextRevision,
-          status: outcome === null ? aggregate.status : "completed",
+          status: outcome === null ? round.status : "completed",
           outcome,
         });
         await matchArchive.saveRound(storedRoom);
@@ -721,28 +693,30 @@ export function createAuthoritativeGameRoomClass(
         return;
       }
 
-      aggregate.state = transitioned.state;
-      aggregate.rng = transitioned.rng;
-      aggregate.revision = nextRevision;
-      aggregate.outcome = outcome;
+      round.state = transitioned.state;
+      round.rng = transitioned.rng;
+      round.revision = nextRevision;
+      round.outcome = outcome;
       if (outcome !== null) {
-        aggregate.status = "completed";
+        round.status = "completed";
+        this.#starterChoice = null;
+        this.#readySessions.clear();
         this.#scheduleTerminalExpiry();
       }
 
       metrics.increment("actions_accepted_total", this.#labels());
       const result = this.#snapshotFor(client, command.commandId);
       this.#commandOutcomes.set(commandKey, result);
-      this.#broadcastSnapshots(client, command.commandId);
       if (outcome !== null) {
         this.#broadcastLifecycle();
       }
+      this.#broadcastSnapshots(client, command.commandId);
       logger.write({
         event: "action.accepted",
         roomId: this.roomId,
         ...this.#labels(),
-        revision: aggregate.revision,
-        status: aggregate.status,
+        revision: round.revision,
+        status: round.status,
         sessionCorrelationId: correlatePlayerSessionId(
           clientData.playerSessionId,
         ),
@@ -803,7 +777,11 @@ export function createAuthoritativeGameRoomClass(
         return;
       }
 
-      if (aggregate.status !== "completed" || this.#closedReason !== null) {
+      if (
+        this.#closedReason !== null ||
+        (aggregate.currentRound !== null &&
+          aggregate.currentRound.status !== "completed")
+      ) {
         this.#rejectControlAndCache(
           client,
           commandKey,
@@ -813,76 +791,138 @@ export function createAuthoritativeGameRoomClass(
         return;
       }
 
-      let startedNextRound = false;
-      if (command.operation === "CANCEL_REMATCH") {
+      let startedRound = false;
+      if (command.operation === "SELECT_STARTER") {
+        if (clientData.playerSessionId !== this.#creatorSessionId) {
+          this.#rejectControlAndCache(
+            client,
+            commandKey,
+            "ROOM_CONTROL_NOT_ALLOWED",
+            command.commandId,
+          );
+          return;
+        }
+        if (this.#starterChoice !== command.starter) {
+          this.#starterChoice = command.starter;
+          this.#readySessions.clear();
+          this.#pendingRound = null;
+        }
+      } else if (command.operation === "CANCEL_ROUND_READY") {
         this.#readySessions.delete(clientData.playerSessionId);
       } else {
+        if (this.#starterChoice === null) {
+          this.#rejectControlAndCache(
+            client,
+            commandKey,
+            "ROOM_CONTROL_NOT_ALLOWED",
+            command.commandId,
+          );
+          return;
+        }
         this.#readySessions.add(clientData.playerSessionId);
-        if (this.#allParticipantsReadyAndConnected()) {
-          try {
-            await this.#startNextRound();
-            startedNextRound = true;
-          } catch {
-            this.#rejectControlAndCache(
-              client,
-              commandKey,
-              "INTERNAL_ERROR",
-              command.commandId,
-            );
-            return;
-          }
+      }
+      if (
+        this.#starterChoice !== null &&
+        this.#allParticipantsReadyAndConnected()
+      ) {
+        try {
+          await this.#startRound();
+          startedRound = true;
+        } catch {
+          this.#rejectControlAndCache(
+            client,
+            commandKey,
+            "INTERNAL_ERROR",
+            command.commandId,
+          );
+          return;
         }
       }
 
       const lifecycle = this.#lifecycleFor(client, command.commandId);
       this.#commandOutcomes.set(commandKey, lifecycle);
       this.#broadcastLifecycle(client, command.commandId);
-      if (startedNextRound) {
+      if (startedRound) {
         this.#broadcastSnapshots();
       }
     }
 
-    async #startNextRound(): Promise<void> {
+    async #startRound(): Promise<void> {
       const aggregate = this.#requireAggregate();
       if (
-        aggregate.status !== "completed" ||
+        (aggregate.currentRound !== null &&
+          aggregate.currentRound.status !== "completed") ||
+        this.#starterChoice === null ||
         !this.#allParticipantsReadyAndConnected()
       ) {
-        throw new Error("A rematch cannot start from the current lifecycle.");
+        throw new Error("A round cannot start from the current lifecycle.");
       }
-      if (aggregate.roundNumber >= Number.MAX_SAFE_INTEGER) {
+      const roundNumber = (aggregate.currentRound?.roundNumber ?? 0) + 1;
+      if (roundNumber > Number.MAX_SAFE_INTEGER) {
         throw new Error("Room round number is exhausted.");
       }
+
+      const ownerSlot = aggregate.slots.find(
+        (slot) => slot.playerSessionId === this.#creatorSessionId,
+      );
+      const nonOwnerSlot = aggregate.slots.find(
+        (slot) =>
+          slot.playerSessionId !== null &&
+          slot.playerSessionId !== this.#creatorSessionId,
+      );
+      if (ownerSlot === undefined || nonOwnerSlot === undefined) {
+        throw new Error("A round requires both assigned players.");
+      }
+      const playerOrder =
+        this.#starterChoice === "OWNER"
+          ? [ownerSlot.slotId, nonOwnerSlot.slotId]
+          : [nonOwnerSlot.slotId, ownerSlot.slotId];
 
       let pending = this.#pendingRound;
       if (pending === null) {
         const initialRng = createRng(ids.createRngSeed());
+        pending = {
+          replayId: ids.createReplayId(),
+          roundNumber,
+          playerOrder,
+          initialRng,
+          initialized: null,
+        };
+        this.#pendingRound = pending;
+      }
+
+      if (pending.initialized === null) {
         let initialized: ReturnType<
           UnknownGameDefinition["createInitialState"]
         >;
         try {
           initialized = aggregate.definition.createInitialState({
             config: aggregate.initialConfig,
-            players: aggregate.slots.map((slot) => slot.slotId),
-            rng: initialRng,
+            players: pending.playerOrder,
+            rng: pending.initialRng,
           });
         } catch {
           throw new Error("The game could not initialize the next round.");
         }
         if (
           !isJsonValue(initialized.state) ||
-          !validReturnedRng(initialized.rng, initialRng)
+          !validReturnedRng(initialized.rng, pending.initialRng)
         ) {
           throw new Error("The game returned an invalid next round.");
         }
         pending = {
-          replayId: ids.createReplayId(),
-          roundNumber: aggregate.roundNumber + 1,
-          initialRng,
-          state: initialized.state,
-          rng: initialized.rng,
+          ...pending,
+          initialized: {
+            state: initialized.state,
+            rng: initialized.rng,
+          },
         };
         this.#pendingRound = pending;
+      }
+
+      const initialized = pending.initialized;
+      if (initialized === null) {
+        throw new Error("The pending round was not initialized.");
       }
 
       await dependencies.replayStore.create(pending.replayId, {
@@ -894,28 +934,33 @@ export function createAuthoritativeGameRoomClass(
           seed: pending.initialRng.seed,
         },
         initialConfig: aggregate.initialConfig,
-        players: aggregate.slots.map((slot) => ({ slotId: slot.slotId })),
+        players: pending.playerOrder.map((slotId) => ({ slotId })),
       });
       const storedRoom = this.#storedRoom({
         replayId: pending.replayId,
         roundNumber: pending.roundNumber,
-        state: pending.state,
-        rng: pending.rng,
+        playerOrder: pending.playerOrder,
+        state: initialized.state,
+        rng: initialized.rng,
         revision: 0,
         status: "active",
         outcome: null,
       });
-      await matchArchive.saveRound(storedRoom);
+      await matchArchive.createRound(storedRoom);
       await dependencies.roomStore.save(storedRoom);
 
-      aggregate.replayId = pending.replayId;
-      aggregate.roundNumber = pending.roundNumber;
-      aggregate.state = pending.state;
-      aggregate.rng = pending.rng;
-      aggregate.revision = 0;
-      aggregate.status = "active";
-      aggregate.outcome = null;
+      aggregate.currentRound = {
+        replayId: pending.replayId,
+        roundNumber: pending.roundNumber,
+        playerOrder: pending.playerOrder,
+        state: initialized.state,
+        rng: initialized.rng,
+        revision: 0,
+        status: "active",
+        outcome: null,
+      };
       this.#pendingRound = null;
+      this.#starterChoice = null;
       this.#readySessions.clear();
       this.#terminalTimeout?.cancel();
       this.#terminalTimeout = null;
@@ -933,7 +978,8 @@ export function createAuthoritativeGameRoomClass(
       if (
         slot.reservedUntilMilliseconds === null ||
         slot.reservedUntilMilliseconds > dependencies.clock.nowMilliseconds() ||
-        (aggregate.status !== "waiting" && aggregate.status !== "active")
+        (aggregate.currentRound !== null &&
+          aggregate.currentRound.status !== "active")
       ) {
         return;
       }
@@ -944,8 +990,8 @@ export function createAuthoritativeGameRoomClass(
         event: "connection.reconnect_timeout",
         roomId: this.roomId,
         ...this.#labels(),
-        revision: aggregate.revision,
-        status: aggregate.status,
+        revision: aggregate.currentRound?.revision ?? 0,
+        status: aggregate.currentRound?.status ?? "waiting",
         ...(slot.playerSessionId === null
           ? {}
           : {
@@ -966,19 +1012,22 @@ export function createAuthoritativeGameRoomClass(
         return;
       }
       const aggregate = this.#requireAggregate();
-      const shouldAbandon =
-        aggregate.status === "waiting" || aggregate.status === "active";
+      const round = aggregate.currentRound;
+      const shouldAbandon = round?.status === "active";
+      const storedRoom = this.#storedRoom(
+        shouldAbandon ? { status: "abandoned", outcome: null } : {},
+        reason,
+      );
       if (shouldAbandon) {
-        const storedRoom = this.#storedRoom({
-          status: "abandoned",
-          outcome: null,
-        });
         await matchArchive.saveRound(storedRoom);
-        await dependencies.roomStore.save(storedRoom);
-        aggregate.status = "abandoned";
-        aggregate.outcome = null;
+      }
+      await dependencies.roomStore.save(storedRoom);
+      if (shouldAbandon && round !== null) {
+        round.status = "abandoned";
+        round.outcome = null;
       }
       this.#closedReason = reason;
+      this.#starterChoice = null;
       this.#readySessions.clear();
       this.#pendingRound = null;
       this.#terminalTimeout?.cancel();
@@ -987,9 +1036,6 @@ export function createAuthoritativeGameRoomClass(
         slot.timeout?.cancel();
         slot.timeout = null;
         slot.reservedUntilMilliseconds = null;
-      }
-      if (shouldAbandon) {
-        this.#broadcastSnapshots();
       }
       if (
         causingClient !== undefined &&
@@ -1002,12 +1048,15 @@ export function createAuthoritativeGameRoomClass(
         );
       }
       this.#broadcastLifecycle(causingClient, causedByCommandId);
+      if (shouldAbandon) {
+        this.#broadcastSnapshots();
+      }
       logger.write({
         event: "room.closed",
         roomId: this.roomId,
         ...this.#labels(),
-        revision: aggregate.revision,
-        status: aggregate.status,
+        revision: aggregate.currentRound?.revision ?? 0,
+        status: aggregate.currentRound?.status ?? "waiting",
         closeReason: reason,
       });
       setTimeout(() => {
@@ -1045,18 +1094,6 @@ export function createAuthoritativeGameRoomClass(
       return result;
     }
 
-    #allRequiredPlayersConnected(): boolean {
-      const aggregate = this.#requireAggregate();
-      const required = aggregate.definition.manifest.minPlayers;
-      return (
-        aggregate.slots.filter(
-          (slot) =>
-            slot.playerSessionId !== null &&
-            this.#activeClientBySession.has(slot.playerSessionId),
-        ).length >= required
-      );
-    }
-
     #sendCommandOutcome(
       client: Client,
       outcome: ServerMessage | RoomLifecycleState,
@@ -1083,7 +1120,7 @@ export function createAuthoritativeGameRoomClass(
         event: "room.control_rejected",
         roomId: this.roomId,
         ...this.#labels(),
-        revision: this.#requireAggregate().revision,
+        revision: this.#requireAggregate().currentRound?.revision ?? 0,
         code,
         ...(clientData === undefined
           ? {}
@@ -1167,7 +1204,7 @@ export function createAuthoritativeGameRoomClass(
         event: "action.rejected",
         roomId: this.roomId,
         ...this.#labels(),
-        revision: this.#requireAggregate().revision,
+        revision: this.#requireAggregate().currentRound?.revision ?? 0,
         code,
         ...(clientData === undefined
           ? {}
@@ -1203,7 +1240,10 @@ export function createAuthoritativeGameRoomClass(
         protocolVersion: PROTOCOL_VERSION,
         ...(commandId === undefined ? {} : { commandId }),
         code,
-        ...(aggregate === undefined ? {} : { revision: aggregate.revision }),
+        ...(aggregate?.currentRound === undefined ||
+        aggregate.currentRound === null
+          ? {}
+          : { revision: aggregate.currentRound.revision }),
         ...(gameRuleCode === undefined ? {} : { gameRuleCode }),
         retryable: retryable(code),
         ...(snapshot === undefined ? {} : { snapshot }),
@@ -1253,27 +1293,30 @@ export function createAuthoritativeGameRoomClass(
       if (clientData === undefined) {
         throw protocolServerError("NOT_A_PLAYER");
       }
-      const participantCount = aggregate.slots.filter(
-        (slot) => slot.playerSessionId !== null,
-      ).length;
-      const requiredPlayerCount = Math.max(
-        aggregate.definition.manifest.minPlayers,
-        participantCount,
-      );
+      const currentRound = aggregate.currentRound;
       const available =
-        aggregate.status === "completed" && this.#closedReason === null;
+        this.#closedReason === null &&
+        (currentRound === null || currentRound.status === "completed");
       return {
         type: "room.lifecycle",
         protocolVersion: PROTOCOL_VERSION,
-        roundNumber: aggregate.roundNumber,
         isOwner: clientData.playerSessionId === this.#creatorSessionId,
-        rematch: {
-          available,
-          selfReady:
-            available && this.#readySessions.has(clientData.playerSessionId),
-          readyPlayerCount: available ? this.#readySessions.size : 0,
-          requiredPlayerCount,
-        },
+        currentRound:
+          currentRound === null
+            ? null
+            : {
+                roundNumber: currentRound.roundNumber,
+                status: currentRound.status,
+              },
+        nextRound: available
+          ? {
+              roundNumber: (currentRound?.roundNumber ?? 0) + 1,
+              starter: this.#starterChoice,
+              selfReady: this.#readySessions.has(clientData.playerSessionId),
+              readyPlayerCount: this.#readySessions.size,
+              requiredPlayerCount: aggregate.definition.manifest.minPlayers,
+            }
+          : null,
         closed: this.#closedReason !== null,
         closeReason: this.#closedReason,
         ...(causedByCommandId === undefined ? {} : { causedByCommandId }),
@@ -1310,6 +1353,10 @@ export function createAuthoritativeGameRoomClass(
       causedByCommandId?: string,
     ): MatchSnapshot<JsonValue, JsonValue> {
       const aggregate = this.#requireAggregate();
+      const round = aggregate.currentRound;
+      if (round === null) {
+        throw protocolServerError("MATCH_NOT_ACTIVE");
+      }
       const clientData = client.userData as RuntimeClientData | undefined;
       if (clientData === undefined) {
         throw protocolServerError("NOT_A_PLAYER");
@@ -1318,7 +1365,7 @@ export function createAuthoritativeGameRoomClass(
       let view: JsonValue;
       try {
         view = aggregate.definition.projectView({
-          state: aggregate.state,
+          state: round.state,
           viewer,
         });
       } catch {
@@ -1332,12 +1379,12 @@ export function createAuthoritativeGameRoomClass(
         protocolVersion: PROTOCOL_VERSION,
         gameId: aggregate.definition.manifest.id,
         gameVersion: aggregate.definition.manifest.gameVersion,
-        roundNumber: aggregate.roundNumber,
-        revision: aggregate.revision,
-        status: aggregate.status,
+        roundNumber: round.roundNumber,
+        revision: round.revision,
+        status: round.status,
         viewer,
         view,
-        outcome: aggregate.outcome,
+        outcome: round.outcome,
         ...(causedByCommandId === undefined ? {} : { causedByCommandId }),
       };
     }
@@ -1352,24 +1399,14 @@ export function createAuthoritativeGameRoomClass(
         event: "room.crashed",
         roomId: this.roomId,
         ...this.#labels(),
-        revision: this.#requireAggregate().revision,
+        revision: this.#requireAggregate().currentRound?.revision ?? 0,
         code: "ROOM_CRASH",
       });
     }
 
     #storedRoom(
-      candidate: Partial<
-        Pick<
-          StoredGameRoom,
-          | "replayId"
-          | "roundNumber"
-          | "state"
-          | "rng"
-          | "revision"
-          | "status"
-          | "outcome"
-        >
-      > = {},
+      candidate: Partial<StoredGameRound> = {},
+      closeReason: RoomCloseReason | null = this.#closedReason,
     ): StoredGameRoom {
       const aggregate = this.#requireAggregate();
       const players: StoredPlayerSlot[] = aggregate.slots.map((slot) => ({
@@ -1377,24 +1414,49 @@ export function createAuthoritativeGameRoomClass(
         playerSessionId: slot.playerSessionId,
         reservedUntilMilliseconds: slot.reservedUntilMilliseconds,
       }));
+      const round = aggregate.currentRound;
+      const replayId = candidate.replayId ?? round?.replayId;
+      let currentRound: StoredGameRound | null = null;
+      if (replayId !== undefined) {
+        const roundNumber = candidate.roundNumber ?? round?.roundNumber;
+        const playerOrder = candidate.playerOrder ?? round?.playerOrder;
+        const state = candidate.state ?? round?.state;
+        const rng = candidate.rng ?? round?.rng;
+        const revision = candidate.revision ?? round?.revision;
+        const status = candidate.status ?? round?.status;
+        const outcome =
+          candidate.outcome === undefined ? round?.outcome : candidate.outcome;
+        if (
+          roundNumber === undefined ||
+          playerOrder === undefined ||
+          state === undefined ||
+          rng === undefined ||
+          revision === undefined ||
+          status === undefined ||
+          outcome === undefined
+        ) {
+          throw new Error("A stored round candidate is incomplete.");
+        }
+        currentRound = {
+          replayId,
+          roundNumber,
+          playerOrder,
+          state,
+          rng,
+          revision,
+          status,
+          outcome,
+        };
+      }
       return {
         roomId: this.roomId,
         roomCode: aggregate.roomCode,
-        roundNumber: candidate.roundNumber ?? aggregate.roundNumber,
         gameId: aggregate.definition.manifest.id,
         gameVersion: aggregate.definition.manifest.gameVersion,
         initialConfig: aggregate.initialConfig,
         players,
-        state:
-          candidate.state === undefined ? aggregate.state : candidate.state,
-        rng: candidate.rng ?? aggregate.rng,
-        revision: candidate.revision ?? aggregate.revision,
-        status: candidate.status ?? aggregate.status,
-        outcome:
-          candidate.outcome === undefined
-            ? aggregate.outcome
-            : candidate.outcome,
-        replayId: candidate.replayId ?? aggregate.replayId,
+        currentRound,
+        closeReason,
       };
     }
 

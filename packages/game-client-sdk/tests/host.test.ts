@@ -122,6 +122,7 @@ function snapshot(
   revision: number,
   causedByCommandId?: string,
   roundNumber = 1,
+  status: "active" | "completed" | "abandoned" = "active",
 ) {
   return {
     type: "match.snapshot",
@@ -130,7 +131,7 @@ function snapshot(
     gameVersion: "1.0.0",
     roundNumber,
     revision,
-    status: "active",
+    status,
     viewer: { kind: "player", slotId: "slot-1" },
     view: { board: Array<null>(9).fill(null) },
     outcome: null,
@@ -139,9 +140,11 @@ function snapshot(
 }
 
 function lifecycle(
-  roundNumber: number,
+  roundNumber: number | null,
   options: {
     readonly causedByCommandId?: string;
+    readonly status?: "active" | "completed" | "abandoned";
+    readonly starter?: "OWNER" | "NON_OWNER" | null;
     readonly selfReady?: boolean;
     readonly readyPlayerCount?: number;
     readonly closed?: boolean;
@@ -149,17 +152,23 @@ function lifecycle(
   } = {},
 ) {
   const closed = options.closed ?? false;
+  const status = options.status ?? "active";
+  const offersNextRound =
+    !closed && (roundNumber === null || status === "completed");
   return {
     type: "room.lifecycle",
     protocolVersion: PROTOCOL_VERSION,
-    roundNumber,
     isOwner: true,
-    rematch: {
-      available: !closed,
-      selfReady: options.selfReady ?? false,
-      readyPlayerCount: options.readyPlayerCount ?? 0,
-      requiredPlayerCount: 2,
-    },
+    currentRound: roundNumber === null ? null : { roundNumber, status },
+    nextRound: offersNextRound
+      ? {
+          roundNumber: (roundNumber ?? 0) + 1,
+          starter: options.starter ?? null,
+          selfReady: options.selfReady ?? false,
+          readyPlayerCount: options.readyPlayerCount ?? 0,
+          requiredPlayerCount: 2,
+        }
+      : null,
     closed,
     closeReason: options.closeReason ?? null,
     ...(options.causedByCommandId === undefined
@@ -208,6 +217,7 @@ describe("GameClientHost", () => {
       },
     ]);
     room.emit(connected);
+    room.emitLifecycle(lifecycle(1));
     room.emit(snapshot(0));
     expect(host.getState()).toMatchObject({
       connectionState: "connected",
@@ -227,6 +237,7 @@ describe("GameClientHost", () => {
     });
     await host.createRoom("tic-tac-toe", null);
     room.emit(connected);
+    room.emitLifecycle(lifecycle(1));
     room.emit(snapshot(4));
     const submitted = host.submitAction({ type: "PLACE_MARK", cell: 2 });
     expect(room.sent).toEqual([
@@ -257,6 +268,7 @@ describe("GameClientHost", () => {
     });
     await host.joinRoom("tic-tac-toe", "ABCD2345");
     room.emit(connected);
+    room.emitLifecycle(lifecycle(1));
     room.emit(snapshot(1));
     const submitted = host.submitAction({ type: "PLACE_MARK", cell: 0 });
     room.emit({
@@ -288,6 +300,7 @@ describe("GameClientHost", () => {
     });
     await host.joinRoom("tic-tac-toe", "ABCD2345");
     firstRoom.emit(connected);
+    firstRoom.emitLifecycle(lifecycle(1));
     firstRoom.emit(snapshot(3));
     firstRoom.disconnect();
     await Promise.resolve();
@@ -301,6 +314,7 @@ describe("GameClientHost", () => {
     });
     expect(host.getState().connectionState).toBe("reconnecting");
     secondRoom.emit(connected);
+    secondRoom.emitLifecycle(lifecycle(1));
     secondRoom.emit(snapshot(3));
     expect(host.getState()).toMatchObject({
       connectionState: "connected",
@@ -311,7 +325,14 @@ describe("GameClientHost", () => {
 
   it("sends control commands, resets revision on a new round, and suppresses reconnect after close", async () => {
     const room = new FakeRoom();
-    const ids = ["ready-1", "cancel-1", "ready-2", "round-2-action", "close-1"];
+    const ids = [
+      "starter-1",
+      "ready-1",
+      "cancel-1",
+      "ready-2",
+      "round-2-action",
+      "close-1",
+    ];
     let idIndex = 0;
     let ticketCount = 0;
     const host = new GameClientHost({
@@ -324,21 +345,34 @@ describe("GameClientHost", () => {
     });
     await host.joinRoom("tic-tac-toe", "ABCD2345");
     room.emit(connected);
-    room.emitLifecycle(lifecycle(1));
-    room.emit(snapshot(5));
+    room.emitLifecycle(lifecycle(1, { status: "completed" }));
+    room.emit(snapshot(5, undefined, 1, "completed"));
 
-    const firstReady = host.requestRematch();
+    const selectStarter = host.selectStarter("NON_OWNER");
     expect(room.sent.at(-1)).toEqual({
       type: ROOM_CONTROL_MESSAGE,
       payload: {
         type: "room.control",
         protocolVersion: PROTOCOL_VERSION,
-        commandId: "ready-1",
-        operation: "REQUEST_REMATCH",
+        commandId: "starter-1",
+        operation: "SELECT_STARTER",
+        starter: "NON_OWNER",
       },
     });
     room.emitLifecycle(
       lifecycle(1, {
+        status: "completed",
+        starter: "NON_OWNER",
+        causedByCommandId: "starter-1",
+      }),
+    );
+    await expect(selectStarter).resolves.toBeUndefined();
+
+    const firstReady = host.readyForRound();
+    room.emitLifecycle(
+      lifecycle(1, {
+        status: "completed",
+        starter: "NON_OWNER",
         causedByCommandId: "ready-1",
         selfReady: true,
         readyPlayerCount: 1,
@@ -346,19 +380,21 @@ describe("GameClientHost", () => {
     );
     await expect(firstReady).resolves.toBeUndefined();
 
-    const cancelReady = host.cancelRematch();
+    const cancelReady = host.cancelRoundReady();
     expect(room.sent.at(-1)).toMatchObject({
       type: ROOM_CONTROL_MESSAGE,
-      payload: { commandId: "cancel-1", operation: "CANCEL_REMATCH" },
+      payload: { commandId: "cancel-1", operation: "CANCEL_ROUND_READY" },
     });
     room.emitLifecycle(
       lifecycle(1, {
+        status: "completed",
+        starter: "NON_OWNER",
         causedByCommandId: "cancel-1",
       }),
     );
     await expect(cancelReady).resolves.toBeUndefined();
 
-    const secondReady = host.requestRematch();
+    const secondReady = host.readyForRound();
     room.emitLifecycle(
       lifecycle(2, {
         causedByCommandId: "ready-2",
@@ -366,7 +402,10 @@ describe("GameClientHost", () => {
     );
     await expect(secondReady).resolves.toBeUndefined();
     expect(host.getState()).toMatchObject({
-      roomLifecycle: { roundNumber: 2 },
+      roomLifecycle: {
+        currentRound: { roundNumber: 2, status: "active" },
+        nextRound: null,
+      },
       snapshot: null,
     });
     room.emit(snapshot(5));
@@ -393,6 +432,7 @@ describe("GameClientHost", () => {
     room.emitLifecycle(
       lifecycle(2, {
         causedByCommandId: "close-1",
+        status: "abandoned",
         closed: true,
         closeReason: "OWNER_CLOSED",
       }),
@@ -408,6 +448,49 @@ describe("GameClientHost", () => {
     room.disconnect();
     await Promise.resolve();
     expect(ticketCount).toBe(1);
+  });
+
+  it("supports a connected first-round setup without a snapshot", async () => {
+    const room = new FakeRoom();
+    const host = new GameClientHost({
+      gameServerUrl: "http://127.0.0.1:1234",
+      ticketProvider: async () => "ticket-1",
+      transport: new FakeTransport([room]),
+    });
+    await host.createRoom("tic-tac-toe", null);
+    room.emit(connected);
+    room.emitLifecycle(lifecycle(null));
+
+    expect(host.getState()).toMatchObject({
+      connectionState: "connected",
+      snapshot: null,
+      roomLifecycle: {
+        currentRound: null,
+        nextRound: { roundNumber: 1, starter: null },
+      },
+    });
+    await expect(
+      host.submitAction({ type: "PLACE_MARK", cell: 0 }),
+    ).rejects.toThrow("not active");
+  });
+
+  it("fails closed when snapshot status disagrees with the current round", async () => {
+    const room = new FakeRoom();
+    const host = new GameClientHost({
+      gameServerUrl: "http://127.0.0.1:1234",
+      ticketProvider: async () => "ticket-1",
+      transport: new FakeTransport([room]),
+    });
+    await host.joinRoom("tic-tac-toe", "ABCD2345");
+    room.emit(connected);
+    room.emitLifecycle(lifecycle(1));
+    room.emit(snapshot(0, undefined, 1, "completed"));
+
+    expect(host.getState()).toMatchObject({
+      connectionState: "closed",
+      snapshot: null,
+      error: { code: "INVALID_SERVER_MESSAGE" },
+    });
   });
 
   it("uses consented leave only for an explicit user departure", async () => {

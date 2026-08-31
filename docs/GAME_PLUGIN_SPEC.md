@@ -142,7 +142,7 @@ interface GameDefinition<Config, State, Action, View, Outcome> {
 
 ### 5.1 `createInitialState`
 
-- 输入已规范化的 Config、按固定顺序排列的 slots 和初始 RNG 状态。
+- 输入已规范化的 Config、本轮按 `playerOrder` 固定排列的 slots 和初始 RNG 状态。Platform 可以在同一 live room 的不同 Round 传入不同顺序，但单轮 Core 初始化、State 与 Replay header 必须使用完全相同的顺序；Game 不读取房主身份或待开局设置。
 - 必须返回新 State 和消费后的 RNG 状态。
 - 不读取账号资料、显示名称、连接信息或系统时间。
 - 同一输入必须产生深度相等的 State 和 RNG 状态。

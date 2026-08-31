@@ -69,14 +69,11 @@ async function createAndJoinRoom(
   await expect(pageA.getByTestId("game-stage")).toHaveCount(0);
   await pageA.getByTestId("create-room").click();
   await expect(pageA.getByTestId("connection-state")).toHaveText("已连接");
-  await expect(pageA.locator(".game-page > :first-child")).toHaveAttribute(
-    "data-testid",
-    "game-stage",
+  await expect(pageA.getByTestId("game-stage")).toHaveCount(0);
+  await expect(pageA.getByTestId("match-status")).toHaveCount(0);
+  await expect(pageA.getByTestId("round-setup-status")).toHaveText(
+    "房主尚未选择先手方",
   );
-  const waitingStatus = pageA.getByTestId("match-status");
-  await expect(waitingStatus).toHaveText("等待另一位玩家");
-  await expect(waitingStatus).toHaveAttribute("data-status", "waiting");
-  await expect(waitingStatus).toHaveCSS("color", "rgb(255, 123, 135)");
   const playerCountNotice = pageA.getByTestId("player-count-notice");
   await expect(playerCountNotice).toHaveText("等待其他玩家加入…");
   await expect(playerCountNotice).toHaveAttribute("data-state", "waiting");
@@ -85,6 +82,10 @@ async function createAndJoinRoom(
     "rgb(243, 167, 18)",
   );
   await expect(playerCountNotice).toHaveCSS("position", "fixed");
+  await pageA.getByTestId("starter-owner").click();
+  await expect(pageA.getByTestId("round-setup-status")).toHaveText(
+    "0/2 人已准备",
+  );
 
   const inviteUrl = await pageA.getByTestId("invite-link").getAttribute("href");
   if (inviteUrl === null) {
@@ -134,6 +135,11 @@ async function createAndJoinRoom(
       expect(page.getByTestId("connection-state")).toHaveText("已连接"),
     ),
   );
+  await pageA.getByTestId("toggle-round-ready").click();
+  await expect(pageB.getByTestId("round-setup-status")).toHaveText(
+    "1/2 人已准备",
+  );
+  await pageB.getByTestId("toggle-round-ready").click();
   await Promise.all(
     [pageA, pageB].map(async (page) => {
       await expect(page.locator(".game-page > :first-child")).toHaveAttribute(
@@ -203,10 +209,16 @@ async function assertCanonicalReplay(
   if (room === null) {
     throw new Error("The completed E2E room was not persisted.");
   }
-  expect(room.revision).toBe(expectedRevision);
-  expect(room.roundNumber).toBe(expectedRoundNumber);
-  expect(room.status).toBe("completed");
-  const replay = await harness.gameServer.replayStore.get(room.replayId);
+  const currentRound = room.currentRound;
+  if (currentRound === null) {
+    throw new Error("The completed E2E round was not persisted.");
+  }
+  expect(currentRound.revision).toBe(expectedRevision);
+  expect(currentRound.roundNumber).toBe(expectedRoundNumber);
+  expect(currentRound.status).toBe("completed");
+  const replay = await harness.gameServer.replayStore.get(
+    currentRound.replayId,
+  );
   if (replay === null) {
     throw new Error("The completed E2E replay was not persisted.");
   }
@@ -231,7 +243,7 @@ async function assertCanonicalReplay(
   try {
     const rebuiltReplay = await new PostgresReplayStore(
       rebuiltClient.database,
-    ).get(room.replayId);
+    ).get(currentRound.replayId);
     expect(rebuiltReplay?.actions).toHaveLength(expectedRevision);
     expect(verifyReplay(rebuiltReplay, resolveGameDefinition)).toMatchObject({
       status: "verified",
@@ -468,18 +480,26 @@ test("two isolated guests complete win/draw, converge on reconnect, and cannot s
   await expect(pageA.getByTestId("close-room")).toBeVisible();
   await expect(pageB.getByTestId("leave-room")).toBeVisible();
 
-  await pageA.getByTestId("toggle-rematch").click();
-  await expect(pageA.getByTestId("toggle-rematch")).toHaveText("取消再来一局");
-  await expect(pageA.getByTestId("rematch-status")).toContainText(
-    "等待其他玩家（1/2）",
+  await pageA.getByTestId("starter-non-owner").click();
+  await expect(pageB.getByTestId("round-setup-status")).toHaveText(
+    "0/2 人已准备",
   );
-  await pageA.getByTestId("toggle-rematch").click();
-  await expect(pageA.getByTestId("toggle-rematch")).toHaveText("再来一局");
-  await expect(pageA.getByTestId("rematch-status")).toHaveText("0/2 人已准备");
+  await pageA.getByTestId("toggle-round-ready").click();
+  await expect(pageA.getByTestId("toggle-round-ready")).toHaveText("取消准备");
+  await expect(pageA.getByTestId("round-setup-status")).toContainText(
+    "1/2 人已准备",
+  );
+  await pageA.getByTestId("toggle-round-ready").click();
+  await expect(pageA.getByTestId("toggle-round-ready")).toHaveText("准备开始");
+  await expect(pageA.getByTestId("round-setup-status")).toHaveText(
+    "0/2 人已准备",
+  );
 
-  await pageA.getByTestId("toggle-rematch").click();
-  await expect(pageB.getByTestId("rematch-status")).toHaveText("1/2 人已准备");
-  await pageB.getByTestId("toggle-rematch").click();
+  await pageA.getByTestId("toggle-round-ready").click();
+  await expect(pageB.getByTestId("round-setup-status")).toHaveText(
+    "1/2 人已准备",
+  );
+  await pageB.getByTestId("toggle-round-ready").click();
   await Promise.all(
     [pageA, pageB].map(async (page) => {
       await expect(page.getByTestId("round-number")).toHaveText("第 2 局");
@@ -492,17 +512,19 @@ test("two isolated guests complete win/draw, converge on reconnect, and cannot s
   await expectRevision([pageA, pageB], 0);
   await expect(pageA.getByTestId("player-slot")).toHaveText(winningRoom.slotA);
   await expect(pageB.getByTestId("player-slot")).toHaveText(winningRoom.slotB);
+  await expect(pageA.getByTestId("player-mark")).toContainText("O");
+  await expect(pageB.getByTestId("player-mark")).toContainText("X");
 
   const drawMoves = [
-    [pageA, 0],
-    [pageB, 1],
-    [pageA, 2],
-    [pageB, 4],
-    [pageA, 3],
-    [pageB, 5],
-    [pageA, 7],
-    [pageB, 6],
-    [pageA, 8],
+    [pageB, 0],
+    [pageA, 1],
+    [pageB, 2],
+    [pageA, 4],
+    [pageB, 3],
+    [pageA, 5],
+    [pageB, 7],
+    [pageA, 6],
+    [pageB, 8],
   ] as const;
   for (const [index, [actor, cell]] of drawMoves.entries()) {
     await playAcceptedMove(actor, [pageA, pageB], cell, index + 1);
@@ -542,7 +564,10 @@ test("two isolated guests complete win/draw, converge on reconnect, and cannot s
   );
 
   await pageA.getByTestId("create-room").click();
-  await expect(pageA.getByTestId("match-status")).toHaveText("等待另一位玩家");
+  await expect(pageA.getByTestId("game-stage")).toHaveCount(0);
+  await expect(pageA.getByTestId("round-setup-status")).toHaveText(
+    "房主尚未选择先手方",
+  );
   const waitingRoomCode = await pageA.getByTestId("room-code").innerText();
   await pageA.getByTestId("close-room").click();
   await expect(pageA.getByTestId("room-notice")).toHaveText("房主已关闭房间。");
@@ -550,9 +575,9 @@ test("two isolated guests complete win/draw, converge on reconnect, and cannot s
     .poll(async () => {
       const stored =
         await harness.gameServer.roomStore.getByRoomCode(waitingRoomCode);
-      return stored?.status;
+      return stored?.closeReason;
     })
-    .toBe("abandoned");
+    .toBe("OWNER_CLOSED");
 
   const explicitlyLeftRoom = await createAndJoinRoom(pageA, pageB);
   let leaveConfirmation = "";
@@ -571,7 +596,7 @@ test("two isolated guests complete win/draw, converge on reconnect, and cannot s
       const stored = await harness.gameServer.roomStore.getByRoomCode(
         explicitlyLeftRoom.roomCode,
       );
-      return stored?.status;
+      return stored?.currentRound?.status;
     })
     .toBe("abandoned");
 
@@ -597,7 +622,10 @@ test("two isolated guests complete win/draw, converge on reconnect, and cannot s
       );
       return stored === null
         ? null
-        : { status: stored.status, revision: stored.revision };
+        : {
+            status: stored.currentRound?.status,
+            revision: stored.currentRound?.revision,
+          };
     })
     .toEqual({ status: "abandoned", revision: 0 });
 

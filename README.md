@@ -1,6 +1,6 @@
 # Online Game Hub
 
-这是一个 server-authoritative、replay-first 的多人网页游戏平台 monorepo。M1–M6 已完成；四子棋、五子棋、额外六贯棋与黑白棋依次证明既有 Game Plugin 可表达重力、Config、六边连接/投降，以及八方向翻转、无合法行动、强制跳过和非满盘终局。所有游戏继续复用显式 registry、Client Module、authoritative runtime、per-viewer projection、Replay V1、PostgreSQL Match/history 和 Web vertical slice。两名原玩家可在同一 live room 内 ready/cancel 并无缝开始下一轮；每轮拥有独立 Match、Replay 和 history，房主可关闭房间，非房主可主动离开，终局房间有 5 分钟回收期限。Protocol V1、Replay Format V1 与井字棋/四子棋/五子棋/六贯棋/黑白棋 1.0.0 均保持 exact version；OAuth、公开 replay 与活动房间恢复仍未实现。
+这是一个 server-authoritative、replay-first 的多人网页游戏平台 monorepo。M1–M6 已完成；四子棋、五子棋、额外六贯棋与黑白棋依次证明既有 Game Plugin 可表达重力、Config、六边连接/投降，以及八方向翻转、无合法行动、强制跳过和非满盘终局。所有游戏继续复用显式 registry、Client Module、authoritative runtime、per-viewer projection、Replay V1、PostgreSQL Match/history 和 Web vertical slice。创建 live room 后不立即创建比赛；首局及每次重开都由房主选择“我先/对方先”，双方 ready 且在线后才按本轮 `playerOrder` 创建独立 Match、Replay 和 State。room code 与 stable slots 跨轮不变，标准先手角色随 `playerOrder` 变化。当前 wire 为 Protocol V2；Replay Format V1 与井字棋/四子棋/五子棋/六贯棋/黑白棋 1.0.0 保持不变。OAuth、公开 replay 与活动房间恢复仍未实现。
 
 ## 开始之前
 
@@ -123,9 +123,9 @@ pnpm --filter @online-game-hub/web dev
 - `GET /metrics`：内存 metric samples，不包含 State、seed 或 bearer secret；
 - `/matchmake/*` 与 WebSocket：Colyseus 创建/加入和房间消息 transport。
 
-生产入口 `createProductionGameServer(config, overrides?)` 使用 `@online-game-hub/game-server-ticket` 的 HMAC adapter 注入 verifier，并在 `DATABASE_MODE=postgres` 时注入 `PostgresReplayStore` 与 Match archive `RoomStore` decorator；生产代码不导入 testing subpath。启动协调会把同一数据库中上次单实例留下的 `waiting`/`active` archive 诚实标记为 `abandoned`，不会尝试恢复不存在的 authoritative State。completed replay/history 可跨进程读取；活动 `RoomStore`、socket、reconnect timer 和 State 仍只在内存。
+生产入口 `createProductionGameServer(config, overrides?)` 使用 `@online-game-hub/game-server-ticket` 的 HMAC adapter 注入 verifier，并在 `DATABASE_MODE=postgres` 时分别注入内存 `RoomStore`、`PostgresReplayStore` 与独立 `PostgresMatchArchive`；生产代码不导入 testing subpath。启动协调会把同一数据库中上次单实例留下的旧 `waiting`/当前 `active` archive 诚实标记为 `abandoned`，不会尝试恢复不存在的 authoritative State。completed replay/history 可跨进程读取；live room、待开局设置、socket、reconnect timer 和 State 仍只在内存。
 
-一轮结束后，房间保留原 room code 和 stable slots；双方都点击“再来一局”才创建下一轮，任一方可取消，断线或 connection takeover 会清除其 ready。每轮从 revision `0`、新 RNG 和新 replay 开始，history 以 `roundNumber` 区分。终局房间拒绝新访客，只允许原玩家重连；房主可关闭 waiting/active/completed 房间，非房主可离开，active 操作先由 Web 确认并把当前 Match 标记 `abandoned`。刷新或组件卸载调用 `GameClientHost.close()`，属于非主动断线并保留 60 秒重连；只有 `leaveRoom()` 是主动离开。未关闭的 completed live room 在 5 分钟后回收，URL 同时清除 room code 并返回创建/加入入口。
+创建房间后和一轮结束后都进入统一的下一局设置。房主可预选“我先/对方先”，双方使用“准备开始/取消准备”；改变先手会清空全部 ready，重复相同选择保持 ready，断线或 connection takeover 只清对应玩家 ready。所有 slots 已分配、双方在线、已选择先手且全部 ready 后，才按选择构造本轮 `playerOrder`，从 revision `0`、新 RNG 和新 replay 开始。终局房间拒绝新访客，只允许原玩家重连；房主可关闭未开局、active 或 completed 房间，非房主可离开，active 操作先由 Web 确认并把当前 Match 标记 `abandoned`。未开始首局的房间关闭时不产生 abandoned Match。刷新或组件卸载调用 `GameClientHost.close()`，属于非主动断线并保留 60 秒重连；只有 `leaveRoom()` 是主动离开。未关闭的 completed live room 在 5 分钟后回收，选择/ready 不延长 TTL，成功开始下一局会取消 TTL。
 
 ## Workspace 结构
 
@@ -140,7 +140,7 @@ packages/
   game-sdk/                # JSON/definition 类型与 deterministic RNG V1
   game-server-runtime/     # auth/room ports、authoritative pipeline、多轮/关闭、reconnect 与 replay
   game-server-ticket/      # Web/Game Server 共用的正式短期 HMAC ticket authority
-  protocol/                # Protocol V1 strict Zod schemas 与推导类型
+  protocol/                # Protocol V2 strict Zod schemas 与推导类型
   ui/                      # 空 public entry
 games/
   connect-four/             # 单 package：7×6 manifest/core/client + 1.0.0 golden replay
@@ -156,11 +156,11 @@ tools/                     # 未来面向开发者的 CLI；当前不创建生�
 
 不要创建 `packages/shared`。新增 workspace package 必须声明 public exports，并接入根 typecheck、test 和 build 图；跨 package 只能通过 manifest 中声明的依赖与 export map 导入。
 
-M6 五子棋没有新增外部依赖，也没有修改 `protocol`、`game-client-sdk`、`game-server-runtime`、`game-server-ticket`、database schema 或 migration。现有 create request、Config schema normalization、canonical replay 与 exact resolver 可直接承载 15×15/19×19 Config；通用 Web 页面唯一缺少的是按游戏取得默认 Config，因此 `GameManifest` 新增必填 JSON-safe `defaultConfig`，井字棋/四子棋迁移为 `null`，五子棋默认 `{ boardSize: 15, winLength: 5 }`。该 manifest API 变更不进入 wire 或 replay envelope，不提升 Protocol V1、Replay Format V1 或既有游戏版本。第三游戏仍暴露显式 registry、Next transpile 与 Web game CSS 的机械步骤，且 shared manifest 刚发生一次有证据的收敛，因此本阶段仍不创建 `tools/create-game`。
+M6 五子棋没有新增外部依赖，也没有修改当时的 `protocol`、`game-client-sdk`、`game-server-runtime`、`game-server-ticket`、database schema 或 migration。现有 create request、Config schema normalization、canonical replay 与 exact resolver 可直接承载 15×15/19×19 Config；通用 Web 页面唯一缺少的是按游戏取得默认 Config，因此 `GameManifest` 新增必填 JSON-safe `defaultConfig`，井字棋/四子棋迁移为 `null`，五子棋默认 `{ boardSize: 15, winLength: 5 }`。该 manifest API 变更当时不提升 Protocol V1、Replay Format V1 或既有游戏版本；后续逐局先手功能才独立升级到 Protocol V2。第三游戏仍暴露显式 registry、Next transpile 与 Web game CSS 的机械步骤，且 shared manifest 刚发生一次有证据的收敛，因此本阶段仍不创建 `tools/create-game`。
 
-额外六贯棋继续复用 `defaultConfig: null`、双人 stable slots、完整 per-viewer snapshot、同房间多轮、accepted Action replay 和 PostgreSQL archive；`PLACE_STONE` 与 `RESIGN` 都只作为游戏 intent 进入现有 envelope。它没有新增外部依赖，也没有修改 `game-sdk`、Protocol V1、Replay Format V1、`game-client-sdk`、`game-server-runtime`、database schema 或 migration。六贯棋仍需显式 registry、Next transpile 和 Web CSS 登记；该阶段据此暂不创建 `tools/create-game`，并继续保留黑白棋对翻转/跳过回合的独立验证。
+额外六贯棋继续复用 `defaultConfig: null`、双人 stable slots、完整 per-viewer snapshot、同房间多轮、accepted Action replay 和 PostgreSQL archive；`PLACE_STONE` 与 `RESIGN` 都只作为游戏 intent 进入现有 envelope。它没有新增外部依赖，也没有修改当时的 `game-sdk`、Protocol V1、Replay Format V1、`game-client-sdk`、`game-server-runtime`、database schema 或 migration。当前 Protocol V2 只让平台逐局决定有序 players；六贯棋仍以 `players[0]` 为 BLUE 标准先手，不需要新游戏版本。六贯棋仍需显式 registry、Next transpile 和 Web CSS 登记；该阶段据此暂不创建 `tools/create-game`，并继续保留黑白棋对翻转/跳过回合的独立验证。
 
-黑白棋 1.0.0 固定 8×8 与 null Config；`players[0]` 为 BLACK 并先手，客户端只提交 `PLACE_DISC(cell)`。Core 同时翻转全部合法方向；若对方无合法行动则保持当前 slot，双方均无合法行动或棋盘填满时按棋子数产生 WIN/DRAW。强制跳过不增加 revision、不产生 PASS 或 replay Action。Client 只渲染服务器 View 提供的合法落点、当前行动方、棋子数和 Outcome。它没有新增外部依赖，也没有修改 `game-sdk`、Protocol V1、Replay Format V1、`game-client-sdk`、`game-server-runtime`、`game-server-ticket`、database source/schema/migration 或既有游戏版本。
+黑白棋 1.0.0 固定 8×8 与 null Config；`players[0]` 为 BLACK 并先手，客户端只提交 `PLACE_DISC(cell)`。Protocol V2 由逐局设置决定哪个 stable slot 成为该轮 `players[0]`，不会修改黑白棋规则或 game version。Core 同时翻转全部合法方向；若对方无合法行动则保持当前 slot，双方均无合法行动或棋盘填满时按棋子数产生 WIN/DRAW。强制跳过不增加 revision、不产生 PASS 或 replay Action。Client 只渲染服务器 View 提供的合法落点、当前行动方、棋子数和 Outcome。该游戏上线时没有新增外部依赖，也没有修改当时的 `game-sdk`、Protocol V1、Replay Format V1、`game-client-sdk`、`game-server-runtime`、`game-server-ticket`、database source/schema/migration 或既有游戏版本。
 
 M6 黑白棋 package 内仍为 16 个文件；游戏外非文档改动为 10 个唯一文件：registry package/catalog/client/server、lockfile 和 Next transpile 共 6 个机械登记文件，Web CSS 1 个，registry/integration/E2E 验证 3 个。连续多个游戏已证明 package 骨架和显式登记稳定，因此后续独立任务可以实现窄 `tools/create-game`，只自动化 package/export/tsconfig 与上述 registry/build 登记并保持幂等；具体规则、样式、golden、integration 和 E2E 序列仍不应模板化。本轮只完成证据复盘，不实现生成器。
 

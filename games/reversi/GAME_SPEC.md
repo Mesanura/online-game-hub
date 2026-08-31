@@ -6,7 +6,7 @@
 
 ## 规则
 
-- 比赛恰好包含两个不同的稳定 `PlayerSlotId`。`players[0]` 使用 BLACK 并先手，`players[1]` 使用 WHITE；同房间后续轮次不交换颜色。
+- 比赛恰好包含两个不同的稳定 `PlayerSlotId`。`players[0]` 使用 BLACK 并先手，`players[1]` 使用 WHITE。Platform 为每轮传入独立的有序 players；同房间 stable slots 不变，但房主选择相反先手时，哪个 slot 获得 BLACK/WHITE 可以跨轮交换，不改变黑白棋规则。
 - 棋盘固定为 8×8，cell 使用 row-major `row * 8 + column`，范围为 `0..63`。
 - 初始 D4/E5 为 WHITE（27、36），E4/D5 为 BLACK（28、35）。
 - 玩家只在自己的回合向空格提交 `{ type: "PLACE_DISC", cell }`。该落子必须在八个方向至少一个方向上夹住一段连续的对方棋子，并同时翻转所有合法夹线。

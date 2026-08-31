@@ -1,6 +1,6 @@
 # 开发路线图
 
-> 状态：V1 路线  
+> 状态：M1–M6 与 Protocol V2 逐局先手增强已完成
 > 本文是项目阶段顺序和里程碑退出条件的权威来源。里程碑按依赖排序，不承诺具体日期。
 
 ## 原则
@@ -161,6 +161,21 @@
 - 60-action golden 在连续 WHITE actor 处证明 PASS-free replay；真实 Colyseus integration 以 25-action 对局覆盖强制跳过、35 个空格的非满盘终局和同房间第二轮独立 replay；PostgreSQL-backed E2E 以 11-action 对局覆盖权威翻转、49 个空格终局、新连接 replay verification 与双方安全 private history；
 - 连续多个游戏的 16 文件骨架及 registry/package/lock/Next 登记已经稳定，证据足以在后续独立任务实现窄 `tools/create-game`。生成器只应自动化 package/export/tsconfig 和显式登记，具备幂等/冲突失败/检查提示；规则、CSS、golden、integration、E2E 序列仍由游戏 owner 设计。本轮按范围只复盘，不实现生成器。
 
+## 已完成平台增强：Protocol V2 与逐局先手
+
+> 实施状态：已完成（2026-08-31）。Protocol/Host/Runtime/Database adapter/Web 与五游戏纵切已迁移；Replay Format V1、五个游戏 1.0.0、PostgreSQL schema 和 migration 保持不变。
+
+本增强在进入 M7 候选能力前收敛现有双人房间流程：
+
+- live room 与 Round 解耦；创建房间只保存 room code、Config、stable slots 和关闭状态，未开局房间不创建 Core、Replay、Match 或 history；
+- 首局与每次重开统一进入下一局设置，由房主选择“房主先手/非房主先手”，双方 ready 且在线后才启动 Round；改变选择会清空 ready，重复选择保持 ready，断线/takeover 只清对应玩家 ready；
+- 每轮独立保存 `playerOrder`、RNG、State、revision、Outcome、Replay 和 Match；stable slot identity 不变，标准先手角色由本轮 `players[0]` 获得；
+- Runtime 新增独立 `MatchArchive` port，PostgreSQL 使用 `PostgresMatchArchive`；启动失败保留 pending candidate 并通过 replay/archive 幂等语义重试；
+- Protocol V2 使 Action/Snapshot 的 `roundNumber` 必填，并以严格 discriminated union 提供 `SELECT_STARTER`、`READY_FOR_ROUND`、`CANCEL_ROUND_READY`、`CLOSE_ROOM`；Host 可在首局没有 snapshot 时只根据 lifecycle 工作；
+- 通用 Web 在无 snapshot 时展示邀请与下一局设置，completed 时保留终局棋盘并并列展示设置；五套 E2E 使用稳定 test id 覆盖相同流程，井字棋第二局明确反转先手。
+
+该增强只面向当前所有已注册的双人游戏，不预先加入多人 starter policy、随机先手、观战、房主迁移或 active room 跨进程恢复。M2–M6 小节中的 “Protocol V1” 描述保留为各里程碑完成当时的历史事实；当前部署契约以 [NETWORK_PROTOCOL.md](./NETWORK_PROTOCOL.md) 的 Protocol V2 为准。
+
 ## M7：按证据扩展平台
 
 以下能力不预先排序，在产品需求和运行指标出现后单独立项：
@@ -175,4 +190,4 @@
 
 ## 下一轮建议
 
-M6 已完成，不再追加同里程碑游戏。下一轮应由产品证据在“独立实现窄 `tools/create-game`”与 M7 候选能力中单独立项；不要把生成器与 OAuth、Lobby、Matchmaking、排行榜、观战、公开 replay、durable active room、Redis 或多实例混成同一任务。
+M6 与逐局先手增强已完成，不再追加同里程碑游戏。下一轮应由产品证据在“独立实现窄 `tools/create-game`”与 M7 候选能力中单独立项；不要把生成器与 OAuth、Lobby、Matchmaking、排行榜、观战、公开 replay、durable active room、Redis 或多实例混成同一任务。

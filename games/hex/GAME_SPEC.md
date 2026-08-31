@@ -6,7 +6,7 @@
 
 ## 规则
 
-- 比赛恰好包含两个不同的稳定 `PlayerSlotId`。`players[0]` 使用 BLUE 并先手，`players[1]` 使用 RED；同房间后续轮次不交换颜色。
+- 比赛恰好包含两个不同的稳定 `PlayerSlotId`。`players[0]` 使用 BLUE 并先手，`players[1]` 使用 RED。Platform 为每轮传入独立的有序 players；同房间 stable slots 不变，但房主选择相反先手时，哪个 slot 获得 BLUE/RED 可以跨轮交换。这不是六贯棋的交换规则。
 - 棋盘固定为 11×11，共 121 个六边形格；cell 使用 row-major 整数索引 `row * 11 + column`。
 - 玩家在自己的回合向一个空格提交 `{ type: "PLACE_STONE", cell }`，随后轮到另一方；没有移动、移除、跳过、悔棋或交换规则。
 - BLUE 连接 `row = 0`（上右边）与 `row = 10`（下左边）获胜；RED 连接 `column = 0`（上左边）与 `column = 10`（下右边）获胜。

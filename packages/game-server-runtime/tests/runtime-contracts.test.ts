@@ -12,7 +12,6 @@ import { FakeRuntimeClock, TestTicketAuthority } from "../src/testing/index.js";
 const storedRoom = {
   roomId: "internal-1",
   roomCode: "ABCD2345",
-  roundNumber: 1,
   gameId: "tic-tac-toe",
   gameVersion: "1.0.0",
   initialConfig: null,
@@ -28,12 +27,17 @@ const storedRoom = {
       reservedUntilMilliseconds: null,
     },
   ],
-  state: { board: [null] },
-  rng: createRng("room-seed"),
-  revision: 0,
-  status: "waiting",
-  outcome: null,
-  replayId: "replay-1",
+  currentRound: {
+    roundNumber: 1,
+    playerOrder: ["slot-1", "slot-2"],
+    state: { board: [null] },
+    rng: createRng("room-seed"),
+    revision: 0,
+    status: "active",
+    outcome: null,
+    replayId: "replay-1",
+  },
+  closeReason: null,
 } as const satisfies StoredGameRoom;
 
 describe("ticket verifier port test authority", () => {
@@ -49,7 +53,7 @@ describe("ticket verifier port test authority", () => {
     await expect(authority.verify(valid)).resolves.toMatchObject({
       status: "verified",
       playerSessionId: "session-a",
-      claims: { protocolVersion: 1, audience: "game-server" },
+      claims: { protocolVersion: 2, audience: "game-server" },
     });
     await expect(authority.verify(undefined)).resolves.toMatchObject({
       status: "rejected",
@@ -74,7 +78,7 @@ describe("ticket verifier port test authority", () => {
       authority.verify(authority.issue("session-a", { issuer: "other" })),
     ).resolves.toMatchObject({ status: "rejected", code: "WRONG_ISSUER" });
     await expect(
-      authority.verify(authority.issue("session-a", { protocolVersion: 2 })),
+      authority.verify(authority.issue("session-a", { protocolVersion: 1 })),
     ).resolves.toMatchObject({
       status: "rejected",
       code: "PROTOCOL_VERSION_UNSUPPORTED",
@@ -110,9 +114,15 @@ describe("in-memory platform ports", () => {
     expect(byId).not.toBe(byCode);
     expect(byId?.players).not.toBe(byCode?.players);
 
-    await store.save({ ...storedRoom, revision: 1, status: "active" });
+    await store.save({
+      ...storedRoom,
+      currentRound: { ...storedRoom.currentRound, revision: 1 },
+    });
     expect(await store.list()).toEqual([
-      { ...storedRoom, revision: 1, status: "active" },
+      {
+        ...storedRoom,
+        currentRound: { ...storedRoom.currentRound, revision: 1 },
+      },
     ]);
   });
 
@@ -123,7 +133,7 @@ describe("in-memory platform ports", () => {
         ...storedRoom,
         roomId: "invalid-round",
         roomCode: "EFGH2345",
-        roundNumber: 0,
+        currentRound: { ...storedRoom.currentRound, roundNumber: 0 },
       }),
     ).rejects.toMatchObject({ code: "INVALID_ROOM" });
     await store.create(storedRoom);

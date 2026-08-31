@@ -11,10 +11,12 @@ import {
   verifyReplay,
 } from "@online-game-hub/game-server-runtime";
 import type {
+  MatchArchive,
   ReplayAction,
   ReplayHeader,
   ReplayStore,
   RuntimeLogEvent,
+  StoredGameRoom,
 } from "@online-game-hub/game-server-runtime";
 import {
   FakeRuntimeClock,
@@ -34,6 +36,7 @@ import type {
   RoomControlOperation,
   RoomLifecycleState,
   ServerMessage,
+  StarterChoice,
 } from "@online-game-hub/protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -76,6 +79,29 @@ class ControlledReplayStore implements ReplayStore {
 
   public get(replayId: string) {
     return this.#delegate.get(replayId);
+  }
+}
+
+class ControlledMatchArchive implements MatchArchive {
+  public failNextCreate = false;
+  public readonly createAttempts: string[] = [];
+
+  public createRound(room: StoredGameRoom): Promise<void> {
+    const replayId = room.currentRound?.replayId;
+    if (replayId === undefined) {
+      return Promise.reject(new Error("Round candidate is missing."));
+    }
+    this.createAttempts.push(replayId);
+    if (this.failNextCreate) {
+      this.failNextCreate = false;
+      return Promise.reject(new Error("injected match archive failure"));
+    }
+    return Promise.resolve();
+  }
+
+  public saveRound(room: StoredGameRoom): Promise<void> {
+    void room;
+    return Promise.resolve();
   }
 }
 
@@ -193,13 +219,13 @@ function command(
   commandId: string,
   expectedRevision: number,
   action: unknown,
-  roundNumber?: number,
+  roundNumber = 1,
 ): GameActionCommand {
   return {
     type: "game.action",
     protocolVersion: PROTOCOL_VERSION,
     commandId,
-    ...(roundNumber === undefined ? {} : { roundNumber }),
+    roundNumber,
     expectedRevision,
     action,
   };
@@ -208,13 +234,46 @@ function command(
 function controlCommand(
   commandId: string,
   operation: RoomControlOperation,
+  starter?: StarterChoice,
 ): RoomControlCommand {
+  if (operation === "SELECT_STARTER") {
+    if (starter === undefined) {
+      throw new Error("SELECT_STARTER requires a starter.");
+    }
+    return {
+      type: "room.control",
+      protocolVersion: PROTOCOL_VERSION,
+      commandId,
+      operation,
+      starter,
+    };
+  }
   return {
     type: "room.control",
     protocolVersion: PROTOCOL_VERSION,
     commandId,
     operation,
   };
+}
+
+function startRound(
+  ownerRoom: ClientRoom,
+  nonOwnerRoom: ClientRoom,
+  commandPrefix: string,
+  starter: StarterChoice = "OWNER",
+): void {
+  ownerRoom.send(
+    ROOM_CONTROL_MESSAGE,
+    controlCommand(`${commandPrefix}-starter`, "SELECT_STARTER", starter),
+  );
+  ownerRoom.send(
+    ROOM_CONTROL_MESSAGE,
+    controlCommand(`${commandPrefix}-owner-ready`, "READY_FOR_ROUND"),
+  );
+  nonOwnerRoom.send(
+    ROOM_CONTROL_MESSAGE,
+    controlCommand(`${commandPrefix}-non-owner-ready`, "READY_FOR_ROUND"),
+  );
 }
 
 async function waitUntil(
@@ -240,6 +299,7 @@ describe.sequential("authoritative Colyseus Game Server", () => {
   });
   const roomStore = new InMemoryRoomStore();
   const replayStore = new ControlledReplayStore();
+  const matchArchive = new ControlledMatchArchive();
   const metrics = new InMemoryMetricsCollector();
   const logs: RuntimeLogEvent[] = [];
   let app: GameServerApplication;
@@ -250,11 +310,13 @@ describe.sequential("authoritative Colyseus Game Server", () => {
       ticketVerifier: authority,
       roomStore,
       replayStore,
+      matchArchive,
       metrics,
       clock,
       ids: createDeterministicRuntimeIdSource([
         "PLAY2345",
         "FALL2345",
+        "RETY2345",
         "TAKE2345",
         "LEAV2345",
         "WALT2345",
@@ -307,11 +369,11 @@ describe.sequential("authoritative Colyseus Game Server", () => {
       },
       {
         ...base,
-        ticket: authority.issue("auth-a", { protocolVersion: 2 }),
+        ticket: authority.issue("auth-a", { protocolVersion: 1 }),
       },
       {
         ...base,
-        protocolVersion: 2,
+        protocolVersion: 1,
         ticket: authority.issue("auth-a"),
       },
       {
@@ -353,8 +415,47 @@ describe.sequential("authoritative Colyseus Game Server", () => {
       roomCode: "PLAY2345",
       playerSlotId: "slot-1",
     });
-    const waitingA = await inboxA.next(isSnapshot);
-    expect(waitingA).toMatchObject({ revision: 0, status: "waiting" });
+    await expect(
+      lifecycleA.next((message) => message.currentRound === null),
+    ).resolves.toMatchObject({
+      currentRound: null,
+      nextRound: { roundNumber: 1, starter: null, readyPlayerCount: 0 },
+    });
+
+    roomA.send(
+      ROOM_CONTROL_MESSAGE,
+      controlCommand("ready-without-starter", "READY_FOR_ROUND"),
+    );
+    await expect(
+      inboxA.next(
+        (message) =>
+          message.type === "command.rejected" &&
+          message.commandId === "ready-without-starter",
+      ),
+    ).resolves.toMatchObject({ code: "ROOM_CONTROL_NOT_ALLOWED" });
+
+    const preselected = lifecycleA.next(
+      (message) => message.causedByCommandId === "preselect-round-1",
+    );
+    roomA.send(
+      ROOM_CONTROL_MESSAGE,
+      controlCommand("preselect-round-1", "SELECT_STARTER", "OWNER"),
+    );
+    await expect(preselected).resolves.toMatchObject({
+      currentRound: null,
+      nextRound: { starter: "OWNER", readyPlayerCount: 0 },
+    });
+    const ownerReadyBeforeJoin = lifecycleA.next(
+      (message) => message.causedByCommandId === "prejoin-ready-round-1",
+    );
+    roomA.send(
+      ROOM_CONTROL_MESSAGE,
+      controlCommand("prejoin-ready-round-1", "READY_FOR_ROUND"),
+    );
+    await expect(ownerReadyBeforeJoin).resolves.toMatchObject({
+      currentRound: null,
+      nextRound: { starter: "OWNER", selfReady: true, readyPlayerCount: 1 },
+    });
 
     const activeForA = inboxA.next(
       (message) => isSnapshot(message) && message.status === "active",
@@ -374,6 +475,21 @@ describe.sequential("authoritative Colyseus Game Server", () => {
       roomCode: "PLAY2345",
       playerSlotId: "slot-2",
     });
+    roomB.send(
+      ROOM_CONTROL_MESSAGE,
+      controlCommand("non-owner-select", "SELECT_STARTER", "NON_OWNER"),
+    );
+    await expect(
+      inboxB.next(
+        (message) =>
+          message.type === "command.rejected" &&
+          message.commandId === "non-owner-select",
+      ),
+    ).resolves.toMatchObject({ code: "ROOM_CONTROL_NOT_ALLOWED" });
+    roomB.send(
+      ROOM_CONTROL_MESSAGE,
+      controlCommand("joiner-ready-round-1", "READY_FOR_ROUND"),
+    );
     const [activeA, activeB] = await Promise.all([
       activeForA,
       inboxB.next(
@@ -527,8 +643,10 @@ describe.sequential("authoritative Colyseus Game Server", () => {
     ).resolves.toMatchObject({ code: "MATCH_NOT_ACTIVE", revision: 5 });
 
     const stored = await roomStore.getByRoomCode("PLAY2345");
-    expect(stored).toMatchObject({ status: "completed", revision: 5 });
-    const replay = await replayStore.get(stored?.replayId ?? "");
+    expect(stored).toMatchObject({
+      currentRound: { status: "completed", revision: 5 },
+    });
+    const replay = await replayStore.get(stored?.currentRound?.replayId ?? "");
     expect(replay?.actions).toHaveLength(5);
     expect(replay?.actions.map((event) => event.action)).toEqual([
       { type: "PLACE_MARK", cell: 0 },
@@ -545,10 +663,14 @@ describe.sequential("authoritative Colyseus Game Server", () => {
 
     await Promise.all([
       lifecycleA.next(
-        (message) => message.roundNumber === 1 && message.rematch.available,
+        (message) =>
+          message.currentRound?.roundNumber === 1 &&
+          message.nextRound?.roundNumber === 2,
       ),
       lifecycleB.next(
-        (message) => message.roundNumber === 1 && message.rematch.available,
+        (message) =>
+          message.currentRound?.roundNumber === 1 &&
+          message.nextRound?.roundNumber === 2,
       ),
     ]);
 
@@ -564,26 +686,79 @@ describe.sequential("authoritative Colyseus Game Server", () => {
       ),
     ).resolves.toMatchObject({ code: "ROOM_CONTROL_NOT_ALLOWED" });
 
+    const selected = lifecycleA.next(
+      (message) => message.causedByCommandId === "starter-round-2",
+    );
+    roomA.send(
+      ROOM_CONTROL_MESSAGE,
+      controlCommand("starter-round-2", "SELECT_STARTER", "NON_OWNER"),
+    );
+    await expect(selected).resolves.toMatchObject({
+      nextRound: { starter: "NON_OWNER", readyPlayerCount: 0 },
+    });
+
     const readyA1 = lifecycleA.next(
       (message) => message.causedByCommandId === "ready-a-1",
     );
     roomA.send(
       ROOM_CONTROL_MESSAGE,
-      controlCommand("ready-a-1", "REQUEST_REMATCH"),
+      controlCommand("ready-a-1", "READY_FOR_ROUND"),
     );
     await expect(readyA1).resolves.toMatchObject({
-      roundNumber: 1,
-      rematch: { selfReady: true, readyPlayerCount: 1 },
+      currentRound: { roundNumber: 1, status: "completed" },
+      nextRound: { selfReady: true, readyPlayerCount: 1 },
     });
+
+    const repeatedSelection = lifecycleA.next(
+      (message) => message.causedByCommandId === "same-starter-round-2",
+    );
+    roomA.send(
+      ROOM_CONTROL_MESSAGE,
+      controlCommand("same-starter-round-2", "SELECT_STARTER", "NON_OWNER"),
+    );
+    await expect(repeatedSelection).resolves.toMatchObject({
+      nextRound: {
+        starter: "NON_OWNER",
+        selfReady: true,
+        readyPlayerCount: 1,
+      },
+    });
+
+    const changedSelection = lifecycleA.next(
+      (message) => message.causedByCommandId === "changed-starter-round-2",
+    );
+    roomA.send(
+      ROOM_CONTROL_MESSAGE,
+      controlCommand("changed-starter-round-2", "SELECT_STARTER", "OWNER"),
+    );
+    await expect(changedSelection).resolves.toMatchObject({
+      nextRound: {
+        starter: "OWNER",
+        selfReady: false,
+        readyPlayerCount: 0,
+      },
+    });
+
+    const restoredSelection = lifecycleA.next(
+      (message) => message.causedByCommandId === "restore-starter-round-2",
+    );
+    roomA.send(
+      ROOM_CONTROL_MESSAGE,
+      controlCommand("restore-starter-round-2", "SELECT_STARTER", "NON_OWNER"),
+    );
+    await expect(restoredSelection).resolves.toMatchObject({
+      nextRound: { starter: "NON_OWNER", readyPlayerCount: 0 },
+    });
+
     const cancelledA = lifecycleA.next(
       (message) => message.causedByCommandId === "cancel-a",
     );
     roomA.send(
       ROOM_CONTROL_MESSAGE,
-      controlCommand("cancel-a", "CANCEL_REMATCH"),
+      controlCommand("cancel-a", "CANCEL_ROUND_READY"),
     );
     await expect(cancelledA).resolves.toMatchObject({
-      rematch: { selfReady: false, readyPlayerCount: 0 },
+      nextRound: { selfReady: false, readyPlayerCount: 0 },
     });
 
     const readyA2 = lifecycleA.next(
@@ -591,15 +766,16 @@ describe.sequential("authoritative Colyseus Game Server", () => {
     );
     roomA.send(
       ROOM_CONTROL_MESSAGE,
-      controlCommand("ready-a-2", "REQUEST_REMATCH"),
+      controlCommand("ready-a-2", "READY_FOR_ROUND"),
     );
     await readyA2;
     const roundTwoLifecycleA = lifecycleA.next(
-      (message) => message.roundNumber === 2,
+      (message) => message.currentRound?.roundNumber === 2,
     );
     const roundTwoLifecycleB = lifecycleB.next(
       (message) =>
-        message.roundNumber === 2 && message.causedByCommandId === "ready-b",
+        message.currentRound?.roundNumber === 2 &&
+        message.causedByCommandId === "ready-b",
     );
     const roundTwoSnapshotA = inboxA.next(
       (message) =>
@@ -615,7 +791,7 @@ describe.sequential("authoritative Colyseus Game Server", () => {
     );
     roomB.send(
       ROOM_CONTROL_MESSAGE,
-      controlCommand("ready-b", "REQUEST_REMATCH"),
+      controlCommand("ready-b", "READY_FOR_ROUND"),
     );
     await Promise.all([
       roundTwoLifecycleA,
@@ -625,11 +801,15 @@ describe.sequential("authoritative Colyseus Game Server", () => {
     ]);
     const roundTwoStored = await roomStore.getByRoomCode("PLAY2345");
     expect(roundTwoStored).toMatchObject({
-      roundNumber: 2,
-      revision: 0,
-      status: "active",
+      currentRound: { roundNumber: 2, revision: 0, status: "active" },
     });
-    expect(roundTwoStored?.replayId).not.toBe(stored?.replayId);
+    expect(roundTwoStored?.currentRound?.replayId).not.toBe(
+      stored?.currentRound?.replayId,
+    );
+    expect(roundTwoStored?.currentRound?.playerOrder).toEqual([
+      "slot-2",
+      "slot-1",
+    ]);
 
     const duplicateFromRoundOne = inboxA.next(
       (message) =>
@@ -658,28 +838,25 @@ describe.sequential("authoritative Colyseus Game Server", () => {
       snapshot: { roundNumber: 2, revision: 0 },
     });
     expect(await roomStore.getByRoomCode("PLAY2345")).toMatchObject({
-      roundNumber: 2,
-      revision: 0,
+      currentRound: { roundNumber: 2, revision: 0 },
     });
 
-    await playAccepted(roomA, inboxA, "round-2-play-1", 0, 0, 2);
-    await playAccepted(roomB, inboxB, "round-2-play-2", 1, 3, 2);
-    await playAccepted(roomA, inboxA, "round-2-play-3", 2, 1, 2);
-    await playAccepted(roomB, inboxB, "round-2-play-4", 3, 4, 2);
-    await playAccepted(roomA, inboxA, "round-2-play-5", 4, 2, 2);
+    await playAccepted(roomB, inboxB, "round-2-play-1", 0, 0, 2);
+    await playAccepted(roomA, inboxA, "round-2-play-2", 1, 3, 2);
+    await playAccepted(roomB, inboxB, "round-2-play-3", 2, 1, 2);
+    await playAccepted(roomA, inboxA, "round-2-play-4", 3, 4, 2);
+    await playAccepted(roomB, inboxB, "round-2-play-5", 4, 2, 2);
     const completedRoundTwo = await roomStore.getByRoomCode("PLAY2345");
     expect(completedRoundTwo).toMatchObject({
-      roundNumber: 2,
-      revision: 5,
-      status: "completed",
+      currentRound: { roundNumber: 2, revision: 5, status: "completed" },
     });
     const replayRoundTwo = await replayStore.get(
-      completedRoundTwo?.replayId ?? "",
+      completedRoundTwo?.currentRound?.replayId ?? "",
     );
     expect(replayRoundTwo?.actions).toHaveLength(5);
     expect(verifyReplay(replayRoundTwo, resolveGameDefinition)).toMatchObject({
       status: "verified",
-      outcome: { type: "WIN", winnerSlotId: "slot-1" },
+      outcome: { type: "WIN", winnerSlotId: "slot-2" },
     });
 
     await expect(
@@ -729,6 +906,8 @@ describe.sequential("authoritative Colyseus Game Server", () => {
       roomCode: "FALL2345",
     });
     const inboxB = new MessageInbox(roomB);
+    await inboxB.next((message) => message.type === "room.connected");
+    startRound(roomA, roomB, "failure-round-1");
     await inboxB.next(
       (message) => isSnapshot(message) && message.status === "active",
     );
@@ -746,8 +925,10 @@ describe.sequential("authoritative Colyseus Game Server", () => {
       ),
     ).resolves.toMatchObject({ code: "INTERNAL_ERROR", revision: 0 });
     const stored = await roomStore.getByRoomCode("FALL2345");
-    const replay = await replayStore.get(stored?.replayId ?? "");
-    expect(stored).toMatchObject({ revision: 0, status: "active" });
+    const replay = await replayStore.get(stored?.currentRound?.replayId ?? "");
+    expect(stored).toMatchObject({
+      currentRound: { revision: 0, status: "active" },
+    });
     expect(replay?.actions).toEqual([]);
     expect(
       metrics
@@ -755,6 +936,204 @@ describe.sequential("authoritative Colyseus Game Server", () => {
         .find((sample) => sample.name === "replay_append_failure_total")?.value,
     ).toBe(1);
     await roomA.leave(true);
+  });
+
+  it("retries first and later round startup with the same pending candidate", async () => {
+    const createAttemptOffset = matchArchive.createAttempts.length;
+    const retryRoomA = await new ColyseusClient(address.httpUrl).create(
+      GAME_ROOM_NAME,
+      {
+        type: "room.create",
+        protocolVersion: PROTOCOL_VERSION,
+        ticket: authority.issue("retry-a"),
+        gameId: "tic-tac-toe",
+        initialConfig: null,
+      },
+    );
+    const retryInboxA = new MessageInbox(retryRoomA);
+    const retryLifecycleA = new LifecycleInbox(retryRoomA);
+    await retryInboxA.next((message) => message.type === "room.connected");
+    const retryRoomB = await new ColyseusClient(address.httpUrl).join(
+      GAME_ROOM_NAME,
+      {
+        type: "room.join",
+        protocolVersion: PROTOCOL_VERSION,
+        ticket: authority.issue("retry-b"),
+        roomCode: "RETY2345",
+      },
+    );
+    const retryInboxB = new MessageInbox(retryRoomB);
+    await retryInboxB.next((message) => message.type === "room.connected");
+
+    const selectFirst = retryLifecycleA.next(
+      (message) => message.causedByCommandId === "retry-first-starter",
+    );
+    retryRoomA.send(
+      ROOM_CONTROL_MESSAGE,
+      controlCommand("retry-first-starter", "SELECT_STARTER", "OWNER"),
+    );
+    await selectFirst;
+    const readyFirstOwner = retryLifecycleA.next(
+      (message) => message.causedByCommandId === "retry-first-owner",
+    );
+    retryRoomA.send(
+      ROOM_CONTROL_MESSAGE,
+      controlCommand("retry-first-owner", "READY_FOR_ROUND"),
+    );
+    await readyFirstOwner;
+
+    matchArchive.failNextCreate = true;
+    retryRoomB.send(
+      ROOM_CONTROL_MESSAGE,
+      controlCommand("retry-first-fails", "READY_FOR_ROUND"),
+    );
+    await expect(
+      retryInboxB.next(
+        (message) =>
+          message.type === "command.rejected" &&
+          message.commandId === "retry-first-fails",
+      ),
+    ).resolves.toMatchObject({ code: "INTERNAL_ERROR" });
+    expect(await roomStore.getByRoomCode("RETY2345")).toMatchObject({
+      currentRound: null,
+    });
+    const firstCandidate = matchArchive.createAttempts.at(-1);
+    if (firstCandidate === undefined) {
+      throw new Error("First-round archive attempt was not recorded.");
+    }
+    await expect(replayStore.get(firstCandidate)).resolves.toMatchObject({
+      header: {
+        players: [{ slotId: "slot-1" }, { slotId: "slot-2" }],
+      },
+    });
+    expect(matchArchive.createAttempts.slice(createAttemptOffset)).toEqual([
+      firstCandidate,
+    ]);
+
+    const activeFirstA = retryInboxA.next(
+      (message) =>
+        isSnapshot(message) &&
+        message.roundNumber === 1 &&
+        message.status === "active",
+    );
+    const activeFirstB = retryInboxB.next(
+      (message) =>
+        isSnapshot(message) &&
+        message.roundNumber === 1 &&
+        message.status === "active",
+    );
+    retryRoomB.send(
+      ROOM_CONTROL_MESSAGE,
+      controlCommand("retry-first-succeeds", "READY_FOR_ROUND"),
+    );
+    await Promise.all([activeFirstA, activeFirstB]);
+    expect(matchArchive.createAttempts.slice(createAttemptOffset)).toEqual([
+      firstCandidate,
+      firstCandidate,
+    ]);
+
+    const acceptRetryAction = async (
+      room: ClientRoom,
+      inbox: MessageInbox,
+      commandId: string,
+      roundNumber: number,
+      revision: number,
+      cell: number,
+    ): Promise<void> => {
+      const accepted = inbox.next(
+        (message) =>
+          isSnapshot(message) && message.causedByCommandId === commandId,
+      );
+      room.send(
+        GAME_ACTION_MESSAGE,
+        command(commandId, revision, { type: "PLACE_MARK", cell }, roundNumber),
+      );
+      await accepted;
+    };
+    await acceptRetryAction(retryRoomA, retryInboxA, "retry-1", 1, 0, 0);
+    await acceptRetryAction(retryRoomB, retryInboxB, "retry-2", 1, 1, 3);
+    await acceptRetryAction(retryRoomA, retryInboxA, "retry-3", 1, 2, 1);
+    await acceptRetryAction(retryRoomB, retryInboxB, "retry-4", 1, 3, 4);
+    await acceptRetryAction(retryRoomA, retryInboxA, "retry-5", 1, 4, 2);
+    expect(await roomStore.getByRoomCode("RETY2345")).toMatchObject({
+      currentRound: { roundNumber: 1, status: "completed", revision: 5 },
+    });
+
+    const selectLater = retryLifecycleA.next(
+      (message) => message.causedByCommandId === "retry-later-starter",
+    );
+    retryRoomA.send(
+      ROOM_CONTROL_MESSAGE,
+      controlCommand("retry-later-starter", "SELECT_STARTER", "NON_OWNER"),
+    );
+    await selectLater;
+    const readyLaterOwner = retryLifecycleA.next(
+      (message) => message.causedByCommandId === "retry-later-owner",
+    );
+    retryRoomA.send(
+      ROOM_CONTROL_MESSAGE,
+      controlCommand("retry-later-owner", "READY_FOR_ROUND"),
+    );
+    await readyLaterOwner;
+
+    matchArchive.failNextCreate = true;
+    retryRoomB.send(
+      ROOM_CONTROL_MESSAGE,
+      controlCommand("retry-later-fails", "READY_FOR_ROUND"),
+    );
+    await expect(
+      retryInboxB.next(
+        (message) =>
+          message.type === "command.rejected" &&
+          message.commandId === "retry-later-fails",
+      ),
+    ).resolves.toMatchObject({ code: "INTERNAL_ERROR", revision: 5 });
+    expect(await roomStore.getByRoomCode("RETY2345")).toMatchObject({
+      currentRound: { roundNumber: 1, status: "completed", revision: 5 },
+    });
+    const laterCandidate = matchArchive.createAttempts.at(-1);
+    if (laterCandidate === undefined || laterCandidate === firstCandidate) {
+      throw new Error("Later-round archive attempt was not recorded.");
+    }
+    await expect(replayStore.get(laterCandidate)).resolves.toMatchObject({
+      header: {
+        players: [{ slotId: "slot-2" }, { slotId: "slot-1" }],
+      },
+    });
+
+    const activeLaterA = retryInboxA.next(
+      (message) =>
+        isSnapshot(message) &&
+        message.roundNumber === 2 &&
+        message.status === "active",
+    );
+    const activeLaterB = retryInboxB.next(
+      (message) =>
+        isSnapshot(message) &&
+        message.roundNumber === 2 &&
+        message.status === "active",
+    );
+    retryRoomB.send(
+      ROOM_CONTROL_MESSAGE,
+      controlCommand("retry-later-succeeds", "READY_FOR_ROUND"),
+    );
+    await Promise.all([activeLaterA, activeLaterB]);
+    expect(matchArchive.createAttempts.slice(createAttemptOffset)).toEqual([
+      firstCandidate,
+      firstCandidate,
+      laterCandidate,
+      laterCandidate,
+    ]);
+    expect(await roomStore.getByRoomCode("RETY2345")).toMatchObject({
+      players: [{ slotId: "slot-1" }, { slotId: "slot-2" }],
+      currentRound: {
+        roundNumber: 2,
+        playerOrder: ["slot-2", "slot-1"],
+        replayId: laterCandidate,
+        status: "active",
+        revision: 0,
+      },
+    });
   });
 
   it("restores stable slots, takes over old connections, and abandons after fake-clock timeout", async () => {
@@ -778,6 +1157,8 @@ describe.sequential("authoritative Colyseus Game Server", () => {
       roomCode: "TAKE2345",
     });
     const inboxB = new MessageInbox(roomB);
+    await inboxB.next((message) => message.type === "room.connected");
+    startRound(roomA, roomB, "takeover-round-1");
     await inboxB.next(
       (message) => isSnapshot(message) && message.status === "active",
     );
@@ -806,7 +1187,7 @@ describe.sequential("authoritative Colyseus Game Server", () => {
     );
     await new Promise((resolve) => setImmediate(resolve));
     expect(await roomStore.getByRoomCode("TAKE2345")).toMatchObject({
-      revision: 0,
+      currentRound: { revision: 0 },
     });
 
     await takeoverRoom.leave(false);
@@ -847,7 +1228,8 @@ describe.sequential("authoritative Colyseus Game Server", () => {
     clock.advanceBy(60_000);
     await waitUntil(
       async () =>
-        (await roomStore.getByRoomCode("TAKE2345"))?.status === "abandoned",
+        (await roomStore.getByRoomCode("TAKE2345"))?.currentRound?.status ===
+        "abandoned",
     );
     await expect(
       new ColyseusClient(address.httpUrl).reconnect(reconnectionToken),
@@ -861,8 +1243,7 @@ describe.sequential("authoritative Colyseus Game Server", () => {
       }),
     ).rejects.toThrow();
     expect(await roomStore.getByRoomCode("TAKE2345")).toMatchObject({
-      status: "abandoned",
-      revision: 0,
+      currentRound: { status: "abandoned", revision: 0 },
     });
   });
 
@@ -892,6 +1273,9 @@ describe.sequential("authoritative Colyseus Game Server", () => {
         roomCode: "LEAV2345",
       },
     );
+    const inboxB = new MessageInbox(roomB);
+    await inboxB.next((message) => message.type === "room.connected");
+    startRound(roomA, roomB, "leave-round-1");
     await activeA;
     const abandonedA = inboxA.next(
       (message) => isSnapshot(message) && message.status === "abandoned",
@@ -905,9 +1289,7 @@ describe.sequential("authoritative Colyseus Game Server", () => {
     await roomB.leave(true);
     await Promise.all([abandonedA, closedA, leftA]);
     expect(await roomStore.getByRoomCode("LEAV2345")).toMatchObject({
-      roundNumber: 1,
-      revision: 0,
-      status: "abandoned",
+      currentRound: { roundNumber: 1, revision: 0, status: "abandoned" },
     });
 
     const waitingRoom = await new ColyseusClient(address.httpUrl).create(
@@ -922,9 +1304,7 @@ describe.sequential("authoritative Colyseus Game Server", () => {
     );
     const waitingInbox = new MessageInbox(waitingRoom);
     const waitingLifecycle = new LifecycleInbox(waitingRoom);
-    await waitingInbox.next(
-      (message) => isSnapshot(message) && message.status === "waiting",
-    );
+    await waitingInbox.next((message) => message.type === "room.connected");
     const ownerClosed = waitingLifecycle.next(
       (message) => message.closeReason === "OWNER_CLOSED",
     );
@@ -934,7 +1314,8 @@ describe.sequential("authoritative Colyseus Game Server", () => {
     );
     await ownerClosed;
     expect(await roomStore.getByRoomCode("WALT2345")).toMatchObject({
-      status: "abandoned",
+      currentRound: null,
+      closeReason: "OWNER_CLOSED",
     });
   });
 
@@ -963,6 +1344,8 @@ describe.sequential("authoritative Colyseus Game Server", () => {
     );
     const inboxB = new MessageInbox(roomB);
     const lifecycleB = new LifecycleInbox(roomB);
+    await inboxB.next((message) => message.type === "room.connected");
+    startRound(roomA, roomB, "ttl-round-1");
     await inboxB.next(
       (message) => isSnapshot(message) && message.status === "active",
     );
@@ -989,21 +1372,28 @@ describe.sequential("authoritative Colyseus Game Server", () => {
     await accept(roomB, inboxB, "ttl-4", 3, 4);
     await accept(roomA, inboxA, "ttl-5", 4, 2);
     await Promise.all([
-      lifecycleA.next((message) => message.rematch.available),
-      lifecycleB.next((message) => message.rematch.available),
+      lifecycleA.next((message) => message.nextRound?.roundNumber === 2),
+      lifecycleB.next((message) => message.nextRound?.roundNumber === 2),
     ]);
+
+    roomA.send(
+      ROOM_CONTROL_MESSAGE,
+      controlCommand("ttl-starter", "SELECT_STARTER", "OWNER"),
+    );
+    await lifecycleA.next(
+      (message) => message.causedByCommandId === "ttl-starter",
+    );
 
     const readyA = lifecycleA.next(
       (message) => message.causedByCommandId === "ttl-ready-a",
     );
     roomA.send(
       ROOM_CONTROL_MESSAGE,
-      controlCommand("ttl-ready-a", "REQUEST_REMATCH"),
+      controlCommand("ttl-ready-a", "READY_FOR_ROUND"),
     );
     await readyA;
     const clearedAfterDisconnect = lifecycleB.next(
-      (message) =>
-        message.rematch.available && message.rematch.readyPlayerCount === 0,
+      (message) => message.nextRound?.readyPlayerCount === 0,
     );
     await roomA.leave(false);
     await clearedAfterDisconnect;
@@ -1021,23 +1411,22 @@ describe.sequential("authoritative Colyseus Game Server", () => {
     const reconnectLifecycle = new LifecycleInbox(reconnectedA);
     await reconnectInbox.next((message) => message.type === "room.connected");
     await lifecycleB.next(
-      (message) =>
-        message.rematch.available && message.rematch.readyPlayerCount === 0,
+      (message) => message.nextRound?.readyPlayerCount === 0,
     );
 
     const readyReconnect = reconnectLifecycle.next(
       (message) => message.causedByCommandId === "ttl-ready-reconnect",
     );
     const readyForB = lifecycleB.next(
-      (message) => message.rematch.readyPlayerCount === 1,
+      (message) => message.nextRound?.readyPlayerCount === 1,
     );
     reconnectedA.send(
       ROOM_CONTROL_MESSAGE,
-      controlCommand("ttl-ready-reconnect", "REQUEST_REMATCH"),
+      controlCommand("ttl-ready-reconnect", "READY_FOR_ROUND"),
     );
     await Promise.all([readyReconnect, readyForB]);
     const clearedAfterTakeover = lifecycleB.next(
-      (message) => message.rematch.readyPlayerCount === 0,
+      (message) => message.nextRound?.readyPlayerCount === 0,
     );
     const takeoverA = await new ColyseusClient(address.httpUrl).join(
       GAME_ROOM_NAME,
@@ -1060,9 +1449,8 @@ describe.sequential("authoritative Colyseus Game Server", () => {
     clock.advanceBy(300_000);
     await Promise.all([ttlClosedA, ttlClosedB]);
     expect(await roomStore.getByRoomCode("TTLM2345")).toMatchObject({
-      status: "completed",
-      roundNumber: 1,
-      revision: 5,
+      currentRound: { status: "completed", roundNumber: 1, revision: 5 },
+      closeReason: "REMATCH_TIMEOUT",
     });
   });
 
@@ -1087,12 +1475,6 @@ describe.sequential("authoritative Colyseus Game Server", () => {
       roomCode: "CFPLAY45",
       playerSlotId: "slot-1",
     });
-    await expect(originalInboxA.next(isSnapshot)).resolves.toMatchObject({
-      roundNumber: 1,
-      revision: 0,
-      status: "waiting",
-    });
-
     const activeForA = originalInboxA.next(
       (message) => isSnapshot(message) && message.status === "active",
     );
@@ -1109,6 +1491,7 @@ describe.sequential("authoritative Colyseus Game Server", () => {
     const connectedB = await originalInboxB.next(
       (message) => message.type === "room.connected",
     );
+    startRound(originalRoomA, originalRoomB, "connect-four-round-1");
     const [initialA, initialB] = await Promise.all([
       activeForA,
       originalInboxB.next(
@@ -1293,8 +1676,7 @@ describe.sequential("authoritative Colyseus Game Server", () => {
       revision: 6,
     });
     expect(await roomStore.getByRoomCode("CFPLAY45")).toMatchObject({
-      revision: 6,
-      status: "active",
+      currentRound: { revision: 6, status: "active" },
     });
 
     await acceptDrop(roomA, inboxA, "cf-win-1", 6, 1);
@@ -1335,14 +1717,12 @@ describe.sequential("authoritative Colyseus Game Server", () => {
 
     const storedRoundOne = await roomStore.getByRoomCode("CFPLAY45");
     const replayRoundOne = await replayStore.get(
-      storedRoundOne?.replayId ?? "",
+      storedRoundOne?.currentRound?.replayId ?? "",
     );
     expect(storedRoundOne).toMatchObject({
       gameId: "connect-four",
       gameVersion: "1.0.0",
-      roundNumber: 1,
-      revision: 11,
-      status: "completed",
+      currentRound: { roundNumber: 1, revision: 11, status: "completed" },
     });
     expect(replayRoundOne?.actions).toHaveLength(11);
     expect(replayRoundOne?.actions.map((event) => event.action)).toEqual([
@@ -1369,24 +1749,9 @@ describe.sequential("authoritative Colyseus Game Server", () => {
     });
 
     await Promise.all([
-      lifecycleA.next((message) => message.rematch.available),
-      lifecycleB.next((message) => message.rematch.available),
+      lifecycleA.next((message) => message.nextRound?.roundNumber === 2),
+      lifecycleB.next((message) => message.nextRound?.roundNumber === 2),
     ]);
-    const readyA = lifecycleA.next(
-      (message) => message.causedByCommandId === "cf-ready-a",
-    );
-    roomA.send(
-      ROOM_CONTROL_MESSAGE,
-      controlCommand("cf-ready-a", "REQUEST_REMATCH"),
-    );
-    await readyA;
-    const roundTwoLifecycleA = lifecycleA.next(
-      (message) => message.roundNumber === 2,
-    );
-    const roundTwoLifecycleB = lifecycleB.next(
-      (message) =>
-        message.roundNumber === 2 && message.causedByCommandId === "cf-ready-b",
-    );
     const roundTwoSnapshotA = inboxA.next(
       (message) =>
         isSnapshot(message) &&
@@ -1399,27 +1764,19 @@ describe.sequential("authoritative Colyseus Game Server", () => {
         message.roundNumber === 2 &&
         message.revision === 0,
     );
-    roomB.send(
-      ROOM_CONTROL_MESSAGE,
-      controlCommand("cf-ready-b", "REQUEST_REMATCH"),
-    );
-    await Promise.all([
-      roundTwoLifecycleA,
-      roundTwoLifecycleB,
-      roundTwoSnapshotA,
-      roundTwoSnapshotB,
-    ]);
+    startRound(roomA, roomB, "connect-four-round-2");
+    await Promise.all([roundTwoSnapshotA, roundTwoSnapshotB]);
     const storedRoundTwoStart = await roomStore.getByRoomCode("CFPLAY45");
     expect(storedRoundTwoStart).toMatchObject({
       roomCode: "CFPLAY45",
       gameId: "connect-four",
       gameVersion: "1.0.0",
-      roundNumber: 2,
-      revision: 0,
-      status: "active",
+      currentRound: { roundNumber: 2, revision: 0, status: "active" },
       players: [{ slotId: "slot-1" }, { slotId: "slot-2" }],
     });
-    expect(storedRoundTwoStart?.replayId).not.toBe(storedRoundOne?.replayId);
+    expect(storedRoundTwoStart?.currentRound?.replayId).not.toBe(
+      storedRoundOne?.currentRound?.replayId,
+    );
 
     roomA.send(
       GAME_ACTION_MESSAGE,
@@ -1444,13 +1801,11 @@ describe.sequential("authoritative Colyseus Game Server", () => {
     await acceptDrop(roomA, inboxA, "cf-r2-7", 6, 3, 2);
     const storedRoundTwo = await roomStore.getByRoomCode("CFPLAY45");
     const replayRoundTwo = await replayStore.get(
-      storedRoundTwo?.replayId ?? "",
+      storedRoundTwo?.currentRound?.replayId ?? "",
     );
     expect(storedRoundTwo).toMatchObject({
       roomCode: "CFPLAY45",
-      roundNumber: 2,
-      revision: 7,
-      status: "completed",
+      currentRound: { roundNumber: 2, revision: 7, status: "completed" },
     });
     expect(replayRoundTwo?.actions).toHaveLength(7);
     expect(verifyReplay(replayRoundTwo, resolveGameDefinition)).toMatchObject({
@@ -1476,9 +1831,7 @@ describe.sequential("authoritative Colyseus Game Server", () => {
     clock.advanceBy(300_000);
     await Promise.all([ttlClosedA, ttlClosedB]);
     expect(await roomStore.getByRoomCode("CFPLAY45")).toMatchObject({
-      roundNumber: 2,
-      revision: 7,
-      status: "completed",
+      currentRound: { roundNumber: 2, revision: 7, status: "completed" },
     });
 
     const drawRoomA = await new ColyseusClient(address.httpUrl).create(
@@ -1508,6 +1861,8 @@ describe.sequential("authoritative Colyseus Game Server", () => {
     );
     const drawInboxB = new MessageInbox(drawRoomB);
     const drawLifecycleB = new LifecycleInbox(drawRoomB);
+    await drawInboxB.next((message) => message.type === "room.connected");
+    startRound(drawRoomA, drawRoomB, "connect-four-draw-round-1");
     await Promise.all([
       drawActiveA,
       drawInboxB.next(
@@ -1534,7 +1889,9 @@ describe.sequential("authoritative Colyseus Game Server", () => {
       outcome: { type: "DRAW" },
     });
     const drawStored = await roomStore.getByRoomCode("CFDRAW45");
-    const drawReplay = await replayStore.get(drawStored?.replayId ?? "");
+    const drawReplay = await replayStore.get(
+      drawStored?.currentRound?.replayId ?? "",
+    );
     expect(drawReplay?.actions).toHaveLength(42);
     expect(verifyReplay(drawReplay, resolveGameDefinition)).toMatchObject({
       status: "verified",
@@ -1578,6 +1935,9 @@ describe.sequential("authoritative Colyseus Game Server", () => {
         roomCode: "CFLEAV45",
       },
     );
+    const leaveInboxB = new MessageInbox(leaveRoomB);
+    await leaveInboxB.next((message) => message.type === "room.connected");
+    startRound(leaveRoomA, leaveRoomB, "connect-four-leave-round-1");
     await leaveActiveA;
     await leaveRoomB.leave(true);
     await Promise.all([
@@ -1588,14 +1948,12 @@ describe.sequential("authoritative Colyseus Game Server", () => {
     ]);
     const abandonedStored = await roomStore.getByRoomCode("CFLEAV45");
     const abandonedReplay = await replayStore.get(
-      abandonedStored?.replayId ?? "",
+      abandonedStored?.currentRound?.replayId ?? "",
     );
     expect(abandonedStored).toMatchObject({
       gameId: "connect-four",
       gameVersion: "1.0.0",
-      roundNumber: 1,
-      revision: 0,
-      status: "abandoned",
+      currentRound: { roundNumber: 1, revision: 0, status: "abandoned" },
     });
     expect(abandonedReplay).toMatchObject({
       actions: [],
@@ -1624,16 +1982,6 @@ describe.sequential("authoritative Colyseus Game Server", () => {
       roomCode: "GMPLAY45",
       playerSlotId: "slot-1",
     });
-    await expect(inboxA.next(isSnapshot)).resolves.toMatchObject({
-      revision: 0,
-      status: "waiting",
-      view: {
-        boardSize: 19,
-        winLength: 5,
-        yourStone: "BLACK",
-      },
-    });
-
     const activeA = inboxA.next(
       (message) => isSnapshot(message) && message.status === "active",
     );
@@ -1655,6 +2003,7 @@ describe.sequential("authoritative Colyseus Game Server", () => {
       roomCode: "GMPLAY45",
       playerSlotId: "slot-2",
     });
+    startRound(roomA, roomB, "gomoku-round-1");
     const [initialA, initialB] = await Promise.all([
       activeA,
       inboxB.next(
@@ -1760,13 +2109,12 @@ describe.sequential("authoritative Colyseus Game Server", () => {
     });
 
     const stored = await roomStore.getByRoomCode("GMPLAY45");
-    const replay = await replayStore.get(stored?.replayId ?? "");
+    const replay = await replayStore.get(stored?.currentRound?.replayId ?? "");
     expect(stored).toMatchObject({
       gameId: "gomoku",
       gameVersion: "1.0.0",
       initialConfig: { boardSize: 19, winLength: 5 },
-      revision: 9,
-      status: "completed",
+      currentRound: { revision: 9, status: "completed" },
     });
     expect(replay?.actions).toHaveLength(9);
     expect(replay?.header.initialConfig).toEqual({
@@ -1801,19 +2149,6 @@ describe.sequential("authoritative Colyseus Game Server", () => {
       roomCode: "HXPLAY45",
       playerSlotId: "slot-1",
     });
-    const waitingA = await inboxA.next(isSnapshot);
-    expect(waitingA).toMatchObject({
-      revision: 0,
-      status: "waiting",
-      view: {
-        yourColor: "BLUE",
-        nextTurnSlotId: "slot-1",
-      },
-    });
-    expect(
-      ((waitingA as MatchSnapshot).view as { board: unknown[] }).board,
-    ).toHaveLength(121);
-
     const activeA = inboxA.next(
       (message) => isSnapshot(message) && message.status === "active",
     );
@@ -1836,6 +2171,7 @@ describe.sequential("authoritative Colyseus Game Server", () => {
       roomCode: "HXPLAY45",
       playerSlotId: "slot-2",
     });
+    startRound(roomA, roomB, "hex-round-1");
     const [initialA, initialB] = await Promise.all([
       activeA,
       inboxB.next(
@@ -2000,15 +2336,13 @@ describe.sequential("authoritative Colyseus Game Server", () => {
 
     const storedRoundOne = await roomStore.getByRoomCode("HXPLAY45");
     const replayRoundOne = await replayStore.get(
-      storedRoundOne?.replayId ?? "",
+      storedRoundOne?.currentRound?.replayId ?? "",
     );
     expect(storedRoundOne).toMatchObject({
       gameId: "hex",
       gameVersion: "1.0.0",
       initialConfig: null,
-      roundNumber: 1,
-      revision: 21,
-      status: "completed",
+      currentRound: { roundNumber: 1, revision: 21, status: "completed" },
     });
     expect(replayRoundOne?.actions).toHaveLength(21);
     expect(verifyReplay(replayRoundOne, resolveGameDefinition)).toMatchObject({
@@ -2022,17 +2356,9 @@ describe.sequential("authoritative Colyseus Game Server", () => {
     });
 
     await Promise.all([
-      lifecycleA.next((message) => message.rematch.available),
-      lifecycleB.next((message) => message.rematch.available),
+      lifecycleA.next((message) => message.nextRound?.roundNumber === 2),
+      lifecycleB.next((message) => message.nextRound?.roundNumber === 2),
     ]);
-    const readyA = lifecycleA.next(
-      (message) => message.causedByCommandId === "hex-ready-a",
-    );
-    roomA.send(
-      ROOM_CONTROL_MESSAGE,
-      controlCommand("hex-ready-a", "REQUEST_REMATCH"),
-    );
-    await readyA;
     const roundTwoA = inboxA.next(
       (message) =>
         isSnapshot(message) &&
@@ -2045,10 +2371,7 @@ describe.sequential("authoritative Colyseus Game Server", () => {
         message.roundNumber === 2 &&
         message.revision === 0,
     );
-    roomB.send(
-      ROOM_CONTROL_MESSAGE,
-      controlCommand("hex-ready-b", "REQUEST_REMATCH"),
-    );
+    startRound(roomA, roomB, "hex-round-2");
     const [roundTwoSnapshotA, roundTwoSnapshotB] = await Promise.all([
       roundTwoA,
       roundTwoB,
@@ -2083,15 +2406,15 @@ describe.sequential("authoritative Colyseus Game Server", () => {
     });
     const storedRoundTwo = await roomStore.getByRoomCode("HXPLAY45");
     const replayRoundTwo = await replayStore.get(
-      storedRoundTwo?.replayId ?? "",
+      storedRoundTwo?.currentRound?.replayId ?? "",
     );
     expect(storedRoundTwo).toMatchObject({
-      roundNumber: 2,
-      revision: 1,
-      status: "completed",
+      currentRound: { roundNumber: 2, revision: 1, status: "completed" },
       players: [{ slotId: "slot-1" }, { slotId: "slot-2" }],
     });
-    expect(storedRoundTwo?.replayId).not.toBe(storedRoundOne?.replayId);
+    expect(storedRoundTwo?.currentRound?.replayId).not.toBe(
+      storedRoundOne?.currentRound?.replayId,
+    );
     expect(replayRoundTwo?.actions).toEqual([
       {
         sequence: 1,
@@ -2135,21 +2458,6 @@ describe.sequential("authoritative Colyseus Game Server", () => {
       throw new Error("Reversi creator did not receive room metadata.");
     }
     const reversiRoomCode = connectedA.roomCode;
-    const waitingA = await inboxA.next(isSnapshot);
-    expect(waitingA).toMatchObject({
-      revision: 0,
-      status: "waiting",
-      view: {
-        yourDisc: "BLACK",
-        nextTurnSlotId: "slot-1",
-        legalMoves: [19, 26, 37, 44],
-        discCounts: { BLACK: 2, WHITE: 2 },
-      },
-    });
-    expect(
-      ((waitingA as MatchSnapshot).view as { board: unknown[] }).board,
-    ).toHaveLength(64);
-
     const activeA = inboxA.next(
       (message) => isSnapshot(message) && message.status === "active",
     );
@@ -2172,6 +2480,7 @@ describe.sequential("authoritative Colyseus Game Server", () => {
       roomCode: reversiRoomCode,
       playerSlotId: "slot-2",
     });
+    startRound(roomA, roomB, "reversi-round-1");
     const [initialA, initialB] = await Promise.all([
       activeA,
       inboxB.next(
@@ -2255,8 +2564,12 @@ describe.sequential("authoritative Colyseus Game Server", () => {
       revision: 0,
     });
     const initialStored = await roomStore.getByRoomCode(reversiRoomCode);
-    const initialReplay = await replayStore.get(initialStored?.replayId ?? "");
-    expect(initialStored).toMatchObject({ revision: 0, status: "active" });
+    const initialReplay = await replayStore.get(
+      initialStored?.currentRound?.replayId ?? "",
+    );
+    expect(initialStored).toMatchObject({
+      currentRound: { revision: 0, status: "active" },
+    });
     expect(initialReplay?.actions).toEqual([]);
 
     const acceptReversiDisc = async (
@@ -2365,15 +2678,13 @@ describe.sequential("authoritative Colyseus Game Server", () => {
 
     const storedRoundOne = await roomStore.getByRoomCode(reversiRoomCode);
     const replayRoundOne = await replayStore.get(
-      storedRoundOne?.replayId ?? "",
+      storedRoundOne?.currentRound?.replayId ?? "",
     );
     expect(storedRoundOne).toMatchObject({
       gameId: "reversi",
       gameVersion: "1.0.0",
       initialConfig: null,
-      roundNumber: 1,
-      revision: 25,
-      status: "completed",
+      currentRound: { roundNumber: 1, revision: 25, status: "completed" },
     });
     expect(replayRoundOne?.actions).toHaveLength(25);
     expect(
@@ -2400,17 +2711,9 @@ describe.sequential("authoritative Colyseus Game Server", () => {
     });
 
     await Promise.all([
-      lifecycleA.next((message) => message.rematch.available),
-      lifecycleB.next((message) => message.rematch.available),
+      lifecycleA.next((message) => message.nextRound?.roundNumber === 2),
+      lifecycleB.next((message) => message.nextRound?.roundNumber === 2),
     ]);
-    const readyA = lifecycleA.next(
-      (message) => message.causedByCommandId === "reversi-ready-a",
-    );
-    roomA.send(
-      ROOM_CONTROL_MESSAGE,
-      controlCommand("reversi-ready-a", "REQUEST_REMATCH"),
-    );
-    await readyA;
     const roundTwoA = inboxA.next(
       (message) =>
         isSnapshot(message) &&
@@ -2423,10 +2726,7 @@ describe.sequential("authoritative Colyseus Game Server", () => {
         message.roundNumber === 2 &&
         message.revision === 0,
     );
-    roomB.send(
-      ROOM_CONTROL_MESSAGE,
-      controlCommand("reversi-ready-b", "REQUEST_REMATCH"),
-    );
+    startRound(roomA, roomB, "reversi-round-2");
     const [roundTwoSnapshotA, roundTwoSnapshotB] = await Promise.all([
       roundTwoA,
       roundTwoB,
@@ -2480,15 +2780,15 @@ describe.sequential("authoritative Colyseus Game Server", () => {
 
     const storedRoundTwo = await roomStore.getByRoomCode(reversiRoomCode);
     const replayRoundTwo = await replayStore.get(
-      storedRoundTwo?.replayId ?? "",
+      storedRoundTwo?.currentRound?.replayId ?? "",
     );
     expect(storedRoundTwo).toMatchObject({
-      roundNumber: 2,
-      revision: 11,
-      status: "completed",
+      currentRound: { roundNumber: 2, revision: 11, status: "completed" },
       players: [{ slotId: "slot-1" }, { slotId: "slot-2" }],
     });
-    expect(storedRoundTwo?.replayId).not.toBe(storedRoundOne?.replayId);
+    expect(storedRoundTwo?.currentRound?.replayId).not.toBe(
+      storedRoundOne?.currentRound?.replayId,
+    );
     expect(replayRoundTwo?.actions).toHaveLength(11);
     expect(verifyReplay(replayRoundTwo, resolveGameDefinition)).toMatchObject({
       status: "verified",

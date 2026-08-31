@@ -1,6 +1,6 @@
 import { isJsonValue } from "@online-game-hub/game-sdk";
 import type { JsonValue, RngState } from "@online-game-hub/game-sdk";
-import type { MatchStatus } from "@online-game-hub/protocol";
+import type { MatchStatus, RoomCloseReason } from "@online-game-hub/protocol";
 
 export interface StoredPlayerSlot {
   readonly slotId: string;
@@ -8,20 +8,26 @@ export interface StoredPlayerSlot {
   readonly reservedUntilMilliseconds: number | null;
 }
 
+export interface StoredGameRound {
+  readonly roundNumber: number;
+  readonly playerOrder: readonly string[];
+  readonly replayId: string;
+  readonly state: JsonValue;
+  readonly rng: RngState;
+  readonly revision: number;
+  readonly status: Exclude<MatchStatus, "waiting">;
+  readonly outcome: JsonValue | null;
+}
+
 export interface StoredGameRoom {
   readonly roomId: string;
   readonly roomCode: string;
-  readonly roundNumber: number;
   readonly gameId: string;
   readonly gameVersion: string;
   readonly initialConfig: JsonValue;
   readonly players: readonly StoredPlayerSlot[];
-  readonly state: JsonValue;
-  readonly rng: RngState;
-  readonly revision: number;
-  readonly status: MatchStatus;
-  readonly outcome: JsonValue | null;
-  readonly replayId: string;
+  readonly currentRound: StoredGameRound | null;
+  readonly closeReason: RoomCloseReason | null;
 }
 
 export interface RoomStore {
@@ -65,30 +71,48 @@ function cloneRoom(room: StoredGameRoom): StoredGameRoom {
     ...room,
     initialConfig: cloneJson(room.initialConfig),
     players: room.players.map((player) => ({ ...player })),
-    state: cloneJson(room.state),
-    rng: { ...room.rng },
-    outcome: room.outcome === null ? null : cloneJson(room.outcome),
+    currentRound:
+      room.currentRound === null
+        ? null
+        : {
+            ...room.currentRound,
+            playerOrder: [...room.currentRound.playerOrder],
+            state: cloneJson(room.currentRound.state),
+            rng: { ...room.currentRound.rng },
+            outcome:
+              room.currentRound.outcome === null
+                ? null
+                : cloneJson(room.currentRound.outcome),
+          },
   };
 }
 
 function validRoom(room: StoredGameRoom): boolean {
   const slots = room.players.map((player) => player.slotId);
+  const round = room.currentRound;
+  const validRound =
+    round === null ||
+    (Number.isSafeInteger(round.roundNumber) &&
+      round.roundNumber > 0 &&
+      round.replayId.length > 0 &&
+      round.playerOrder.length === room.players.length &&
+      new Set(round.playerOrder).size === round.playerOrder.length &&
+      round.playerOrder.every((slotId) => slots.includes(slotId)) &&
+      Number.isSafeInteger(round.revision) &&
+      round.revision >= 0 &&
+      isJsonValue(round.state) &&
+      isJsonValue(round.outcome));
   return (
     room.roomId.length > 0 &&
     /^[A-HJ-NP-Z2-9]{8}$/u.test(room.roomCode) &&
-    Number.isSafeInteger(room.roundNumber) &&
-    room.roundNumber > 0 &&
     room.gameId.length > 0 &&
     room.gameVersion.length > 0 &&
-    room.replayId.length > 0 &&
     room.players.length > 0 &&
     slots.every((slot) => slot.length > 0) &&
     new Set(slots).size === slots.length &&
-    Number.isSafeInteger(room.revision) &&
-    room.revision >= 0 &&
     isJsonValue(room.initialConfig) &&
-    isJsonValue(room.state) &&
-    isJsonValue(room.outcome)
+    validRound &&
+    (room.closeReason === null || typeof room.closeReason === "string")
   );
 }
 

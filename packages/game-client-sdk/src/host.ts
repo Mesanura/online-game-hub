@@ -22,6 +22,7 @@ import type {
   RoomControlOperation,
   RoomConnected,
   RoomLifecycleState,
+  StarterChoice,
 } from "@online-game-hub/protocol";
 
 import type { ClientConnectionState } from "./contracts.js";
@@ -102,6 +103,15 @@ interface PendingCommand {
   readonly resolve: () => void;
   readonly reject: (error: Error) => void;
 }
+
+type RoomControlInput =
+  | {
+      readonly operation: "SELECT_STARTER";
+      readonly starter: StarterChoice;
+    }
+  | {
+      readonly operation: Exclude<RoomControlOperation, "SELECT_STARTER">;
+    };
 
 export class CommandRejectedError extends Error {
   public constructor(public readonly rejection: CommandRejected) {
@@ -216,15 +226,19 @@ export class GameClientHost<View = unknown, Outcome = unknown> {
   public submitAction(action: unknown): Promise<void> {
     const room = this.#transportRoom;
     const snapshot = this.#state.snapshot;
+    const currentRound = this.#state.roomLifecycle?.currentRound;
     if (
       room === null ||
       this.#state.connectionState !== "connected" ||
-      snapshot === null
+      snapshot === null ||
+      currentRound?.status !== "active" ||
+      snapshot.status !== "active" ||
+      snapshot.roundNumber !== currentRound.roundNumber
     ) {
-      return Promise.reject(new Error("The game room is not connected."));
+      return Promise.reject(new Error("The game round is not active."));
     }
     const commandId = this.#options.commandIds.createCommandId();
-    const roundNumber = this.#state.roomLifecycle?.roundNumber ?? 1;
+    const roundNumber = currentRound.roundNumber;
     const command = gameActionCommandSchema.parse({
       type: "game.action",
       protocolVersion: PROTOCOL_VERSION,
@@ -256,16 +270,20 @@ export class GameClientHost<View = unknown, Outcome = unknown> {
     });
   }
 
-  public requestRematch(): Promise<void> {
-    return this.#sendControl("REQUEST_REMATCH");
+  public selectStarter(starter: StarterChoice): Promise<void> {
+    return this.#sendControl({ operation: "SELECT_STARTER", starter });
   }
 
-  public cancelRematch(): Promise<void> {
-    return this.#sendControl("CANCEL_REMATCH");
+  public readyForRound(): Promise<void> {
+    return this.#sendControl({ operation: "READY_FOR_ROUND" });
+  }
+
+  public cancelRoundReady(): Promise<void> {
+    return this.#sendControl({ operation: "CANCEL_ROUND_READY" });
   }
 
   public closeRoom(): Promise<void> {
-    return this.#sendControl("CLOSE_ROOM");
+    return this.#sendControl({ operation: "CLOSE_ROOM" });
   }
 
   public async leaveRoom(): Promise<void> {
@@ -314,7 +332,7 @@ export class GameClientHost<View = unknown, Outcome = unknown> {
     }
   }
 
-  #sendControl(operation: RoomControlOperation): Promise<void> {
+  #sendControl(input: RoomControlInput): Promise<void> {
     const room = this.#transportRoom;
     if (room === null || this.#state.connectionState !== "connected") {
       return Promise.reject(new Error("The game room is not connected."));
@@ -324,7 +342,7 @@ export class GameClientHost<View = unknown, Outcome = unknown> {
       type: "room.control",
       protocolVersion: PROTOCOL_VERSION,
       commandId,
-      operation,
+      ...input,
     }) satisfies RoomControlCommand;
     if (this.#pendingCommands.has(commandId)) {
       return Promise.reject(
@@ -428,15 +446,28 @@ export class GameClientHost<View = unknown, Outcome = unknown> {
     }
     const lifecycle = parsed.data;
     const current = this.#state.roomLifecycle;
-    if (current !== null && lifecycle.roundNumber < current.roundNumber) {
+    const lifecycleRoundNumber = lifecycle.currentRound?.roundNumber ?? 0;
+    const currentRoundNumber = current?.currentRound?.roundNumber ?? 0;
+    if (current !== null && lifecycleRoundNumber < currentRoundNumber) {
       return;
     }
     if (current !== null && lifecycle.isOwner !== current.isOwner) {
       this.#failProtocol();
       return;
     }
+    if (
+      current?.currentRound !== null &&
+      current?.currentRound !== undefined &&
+      lifecycle.currentRound !== null &&
+      lifecycle.currentRound.roundNumber === current.currentRound.roundNumber &&
+      lifecycle.currentRound.status !== current.currentRound.status &&
+      current.currentRound.status !== "active"
+    ) {
+      this.#failProtocol();
+      return;
+    }
     const roundChanged =
-      current !== null && lifecycle.roundNumber > current.roundNumber;
+      current !== null && lifecycleRoundNumber > currentRoundNumber;
     const causedByCommandId = lifecycle.causedByCommandId;
     if (causedByCommandId !== undefined) {
       const pending = this.#pendingCommands.get(causedByCommandId);
@@ -555,24 +586,27 @@ export class GameClientHost<View = unknown, Outcome = unknown> {
       return;
     }
     const current = this.#state.snapshot;
-    const snapshotRoundNumber = snapshot.roundNumber ?? 1;
-    const lifecycleRoundNumber = this.#state.roomLifecycle?.roundNumber;
-    if (
-      lifecycleRoundNumber !== undefined &&
-      snapshotRoundNumber < lifecycleRoundNumber
-    ) {
+    const snapshotRoundNumber = snapshot.roundNumber;
+    const lifecycleRound = this.#state.roomLifecycle?.currentRound;
+    if (lifecycleRound === undefined || lifecycleRound === null) {
+      this.#failProtocol();
       return;
     }
-    if (
-      lifecycleRoundNumber !== undefined &&
-      snapshotRoundNumber > lifecycleRoundNumber
-    ) {
+    const lifecycleRoundNumber = lifecycleRound.roundNumber;
+    if (snapshotRoundNumber < lifecycleRoundNumber) {
+      return;
+    }
+    if (snapshotRoundNumber > lifecycleRoundNumber) {
+      this.#failProtocol();
+      return;
+    }
+    if (snapshot.status !== lifecycleRound.status) {
       this.#failProtocol();
       return;
     }
     if (
       current !== null &&
-      (current.roundNumber ?? 1) === snapshotRoundNumber &&
+      current.roundNumber === snapshotRoundNumber &&
       snapshot.revision < current.revision
     ) {
       return;

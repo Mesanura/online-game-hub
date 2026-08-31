@@ -8,10 +8,8 @@ import {
   isGameVersion,
   isJsonValue,
 } from "@online-game-hub/game-sdk";
-import { InMemoryRoomStore } from "@online-game-hub/game-server-runtime";
 import type {
   MatchArchive,
-  RoomStore,
   StoredGameRoom,
 } from "@online-game-hub/game-server-runtime";
 import { matchStatusSchema } from "@online-game-hub/protocol";
@@ -57,23 +55,26 @@ function validDate(value: unknown): value is Date {
 }
 
 function validStoredRoom(room: StoredGameRoom): boolean {
+  const round = room.currentRound;
   const assignedSessions = room.players
     .map((player) => player.playerSessionId)
     .filter((session): session is string => session !== null);
   return (
+    round !== null &&
     room.roomId.length > 0 &&
-    room.replayId.length > 0 &&
-    Number.isSafeInteger(room.roundNumber) &&
-    room.roundNumber > 0 &&
+    round.replayId.length > 0 &&
+    Number.isSafeInteger(round.roundNumber) &&
+    round.roundNumber > 0 &&
     isGameId(room.gameId) &&
     isGameVersion(room.gameVersion) &&
-    matchStatusSchema.safeParse(room.status).success &&
-    Number.isSafeInteger(room.revision) &&
-    room.revision >= 0 &&
+    matchStatusSchema.safeParse(round.status).success &&
+    Number.isSafeInteger(round.revision) &&
+    round.revision >= 0 &&
     isJsonValue(room.initialConfig) &&
-    isJsonValue(room.state) &&
-    isJsonValue(room.outcome) &&
+    isJsonValue(round.state) &&
+    isJsonValue(round.outcome) &&
     room.players.length > 0 &&
+    assignedSessions.length === room.players.length &&
     room.players.every(
       (player) =>
         player.slotId.length > 0 &&
@@ -81,6 +82,11 @@ function validStoredRoom(room: StoredGameRoom): boolean {
     ) &&
     new Set(room.players.map((player) => player.slotId)).size ===
       room.players.length &&
+    round.playerOrder.length === room.players.length &&
+    new Set(round.playerOrder).size === round.playerOrder.length &&
+    round.playerOrder.every((slotId) =>
+      room.players.some((player) => player.slotId === slotId),
+    ) &&
     new Set(assignedSessions).size === assignedSessions.length
   );
 }
@@ -260,11 +266,12 @@ export class PostgresMatchRepository {
   public constructor(private readonly database: OnlineGameHubDatabase) {}
 
   public async recordRoomCreated(room: StoredGameRoom): Promise<void> {
+    const round = room.currentRound;
     if (
       !validStoredRoom(room) ||
-      room.roundNumber !== 1 ||
-      room.status !== "waiting" ||
-      room.revision !== 0
+      round === null ||
+      round.status !== "active" ||
+      round.revision !== 0
     ) {
       throw new DatabaseError("DATABASE_OPERATION_ERROR");
     }
@@ -277,7 +284,7 @@ export class PostgresMatchRepository {
             gameVersion: replays.gameVersion,
           })
           .from(replays)
-          .where(eq(replays.id, room.replayId))
+          .where(eq(replays.id, round.replayId))
           .for("update")
           .limit(1);
         const replay = replayRows[0];
@@ -289,17 +296,42 @@ export class PostgresMatchRepository {
           throw new DatabaseError("DATABASE_OPERATION_ERROR");
         }
 
+        if (round.roundNumber > 1) {
+          const previousRows = await transaction
+            .select()
+            .from(matches)
+            .where(
+              and(
+                eq(matches.runtimeRoomId, room.roomId),
+                eq(matches.roundNumber, round.roundNumber - 1),
+              ),
+            )
+            .for("update")
+            .limit(1);
+          const previous = previousRows[0];
+          if (
+            previous === undefined ||
+            previous.status !== "completed" ||
+            previous.gameId !== room.gameId ||
+            previous.gameVersion !== room.gameVersion
+          ) {
+            throw new DatabaseError("DATABASE_OPERATION_ERROR");
+          }
+          await assertSameParticipants(transaction, previous.id, room);
+        }
+
         await transaction
           .insert(matches)
           .values({
             id: randomUUID(),
             runtimeRoomId: room.roomId,
-            roundNumber: room.roundNumber,
-            replayId: room.replayId,
+            roundNumber: round.roundNumber,
+            replayId: round.replayId,
             gameId: room.gameId,
             gameVersion: room.gameVersion,
-            status: "waiting",
+            status: "active",
             finalRevision: 0,
+            startedAt: new Date(),
           })
           .onConflictDoNothing();
         const matchRows = await transaction
@@ -308,7 +340,7 @@ export class PostgresMatchRepository {
           .where(
             and(
               eq(matches.runtimeRoomId, room.roomId),
-              eq(matches.roundNumber, room.roundNumber),
+              eq(matches.roundNumber, round.roundNumber),
             ),
           )
           .for("update")
@@ -316,12 +348,20 @@ export class PostgresMatchRepository {
         const match = matchRows[0];
         if (
           match === undefined ||
-          match.replayId !== room.replayId ||
-          match.roundNumber !== room.roundNumber ||
+          match.replayId !== round.replayId ||
+          match.roundNumber !== round.roundNumber ||
           match.gameId !== room.gameId ||
-          match.gameVersion !== room.gameVersion
+          match.gameVersion !== room.gameVersion ||
+          !["waiting", "active"].includes(match.status) ||
+          match.finalRevision !== 0
         ) {
           throw new DatabaseError("DATABASE_OPERATION_ERROR");
+        }
+        if (match.status === "waiting") {
+          await transaction
+            .update(matches)
+            .set({ status: "active", startedAt: new Date() })
+            .where(eq(matches.id, match.id));
         }
         await recordAssignedPlayers(transaction, match.id, room);
       });
@@ -332,106 +372,38 @@ export class PostgresMatchRepository {
   }
 
   public async recordRoomSaved(room: StoredGameRoom): Promise<void> {
-    if (!validStoredRoom(room)) {
+    const round = room.currentRound;
+    if (!validStoredRoom(room) || round === null) {
       throw new DatabaseError("DATABASE_OPERATION_ERROR");
     }
     try {
       await this.database.transaction(async (transaction) => {
         await lockRuntimeRoom(transaction, room.roomId);
-        let matchRows = await transaction
+        const matchRows = await transaction
           .select()
           .from(matches)
-          .where(eq(matches.replayId, room.replayId))
+          .where(eq(matches.replayId, round.replayId))
           .for("update")
           .limit(1);
-        let match = matchRows[0];
-        if (match === undefined) {
-          if (
-            room.roundNumber <= 1 ||
-            room.status !== "active" ||
-            room.revision !== 0
-          ) {
-            throw new DatabaseError("DATABASE_OPERATION_ERROR");
-          }
-          const replayRows = await transaction
-            .select({
-              gameId: replays.gameId,
-              gameVersion: replays.gameVersion,
-            })
-            .from(replays)
-            .where(eq(replays.id, room.replayId))
-            .for("update")
-            .limit(1);
-          const replay = replayRows[0];
-          const previousRows = await transaction
-            .select()
-            .from(matches)
-            .where(
-              and(
-                eq(matches.runtimeRoomId, room.roomId),
-                eq(matches.roundNumber, room.roundNumber - 1),
-              ),
-            )
-            .for("update")
-            .limit(1);
-          const previous = previousRows[0];
-          if (
-            replay === undefined ||
-            replay.gameId !== room.gameId ||
-            replay.gameVersion !== room.gameVersion ||
-            previous === undefined ||
-            previous.status !== "completed" ||
-            previous.gameId !== room.gameId ||
-            previous.gameVersion !== room.gameVersion
-          ) {
-            throw new DatabaseError("DATABASE_OPERATION_ERROR");
-          }
-          await assertSameParticipants(transaction, previous.id, room);
-          await transaction
-            .insert(matches)
-            .values({
-              id: randomUUID(),
-              runtimeRoomId: room.roomId,
-              roundNumber: room.roundNumber,
-              replayId: room.replayId,
-              gameId: room.gameId,
-              gameVersion: room.gameVersion,
-              status: "active",
-              finalRevision: 0,
-              startedAt: new Date(),
-            })
-            .onConflictDoNothing();
-          matchRows = await transaction
-            .select()
-            .from(matches)
-            .where(
-              and(
-                eq(matches.runtimeRoomId, room.roomId),
-                eq(matches.roundNumber, room.roundNumber),
-              ),
-            )
-            .for("update")
-            .limit(1);
-          match = matchRows[0];
-        }
+        const match = matchRows[0];
         if (
           match === undefined ||
           match.runtimeRoomId !== room.roomId ||
-          match.replayId !== room.replayId ||
-          match.roundNumber !== room.roundNumber ||
+          match.replayId !== round.replayId ||
+          match.roundNumber !== round.roundNumber ||
           match.gameId !== room.gameId ||
           match.gameVersion !== room.gameVersion ||
-          room.revision < match.finalRevision
+          round.revision < match.finalRevision
         ) {
           throw new DatabaseError("DATABASE_OPERATION_ERROR");
         }
         await recordAssignedPlayers(transaction, match.id, room);
 
-        if (room.status === "completed") {
+        if (round.status === "completed") {
           if (
             match.status !== "completed" ||
             match.completedAt === null ||
-            match.finalRevision !== room.revision
+            match.finalRevision !== round.revision
           ) {
             throw new DatabaseError("DATABASE_OPERATION_ERROR");
           }
@@ -439,28 +411,28 @@ export class PostgresMatchRepository {
         }
         if (
           match.status === "completed" ||
-          (match.status === "abandoned" && room.status !== "abandoned")
+          (match.status === "abandoned" && round.status !== "abandoned")
         ) {
           throw new DatabaseError("DATABASE_OPERATION_ERROR");
         }
 
-        if (room.status === "active") {
+        if (round.status === "active") {
           await transaction
             .update(matches)
             .set({
               status: "active",
-              finalRevision: room.revision,
+              finalRevision: round.revision,
               startedAt: match.startedAt ?? new Date(),
             })
             .where(eq(matches.id, match.id));
           return;
         }
-        if (room.status === "abandoned") {
+        if (round.status === "abandoned") {
           await transaction
             .update(matches)
             .set({
               status: "abandoned",
-              finalRevision: room.revision,
+              finalRevision: round.revision,
               abandonedAt: match.abandonedAt ?? new Date(),
             })
             .where(eq(matches.id, match.id));
@@ -576,38 +548,5 @@ export class PostgresMatchArchive implements MatchArchive {
 
   public saveRound(room: StoredGameRoom): Promise<void> {
     return this.repository.recordRoomSaved(room);
-  }
-}
-
-export class PostgresMatchArchiveRoomStore implements RoomStore {
-  readonly #delegate: RoomStore;
-
-  public constructor(
-    private readonly repository: PostgresMatchRepository,
-    delegate: RoomStore = new InMemoryRoomStore(),
-  ) {
-    this.#delegate = delegate;
-  }
-
-  public async create(room: StoredGameRoom): Promise<void> {
-    await this.#delegate.create(room);
-    await this.repository.recordRoomCreated(room);
-  }
-
-  public async save(room: StoredGameRoom): Promise<void> {
-    await this.repository.recordRoomSaved(room);
-    await this.#delegate.save(room);
-  }
-
-  public getByRoomId(roomId: string) {
-    return this.#delegate.getByRoomId(roomId);
-  }
-
-  public getByRoomCode(roomCode: string) {
-    return this.#delegate.getByRoomCode(roomCode);
-  }
-
-  public list() {
-    return this.#delegate.list();
   }
 }

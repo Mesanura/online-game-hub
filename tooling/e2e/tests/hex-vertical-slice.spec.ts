@@ -76,19 +76,23 @@ async function currentCompletedReplay(
     gameId: "hex",
     gameVersion: "1.0.0",
     initialConfig: null,
-    roundNumber,
-    revision,
-    status: "completed",
+    currentRound: { roundNumber, revision, status: "completed" },
     players: [{ slotId: "slot-1" }, { slotId: "slot-2" }],
   });
-  const replay = await harness.gameServer.replayStore.get(room.replayId);
+  const currentRound = room.currentRound;
+  if (currentRound === null) {
+    throw new Error("The completed Hex round was not stored.");
+  }
+  const replay = await harness.gameServer.replayStore.get(
+    currentRound.replayId,
+  );
   expect(replay?.actions).toHaveLength(revision);
   expect(verifyReplay(replay, resolveGameDefinition)).toMatchObject({
     status: "verified",
     rng: { cursor: 0 },
     outcome: { type: "WIN", reason, winnerSlotId: "slot-1" },
   });
-  return room.replayId;
+  return currentRound.replayId;
 }
 
 function handleNextDialog(
@@ -127,7 +131,9 @@ test("two guests complete Hex by connection, then cancel and confirm off-turn re
   await expect(pageA.getByRole("heading", { level: 1 })).toHaveText("六贯棋");
   await pageA.getByTestId("create-room").click();
   await expect(pageA.getByTestId("connection-state")).toHaveText("已连接");
-  await expect(pageA.getByTestId("match-status")).toHaveText("等待另一位玩家");
+  await expect(pageA.getByTestId("game-stage")).toHaveCount(0);
+  await expect(pageA.getByTestId("match-status")).toHaveCount(0);
+  await pageA.getByTestId("starter-owner").click();
 
   const inviteUrl = await pageA.getByTestId("invite-link").getAttribute("href");
   if (inviteUrl === null)
@@ -139,6 +145,12 @@ test("two guests complete Hex by connection, then cancel and confirm off-turn re
     throw new Error("Hex invitation omitted its room code.");
 
   await pageB.goto(inviteUrl);
+  await expect(pageB.getByTestId("connection-state")).toHaveText("已连接");
+  await pageA.getByTestId("toggle-round-ready").click();
+  await expect(pageB.getByTestId("round-setup-status")).toHaveText(
+    "1/2 人已准备",
+  );
+  await pageB.getByTestId("toggle-round-ready").click();
   await Promise.all(
     [pageA, pageB].map(async (page) => {
       await expect(page.getByTestId("connection-state")).toHaveText("已连接");
@@ -248,9 +260,12 @@ test("two guests complete Hex by connection, then cancel and confirm off-turn re
     "CONNECTION",
   );
 
-  await pageA.getByTestId("toggle-rematch").click();
-  await expect(pageB.getByTestId("rematch-status")).toHaveText("1/2 人已准备");
-  await pageB.getByTestId("toggle-rematch").click();
+  await pageA.getByTestId("starter-owner").click();
+  await pageA.getByTestId("toggle-round-ready").click();
+  await expect(pageB.getByTestId("round-setup-status")).toHaveText(
+    "1/2 人已准备",
+  );
+  await pageB.getByTestId("toggle-round-ready").click();
   await Promise.all(
     [pageA, pageB].map(async (page) => {
       await expect(page.getByTestId("round-number")).toHaveText("第 2 局");

@@ -1,6 +1,6 @@
 # Replay 设计
 
-> 状态：V1 设计（M6 黑白棋 1.0.0 golden 已纳入）
+> 状态：Replay Format V1（Protocol V2 的逐局先手已纳入）
 > 本文是 canonical replay 内容、确定性重建、版本兼容和存储端口的权威来源。Core 随机性规则见 [GAME_PLUGIN_SPEC.md](./GAME_PLUGIN_SPEC.md)。
 
 ## 1. 目标
@@ -66,7 +66,7 @@ interface CanonicalReplay {
 
 ### 3.3 Players
 
-- 重建只依赖 `PlayerSlotId` 和固定 slot 顺序。
+- 重建只依赖 `PlayerSlotId` 和该轮固定的 `playerOrder`。stable slots 在 live room 内不变，但不同轮的 header 顺序可以因房主选择的先手方而反转。
 - `participantRef` 是可选、可脱敏的平台引用，不得成为规则输入。
 - 显示名称、头像和账号资料属于 match metadata，不进入 canonical input。
 
@@ -86,7 +86,16 @@ interface CanonicalReplay {
 
 ## 4. 写入顺序与原子性
 
-对于每个 live room，runtime 以同一个 Promise queue 串行 join、leave、timeout、room control 和 Action，是唯一 authoritative writer。每轮 Action 按以下顺序构造并提交候选结果：
+对于每个 live room，runtime 以同一个 Promise queue 串行 join、leave、timeout、room control 和 Action，是唯一 authoritative writer。创建房间时不初始化 Core，也不创建 Replay 或 Match。满足全部开局条件后，Round 固定按以下顺序启动：
+
+1. 根据房主选择构造包含 `roundNumber`、`playerOrder`、replay ID 和 seed 的 pending candidate；
+2. 使用该 `playerOrder` 初始化 Core；
+3. 使用完全相同的 `playerOrder` 创建 replay header；
+4. 通过 `MatchArchive.createRound` 幂等创建 active Match；
+5. 保存包含候选 Round 的内存 `RoomStore` record；
+6. 所有外部写入成功后才提交内存 aggregate，并清除 pending candidate。
+
+失败时 live aggregate 仍停留在“尚未开始/上一轮 completed”，pending candidate 保留供新 command ID 幂等重试；不得重新生成 replay ID、seed 或 `playerOrder`。每轮 Action 按以下顺序构造并提交候选结果：
 
 1. 验证平台 envelope、session、slot、round 和 revision；
 2. 解析规范化 Action；
@@ -102,9 +111,9 @@ Schema-invalid、platform rejected、Core rejected、错轮、stale 或 duplicat
 
 M5 的 replay 与 Match archive 位于同一 PostgreSQL：header create 单独幂等写入；append 事务化写 `replay_actions` 并推进 Match final revision；terminal complete 事务化保存 cursor/Outcome 并把 Match 标记 completed。每个 replay row 在 append/complete 时加 row lock，`(replay_id, sequence)` 主键提供并发唯一顺序。
 
-同房间下一轮复用 Config、stable slot 顺序和参与者，但生成新 seed、replay ID 与 Match。`matches` 以 `(runtime_room_id, round_number)` 唯一；创建后续轮次的 transaction 取得 runtime-room advisory lock，并验证上一轮 completed、轮次连续、game/version 和参与者一致。Replay header create 与 Match insert 是两个可幂等重试的 port 操作，不假装与内存 active RoomStore 具有跨存储原子性。`roundNumber` 是平台/wire metadata，不进入 canonical replay envelope，因此 replay format V1 不变。
+同房间下一轮复用 Config、stable slot identity 和参与者集合，但本轮 `playerOrder` 可反转，并生成新 seed、replay ID 与 Match。`matches` 以 `(runtime_room_id, round_number)` 唯一；创建后续轮次的 transaction 取得 runtime-room advisory lock，并验证上一轮 completed、轮次连续、game/version 和参与者集合一致，不要求 MatchPlayer 插入顺序等于上一轮。Replay header create 与 Match insert 是两个可幂等重试的 port 操作，不假装与内存 live `RoomStore` 具有跨存储原子性。`roundNumber` 和逐局设置是平台/wire metadata；只有实际用于 Core 的有序 slots 已经由既有 header `players` 表达，因此 Replay Format V1 不变。
 
-active `RoomStore` delegate 仍在进程内存，因此它与 PostgreSQL transaction 不具备跨存储原子性，也不提供 active State rollback/recovery。当前由单 room writer、先 durable 后内存 commit、唯一约束和幂等操作控制 crash window；证据不足以引入 outbox。重启时不从 replay 临时推导活动 State，只把遗留 waiting/active Match archive 标记 abandoned。
+live `RoomStore` 仍在进程内存，因此它与 PostgreSQL transaction 不具备跨存储原子性，也不提供 active State rollback/recovery。当前由单 room writer、先 durable 后内存 commit、pending candidate、唯一约束和幂等操作控制 crash window；证据不足以引入 outbox。重启时不从 replay 临时推导活动 State，只把旧 schema 遗留的 waiting 与当前 active Match archive 标记 abandoned。尚未开始首局的 live room 从未创建 Match，因此无需生成 abandoned 历史。
 
 ## 5. Replay Store Port
 
@@ -133,7 +142,7 @@ interface ReplayStore {
 - `complete` 只接受非 `null` 的 terminal Outcome；相同 cursor/Outcome 的重复调用幂等，且不得允许另一个结果覆盖已完成记录。
 - `get` 在 repeatable-read transaction 中读取 header/actions/completion；数据库 JSONB 视为 `unknown` 并重新 runtime validation，污染数据返回稳定安全错误。
 
-首轮 room 创建和每次 rematch 在 Core 初始化完成后各自创建 replay header，其中保存 exact game/version、规范化 Config、服务器生成的 stable slot 顺序和该轮初始 RNG algorithm/seed。每次 accepted transition 只追加到当前轮 replay；该轮进入 `completed` 时保存最终 RNG cursor 与 Core Outcome。`abandoned` 没有伪造游戏 Outcome，record 可以保持未完成状态。
+首局和每次后续局都在双方完成统一准备且本轮 Core 初始化完成后创建 replay header，其中保存 exact game/version、规范化 Config、房主选择所决定的本轮 `playerOrder` 和该轮初始 RNG algorithm/seed。创建房间本身不创建 header。每次 accepted transition 只追加到当前轮 replay；该轮进入 `completed` 时保存最终 RNG cursor 与 Core Outcome。`abandoned` 没有伪造游戏 Outcome，record 可以保持未完成状态。
 
 ## 6. 确定性重建
 

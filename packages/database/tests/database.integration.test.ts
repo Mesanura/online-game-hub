@@ -10,12 +10,13 @@ import {
 import type {
   ReplayAction,
   ReplayHeader,
+  StoredGameRound,
   StoredGameRoom,
 } from "@online-game-hub/game-server-runtime";
 import { resolveGameDefinition } from "@online-game-hub/game-registry/server";
 
 import {
-  PostgresMatchArchiveRoomStore,
+  PostgresMatchArchive,
   PostgresMatchRepository,
   PostgresReplayStore,
   PostgresUserRepository,
@@ -85,7 +86,6 @@ function roomRecord(
   return {
     roomId,
     roomCode,
-    roundNumber: 1,
     gameId: "tic-tac-toe",
     gameVersion: "1.0.0",
     initialConfig: null,
@@ -97,28 +97,41 @@ function roomRecord(
       },
       {
         slotId: "slot-2",
-        playerSessionId: null,
+        playerSessionId: `${firstSession}-opponent`,
         reservedUntilMilliseconds: null,
       },
     ],
-    state: {
-      players: ["slot-1", "slot-2"],
-      board: [null, null, null, null, null, null, null, null, null],
-      nextPlayerIndex: 0,
+    currentRound: {
+      roundNumber: 1,
+      playerOrder: ["slot-1", "slot-2"],
+      state: {
+        players: ["slot-1", "slot-2"],
+        board: [null, null, null, null, null, null, null, null, null],
+        nextPlayerIndex: 0,
+      },
+      rng: createRng("database-replay-seed"),
+      revision: 0,
+      status: "active",
+      outcome: null,
+      replayId,
     },
-    rng: createRng("database-replay-seed"),
-    revision: 0,
-    status: "waiting",
-    outcome: null,
-    replayId,
+    closeReason: null,
   };
+}
+
+function currentRound(room: StoredGameRoom): StoredGameRound {
+  if (room.currentRound === null) {
+    throw new Error("Expected an archived round.");
+  }
+  return room.currentRound;
 }
 
 describe.sequential("PostgreSQL + Drizzle persistence", () => {
   let isolated: IsolatedTestDatabase;
   let replayStore: PostgresReplayStore;
   let matchRepository: PostgresMatchRepository;
-  let roomStore: PostgresMatchArchiveRoomStore;
+  let roomStore: InMemoryRoomStore;
+  let matchArchive: PostgresMatchArchive;
   let userRepository: PostgresUserRepository;
   let completedMatchId: string;
 
@@ -128,10 +141,8 @@ describe.sequential("PostgreSQL + Drizzle persistence", () => {
     );
     replayStore = new PostgresReplayStore(isolated.client.database);
     matchRepository = new PostgresMatchRepository(isolated.client.database);
-    roomStore = new PostgresMatchArchiveRoomStore(
-      matchRepository,
-      new InMemoryRoomStore(),
-    );
+    roomStore = new InMemoryRoomStore();
+    matchArchive = new PostgresMatchArchive(matchRepository);
     userRepository = new PostgresUserRepository(isolated.client.database);
   }, 120_000);
 
@@ -264,14 +275,16 @@ describe.sequential("PostgreSQL + Drizzle persistence", () => {
       "replay-completed-match",
       "guest-history-a",
     );
-    await roomStore.create(waiting);
+    await roomStore.create({ ...waiting, currentRound: null });
+    await expect(
+      matchRepository.listForGuest("guest-history-a"),
+    ).resolves.toEqual([]);
     const [firstPlayer, secondPlayer] = waiting.players;
     if (firstPlayer === undefined || secondPlayer === undefined) {
       throw new Error("Expected two preallocated player slots.");
     }
     const active: StoredGameRoom = {
       ...waiting,
-      status: "active",
       players: [
         firstPlayer,
         {
@@ -280,17 +293,32 @@ describe.sequential("PostgreSQL + Drizzle persistence", () => {
         },
       ],
     };
+    await matchArchive.createRound(active);
     await roomStore.save(active);
     for (const action of winningActions) {
-      await replayStore.append(active.replayId, action.sequence - 1, action);
+      await replayStore.append(
+        currentRound(active).replayId,
+        action.sequence - 1,
+        action,
+      );
     }
-    await replayStore.complete(active.replayId, 5, 0, winningOutcome);
-    await roomStore.save({
+    await replayStore.complete(
+      currentRound(active).replayId,
+      5,
+      0,
+      winningOutcome,
+    );
+    const completed: StoredGameRoom = {
       ...active,
-      revision: 5,
-      status: "completed",
-      outcome: winningOutcome,
-    });
+      currentRound: {
+        ...currentRound(active),
+        revision: 5,
+        status: "completed",
+        outcome: winningOutcome,
+      },
+    };
+    await matchArchive.saveRound(completed);
+    await roomStore.save(completed);
 
     const historyA = await matchRepository.listForGuest("guest-history-a");
     const historyB = await matchRepository.listForGuest("guest-history-b");
@@ -315,10 +343,13 @@ describe.sequential("PostgreSQL + Drizzle persistence", () => {
       "replay-abandoned-match",
       "guest-history-a",
     );
-    await roomStore.create(abandonedWaiting);
-    await roomStore.save({
+    await matchArchive.createRound(abandonedWaiting);
+    await matchArchive.saveRound({
       ...abandonedWaiting,
-      status: "abandoned",
+      currentRound: {
+        ...currentRound(abandonedWaiting),
+        status: "abandoned",
+      },
     });
     const historyAfterAbandon =
       await matchRepository.listForGuest("guest-history-a");
@@ -345,33 +376,39 @@ describe.sequential("PostgreSQL + Drizzle persistence", () => {
       "replay-round-one",
       "guest-round-a",
     );
-    await roomStore.create(waiting);
     const [firstPlayer, secondPlayer] = waiting.players;
     if (firstPlayer === undefined || secondPlayer === undefined) {
       throw new Error("Expected two preallocated player slots.");
     }
     const activeRoundOne: StoredGameRoom = {
       ...waiting,
-      status: "active",
       players: [
         firstPlayer,
         { ...secondPlayer, playerSessionId: "guest-round-b" },
       ],
     };
-    await roomStore.save(activeRoundOne);
+    await matchArchive.createRound(activeRoundOne);
     for (const action of winningActions) {
       await replayStore.append(
-        activeRoundOne.replayId,
+        currentRound(activeRoundOne).replayId,
         action.sequence - 1,
         action,
       );
     }
-    await replayStore.complete(activeRoundOne.replayId, 5, 0, winningOutcome);
-    await roomStore.save({
+    await replayStore.complete(
+      currentRound(activeRoundOne).replayId,
+      5,
+      0,
+      winningOutcome,
+    );
+    await matchArchive.saveRound({
       ...activeRoundOne,
-      revision: 5,
-      status: "completed",
-      outcome: winningOutcome,
+      currentRound: {
+        ...currentRound(activeRoundOne),
+        revision: 5,
+        status: "completed",
+        outcome: winningOutcome,
+      },
     });
 
     const roundTwoHeader: ReplayHeader = {
@@ -381,28 +418,40 @@ describe.sequential("PostgreSQL + Drizzle persistence", () => {
     await replayStore.create("replay-round-two", roundTwoHeader);
     const activeRoundTwo: StoredGameRoom = {
       ...activeRoundOne,
-      roundNumber: 2,
-      replayId: "replay-round-two",
-      state: waiting.state,
-      rng: createRng(roundTwoHeader.rng.seed),
-      revision: 0,
-      status: "active",
-      outcome: null,
+      currentRound: {
+        ...currentRound(activeRoundOne),
+        roundNumber: 2,
+        replayId: "replay-round-two",
+        playerOrder: ["slot-2", "slot-1"],
+        state: currentRound(waiting).state,
+        rng: createRng(roundTwoHeader.rng.seed),
+        revision: 0,
+        status: "active",
+        outcome: null,
+      },
     };
-    await roomStore.save(activeRoundTwo);
+    await matchArchive.createRound(activeRoundTwo);
     for (const action of winningActions) {
       await replayStore.append(
-        activeRoundTwo.replayId,
+        currentRound(activeRoundTwo).replayId,
         action.sequence - 1,
         action,
       );
     }
-    await replayStore.complete(activeRoundTwo.replayId, 5, 0, winningOutcome);
-    await roomStore.save({
+    await replayStore.complete(
+      currentRound(activeRoundTwo).replayId,
+      5,
+      0,
+      winningOutcome,
+    );
+    await matchArchive.saveRound({
       ...activeRoundTwo,
-      revision: 5,
-      status: "completed",
-      outcome: winningOutcome,
+      currentRound: {
+        ...currentRound(activeRoundTwo),
+        revision: 5,
+        status: "completed",
+        outcome: winningOutcome,
+      },
     });
 
     const history = await matchRepository.listForGuest("guest-round-a");
@@ -426,10 +475,16 @@ describe.sequential("PostgreSQL + Drizzle persistence", () => {
 
     await replayStore.create("replay-skipped-round", roundTwoHeader);
     await expect(
-      roomStore.save({
+      matchArchive.createRound({
         ...activeRoundTwo,
-        roundNumber: 4,
-        replayId: "replay-skipped-round",
+        currentRound: {
+          ...currentRound(activeRoundTwo),
+          roundNumber: 4,
+          replayId: "replay-skipped-round",
+          revision: 0,
+          status: "active",
+          outcome: null,
+        },
       }),
     ).rejects.toMatchObject({ code: "DATABASE_OPERATION_ERROR" });
 
@@ -464,8 +519,14 @@ describe.sequential("PostgreSQL + Drizzle persistence", () => {
       "replay-private-match",
       "guest-private",
     );
-    await roomStore.create(privateWaiting);
-    await roomStore.save({ ...privateWaiting, status: "abandoned" });
+    await matchArchive.createRound(privateWaiting);
+    await matchArchive.saveRound({
+      ...privateWaiting,
+      currentRound: {
+        ...currentRound(privateWaiting),
+        status: "abandoned",
+      },
+    });
     const privateHistory = await matchRepository.listForGuest("guest-private");
     const privateMatchId = privateHistory[0]?.matchId;
     if (privateMatchId === undefined) {
@@ -540,8 +601,14 @@ describe.sequential("PostgreSQL + Drizzle persistence", () => {
       "replay-after-association",
       "guest-history-a",
     );
-    await roomStore.create(futureWaiting);
-    await roomStore.save({ ...futureWaiting, status: "abandoned" });
+    await matchArchive.createRound(futureWaiting);
+    await matchArchive.saveRound({
+      ...futureWaiting,
+      currentRound: {
+        ...currentRound(futureWaiting),
+        status: "abandoned",
+      },
+    });
     const futureUserHistory = await matchRepository.listForUser(userA.userId);
     expect(
       futureUserHistory.some(
@@ -559,7 +626,7 @@ describe.sequential("PostgreSQL + Drizzle persistence", () => {
       "replay-startup-residual",
       "guest-residual",
     );
-    await roomStore.create(residual);
+    await matchArchive.createRound(residual);
     expect(await matchRepository.abandonIncompleteMatches()).toBeGreaterThan(0);
     await expect(
       matchRepository.listForGuest("guest-residual"),
