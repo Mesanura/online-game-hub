@@ -311,6 +311,9 @@ importers:
       '@online-game-hub/hex':
         specifier: workspace:*
         version: link:../../games/hex
+      '@online-game-hub/reversi':
+        specifier: workspace:*
+        version: link:../../games/reversi
       '@online-game-hub/tic-tac-toe':
         specifier: workspace:*
         version: link:../../games/tic-tac-toe

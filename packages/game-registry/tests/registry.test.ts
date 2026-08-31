@@ -6,6 +6,8 @@ import { gomokuDefinition } from "@online-game-hub/gomoku/core";
 import { gomokuManifest } from "@online-game-hub/gomoku/manifest";
 import { hexDefinition } from "@online-game-hub/hex/core";
 import { hexManifest } from "@online-game-hub/hex/manifest";
+import { reversiDefinition } from "@online-game-hub/reversi/core";
+import { reversiManifest } from "@online-game-hub/reversi/manifest";
 import { ticTacToeDefinition } from "@online-game-hub/tic-tac-toe/core";
 import { ticTacToeManifest } from "@online-game-hub/tic-tac-toe/manifest";
 
@@ -26,12 +28,14 @@ describe("explicit game registry", () => {
       connectFourManifest,
       gomokuManifest,
       hexManifest,
+      reversiManifest,
     ]);
     expect(gameCatalog.map(({ id, title }) => ({ id, title }))).toEqual([
       { id: "tic-tac-toe", title: "井字棋" },
       { id: "connect-four", title: "四子棋" },
       { id: "gomoku", title: "五子棋" },
       { id: "hex", title: "六贯棋" },
+      { id: "reversi", title: "黑白棋" },
     ]);
     expect(resolveGameManifest("tic-tac-toe", "1.0.0")).toBe(ticTacToeManifest);
     expect(resolveGameDefinition("tic-tac-toe", "1.0.0")).toBe(
@@ -51,6 +55,9 @@ describe("explicit game registry", () => {
     expect(resolveGameManifest("hex", "1.0.0")).toBe(hexManifest);
     expect(resolveGameDefinition("hex", "1.0.0")).toBe(hexDefinition);
     expect(hexDefinition.manifest).toBe(hexManifest);
+    expect(resolveGameManifest("reversi", "1.0.0")).toBe(reversiManifest);
+    expect(resolveGameDefinition("reversi", "1.0.0")).toBe(reversiDefinition);
+    expect(reversiDefinition.manifest).toBe(reversiManifest);
     for (const manifest of gameCatalog) {
       const definition = resolveGameDefinition(
         manifest.id,
@@ -69,6 +76,7 @@ describe("explicit game registry", () => {
     expect(resolveGameDefinition("connect-four", "1.0.1")).toBeUndefined();
     expect(resolveGameDefinition("gomoku", "1.0.1")).toBeUndefined();
     expect(resolveGameDefinition("hex", "1.0.1")).toBeUndefined();
+    expect(resolveGameDefinition("reversi", "1.0.1")).toBeUndefined();
     expect(resolveGameManifest("tic-tac-toe", "latest")).toBeUndefined();
   });
 
@@ -81,6 +89,7 @@ describe("explicit game registry", () => {
     );
     expect(resolveCurrentGameDefinition("gomoku")).toBe(gomokuDefinition);
     expect(resolveCurrentGameDefinition("hex")).toBe(hexDefinition);
+    expect(resolveCurrentGameDefinition("reversi")).toBe(reversiDefinition);
     expect(resolveCurrentGameDefinition("unknown")).toBeUndefined();
   });
 
@@ -152,5 +161,24 @@ describe("explicit game registry", () => {
     });
     expect(hexClient?.parseView).toEqual(expect.any(Function));
     await expect(loadGameClientModule("hex", "1.0.1")).resolves.toBeUndefined();
+
+    const reversiEntrypoint = await loadGameClientEntrypoint(
+      "reversi",
+      "1.0.0",
+    );
+    expect(reversiEntrypoint).toBeDefined();
+    expect(reversiEntrypoint).toHaveProperty("reversiClientModule");
+    expect(reversiEntrypoint).not.toHaveProperty("transition");
+    expect(reversiEntrypoint).not.toHaveProperty("createInitialState");
+
+    const reversiClient = await loadGameClientModule("reversi", "1.0.0");
+    expect(reversiClient).toMatchObject({
+      gameId: "reversi",
+      gameVersion: "1.0.0",
+    });
+    expect(reversiClient?.parseView).toEqual(expect.any(Function));
+    await expect(
+      loadGameClientModule("reversi", "1.0.1"),
+    ).resolves.toBeUndefined();
   });
 });

@@ -3,12 +3,14 @@ import type { UnknownGameClientModule } from "@online-game-hub/game-client-sdk";
 import { connectFourManifest } from "@online-game-hub/connect-four/manifest";
 import { gomokuManifest } from "@online-game-hub/gomoku/manifest";
 import { hexManifest } from "@online-game-hub/hex/manifest";
+import { reversiManifest } from "@online-game-hub/reversi/manifest";
 import { ticTacToeManifest } from "@online-game-hub/tic-tac-toe/manifest";
 
 const loadConnectFourEntrypoint = () =>
   import("@online-game-hub/connect-four/client");
 const loadGomokuEntrypoint = () => import("@online-game-hub/gomoku/client");
 const loadHexEntrypoint = () => import("@online-game-hub/hex/client");
+const loadReversiEntrypoint = () => import("@online-game-hub/reversi/client");
 const loadTicTacToeEntrypoint = () =>
   import("@online-game-hub/tic-tac-toe/client");
 
@@ -51,6 +53,15 @@ const clientRegistrations = Object.freeze([
     loadEntrypoint: loadHexEntrypoint,
     loadModule: async (): Promise<UnknownGameClientModule> =>
       eraseGameClientModule((await loadHexEntrypoint()).hexClientModule),
+  },
+  {
+    gameId: reversiManifest.id,
+    gameVersion: reversiManifest.gameVersion,
+    loadEntrypoint: loadReversiEntrypoint,
+    loadModule: async (): Promise<UnknownGameClientModule> =>
+      eraseGameClientModule(
+        (await loadReversiEntrypoint()).reversiClientModule,
+      ),
   },
 ]) satisfies readonly ClientRegistration[];
 
