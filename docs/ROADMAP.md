@@ -1,6 +1,6 @@
 # 开发路线图
 
-> 状态：M1–M6 与 Protocol V2 逐局先手增强已完成
+> 状态：M1–M6、Protocol V2 逐局先手增强与三阶段 Web 体验重构已完成
 > 本文是项目阶段顺序和里程碑退出条件的权威来源。里程碑按依赖排序，不承诺具体日期。
 
 ## 原则
@@ -175,6 +175,17 @@
 - 通用 Web 在无 snapshot 时展示邀请与下一局设置，completed 时保留终局棋盘并并列展示设置；五套 E2E 使用稳定 test id 覆盖相同流程，井字棋第二局明确反转先手。
 
 该增强只面向当前所有已注册的双人游戏，不预先加入多人 starter policy、随机先手、观战、房主迁移或 active room 跨进程恢复。M2–M6 小节中的 “Protocol V1” 描述保留为各里程碑完成当时的历史事实；当前部署契约以 [NETWORK_PROTOCOL.md](./NETWORK_PROTOCOL.md) 的 Protocol V2 为准。
+
+## 已完成平台增强：三阶段 Claymorphism Web 体验
+
+> 实施状态：已完成（2026-09-01）。五个游戏共用入口、等待和对局真实路由；Game Core、Protocol V2、Replay Format V1、数据库 schema 和全部游戏版本保持不变。
+
+- 首页、游戏目录与五游戏流程统一为暖奶油、蜜桃/珊瑚/蓝绿色 Claymorphism tokens，并保留明显 focus、reduced motion、语义状态和键盘操作；
+- `/games/[gameId]` 只创建/加入，`/rooms/[roomCode]` 只处理稳定席位、邀请、先手与准备，`/play` 只承载 active/completed 棋盘；服务器 lifecycle 决定规范阶段；
+- `[gameId]/layout` 跨三个子路由保留同一 `GameClientHost`，兼容旧 `?roomCode=`，刷新/reconnect 不重复 join 或丢失 stable slot；
+- 邀请改为 Clipboard API 按钮，含 copying/copied/failed、`aria-live` 和手动复制后备，不复制身份凭据；
+- 桌面对局页面本身不因 HUD 滚动；大型棋盘在专属容器内滚动，移动端有效落点至少 44px；终局保留最终棋盘并从“下一局设置”回到等待页；
+- PostgreSQL-backed 五套 Playwright 继续覆盖双方准备、两轮、reconnect、completed/closed、canonical replay 和私有 history，未新增观战、昵称、计时、Matchmaking 或规则配置。
 
 ## M7：按证据扩展平台
 
