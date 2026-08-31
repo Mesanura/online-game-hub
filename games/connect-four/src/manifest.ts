@@ -6,6 +6,7 @@ export const connectFourManifest = Object.freeze({
   gameVersion: defineGameVersion("1.0.0"),
   title: "四子棋",
   description: "两名玩家轮流选择列落子，率先在任一方向连成四子者获胜。",
+  defaultConfig: null,
   minPlayers: 2,
   maxPlayers: 2,
   runtime: "turn-based",

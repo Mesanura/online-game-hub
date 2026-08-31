@@ -379,6 +379,58 @@ button.danger-button {
     0 0 1rem rgb(255 255 255 / 65%);
 }
 
+.gomoku-board-scroll {
+  overflow-x: auto;
+  padding: 0.25rem 0 0.6rem;
+}
+
+.gomoku-board {
+  --gomoku-cell-size: clamp(1.45rem, 3.5vw, 2.15rem);
+
+  background: #b77a3f;
+  border: 1px solid #e2ad69;
+  display: grid;
+  grid-template-columns: repeat(
+    var(--gomoku-board-size),
+    var(--gomoku-cell-size)
+  );
+  margin: 1.25rem auto 0;
+  padding: 0.4rem;
+  width: max-content;
+}
+
+.gomoku-board button {
+  align-items: center;
+  aspect-ratio: 1;
+  background:
+    linear-gradient(#805427 1px, transparent 1px),
+    linear-gradient(90deg, #805427 1px, #d7a45d 1px);
+  background-position: center;
+  background-size: 100% 100%;
+  border-radius: 0;
+  color: #0a0d10;
+  display: flex;
+  font-size: calc(var(--gomoku-cell-size) * 0.78);
+  justify-content: center;
+  line-height: 1;
+  min-height: var(--gomoku-cell-size);
+  padding: 0;
+}
+
+.gomoku-board button:disabled {
+  opacity: 1;
+}
+
+.gomoku-board button[data-stone="WHITE"] {
+  color: #f8f5ea;
+  text-shadow: 0 0 2px #1a1a1a;
+}
+
+.gomoku-board button.winning-cell {
+  background-color: #68d5ba;
+  box-shadow: inset 0 0 0 2px #ecfff9;
+}
+
 @media (max-width: 36rem) {
   .room-entry-panel form {
     grid-template-columns: 1fr;

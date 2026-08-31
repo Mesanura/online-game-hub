@@ -1,10 +1,12 @@
 import { connectFourManifest } from "@online-game-hub/connect-four/manifest";
+import { gomokuManifest } from "@online-game-hub/gomoku/manifest";
 import { ticTacToeManifest } from "@online-game-hub/tic-tac-toe/manifest";
 import type { GameManifest } from "@online-game-hub/game-sdk";
 
 export const gameCatalog = Object.freeze([
   ticTacToeManifest,
   connectFourManifest,
+  gomokuManifest,
 ]) satisfies readonly GameManifest[];
 
 export function resolveGameManifest(

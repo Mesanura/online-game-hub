@@ -30,7 +30,7 @@ export default async function GamePage({
     <GameRoomPage
       gameId={game.id}
       gameServerUrl={config.gameServerPublicUrl}
-      initialConfig={null}
+      initialConfig={game.defaultConfig}
       initialRoomCode={roomCode}
       title={game.title}
     />

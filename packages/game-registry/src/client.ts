@@ -1,10 +1,12 @@
 import { eraseGameClientModule } from "@online-game-hub/game-client-sdk";
 import type { UnknownGameClientModule } from "@online-game-hub/game-client-sdk";
 import { connectFourManifest } from "@online-game-hub/connect-four/manifest";
+import { gomokuManifest } from "@online-game-hub/gomoku/manifest";
 import { ticTacToeManifest } from "@online-game-hub/tic-tac-toe/manifest";
 
 const loadConnectFourEntrypoint = () =>
   import("@online-game-hub/connect-four/client");
+const loadGomokuEntrypoint = () => import("@online-game-hub/gomoku/client");
 const loadTicTacToeEntrypoint = () =>
   import("@online-game-hub/tic-tac-toe/client");
 
@@ -33,6 +35,13 @@ const clientRegistrations = Object.freeze([
       eraseGameClientModule(
         (await loadConnectFourEntrypoint()).connectFourClientModule,
       ),
+  },
+  {
+    gameId: gomokuManifest.id,
+    gameVersion: gomokuManifest.gameVersion,
+    loadEntrypoint: loadGomokuEntrypoint,
+    loadModule: async (): Promise<UnknownGameClientModule> =>
+      eraseGameClientModule((await loadGomokuEntrypoint()).gomokuClientModule),
   },
 ]) satisfies readonly ClientRegistration[];
 

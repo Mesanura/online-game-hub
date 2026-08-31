@@ -6,6 +6,7 @@ export const ticTacToeManifest = Object.freeze({
   gameVersion: defineGameVersion("1.0.0"),
   title: "井字棋",
   description: "两名玩家轮流在 3×3 棋盘落子，率先连成一线者获胜。",
+  defaultConfig: null,
   minPlayers: 2,
   maxPlayers: 2,
   runtime: "turn-based",

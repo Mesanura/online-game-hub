@@ -12,6 +12,7 @@ import {
 import type {
   GameDefinition,
   GameId,
+  GameManifest,
   GameVersion,
   JsonValue,
   PlayerSlotId,
@@ -98,4 +99,5 @@ it("exports the generic game definition contract", () => {
   expectTypeOf<
     GameDefinition<JsonValue, JsonValue, JsonValue, JsonValue, JsonValue>
   >().toBeObject();
+  expectTypeOf<GameManifest["defaultConfig"]>().toEqualTypeOf<JsonValue>();
 });

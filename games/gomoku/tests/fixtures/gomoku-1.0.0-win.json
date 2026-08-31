@@ -1,0 +1,103 @@
+{
+  "header": {
+    "replayFormatVersion": 1,
+    "gameId": "gomoku",
+    "gameVersion": "1.0.0",
+    "rng": {
+      "algorithm": "fnv1a32-counter-v1",
+      "seed": "golden-gomoku-1"
+    },
+    "initialConfig": {
+      "boardSize": 15,
+      "winLength": 5
+    },
+    "players": [
+      {
+        "slotId": "player-black"
+      },
+      {
+        "slotId": "player-white"
+      }
+    ]
+  },
+  "actions": [
+    {
+      "sequence": 1,
+      "actorSlotId": "player-black",
+      "action": {
+        "type": "PLACE_STONE",
+        "cell": 105
+      }
+    },
+    {
+      "sequence": 2,
+      "actorSlotId": "player-white",
+      "action": {
+        "type": "PLACE_STONE",
+        "cell": 0
+      }
+    },
+    {
+      "sequence": 3,
+      "actorSlotId": "player-black",
+      "action": {
+        "type": "PLACE_STONE",
+        "cell": 106
+      }
+    },
+    {
+      "sequence": 4,
+      "actorSlotId": "player-white",
+      "action": {
+        "type": "PLACE_STONE",
+        "cell": 1
+      }
+    },
+    {
+      "sequence": 5,
+      "actorSlotId": "player-black",
+      "action": {
+        "type": "PLACE_STONE",
+        "cell": 107
+      }
+    },
+    {
+      "sequence": 6,
+      "actorSlotId": "player-white",
+      "action": {
+        "type": "PLACE_STONE",
+        "cell": 2
+      }
+    },
+    {
+      "sequence": 7,
+      "actorSlotId": "player-black",
+      "action": {
+        "type": "PLACE_STONE",
+        "cell": 108
+      }
+    },
+    {
+      "sequence": 8,
+      "actorSlotId": "player-white",
+      "action": {
+        "type": "PLACE_STONE",
+        "cell": 3
+      }
+    },
+    {
+      "sequence": 9,
+      "actorSlotId": "player-black",
+      "action": {
+        "type": "PLACE_STONE",
+        "cell": 109
+      }
+    }
+  ],
+  "recordedRngCursor": 0,
+  "recordedOutcome": {
+    "type": "WIN",
+    "winnerSlotId": "player-black",
+    "winningCells": [105, 106, 107, 108, 109]
+  }
+}

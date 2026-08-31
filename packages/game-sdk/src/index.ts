@@ -123,6 +123,7 @@ export interface GameManifest {
   readonly gameVersion: GameVersion;
   readonly title: string;
   readonly description: string;
+  readonly defaultConfig: JsonValue;
   readonly minPlayers: number;
   readonly maxPlayers: number;
   readonly runtime: "turn-based";
