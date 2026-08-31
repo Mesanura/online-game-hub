@@ -1,6 +1,6 @@
 # 网络协议
 
-> 状态：V1 协议（M5 私有 history 与同房间多轮控制已实现）
+> 状态：V1 协议（M6 五子棋 Config 继续复用 Protocol V1）
 > 本文是 Web、Game Server 与浏览器之间身份、房间、消息、revision 和重连语义的权威来源。游戏规则 payload 见 [GAME_PLUGIN_SPEC.md](./GAME_PLUGIN_SPEC.md)。
 
 ## 1. 协议目标
@@ -116,7 +116,7 @@ interface CreateGameRoomRequest {
 }
 ```
 
-1. Web 确保 guest session 存在并获取 ticket。
+1. Web 从 catalog manifest 取得已由对应 `configSchema` contract 覆盖的 `defaultConfig`，确保 guest session 存在并获取 ticket；未来配置 UI 仍只能提交该游戏 schema 接受的 JSON Config。
 2. 客户端向名为 `game` 的 Colyseus room 提交 request；通用 schema 先要求 `initialConfig` 是 JSON value，具体游戏的 `configSchema` 再解析并规范化。
 3. Server 从 registry 选择当前可创建的 exact `gameVersion`。
 4. Server 生成不可预测的规范化 `roomCode`，预分配 stable slots，校验 Config 并创建 room/replay。
@@ -244,6 +244,8 @@ interface GameActionCommand {
 - Envelope 不包含 actor、State、Outcome、RNG seed 或新 revision。
 
 M6 四子棋通过同一 Protocol V1 envelope 发送 `{ type: "DROP_DISC", column }`。越界 column 属于 `INVALID_ACTION_PAYLOAD`，合法形状但错误回合/满列属于带 opaque `gameRuleCode` 的 `GAME_RULE_REJECTED`；duplicate、stale、错轮和终局拒绝继续使用现有平台语义。Transport 不知道重力、row 或四连规则，因此 `protocolVersion` 保持 `1`。
+
+M6 五子棋同样通过 Protocol V1 创建请求传递 `{ boardSize: 15 | 19, winLength: 5 }` Config，并用 Action envelope 发送 `{ type: "PLACE_STONE", cell }`。Action 不含 actor、State、Outcome、revision 或随机结果；transport 不知道棋盘坐标、占用、五连/长连或平局。Config/Action schema-invalid payload 使用现有错误，合法形状但错误回合、占用或按当前 Config 越界由 Core 以 opaque `gameRuleCode` 拒绝，因此 `protocolVersion` 仍为 `1`。
 
 ## 8. Revision、Ordering 与 Idempotency
 

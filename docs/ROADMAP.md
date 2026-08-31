@@ -116,12 +116,12 @@
 
 ## M6：验证插件扩展性
 
-> 实施状态：第一阶段四子棋已完成（2026-08-30）；五子棋、黑白棋和整个 M6 尚未完成。
+> 实施状态：第一阶段四子棋已完成（2026-08-30），第二阶段五子棋已完成（2026-08-31）；黑白棋和整个 M6 尚未完成。
 
 按顺序增加少量规则类型不同的游戏：
 
 1. 四子棋：验证不同棋盘和胜负扫描（**第一阶段已完成**）；
-2. 五子棋：验证更大棋盘与规则变体 Config；
+2. 五子棋：验证更大棋盘与规则变体 Config（**第二阶段已完成**）；
 3. 黑白棋：验证翻转、无合法行动和跳过回合。
 
 每新增一个游戏前复盘：需要修改多少平台文件、registry 步骤是否机械、SDK 是否出现游戏特例。只有流程稳定后才实现 `tools/create-game`。
@@ -134,6 +134,15 @@
 - exact/current resolver、`projectView`、canonical replay、同房间多轮、PostgreSQL history 和 repository-check 可直接支持第二游戏；
 - 现有通用 Web 页面仍含井字棋 `CELL_OCCUPIED` 规则文案映射，且 game CSS/Next transpile 仍需显式登记；本轮没有为四子棋增加规则文案特例；
 - 两个游戏只证明 registry 步骤大体机械，尚不足以固定模板、样式与错误呈现策略，因此不创建 `tools/create-game`。
+
+五子棋复盘结果：
+
+- 游戏 package 内 16 个文件拥有 manifest、15×15/19×19 strict Config、Core、Client Module、局部规则/Agent 文档、unit/client/golden tests；默认 15×15，`winLength` 固定为 5；
+- 现有 Protocol V1 create request、runtime Config normalization、exact/current resolver、Replay Format V1、PostgreSQL adapters 和通用游戏页均能承载非 `null` Config，没有任何 Gomoku 规则进入平台；
+- 通用 Web 原先固定传 `null`，无法从 catalog 取得不同游戏的默认 Config；`GameManifest` 因跨所有游戏的真实创建需求新增必填 JSON-safe `defaultConfig`，同步迁移全部 manifest、消费者、contract tests 与权威文档；
+- `protocol`、`game-client-sdk`、`game-server-runtime`、`game-server-ticket`、database schema/migration、Protocol V1、Replay Format V1 和既有游戏 `gameVersion` 均无需修改；
+- 五子棋真实 Colyseus integration 使用 19×19 Config，Playwright 使用默认 15×15，从中文目录完成创建、加入、权威拒绝、状态同步、胜局、PostgreSQL replay 重读与私有 history；
+- 第三游戏仍需显式 registry、Next transpile 与 Web CSS 登记，且 manifest contract 本轮才因 Config 证据收敛，因此继续暂缓 `tools/create-game`，不在同一阶段固化模板。
 
 ## M7：按证据扩展平台
 
@@ -149,4 +158,4 @@
 
 ## 下一轮建议
 
-M6 四子棋第一阶段已完成。下一轮只评估并实现 M6 的五子棋 Config 验证，用更大棋盘和最小规则变体检验现有 Config/Client Module/replay 契约；不要提前实现黑白棋、`tools/create-game` 或 M7，也不要混入 OAuth、Lobby、Matchmaking、排行榜、观战、公开 replay、durable active room、Redis 或多实例。
+M6 五子棋第二阶段已完成。下一轮只评估并实现 M6 的黑白棋，以翻转、无合法行动和跳过回合检验现有契约；不要混入 `tools/create-game`、M7、OAuth、Lobby、Matchmaking、排行榜、观战、公开 replay、durable active room、Redis 或多实例。

@@ -1,6 +1,6 @@
 # Replay 设计
 
-> 状态：V1 设计（M5 PostgreSQL durable replay 已实现）
+> 状态：V1 设计（M6 五子棋 1.0.0 golden 与 PostgreSQL replay 已验证）
 > 本文是 canonical replay 内容、确定性重建、版本兼容和存储端口的权威来源。Core 随机性规则见 [GAME_PLUGIN_SPEC.md](./GAME_PLUGIN_SPEC.md)。
 
 ## 1. 目标
@@ -165,8 +165,11 @@ Bug fix 是否提升版本以“相同 replay 是否可能得到不同 State、R
 
 - `tic-tac-toe@1.0.0`：`games/tic-tac-toe/tests/fixtures/tic-tac-toe-1.0.0-win.json`
 - `connect-four@1.0.0`：`games/connect-four/tests/fixtures/connect-four-1.0.0-win.json`
+- `gomoku@1.0.0`：`games/gomoku/tests/fixtures/gomoku-1.0.0-win.json`
 
 四子棋 golden replay 仍使用 Replay Format V1，只记录规范化 `DROP_DISC(column)` 与服务器推导的 actor slot。Exact registry 可重建相同 7×6 State、WIN Outcome 和零 RNG cursor；真实 Colyseus/PostgreSQL tests 同时证明错轮、满列、schema-invalid、duplicate、stale 与终局后命令不进入 actions。无需 `replayFormatVersion` 或井字棋 `gameVersion` 变化。
+
+五子棋 golden replay 也使用 Replay Format V1，header 保存规范化 `{ boardSize: 15, winLength: 5 }`，actions 只保存 accepted `PLACE_STONE(cell)` 与服务器推导的 slot。Exact registry 可重建相同 225-cell State、WIN Outcome 和零 RNG cursor；19×19 Config 由真实 Colyseus integration 验证，默认 15×15 canonical replay 由 PostgreSQL-backed E2E 从新 connection 重读并验证。无需修改 replay envelope、`replayFormatVersion` 或既有游戏版本。
 
 ## 8. Hidden Information 与访问控制
 
@@ -177,7 +180,7 @@ Canonical replay 是服务器内部记录，可能通过 seed、Action 或 Confi
 - 日志、监控和错误响应不得包含完整 replay payload。
 - M5 的 `GET /api/matches` 只用完成标记计算 `replayAvailable`，不返回 replay ID、header、actions、Config、Outcome 或 seed，也不提供下载端点。
 - 举报审查、玩家下载和公开分享可能拥有不同访问级别，具体策略暂缓。
-- V1 井字棋与四子棋都没有隐藏信息，但仍按内部 canonical record 处理。
+- V1 井字棋、四子棋与五子棋都没有隐藏信息，但仍按内部 canonical record 处理。
 
 ## 9. Checkpoint
 

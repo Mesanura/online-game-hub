@@ -1,6 +1,6 @@
 # Online Game Hub
 
-这是一个 server-authoritative、replay-first 的多人网页游戏平台 monorepo。M1–M5 已完成，M6 第一阶段已新增四子棋，用第二个完整游戏验证既有 Game Plugin、显式 registry、Client Module、authoritative runtime、projection、Replay V1、PostgreSQL Match/history 和 Web vertical slice。两名原玩家可在同一 live room 内 ready/cancel 并无缝开始下一轮；每轮拥有独立 Match、Replay 和 history，房主可关闭房间，非房主可主动离开，终局房间有 5 分钟回收期限。Protocol V1、replay format V1、井字棋 1.0.0 和四子棋 1.0.0 均保持 exact version；五子棋、OAuth、公开 replay 与活动房间恢复仍未实现。
+这是一个 server-authoritative、replay-first 的多人网页游戏平台 monorepo。M1–M5 已完成，M6 前两阶段已新增四子棋与五子棋：第三个完整游戏用 15×15/19×19 Config、更大棋盘和长连规则验证既有 Game Plugin、显式 registry、Client Module、authoritative runtime、projection、Replay V1、PostgreSQL Match/history 和 Web vertical slice。两名原玩家可在同一 live room 内 ready/cancel 并无缝开始下一轮；每轮拥有独立 Match、Replay 和 history，房主可关闭房间，非房主可主动离开，终局房间有 5 分钟回收期限。Protocol V1、replay format V1、井字棋 1.0.0、四子棋 1.0.0 和五子棋 1.0.0 均保持 exact version；黑白棋、OAuth、公开 replay 与活动房间恢复仍未实现。
 
 ## 开始之前
 
@@ -64,6 +64,7 @@ pnpm test:e2e
 ```sh
 pnpm --filter @online-game-hub/tic-tac-toe test:golden
 pnpm --filter @online-game-hub/connect-four test:golden
+pnpm --filter @online-game-hub/gomoku test:golden
 ```
 
 首次在本机运行浏览器测试前执行 `pnpm exec playwright install chromium`；CI 使用 `--with-deps chromium` 安装精确匹配的浏览器。
@@ -141,6 +142,7 @@ packages/
   ui/                      # 空 public entry
 games/
   connect-four/             # 单 package：7×6 manifest/core/client + 1.0.0 golden replay
+  gomoku/                   # 单 package：15×15/19×19 Config、core/client + 1.0.0 golden replay
   tic-tac-toe/             # 单 package：manifest/core/client + 1.0.0 golden replay
 tooling/
   e2e/                     # 随机端口真实 Next/Colyseus 双 context Playwright
@@ -150,7 +152,7 @@ tools/                     # 未来面向开发者的 CLI；当前不创建生�
 
 不要创建 `packages/shared`。新增 workspace package 必须声明 public exports，并接入根 typecheck、test 和 build 图；跨 package 只能通过 manifest 中声明的依赖与 export map 导入。
 
-M6 四子棋没有新增外部依赖，也没有修改 `game-sdk`、`protocol`、`game-client-sdk`、`game-server-runtime`、`game-server-ticket` 或 database schema。游戏外的非文档改动共 12 个文件：6 个是 registry dependency/catalog/client/server、Next transpile 和 lockfile 的机械登记，1 个是 Web 中的游戏表现 CSS，5 个是 registry/Colyseus/PostgreSQL/Playwright/repository-check 测试。第二游戏尚不足以证明生成器接口已经稳定，因此 `tools/create-game` 仍不创建。
+M6 五子棋没有新增外部依赖，也没有修改 `protocol`、`game-client-sdk`、`game-server-runtime`、`game-server-ticket`、database schema 或 migration。现有 create request、Config schema normalization、canonical replay 与 exact resolver 可直接承载 15×15/19×19 Config；通用 Web 页面唯一缺少的是按游戏取得默认 Config，因此 `GameManifest` 新增必填 JSON-safe `defaultConfig`，井字棋/四子棋迁移为 `null`，五子棋默认 `{ boardSize: 15, winLength: 5 }`。该 manifest API 变更不进入 wire 或 replay envelope，不提升 Protocol V1、Replay Format V1 或既有游戏版本。第三游戏仍暴露显式 registry、Next transpile 与 Web game CSS 的机械步骤，且 shared manifest 刚发生一次有证据的收敛，因此本阶段仍不创建 `tools/create-game`。
 
 ## 自动化边界
 

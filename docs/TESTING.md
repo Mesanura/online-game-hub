@@ -1,6 +1,6 @@
 # 测试策略
 
-> 状态：V1 策略（M5 PostgreSQL 持久化与私有历史纵切已实现）
+> 状态：V1 策略（M6 五子棋 Core、integration 与 E2E 已纳入）
 > 本文是测试层级、职责、最低场景和质量门禁的权威来源。具体业务范围见 [PRODUCT.md](./PRODUCT.md)。
 
 ## 1. 目标
@@ -65,6 +65,8 @@
 井字棋至少覆盖所有获胜方向、平局、重复落子、错误回合、越界 cell 和终局后落子。
 
 四子棋至少覆盖重力、轮次切换、7 个满列、越界 column、非当前玩家、横向/纵向/双对角获胜、合法 42-action 平局、终局拒绝、immutability、serialization、projection 和零 RNG cursor determinism。
+
+五子棋至少覆盖 15×15/19×19 strict Config、默认 Config、初始化、轮次、越界/占用 cell、非当前玩家、横向/纵向/双对角胜局、连续五子以上长连、合法 225-action 满盘平局、终局拒绝、Config/State/Action/RNG immutability、serialization、projection 和零 RNG cursor seeded determinism。
 
 ### 4.2 Property 与 Table-driven Tests
 
@@ -146,7 +148,7 @@ Multiplayer integration 使用两个独立客户端连接同一真实 room，验
 
 这些测试覆盖网络时序，不承担穷举游戏规则的职责。
 
-真实 integration cases 覆盖：health/metrics 与 ticket trust boundary；井字棋和四子棋双客户端 stable slots、waiting/active/completed、伪造 actor、invalid/stale/duplicate/concurrent/rule-rejected commands、per-viewer snapshot 与 verified canonical replay；replay append failure 不确认/不提交；新 ticket + 新 reservation 的 reconnect、connection takeover、错误 session theft 和 fake-clock 60 秒 abandoned；同房间 ready/cancel 开第二轮、跨轮 duplicate/错轮防护、terminal outsider、房主关闭、非房主 active leave 和 terminal TTL。四子棋场景额外覆盖满列、横向胜局、42-action 平局、两轮独立 replay 与 abandoned 无伪造 Outcome。ticket verifier、ports、composition logger 另有无 transport 的 contract/unit tests。
+真实 integration cases 覆盖：health/metrics 与 ticket trust boundary；井字棋、四子棋和五子棋双客户端 stable slots、waiting/active/completed、invalid/rule-rejected commands、per-viewer snapshot 与 verified canonical replay；replay append failure 不确认/不提交；新 ticket + 新 reservation 的 reconnect、connection takeover、错误 session theft 和 fake-clock 60 秒 abandoned；同房间 ready/cancel 开第二轮、跨轮 duplicate/错轮防护、terminal outsider、房主关闭、非房主 active leave 和 terminal TTL。井字棋/四子棋继续承担伪造 actor、stale/duplicate/concurrent 等通用 pipeline 全矩阵；四子棋额外覆盖满列、横向胜局、42-action 平局、两轮独立 replay 与 abandoned 无伪造 Outcome；五子棋额外以 19×19 Config 覆盖创建/加入、361-cell View、错误回合、占用 cell、9-action 五连胜与 canonical replay。ticket verifier、ports、composition logger 另有无 transport 的 contract/unit tests。
 
 ## 9. PostgreSQL Integration Tests
 
@@ -190,6 +192,14 @@ Multiplayer integration 使用两个独立客户端连接同一真实 room，验
 5. 两轮使用不同 Match/replay，均由新 PostgreSQL connection 读取并通过 exact registry verifier；
 6. 两个 guest 的 history 只含各自 slot 的安全平台 metadata，第三 guest 与伪造 query 无法读取。
 
+`tooling/e2e/tests/gomoku-vertical-slice.spec.ts` 使用相同真实 harness，独立验证：
+
+1. 目录卡片、页面标题与棋盘无障碍名称统一显示“五子棋”，URL 为 `/games/gomoku`；
+2. 通用 Web 从 manifest 传递默认 `{ boardSize: 15, winLength: 5 }`，两个 guest 创建/加入后同步 225-cell View 与不同 stable slots；
+3. 越过 disabled cell 的非当前玩家 intent 被真实 Server 拒绝且 revision/棋盘保持 `0`；
+4. 双方完成 9-revision 权威横向胜局，浏览器只显示服务器 View；
+5. completed replay 从 PostgreSQL 新 connection 重读并由 exact registry 验证，双方 private history 只返回安全 metadata。
+
 Harness 为 Web 预留随机 loopback port，并用 `port: 0` 启动正式 ticket verifier/CORS composition 的真实 Colyseus Server；随后启动真实 Next production server 和 Chromium。M5/M6 E2E 使用测试 owner 创建的隔离 PostgreSQL database 和正式 adapters，只注入 fake clock、deterministic IDs 与测试 logger 等已有可控 ports，不 mock 数据库、浏览器、ticket route、matchmaking、WebSocket 或 Action pipeline，也不访问外部服务。活动 RoomStore 仍在内存中，因此该测试只验证 archive/replay 跨 adapter 重建，不声称恢复活动 room。
 
 断言优先使用可访问 role/test id 和用户可见文本；恶意 intent case 明确调用实际 React click handler 以绕过 UX disable，但仍通过真实 client host/transport/server。Playwright trace/video 关闭，避免 bearer ticket 进入测试制品；失败 screenshot 只包含不显示 credential 的 UI。harness 在 `afterAll` 对两个进程执行停止清理。
@@ -226,7 +236,7 @@ pnpm db:migrate
 pnpm test:database
 ```
 
-`pnpm lint` 包含格式、ESLint、本地 Markdown 链接与依赖边界检查。`pnpm test` 纳入 Game SDK、Protocol、井字棋/四子棋 Core/client、registry、ticket authority、Web guest/config、runtime/replay stores、Game Server unit tests 和 repository-check 的全部故意违规 fixture tests。`pnpm test:integration` 执行真实 Colyseus SDK tests。`pnpm test:e2e` 先执行完整 workspace build，再执行 PostgreSQL-backed Playwright。`pnpm test:database` 执行真实 PostgreSQL tests；这些命令都不是空脚本。
+`pnpm lint` 包含格式、ESLint、本地 Markdown 链接与依赖边界检查。`pnpm test` 纳入 Game SDK、Protocol、井字棋/四子棋/五子棋 Core/client/golden、registry、ticket authority、Web guest/config、runtime/replay stores、Game Server unit tests 和 repository-check 的全部故意违规 fixture tests。`pnpm test:integration` 执行真实 Colyseus SDK tests。`pnpm test:e2e` 先执行完整 workspace build，再执行 PostgreSQL-backed Playwright。`pnpm test:database` 执行真实 PostgreSQL tests；这些命令都不是空脚本。
 
 `pnpm db:check` 是只读 migration/schema 一致性检查。`pnpm db:migrate` 只在调用者显式提供 `DATABASE_URL` 时应用 checked-in migrations；应用 import 或 production startup 都不会自动 migration。本地创建、迁移与停止 PostgreSQL 的命令见根 README。测试必须使用独立 database/schema，禁止对默认 development `DATABASE_URL` 执行 destructive reset。
 
@@ -235,6 +245,7 @@ pnpm test:database
 ```text
 pnpm --filter @online-game-hub/tic-tac-toe test:golden
 pnpm --filter @online-game-hub/connect-four test:golden
+pnpm --filter @online-game-hub/gomoku test:golden
 ```
 
 首次本机运行 E2E 前执行 `pnpm exec playwright install chromium`。CI 在 frozen-lockfile install 后以 `pnpm exec playwright install --with-deps chromium` 安装与 Playwright 1.62.1 精确匹配的浏览器，使用固定 PostgreSQL 17.6 service，然后运行 lint、typecheck、unit、database、integration、build 和 E2E。

@@ -39,6 +39,7 @@ interface GameManifest {
   gameVersion: GameVersion;
   title: string;
   description: string;
+  defaultConfig: JsonValue;
   minPlayers: number;
   maxPlayers: number;
   runtime: "turn-based";
@@ -55,6 +56,7 @@ interface GameManifest {
 - `GameVersion` 使用精确 semver 字符串；registry 和 replay 不使用范围匹配。
 - `title` 是面向玩家的简体中文正式展示名；新游戏加入 registry 前必须由产品确认译名，manifest 与中文文档统一使用该名称。
 - `description` 使用面向玩家的简体中文，不暴露内部架构或协议术语。
+- `defaultConfig` 是通用 Web 创建房间时使用的 JSON-safe 默认 Config，必须已是对应 `configSchema` 接受且不会进一步规范化为不同值的 canonical 数据；它不替代服务端 schema 校验，也不限制其他合法 Config。
 - 技术标识、代码符号和必要的英文诊断可以保留英文；不得把英文技术标识当作玩家展示名。
 - `PlayerSlotId` 表示比赛中的稳定席位，不是账号、session、connection 或数据库 ID。
 - `game-sdk` 使用 `defineGameId`、`defineGameVersion` 和 `definePlayerSlotId` 构造上述 branded string；brand 只存在于类型系统，wire/replay 中仍是普通字符串。
@@ -238,6 +240,8 @@ interface GameClientModule<View, Action> {
 
 四子棋 1.0.0 验证了该契约可表达固定 7×6 View、每列可访问操作和 `DROP_DISC(column)` intent，而无需让 Client Module 导入 Core、计算重力落点、扫描胜负、预测 Outcome 或推进 revision。客户端 View schema 是对不可信 server payload 的运行时边界，不等于在浏览器重建 authoritative State。
 
+五子棋 1.0.0 继续使用同一 Client Module contract：View 明确携带 15 或 19 的 `boardSize` 与固定 `winLength: 5`，客户端按完整 View 渲染 225/361 个 cell 并只提交 `PLACE_STONE(cell)`。客户端不导入 Core、不扫描连续棋子，也不把 View、actor、Outcome 或 revision 放入 Action。
+
 ## 9. Manifest 与 Export Map
 
 `src/manifest.ts` 是单一 manifest 来源，必须无副作用且不导入 client 或 server runtime。避免同时维护 `game.json` 与 TypeScript manifest 造成重复。
@@ -281,6 +285,6 @@ Registry 必须能够按 exact `gameVersion` 读取旧 replay 所需的 definiti
 - `projectView` 的信息泄漏测试通过；
 - package 只通过声明的 public subpath exports 被消费。
 
-M6 四子棋是第二个满足以上清单的 package。其接入没有要求修改 `GameDefinition`、`GameClientModule` 或 replay envelope；因此本轮不扩大 shared public API。
+M6 五子棋是第三个满足以上清单的 package。非 `null` Config 可直接通过既有 create/runtime/replay 契约；为让通用 Web 无游戏分支地取得创建默认值，`GameManifest` 新增必填 `defaultConfig`，并同步迁移所有游戏与消费者。该兼容迁移不修改 `GameDefinition`、`GameClientModule`、Protocol V1 或 replay envelope。
 
 完整测试矩阵见 [TESTING.md](./TESTING.md)。
