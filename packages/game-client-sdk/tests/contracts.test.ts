@@ -9,9 +9,7 @@ interface TestView {
   readonly value: string;
 }
 
-type TestAction =
-  | { readonly type: "PLAY" }
-  | { readonly type: "RESIGN" };
+type TestAction = { readonly type: "PLAY" } | { readonly type: "RESIGN" };
 
 describe("game client module contracts", () => {
   it("preserves an optional typed resignation action factory when erased", () => {
