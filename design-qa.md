@@ -3,8 +3,8 @@
 ## Comparison target
 
 - Source visual truth:
-  - `C:\Users\Zohar\AppData\Local\Temp\codex-clipboard-bb446ba5-ba0d-42f3-ba91-7078819c721c.png`
-  - `C:\Users\Zohar\AppData\Local\Temp\codex-clipboard-d4d089e4-de23-48b1-af8d-2e00e7ed9189.png`
+  - User-supplied catalog-card screenshot, 447 × 505 pixels (session-local; not committed).
+  - User-supplied game-entry screenshot, 376 × 1001 pixels (session-local; not committed).
 - Browser-rendered implementation:
   - `artifacts/design-qa/shadow-catalog-focused-447x505.png`
   - `artifacts/design-qa/shadow-entry-376x1001.png`
