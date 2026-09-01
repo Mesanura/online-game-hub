@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import type { NextResponse } from "next/server";
 
 import {
   ACCOUNT_SESSION_COOKIE_NAME,
