@@ -218,7 +218,8 @@ describe.sequential("PostgreSQL + Drizzle persistence", () => {
     const currentHash = "c".repeat(64);
     const otherHash = "d".repeat(64);
     const expiredHash = "e".repeat(64);
-    const expiresAt = new Date(Date.now() + 60_000);
+    const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    const expiredAt = new Date(Date.now() + 60_000);
     const registered = await accountRepository.registerPasswordAccount(
       "session_user",
       "$argon2id$v=19$m=19456,t=2,p=1$old-hash",
@@ -230,12 +231,12 @@ describe.sequential("PostgreSQL + Drizzle persistence", () => {
     });
     await accountRepository.createAccountSession(registered.userId, {
       tokenHash: expiredHash,
-      expiresAt,
+      expiresAt: expiredAt,
     });
     await expect(
       accountRepository.resolveAccountSession(
         expiredHash,
-        new Date(expiresAt.getTime()),
+        new Date(expiredAt.getTime()),
       ),
     ).resolves.toBeNull();
 
