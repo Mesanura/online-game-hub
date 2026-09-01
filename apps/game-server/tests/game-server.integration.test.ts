@@ -327,6 +327,10 @@ describe.sequential("authoritative Colyseus Game Server", () => {
         "GMPLAY45",
         "HXPLAY45",
         "RVPLAY45",
+        "RSGAMEAA",
+        "RSGAMEBB",
+        "RSGAMECC",
+        "RSGAMEDD",
       ]),
       logger: { write: (event) => logs.push(event) },
     });
@@ -1471,7 +1475,7 @@ describe.sequential("authoritative Colyseus Game Server", () => {
     );
     expect(connectedA).toMatchObject({
       gameId: "connect-four",
-      gameVersion: "1.0.0",
+      gameVersion: "1.1.0",
       roomCode: "CFPLAY45",
       playerSlotId: "slot-1",
     });
@@ -1721,7 +1725,7 @@ describe.sequential("authoritative Colyseus Game Server", () => {
     );
     expect(storedRoundOne).toMatchObject({
       gameId: "connect-four",
-      gameVersion: "1.0.0",
+      gameVersion: "1.1.0",
       currentRound: { roundNumber: 1, revision: 11, status: "completed" },
     });
     expect(replayRoundOne?.actions).toHaveLength(11);
@@ -1770,7 +1774,7 @@ describe.sequential("authoritative Colyseus Game Server", () => {
     expect(storedRoundTwoStart).toMatchObject({
       roomCode: "CFPLAY45",
       gameId: "connect-four",
-      gameVersion: "1.0.0",
+      gameVersion: "1.1.0",
       currentRound: { roundNumber: 2, revision: 0, status: "active" },
       players: [{ slotId: "slot-1" }, { slotId: "slot-2" }],
     });
@@ -1952,7 +1956,7 @@ describe.sequential("authoritative Colyseus Game Server", () => {
     );
     expect(abandonedStored).toMatchObject({
       gameId: "connect-four",
-      gameVersion: "1.0.0",
+      gameVersion: "1.1.0",
       currentRound: { roundNumber: 1, revision: 0, status: "abandoned" },
     });
     expect(abandonedReplay).toMatchObject({
@@ -1978,7 +1982,7 @@ describe.sequential("authoritative Colyseus Game Server", () => {
       inboxA.next((message) => message.type === "room.connected"),
     ).resolves.toMatchObject({
       gameId: "gomoku",
-      gameVersion: "1.0.0",
+      gameVersion: "1.1.0",
       roomCode: "GMPLAY45",
       playerSlotId: "slot-1",
     });
@@ -1999,7 +2003,7 @@ describe.sequential("authoritative Colyseus Game Server", () => {
       inboxB.next((message) => message.type === "room.connected"),
     ).resolves.toMatchObject({
       gameId: "gomoku",
-      gameVersion: "1.0.0",
+      gameVersion: "1.1.0",
       roomCode: "GMPLAY45",
       playerSlotId: "slot-2",
     });
@@ -2112,7 +2116,7 @@ describe.sequential("authoritative Colyseus Game Server", () => {
     const replay = await replayStore.get(stored?.currentRound?.replayId ?? "");
     expect(stored).toMatchObject({
       gameId: "gomoku",
-      gameVersion: "1.0.0",
+      gameVersion: "1.1.0",
       initialConfig: { boardSize: 19, winLength: 5 },
       currentRound: { revision: 9, status: "completed" },
     });
@@ -2254,12 +2258,12 @@ describe.sequential("authoritative Colyseus Game Server", () => {
       inboxA,
       "hex-1",
       0,
-      { type: "PLACE_STONE", cell: 0 },
+      { type: "PLACE_STONE", cell: 10 },
       1,
     );
     roomB.send(
       GAME_ACTION_MESSAGE,
-      command("hex-stale", 0, { type: "PLACE_STONE", cell: 1 }, 1),
+      command("hex-stale", 0, { type: "PLACE_STONE", cell: 0 }, 1),
     );
     await expect(
       inboxB.next(
@@ -2274,7 +2278,7 @@ describe.sequential("authoritative Colyseus Game Server", () => {
     });
     roomB.send(
       GAME_ACTION_MESSAGE,
-      command("hex-occupied", 1, { type: "PLACE_STONE", cell: 0 }, 1),
+      command("hex-occupied", 1, { type: "PLACE_STONE", cell: 10 }, 1),
     );
     await expect(
       inboxB.next(
@@ -2292,12 +2296,12 @@ describe.sequential("authoritative Colyseus Game Server", () => {
       inboxB,
       "hex-2",
       1,
-      { type: "PLACE_STONE", cell: 1 },
+      { type: "PLACE_STONE", cell: 0 },
       1,
     );
     roomB.send(
       GAME_ACTION_MESSAGE,
-      command("hex-2", 1, { type: "PLACE_STONE", cell: 1 }, 1),
+      command("hex-2", 1, { type: "PLACE_STONE", cell: 0 }, 1),
     );
     await expect(
       inboxB.next(
@@ -2307,7 +2311,8 @@ describe.sequential("authoritative Colyseus Game Server", () => {
     ).resolves.toMatchObject({ roundNumber: 1, revision: 2 });
 
     const winningCells = [
-      0, 1, 11, 2, 22, 3, 33, 4, 44, 5, 55, 6, 66, 7, 77, 8, 88, 9, 99, 10, 110,
+      10, 0, 20, 1, 30, 2, 40, 3, 50, 4, 60, 5, 70, 6, 80, 7, 90, 8, 100, 9,
+      110,
     ] as const;
     let completed: MatchSnapshot | null = null;
     for (let index = 2; index < winningCells.length; index += 1) {
@@ -2330,9 +2335,26 @@ describe.sequential("authoritative Colyseus Game Server", () => {
         type: "WIN",
         reason: "CONNECTION",
         winnerSlotId: "slot-1",
-        winningPath: [0, 11, 22, 33, 44, 55, 66, 77, 88, 99, 110],
+        winningPath: [10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110],
       },
     });
+
+    roomB.send(
+      GAME_ACTION_MESSAGE,
+      command(
+        "hex-after-connection",
+        21,
+        { type: "PLACE_STONE", cell: 120 },
+        1,
+      ),
+    );
+    await expect(
+      inboxB.next(
+        (message) =>
+          message.type === "command.rejected" &&
+          message.commandId === "hex-after-connection",
+      ),
+    ).resolves.toMatchObject({ code: "MATCH_NOT_ACTIVE", revision: 21 });
 
     const storedRoundOne = await roomStore.getByRoomCode("HXPLAY45");
     const replayRoundOne = await replayStore.get(
@@ -2351,7 +2373,7 @@ describe.sequential("authoritative Colyseus Game Server", () => {
       outcome: {
         reason: "CONNECTION",
         winnerSlotId: "slot-1",
-        winningPath: [0, 11, 22, 33, 44, 55, 66, 77, 88, 99, 110],
+        winningPath: [10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110],
       },
     });
 
@@ -2451,7 +2473,7 @@ describe.sequential("authoritative Colyseus Game Server", () => {
     );
     expect(connectedA).toMatchObject({
       gameId: "reversi",
-      gameVersion: "1.0.0",
+      gameVersion: "1.1.0",
       playerSlotId: "slot-1",
     });
     if (connectedA.type !== "room.connected") {
@@ -2476,7 +2498,7 @@ describe.sequential("authoritative Colyseus Game Server", () => {
       inboxB.next((message) => message.type === "room.connected"),
     ).resolves.toMatchObject({
       gameId: "reversi",
-      gameVersion: "1.0.0",
+      gameVersion: "1.1.0",
       roomCode: reversiRoomCode,
       playerSlotId: "slot-2",
     });
@@ -2682,7 +2704,7 @@ describe.sequential("authoritative Colyseus Game Server", () => {
     );
     expect(storedRoundOne).toMatchObject({
       gameId: "reversi",
-      gameVersion: "1.0.0",
+      gameVersion: "1.1.0",
       initialConfig: null,
       currentRound: { roundNumber: 1, revision: 25, status: "completed" },
     });
@@ -2801,4 +2823,162 @@ describe.sequential("authoritative Colyseus Game Server", () => {
       state: { nextPlayerIndex: 0 },
     });
   });
+
+  it.each([
+    {
+      gameId: "tic-tac-toe",
+      initialConfig: null,
+      firstAction: { type: "PLACE_MARK", cell: 0 },
+    },
+    {
+      gameId: "connect-four",
+      initialConfig: null,
+      firstAction: { type: "DROP_DISC", column: 0 },
+    },
+    {
+      gameId: "gomoku",
+      initialConfig: { boardSize: 15, winLength: 5 },
+      firstAction: { type: "PLACE_STONE", cell: 0 },
+    },
+    {
+      gameId: "reversi",
+      initialConfig: null,
+      firstAction: { type: "PLACE_DISC", cell: 19 },
+    },
+  ])(
+    "completes current $gameId rounds from off-turn resignation with an exact replay",
+    async ({ gameId, initialConfig, firstAction }) => {
+      const roomA = await new ColyseusClient(address.httpUrl).create(
+        GAME_ROOM_NAME,
+        {
+          type: "room.create",
+          protocolVersion: PROTOCOL_VERSION,
+          ticket: authority.issue(`${gameId}-resign-a`),
+          gameId,
+          initialConfig,
+        },
+      );
+      const inboxA = new MessageInbox(roomA);
+      const connectedA = await inboxA.next(
+        (message) => message.type === "room.connected",
+      );
+      expect(connectedA).toMatchObject({
+        gameId,
+        gameVersion: "1.1.0",
+        playerSlotId: "slot-1",
+      });
+      if (connectedA.type !== "room.connected") {
+        throw new Error(`${gameId} creator did not receive room metadata.`);
+      }
+
+      const roomB = await new ColyseusClient(address.httpUrl).join(
+        GAME_ROOM_NAME,
+        {
+          type: "room.join",
+          protocolVersion: PROTOCOL_VERSION,
+          ticket: authority.issue(`${gameId}-resign-b`),
+          roomCode: connectedA.roomCode,
+        },
+      );
+      const inboxB = new MessageInbox(roomB);
+      await expect(
+        inboxB.next((message) => message.type === "room.connected"),
+      ).resolves.toMatchObject({
+        gameId,
+        gameVersion: "1.1.0",
+        playerSlotId: "slot-2",
+      });
+
+      const activeA = inboxA.next(
+        (message) => isSnapshot(message) && message.status === "active",
+      );
+      const activeB = inboxB.next(
+        (message) => isSnapshot(message) && message.status === "active",
+      );
+      startRound(roomA, roomB, `${gameId}-resign-round`);
+      await Promise.all([activeA, activeB]);
+
+      const acceptedA = inboxA.next(
+        (message) =>
+          isSnapshot(message) && message.causedByCommandId === `${gameId}-play`,
+      );
+      const acceptedB = inboxB.next(
+        (message) => isSnapshot(message) && message.revision === 1,
+      );
+      roomA.send(
+        GAME_ACTION_MESSAGE,
+        command(`${gameId}-play`, 0, firstAction),
+      );
+      await expect(Promise.all([acceptedA, acceptedB])).resolves.toEqual([
+        expect.objectContaining({ revision: 1, status: "active" }),
+        expect.objectContaining({ revision: 1, status: "active" }),
+      ]);
+
+      const completedA = inboxA.next(
+        (message) =>
+          isSnapshot(message) &&
+          message.causedByCommandId === `${gameId}-resign`,
+      );
+      const completedB = inboxB.next(
+        (message) =>
+          isSnapshot(message) &&
+          message.revision === 2 &&
+          message.status === "completed",
+      );
+      roomA.send(
+        GAME_ACTION_MESSAGE,
+        command(`${gameId}-resign`, 1, { type: "RESIGN" }),
+      );
+      const [resigned] = await Promise.all([completedA, completedB]);
+      expect(resigned).toMatchObject({
+        revision: 2,
+        status: "completed",
+        outcome: {
+          type: "WIN",
+          reason: "RESIGNATION",
+          winnerSlotId: "slot-2",
+          resignedSlotId: "slot-1",
+        },
+      });
+
+      const stored = await roomStore.getByRoomCode(connectedA.roomCode);
+      expect(stored).toMatchObject({
+        gameId,
+        gameVersion: "1.1.0",
+        currentRound: { revision: 2, status: "completed" },
+      });
+      const replay = await replayStore.get(
+        stored?.currentRound?.replayId ?? "",
+      );
+      expect(replay?.actions).toHaveLength(2);
+      expect(
+        replay?.actions.filter(
+          (event) =>
+            typeof event.action === "object" &&
+            event.action !== null &&
+            !Array.isArray(event.action) &&
+            "type" in event.action &&
+            event.action.type === "RESIGN",
+        ),
+      ).toEqual([
+        {
+          sequence: 2,
+          actorSlotId: "slot-1",
+          action: { type: "RESIGN" },
+        },
+      ]);
+      expect(verifyReplay(replay, resolveGameDefinition)).toMatchObject({
+        status: "verified",
+        rng: { cursor: 0 },
+        outcome: {
+          type: "WIN",
+          reason: "RESIGNATION",
+          winnerSlotId: "slot-2",
+          resignedSlotId: "slot-1",
+        },
+      });
+
+      await Promise.all([roomA.leave(true), roomB.leave(true)]);
+    },
+  );
 });
