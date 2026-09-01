@@ -217,6 +217,7 @@ describe.sequential("PostgreSQL + Drizzle persistence", () => {
   it("expires, deletes, and revokes account sessions transactionally", async () => {
     const currentHash = "c".repeat(64);
     const otherHash = "d".repeat(64);
+    const expiredHash = "e".repeat(64);
     const expiresAt = new Date(Date.now() + 60_000);
     const registered = await accountRepository.registerPasswordAccount(
       "session_user",
@@ -227,9 +228,13 @@ describe.sequential("PostgreSQL + Drizzle persistence", () => {
       tokenHash: otherHash,
       expiresAt,
     });
+    await accountRepository.createAccountSession(registered.userId, {
+      tokenHash: expiredHash,
+      expiresAt,
+    });
     await expect(
       accountRepository.resolveAccountSession(
-        currentHash,
+        expiredHash,
         new Date(expiresAt.getTime()),
       ),
     ).resolves.toBeNull();
