@@ -112,7 +112,9 @@ describe("Gomoku Client Module", () => {
     expect(html).toContain("轮到你落子");
     expect(html.match(/class="game-status-dot"/gu)).toHaveLength(2);
     expect(html).toContain('data-color="BLACK"');
+    expect(html).toContain('class="game-board-panel gomoku-panel"');
     expect(html).toContain('aria-label="五子棋棋盘"');
+    expect(html).toContain('data-board-size="15"');
     expect(html).toContain('aria-label="第 8 行第 8 列，黑方"');
     expect(html.match(/data-cell-index=/gu)).toHaveLength(225);
     expect(html).toMatch(
@@ -135,6 +137,7 @@ describe("Gomoku Client Module", () => {
       }),
     );
     expect(html).not.toContain("19 × 19 棋盘");
+    expect(html).toContain('data-board-size="19"');
     expect(html.match(/data-cell-index=/gu)).toHaveLength(361);
   });
 

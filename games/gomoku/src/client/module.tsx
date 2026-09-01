@@ -185,7 +185,10 @@ export function GomokuClient(props: GameClientProps<GomokuView, GomokuAction>) {
   };
 
   return (
-    <section aria-labelledby="gomoku-heading" className="game-board-panel">
+    <section
+      aria-labelledby="gomoku-heading"
+      className="game-board-panel gomoku-panel"
+    >
       <h2 className="sr-only" id="gomoku-heading">
         五子棋棋盘
       </h2>
@@ -226,6 +229,7 @@ export function GomokuClient(props: GameClientProps<GomokuView, GomokuAction>) {
           aria-label="五子棋棋盘"
           aria-rowcount={props.view.boardSize}
           className="gomoku-board"
+          data-board-size={props.view.boardSize}
           role="grid"
           style={boardStyle}
         >

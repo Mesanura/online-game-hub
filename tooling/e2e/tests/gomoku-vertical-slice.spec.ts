@@ -73,6 +73,44 @@ async function readHistory(
   return body.matches ?? [];
 }
 
+async function expectDesktopBoardFits(page: Page): Promise<void> {
+  const boardScroll = page.locator(".gomoku-board-scroll");
+  const board = page.locator(".gomoku-board");
+  const stage = page.getByTestId("game-stage");
+  await expect(boardScroll).toBeVisible();
+  await expect(board).toBeVisible();
+  const scrollSize = await boardScroll.evaluate((element) => ({
+    clientHeight: element.clientHeight,
+    clientWidth: element.clientWidth,
+    scrollHeight: element.scrollHeight,
+    scrollWidth: element.scrollWidth,
+  }));
+  expect(scrollSize.scrollWidth).toBeLessThanOrEqual(scrollSize.clientWidth);
+  expect(scrollSize.scrollHeight).toBeLessThanOrEqual(scrollSize.clientHeight);
+  const [boardBox, stageBox] = await Promise.all([
+    board.boundingBox(),
+    stage.boundingBox(),
+  ]);
+  const viewport = page.viewportSize();
+  if (boardBox === null || stageBox === null || viewport === null) {
+    throw new Error("The default Gomoku board is not inside the game stage.");
+  }
+  const pageSize = await page.evaluate(() => ({
+    clientHeight: document.documentElement.clientHeight,
+    scrollHeight: document.documentElement.scrollHeight,
+  }));
+  expect(pageSize.scrollHeight).toBeLessThanOrEqual(pageSize.clientHeight);
+  expect(boardBox.height).toBeGreaterThanOrEqual(viewport.height * 0.64);
+  expect(boardBox.x).toBeGreaterThanOrEqual(stageBox.x);
+  expect(boardBox.y).toBeGreaterThanOrEqual(stageBox.y);
+  expect(boardBox.x + boardBox.width).toBeLessThanOrEqual(
+    stageBox.x + stageBox.width,
+  );
+  expect(boardBox.y + boardBox.height).toBeLessThanOrEqual(
+    stageBox.y + stageBox.height,
+  );
+}
+
 async function startActiveRound(
   pageA: Page,
   pageB: Page,
@@ -316,44 +354,9 @@ test("the shared HUD cancels and confirms a Gomoku resignation once", async ({
   await pageB.setViewportSize({ width: 1440, height: 900 });
   const resignedRoom = await startActiveRound(pageA, pageB);
 
-  await Promise.all(
-    [pageA, pageB].map(async (page) => {
-      const boardScroll = page.locator(".gomoku-board-scroll");
-      const board = page.locator(".gomoku-board");
-      const stage = page.getByTestId("game-stage");
-      await expect(boardScroll).toBeVisible();
-      await expect(board).toBeVisible();
-      const scrollSize = await boardScroll.evaluate((element) => ({
-        clientHeight: element.clientHeight,
-        clientWidth: element.clientWidth,
-        scrollHeight: element.scrollHeight,
-        scrollWidth: element.scrollWidth,
-      }));
-      expect(scrollSize.scrollWidth).toBeLessThanOrEqual(
-        scrollSize.clientWidth,
-      );
-      expect(scrollSize.scrollHeight).toBeLessThanOrEqual(
-        scrollSize.clientHeight,
-      );
-      const [boardBox, stageBox] = await Promise.all([
-        board.boundingBox(),
-        stage.boundingBox(),
-      ]);
-      if (boardBox === null || stageBox === null) {
-        throw new Error(
-          "The default Gomoku board is not inside the game stage.",
-        );
-      }
-      expect(boardBox.x).toBeGreaterThanOrEqual(stageBox.x);
-      expect(boardBox.y).toBeGreaterThanOrEqual(stageBox.y);
-      expect(boardBox.x + boardBox.width).toBeLessThanOrEqual(
-        stageBox.x + stageBox.width,
-      );
-      expect(boardBox.y + boardBox.height).toBeLessThanOrEqual(
-        stageBox.y + stageBox.height,
-      );
-    }),
-  );
+  await Promise.all([pageA, pageB].map((page) => expectDesktopBoardFits(page)));
+  await pageA.setViewportSize({ width: 1920, height: 1080 });
+  await expectDesktopBoardFits(pageA);
 
   await Promise.all(
     [pageA, pageB].map((page) =>

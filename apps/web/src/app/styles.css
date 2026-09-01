@@ -1263,8 +1263,19 @@ summary:focus-visible {
   scrollbar-width: thin;
 }
 .gomoku-board-scroll {
+  align-items: center;
+  display: flex;
+  justify-content: center;
   max-height: none;
+  min-height: 0;
   overflow: visible;
+  padding-block: clamp(0.25rem, 0.8vh, 0.55rem);
+}
+.gomoku-panel {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  overflow: hidden;
+  padding-block: clamp(0.65rem, 1.4vh, 1rem);
 }
 .gomoku-board-scroll::-webkit-scrollbar,
 .reversi-board-scroll::-webkit-scrollbar,
@@ -1286,7 +1297,11 @@ summary:focus-visible {
   border-radius: 999px;
 }
 .gomoku-board {
-  --gomoku-cell-size: clamp(1.2rem, 3.1vh, 2.1rem);
+  --gomoku-cell-size: clamp(
+    1.2rem,
+    min(calc(6.667svh - 1.133rem), calc(6.667vw - 1.533rem)),
+    3.2rem
+  );
   background: linear-gradient(145deg, #f8d7a7, #eab97f);
   border: 0.25rem solid #d39a5e;
   border-radius: 1.15rem;
@@ -1298,9 +1313,16 @@ summary:focus-visible {
     var(--gomoku-board-size),
     var(--gomoku-cell-size)
   );
-  margin: 1.25rem auto 0;
+  margin: 0 auto;
   padding: 0.55rem;
   width: max-content;
+}
+.gomoku-board[data-board-size="19"] {
+  --gomoku-cell-size: clamp(
+    1.2rem,
+    min(calc(5.263svh - 0.895rem), calc(5.263vw - 1.211rem)),
+    2.55rem
+  );
 }
 .gomoku-board button {
   align-items: center;
@@ -1820,7 +1842,8 @@ summary:focus-visible {
   .connect-four-board {
     grid-template-columns: repeat(7, minmax(2.75rem, 4.25rem));
   }
-  .gomoku-board {
+  .gomoku-board,
+  .gomoku-board[data-board-size="19"] {
     --gomoku-cell-size: 2.75rem;
   }
   .reversi-board {
