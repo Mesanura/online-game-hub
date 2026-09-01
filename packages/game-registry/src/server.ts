@@ -1,17 +1,35 @@
-import { connectFourDefinition } from "@online-game-hub/connect-four/core";
-import { gomokuDefinition } from "@online-game-hub/gomoku/core";
+import {
+  connectFourDefinition,
+  connectFourDefinitionV1_0_0,
+} from "@online-game-hub/connect-four/core";
+import {
+  gomokuDefinition,
+  gomokuDefinitionV1_0_0,
+} from "@online-game-hub/gomoku/core";
 import { hexDefinition } from "@online-game-hub/hex/core";
-import { reversiDefinition } from "@online-game-hub/reversi/core";
-import { ticTacToeDefinition } from "@online-game-hub/tic-tac-toe/core";
+import {
+  reversiDefinition,
+  reversiDefinitionV1_0_0,
+} from "@online-game-hub/reversi/core";
+import {
+  ticTacToeDefinition,
+  ticTacToeDefinitionV1_0_0,
+} from "@online-game-hub/tic-tac-toe/core";
 // create-game:server-definition-import
 import { eraseGameDefinition } from "@online-game-hub/game-sdk";
 import type { UnknownGameDefinition } from "@online-game-hub/game-sdk";
 
+import { gameCatalog } from "./catalog.js";
+
 const serverDefinitions = Object.freeze([
+  eraseGameDefinition(ticTacToeDefinitionV1_0_0),
   eraseGameDefinition(ticTacToeDefinition),
+  eraseGameDefinition(connectFourDefinitionV1_0_0),
   eraseGameDefinition(connectFourDefinition),
+  eraseGameDefinition(gomokuDefinitionV1_0_0),
   eraseGameDefinition(gomokuDefinition),
   eraseGameDefinition(hexDefinition),
+  eraseGameDefinition(reversiDefinitionV1_0_0),
   eraseGameDefinition(reversiDefinition),
   // create-game:server-definition
 ]) as readonly UnknownGameDefinition[];
@@ -30,9 +48,10 @@ export function resolveGameDefinition(
 export function resolveCurrentGameDefinition(
   gameId: string,
 ): UnknownGameDefinition | undefined {
-  return serverDefinitions.find(
-    (definition) => definition.manifest.id === gameId,
-  );
+  const manifest = gameCatalog.find((candidate) => candidate.id === gameId);
+  return manifest === undefined
+    ? undefined
+    : resolveGameDefinition(manifest.id, manifest.gameVersion);
 }
 
 export type GameDefinitionResolver = typeof resolveGameDefinition;

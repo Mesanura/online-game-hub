@@ -26,13 +26,17 @@ describe("explicit game registry", () => {
     expect(Object.isFrozen(gameCatalog)).toBe(true);
     expect(gameCatalog).not.toHaveLength(0);
     expect(
-      gameCatalog.slice(0, 5).map(({ id, title }) => ({ id, title })),
+      gameCatalog.slice(0, 5).map(({ id, title, gameVersion }) => ({
+        id,
+        title,
+        gameVersion,
+      })),
     ).toEqual([
-      { id: "tic-tac-toe", title: "井字棋" },
-      { id: "connect-four", title: "四子棋" },
-      { id: "gomoku", title: "五子棋" },
-      { id: "hex", title: "六贯棋" },
-      { id: "reversi", title: "黑白棋" },
+      { id: "tic-tac-toe", title: "井字棋", gameVersion: "1.1.0" },
+      { id: "connect-four", title: "四子棋", gameVersion: "1.1.0" },
+      { id: "gomoku", title: "五子棋", gameVersion: "1.1.0" },
+      { id: "hex", title: "六贯棋", gameVersion: "1.0.0" },
+      { id: "reversi", title: "黑白棋", gameVersion: "1.1.0" },
     ]);
     expect(new Set(gameCatalog.map(({ id }) => id)).size).toBe(
       gameCatalog.length,
@@ -76,6 +80,23 @@ describe("explicit game registry", () => {
     expect(resolveCurrentGameDefinition("unknown")).toBeUndefined();
   });
 
+  it("keeps exact 1.0.0 definitions frozen and independent from current rules", () => {
+    for (const gameId of ["tic-tac-toe", "connect-four", "gomoku", "reversi"]) {
+      const historical = resolveGameDefinition(gameId, "1.0.0");
+      const current = resolveGameDefinition(gameId, "1.1.0");
+
+      expect(historical).toBeDefined();
+      expect(Object.isFrozen(historical)).toBe(true);
+      expect(historical).not.toBe(current);
+      expect(
+        historical?.actionSchema.safeParse({ type: "RESIGN" }).success,
+      ).toBe(false);
+      expect(current?.actionSchema.safeParse({ type: "RESIGN" }).success).toBe(
+        true,
+      );
+    }
+  });
+
   it("keeps every client entry lazy, isolated, and free of UI business", async () => {
     for (const manifest of gameCatalog) {
       const entrypoint = await loadGameClientEntrypoint(
@@ -96,6 +117,7 @@ describe("explicit game registry", () => {
         gameVersion: manifest.gameVersion,
       });
       expect(clientModule?.parseView).toEqual(expect.any(Function));
+      expect(clientModule?.createResignAction).toEqual(expect.any(Function));
       await expect(
         loadGameClientModule(manifest.id, `${manifest.gameVersion}-unknown`),
       ).resolves.toBeUndefined();
