@@ -396,5 +396,6 @@ export const hexClientModule = {
   parseView(input) {
     return hexViewSchema.parse(input) as unknown as HexView;
   },
+  createResignAction: (): HexAction => ({ type: "RESIGN" }),
   Component: HexClient,
 } satisfies GameClientModule<HexView, HexAction>;

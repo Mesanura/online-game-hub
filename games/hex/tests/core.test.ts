@@ -260,6 +260,38 @@ describe("connection outcomes and canonical paths", () => {
     });
   });
 
+  it.each([
+    {
+      name: "BLUE (+1,-1)",
+      actions: [
+        10, 0, 20, 1, 30, 2, 40, 3, 50, 4, 60, 5, 70, 6, 80, 7, 90, 8, 100, 9,
+        110,
+      ],
+      winnerSlotId: playerBlue,
+      winningPath: [10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110],
+    },
+    {
+      name: "RED (-1,+1)",
+      actions: [
+        0, 110, 1, 100, 2, 90, 3, 80, 4, 70, 5, 60, 6, 50, 7, 40, 8, 30, 9, 20,
+        11, 10,
+      ],
+      winnerSlotId: playerRed,
+      winningPath: [110, 100, 90, 80, 70, 60, 50, 40, 30, 20, 10],
+    },
+  ])(
+    "detects the $name third-axis connection through accepted Actions",
+    ({ actions, winnerSlotId, winningPath }) => {
+      const completed = play(actions, `hex-third-axis-${winnerSlotId}`);
+      expect(getOutcome(completed.state)).toEqual({
+        type: "WIN",
+        reason: "CONNECTION",
+        winnerSlotId,
+        winningPath,
+      });
+    },
+  );
+
   it("supports all six undirected adjacency directions without row wrapping", () => {
     const zigzag = [
       5, 15, 16, 26, 27, 37, 38, 48, 49, 59, 60, 70, 71, 81, 82, 92, 93, 103,
