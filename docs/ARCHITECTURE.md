@@ -201,7 +201,7 @@ Room 必须串行处理 Action。任何未来多实例方案都必须维持“�
 ### 8.4 M5/M7-A 持久化、Identity 与 History
 
 - `packages/database` 是唯一 PostgreSQL/Drizzle owner，提供显式可关闭 client、checked-in SQL migration、`PostgresReplayStore`、`PostgresMatchRepository`、独立 `PostgresMatchArchive` 与 `PostgresUserRepository`。它不依赖具体游戏；`game-server-runtime` 不依赖 database、Drizzle 或 PostgreSQL。
-- schema 包含 `users`、`guest_user_associations`、`replays`、`replay_actions`、`matches`、`match_players`。Match 不保存 authoritative State 或游戏专属列；canonical Config/Action/Outcome/seed 只存在受保护 replay 表，所有 JSONB 在写入前和读取后经过通用 runtime validation。
+- schema 包含 `users`、`password_credentials`、`account_sessions`、`replays`、`replay_actions`、`matches`、`match_players`。Match 不保存 authoritative State 或游戏专属列；canonical Config/Action/Outcome/seed 只存在受保护 replay 表，所有 JSONB 在写入前和读取后经过通用 runtime validation。
 - `matches` 使用正整数 `round_number`，并以 `(runtime_room_id, round_number)` 唯一；同一 live room 的每轮拥有不同 Match/replay。只有 Round 真正启动时才插入 active Match/MatchPlayer，待开局 room/setup 不持久化。后续轮 transaction 取得 runtime-room advisory lock，要求上一轮 completed、轮次连续、game/version 与 slot/session 参与者集合完全一致，再插入新 active Match；参与者集合不因 `playerOrder` 反转而改变。旧 waiting rows 继续兼容读取/启动协调，无需 migration。
 - `match_players` 以 `(match_id, player_slot_id)` 为主键并约束同场 participant 唯一；原始 `PlayerSessionId` 只用于服务器内部参与者一致性，不进入公共 response、日志或错误。M7-A 删除旧 `guest_user_associations` 回填路径；Round 创建直接保存 slot 在开始时已快照的可选 UserId，save/complete/归档重试只能验证既有值，不能重新查询当前登录态或补写。
 - reconnect/takeover 必须同时匹配 PlayerSessionId 与原 slot UserId。注册、登录、退出或账户 session 失效都会轮换 guest session，因此 live seat 不能匿名升级、账户降级或换号接管。同一房间后续 Round 沿用 stable slot 身份。
