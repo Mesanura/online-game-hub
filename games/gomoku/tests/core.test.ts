@@ -143,10 +143,11 @@ describe("Config, Action, and initialization", () => {
     }
   });
 
-  it("accepts only a strict cell intent", () => {
+  it("accepts only strict PLACE_STONE | RESIGN intents", () => {
     expect(
       gomokuActionSchema.safeParse({ type: "PLACE_STONE", cell: 360 }).success,
     ).toBe(true);
+    expect(gomokuActionSchema.safeParse({ type: "RESIGN" }).success).toBe(true);
     for (const action of [
       { type: "PLACE_STONE", cell: -1 },
       { type: "PLACE_STONE", cell: 361 },
@@ -156,6 +157,7 @@ describe("Config, Action, and initialization", () => {
       { type: "PLACE_STONE", cell: 0, state: {} },
       { type: "PLACE_STONE", cell: 0, outcome: { type: "DRAW" } },
       { type: "PLACE_STONE", cell: 0, randomResult: 1 },
+      { type: "RESIGN", cell: 0 },
     ]) {
       expect(gomokuActionSchema.safeParse(action).success).toBe(false);
     }
@@ -180,6 +182,7 @@ describe("Config, Action, and initialization", () => {
       );
       expect(first.state.players).toEqual(players);
       expect(first.state.nextPlayerIndex).toBe(0);
+      expect(first.state.resignedSlotId).toBeNull();
       expect(first.rng).toBe(rng);
       expect(initialConfig).toEqual({ boardSize, winLength: 5 });
       expect(rng.cursor).toBe(0);
@@ -273,6 +276,42 @@ describe("placements, turns, and rejection", () => {
     });
     expect(occupied).toEqual({ status: "rejected", code: "CELL_OCCUPIED" });
   });
+
+  it("accepts off-turn resignation and rejects outsider resignation immutably", () => {
+    const initial = initialize(19, "resign-seed");
+    const action = Object.freeze({ type: "RESIGN" } as const);
+    const before = JSON.parse(JSON.stringify(initial)) as unknown;
+    const result = transition({
+      state: initial.state,
+      actorSlotId: playerWhite,
+      action,
+      rng: initial.rng,
+    });
+    expect(initial).toEqual(before);
+    expect(result.status).toBe("accepted");
+    if (result.status !== "accepted") {
+      throw new Error("Expected off-turn resignation to be accepted.");
+    }
+    expect(result.state.board).toEqual(initial.state.board);
+    expect(result.state.nextPlayerIndex).toBe(0);
+    expect(result.state.resignedSlotId).toBe(playerWhite);
+    expect(result.rng).toBe(initial.rng);
+    expect(getOutcome(result.state)).toEqual({
+      type: "WIN",
+      reason: "RESIGNATION",
+      winnerSlotId: playerBlack,
+      resignedSlotId: playerWhite,
+    });
+    expect(
+      transition({
+        state: initial.state,
+        actorSlotId: definePlayerSlotId("outsider"),
+        action,
+        rng: initial.rng,
+      }),
+    ).toEqual({ status: "rejected", code: "NOT_A_PLAYER" });
+    expect(initial).toEqual(before);
+  });
 });
 
 describe("outcomes", () => {
@@ -355,6 +394,34 @@ describe("outcomes", () => {
       expect(JSON.stringify(state)).toBe(before);
     }
   });
+
+  it("rejects every action after resignation", () => {
+    const initial = initialize();
+    const resignation = transition({
+      state: initial.state,
+      actorSlotId: playerWhite,
+      action: { type: "RESIGN" },
+      rng: initial.rng,
+    });
+    if (resignation.status !== "accepted") {
+      throw new Error("Expected resignation to be accepted.");
+    }
+    const before = JSON.stringify(resignation.state);
+    for (const action of [
+      { type: "PLACE_STONE", cell: 0 },
+      { type: "RESIGN" },
+    ] as const) {
+      expect(
+        transition({
+          state: resignation.state,
+          actorSlotId: playerBlack,
+          action,
+          rng: resignation.rng,
+        }),
+      ).toEqual({ status: "rejected", code: "MATCH_ALREADY_FINISHED" });
+    }
+    expect(JSON.stringify(resignation.state)).toBe(before);
+  });
 });
 
 describe("serialization, projection, and seeded determinism", () => {
@@ -373,6 +440,32 @@ describe("serialization, projection, and seeded determinism", () => {
     expect(gomokuViewSchema.safeParse(view).success).toBe(true);
     expect(gomokuOutcomeSchema.safeParse(outcome).success).toBe(true);
     for (const value of [gameConfig, state, action, view, outcome]) {
+      expect(isJsonValue(value)).toBe(true);
+      expect(JSON.parse(JSON.stringify(value)) as unknown).toEqual(value);
+    }
+
+    const initial = initialize(19);
+    const resignation = transition({
+      state: initial.state,
+      actorSlotId: playerWhite,
+      action: { type: "RESIGN" },
+      rng: initial.rng,
+    });
+    if (resignation.status !== "accepted") {
+      throw new Error("Expected resignation to be accepted.");
+    }
+    const resignedView = projectView({
+      state: resignation.state,
+      viewer: { kind: "spectator" },
+    });
+    expect(gomokuStateSchema.safeParse(resignation.state).success).toBe(true);
+    expect(gomokuViewSchema.safeParse(resignedView).success).toBe(true);
+    for (const value of [
+      resignation.state,
+      { type: "RESIGN" },
+      resignedView,
+      resignedView.outcome,
+    ]) {
       expect(isJsonValue(value)).toBe(true);
       expect(JSON.parse(JSON.stringify(value)) as unknown).toEqual(value);
     }

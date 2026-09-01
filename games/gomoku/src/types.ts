@@ -13,18 +13,27 @@ export type GomokuState = {
   readonly players: readonly [PlayerSlotId, PlayerSlotId];
   readonly board: GomokuBoard;
   readonly nextPlayerIndex: 0 | 1;
+  readonly resignedSlotId: PlayerSlotId | null;
 };
 
-export type GomokuAction = {
-  readonly type: "PLACE_STONE";
-  readonly cell: number;
-};
+export type GomokuAction =
+  | {
+      readonly type: "PLACE_STONE";
+      readonly cell: number;
+    }
+  | { readonly type: "RESIGN" };
 
 export type GomokuOutcome =
   | {
       readonly type: "WIN";
       readonly winnerSlotId: PlayerSlotId;
       readonly winningCells: readonly [number, number, number, number, number];
+    }
+  | {
+      readonly type: "WIN";
+      readonly reason: "RESIGNATION";
+      readonly winnerSlotId: PlayerSlotId;
+      readonly resignedSlotId: PlayerSlotId;
     }
   | { readonly type: "DRAW" };
 

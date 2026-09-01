@@ -21,7 +21,7 @@ const boardSchema = z
   .array(slotIdSchema.nullable())
   .min(15 * 15)
   .max(GOMOKU_MAX_CELL_COUNT);
-const outcomeSchema = z.discriminatedUnion("type", [
+const outcomeSchema = z.union([
   z
     .object({
       type: z.literal("WIN"),
@@ -33,6 +33,14 @@ const outcomeSchema = z.discriminatedUnion("type", [
         cellIndexSchema,
         cellIndexSchema,
       ]),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("WIN"),
+      reason: z.literal("RESIGNATION"),
+      winnerSlotId: slotIdSchema,
+      resignedSlotId: slotIdSchema,
     })
     .strict(),
   z.object({ type: z.literal("DRAW") }).strict(),
@@ -96,6 +104,7 @@ export const gomokuViewSchema = z
     }
     if (
       view.outcome?.type === "WIN" &&
+      "winningCells" in view.outcome &&
       view.outcome.winningCells.some(
         (cell) => cell >= view.boardSize * view.boardSize,
       )
@@ -104,6 +113,17 @@ export const gomokuViewSchema = z
         code: "custom",
         message: "Winning cells must be inside the visible board.",
         path: ["outcome", "winningCells"],
+      });
+    }
+    if (
+      view.outcome?.type === "WIN" &&
+      "reason" in view.outcome &&
+      !slots.includes(view.outcome.resignedSlotId)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "The resigned slot must reference a visible player slot.",
+        path: ["outcome", "resignedSlotId"],
       });
     }
   });
@@ -146,7 +166,7 @@ export function GomokuClient(props: GameClientProps<GomokuView, GomokuAction>) {
   const nextStone = stoneForSlot(props.view, props.view.nextTurnSlotId);
   const outcomeText = outcomeLabel(props.view);
   const winningCells =
-    props.view.outcome?.type === "WIN"
+    props.view.outcome?.type === "WIN" && "winningCells" in props.view.outcome
       ? new Set<number>(props.view.outcome.winningCells)
       : new Set<number>();
   const boardStyle = {
@@ -231,6 +251,7 @@ export function GomokuClient(props: GameClientProps<GomokuView, GomokuAction>) {
 export const gomokuClientModule = {
   gameId: gomokuManifest.id,
   gameVersion: gomokuManifest.gameVersion,
+  createResignAction: (): GomokuAction => ({ type: "RESIGN" }),
   parseView(input) {
     return gomokuViewSchema.parse(input) as unknown as GomokuView;
   },

@@ -80,6 +80,24 @@ describe("Gomoku Client Module", () => {
     expect(intent).not.toHaveProperty("randomResult");
   });
 
+  it("exposes and parses strict resignation support", () => {
+    expect(gomokuClientModule.createResignAction?.()).toEqual({
+      type: "RESIGN",
+    });
+    expect(
+      gomokuViewSchema.safeParse({
+        ...view,
+        nextTurnSlotId: null,
+        outcome: {
+          type: "WIN",
+          reason: "RESIGNATION",
+          winnerSlotId: "slot-black",
+          resignedSlotId: "slot-white",
+        },
+      }).success,
+    ).toBe(true);
+  });
+
   it("renders an accessible 15 × 15 board, turn, and clay stones", () => {
     const html = renderToStaticMarkup(
       createElement(GomokuClient, {

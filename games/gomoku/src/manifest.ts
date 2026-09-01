@@ -11,7 +11,7 @@ export const gomokuDefaultConfig = Object.freeze({
 
 export const gomokuManifest = Object.freeze({
   id: defineGameId("gomoku"),
-  gameVersion: defineGameVersion("1.0.0"),
+  gameVersion: defineGameVersion("1.1.0"),
   title: "五子棋",
   description: "两名玩家轮流落子，率先在横、竖或斜线连成五子者获胜。",
   defaultConfig: gomokuDefaultConfig,
