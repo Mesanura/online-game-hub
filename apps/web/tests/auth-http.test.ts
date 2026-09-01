@@ -25,6 +25,26 @@ describe("account HTTP security boundary", () => {
       ),
     ).toBe(false);
     expect(
+      isSameOrigin(
+        new Request("https://localhost/api/auth/login", {
+          headers: {
+            host: "games.example.test",
+            origin: "https://games.example.test",
+          },
+        }),
+      ),
+    ).toBe(true);
+    expect(
+      isSameOrigin(
+        new Request("https://localhost/api/auth/login", {
+          headers: {
+            host: "games.example.test",
+            origin: "http://games.example.test",
+          },
+        }),
+      ),
+    ).toBe(false);
+    expect(
       isSameOrigin(new Request("https://games.example.test/api/auth/login")),
     ).toBe(false);
   });

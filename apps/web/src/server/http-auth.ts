@@ -16,7 +16,12 @@ export function isSameOrigin(request: Request): boolean {
   const origin = request.headers.get("origin");
   if (origin === null) return false;
   try {
-    return origin === new URL(request.url).origin;
+    const originUrl = new URL(origin);
+    const requestUrl = new URL(request.url);
+    const host = request.headers.get("host") ?? requestUrl.host;
+    return (
+      originUrl.protocol === requestUrl.protocol && originUrl.host === host
+    );
   } catch {
     return false;
   }
