@@ -222,7 +222,9 @@ export function ReversiClient(
 
   return (
     <section aria-labelledby="reversi-heading" className="game-board-panel">
-      <h2 id="reversi-heading">8 × 8 棋盘</h2>
+      <h2 className="sr-only" id="reversi-heading">
+        黑白棋棋盘
+      </h2>
       <p data-testid="player-color">
         {props.view.yourDisc === null
           ? "你正在旁观"

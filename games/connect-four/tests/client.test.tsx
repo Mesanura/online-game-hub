@@ -7,6 +7,7 @@ import {
   connectFourClientModule,
   connectFourViewSchema,
   createDropDiscIntent,
+  lowestOpenCellInColumn,
 } from "../src/client/module.js";
 import { CONNECT_FOUR_CELL_COUNT } from "../src/constants.js";
 
@@ -59,6 +60,16 @@ describe("Connect Four Client Module", () => {
     expect(intent).not.toHaveProperty("outcome");
   });
 
+  it("derives a column preview from the lowest empty View cell", () => {
+    const board = createBoard();
+    expect(lowestOpenCellInColumn(board, 0)).toBe(28);
+    expect(lowestOpenCellInColumn(board, 3)).toBe(38);
+    for (let row = 0; row < 6; row += 1) {
+      board[row * 7 + 4] = row % 2 === 0 ? "slot-red" : "slot-yellow";
+    }
+    expect(lowestOpenCellInColumn(board, 4)).toBeNull();
+  });
+
   it("renders seven accessible column controls, 42 cells, turn, and disc", () => {
     const html = renderToStaticMarkup(
       createElement(ConnectFourClient, {
@@ -73,6 +84,8 @@ describe("Connect Four Client Module", () => {
     expect(html.match(/data-column-index=/gu)).toHaveLength(7);
     expect(html.match(/data-cell-index=/gu)).toHaveLength(42);
     expect(html).toContain('aria-label="第 7 列落子"');
+    expect(html).toContain('data-preview="false"');
+    expect(html).not.toContain("7 × 6 棋盘");
     expect(html).not.toContain("nextPlayerIndex");
   });
 

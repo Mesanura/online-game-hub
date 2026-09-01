@@ -127,7 +127,9 @@ export function TicTacToeClient(
 
   return (
     <section aria-labelledby="tic-tac-toe-heading" className="game-board-panel">
-      <h2 id="tic-tac-toe-heading">3 × 3 棋盘</h2>
+      <h2 className="sr-only" id="tic-tac-toe-heading">
+        井字棋棋盘
+      </h2>
       <p data-testid="player-mark">
         {props.view.yourMark === null
           ? "你正在旁观"

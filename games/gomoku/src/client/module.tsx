@@ -166,8 +166,8 @@ export function GomokuClient(props: GameClientProps<GomokuView, GomokuAction>) {
 
   return (
     <section aria-labelledby="gomoku-heading" className="game-board-panel">
-      <h2 id="gomoku-heading">
-        {props.view.boardSize} × {props.view.boardSize} 棋盘
+      <h2 className="sr-only" id="gomoku-heading">
+        五子棋棋盘
       </h2>
       <p data-testid="player-stone">
         {props.view.yourStone === null
@@ -212,9 +212,13 @@ export function GomokuClient(props: GameClientProps<GomokuView, GomokuAction>) {
                 role="gridcell"
                 type="button"
               >
-                <span aria-hidden="true">
-                  {stone === "BLACK" ? "●" : stone === "WHITE" ? "○" : ""}
-                </span>
+                {stone === null ? null : (
+                  <span
+                    aria-hidden="true"
+                    className="gomoku-stone"
+                    data-stone-color={stone}
+                  />
+                )}
               </button>
             );
           })}

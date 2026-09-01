@@ -80,7 +80,7 @@ describe("Gomoku Client Module", () => {
     expect(intent).not.toHaveProperty("randomResult");
   });
 
-  it("renders the Chinese title context, accessible 15 × 15 board, turn, and stone", () => {
+  it("renders an accessible 15 × 15 board, turn, and clay stones", () => {
     const html = renderToStaticMarkup(
       createElement(GomokuClient, {
         view: gomokuClientModule.parseView(view),
@@ -89,12 +89,15 @@ describe("Gomoku Client Module", () => {
         submitAction: vi.fn(async () => undefined),
       }),
     );
-    expect(html).toContain("15 × 15 棋盘");
+    expect(html).not.toContain("15 × 15 棋盘");
     expect(html).toContain("你的棋子：黑方");
     expect(html).toContain("轮到你落子");
     expect(html).toContain('aria-label="五子棋棋盘"');
     expect(html).toContain('aria-label="第 8 行第 8 列，黑方"');
     expect(html.match(/data-cell-index=/gu)).toHaveLength(225);
+    expect(html).toMatch(
+      /data-cell-index="112" data-stone="BLACK"[^>]*><span aria-hidden="true" class="gomoku-stone" data-stone-color="BLACK"><\/span><\/button>/u,
+    );
     expect(html).not.toContain("nextPlayerIndex");
   });
 
@@ -111,7 +114,7 @@ describe("Gomoku Client Module", () => {
         submitAction: vi.fn(async () => undefined),
       }),
     );
-    expect(html).toContain("19 × 19 棋盘");
+    expect(html).not.toContain("19 × 19 棋盘");
     expect(html.match(/data-cell-index=/gu)).toHaveLength(361);
   });
 

@@ -83,7 +83,7 @@ describe("Reversi Client Module", () => {
 
   it("renders an accessible responsive 8 × 8 board, stable colors, counts, and server legal moves", () => {
     const html = render();
-    expect(html).toContain("8 × 8 棋盘");
+    expect(html).not.toContain("8 × 8 棋盘");
     expect(html).toContain("你的棋子：黑方");
     expect(html).toContain("轮到你落子");
     expect(html).toContain('aria-label="黑白棋棋盘"');

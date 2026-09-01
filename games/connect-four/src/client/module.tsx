@@ -118,10 +118,22 @@ export function createDropDiscIntent(column: number): ConnectFourAction {
   return { type: "DROP_DISC", column };
 }
 
+export function lowestOpenCellInColumn(
+  board: readonly (string | null)[],
+  column: number,
+): number | null {
+  for (let row = CONNECT_FOUR_ROWS - 1; row >= 0; row -= 1) {
+    const cell = row * CONNECT_FOUR_COLUMNS + column;
+    if (board[cell] === null) return cell;
+  }
+  return null;
+}
+
 export function ConnectFourClient(
   props: GameClientProps<ConnectFourView, ConnectFourAction>,
 ) {
   const [submitting, setSubmitting] = useState(false);
+  const [previewColumn, setPreviewColumn] = useState<number | null>(null);
   const yourPlayer = props.view.players.find(
     (player) => player.disc === props.view.yourDisc,
   );
@@ -132,9 +144,16 @@ export function ConnectFourClient(
   const nextDisc = discForSlot(props.view, props.view.nextTurnSlotId);
   const outcomeText = outcomeLabel(props.view);
   const winningCells =
-    props.view.outcome?.type === "WIN"
+    props.view.outcome?.type === "WIN" &&
+    "winningCells" in props.view.outcome
       ? new Set<number>(props.view.outcome.winningCells)
       : new Set<number>();
+  const previewsAllowed =
+    props.connectionState === "connected" && !submitting && isYourTurn;
+  const previewCell =
+    previewColumn === null || !previewsAllowed
+      ? null
+      : lowestOpenCellInColumn(props.view.board, previewColumn);
 
   const submitColumn = async (column: number): Promise<void> => {
     setSubmitting(true);
@@ -152,7 +171,9 @@ export function ConnectFourClient(
       aria-labelledby="connect-four-heading"
       className="game-board-panel"
     >
-      <h2 id="connect-four-heading">7 × 6 棋盘</h2>
+      <h2 className="sr-only" id="connect-four-heading">
+        四子棋棋盘
+      </h2>
       <p data-testid="player-disc">
         {props.view.yourDisc === null
           ? "你正在旁观"
@@ -171,23 +192,27 @@ export function ConnectFourClient(
         className="connect-four-column-controls"
         role="group"
       >
-        {Array.from({ length: CONNECT_FOUR_COLUMNS }, (_, column) => (
-          <button
-            aria-label={`第 ${column + 1} 列落子`}
-            data-column-index={column}
-            disabled={
-              props.connectionState !== "connected" ||
-              submitting ||
-              !isYourTurn ||
-              props.view.board[column] !== null
-            }
-            key={column}
-            onClick={() => void submitColumn(column)}
-            type="button"
-          >
-            ↓
-          </button>
-        ))}
+        {Array.from({ length: CONNECT_FOUR_COLUMNS }, (_, column) => {
+          const enabled =
+            previewsAllowed &&
+            lowestOpenCellInColumn(props.view.board, column) !== null;
+          return (
+            <button
+              aria-label={`第 ${column + 1} 列落子`}
+              data-column-index={column}
+              disabled={!enabled}
+              key={column}
+              onBlur={() => setPreviewColumn(null)}
+              onClick={() => void submitColumn(column)}
+              onFocus={() => setPreviewColumn(column)}
+              onPointerEnter={() => setPreviewColumn(column)}
+              onPointerLeave={() => setPreviewColumn(null)}
+              type="button"
+            >
+              ↓
+            </button>
+          );
+        })}
       </div>
       <div
         aria-colcount={CONNECT_FOUR_COLUMNS}
@@ -200,19 +225,25 @@ export function ConnectFourClient(
           const disc = discForSlot(props.view, slotId);
           const row = Math.floor(cell / CONNECT_FOUR_COLUMNS);
           const column = cell % CONNECT_FOUR_COLUMNS;
+          const preview = previewCell === cell && disc === null;
           return (
             <div
               aria-label={`第 ${row + 1} 行第 ${column + 1} 列，${disc === null ? "空" : discLabel(disc)}`}
-              className={
-                winningCells.has(cell)
-                  ? "connect-four-cell winning-cell"
-                  : "connect-four-cell"
-              }
+              className={`connect-four-cell${winningCells.has(cell) ? " winning-cell" : ""}${preview ? " preview-cell" : ""}`}
               data-cell-index={cell}
               data-disc={disc ?? "EMPTY"}
+              data-preview={preview ? "true" : "false"}
               key={cell}
               role="gridcell"
-            />
+            >
+              {preview ? (
+                <span
+                  aria-hidden="true"
+                  className="connect-four-preview-disc"
+                  data-disc-color={props.view.yourDisc}
+                />
+              ) : null}
+            </div>
           );
         })}
       </div>
