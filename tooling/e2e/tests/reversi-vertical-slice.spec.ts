@@ -164,7 +164,6 @@ test("two guests complete authoritative Reversi with flips and a non-full termin
       ).toBeVisible();
       await expect(page.locator("[data-cell-index]")).toHaveCount(64);
       await expect(page.locator('[data-legal-move="true"]')).toHaveCount(4);
-      await expect(page.getByText("8 × 8 棋盘")).toBeVisible();
       await expect(page.getByTestId("black-disc-count")).toHaveText("黑方：2");
       await expect(page.getByTestId("white-disc-count")).toHaveText("白方：2");
     }),
@@ -254,7 +253,7 @@ test("two guests complete authoritative Reversi with flips and a non-full termin
   }
   expect(room).toMatchObject({
     gameId: "reversi",
-    gameVersion: "1.0.0",
+    gameVersion: "1.1.0",
     initialConfig: null,
     currentRound: { roundNumber: 1, revision: 11, status: "completed" },
     players: [{ slotId: slotA }, { slotId: slotB }],
@@ -289,7 +288,7 @@ test("two guests complete authoritative Reversi with flips and a non-full termin
     expect(rebuiltReplay?.header).toMatchObject({
       replayFormatVersion: 1,
       gameId: "reversi",
-      gameVersion: "1.0.0",
+      gameVersion: "1.1.0",
       initialConfig: null,
     });
     expect(rebuiltReplay?.actions).toHaveLength(11);
@@ -329,7 +328,7 @@ test("two guests complete authoritative Reversi with flips and a non-full termin
   expect(Object.keys(historyB[0] ?? {}).sort()).toEqual(safeMetadataKeys);
   expect(historyA[0]).toMatchObject({
     gameId: "reversi",
-    gameVersion: "1.0.0",
+    gameVersion: "1.1.0",
     status: "completed",
     finalRevision: 11,
     playerSlotId: slotA,

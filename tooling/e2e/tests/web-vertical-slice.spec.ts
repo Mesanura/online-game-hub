@@ -286,7 +286,7 @@ async function assertPrivateCompletedHistory(
     matchId: matchA.matchId,
     roundNumber: expectedRoundNumber,
     gameId: "tic-tac-toe",
-    gameVersion: "1.0.0",
+    gameVersion: "1.1.0",
     status: "completed",
     finalRevision: expectedRevision,
     playerSlotId: "slot-1",
@@ -660,6 +660,9 @@ test("the shared HUD cancels and confirms a Tic-Tac-Toe resignation once", async
 }) => {
   const contextA = await browser.newContext();
   const contextB = await browser.newContext();
+  await contextA.grantPermissions(["clipboard-read", "clipboard-write"], {
+    origin: harness.webUrl,
+  });
   const pageA = await contextA.newPage();
   const pageB = await contextB.newPage();
   const resignedRoom = await createAndJoinRoom(pageA, pageB);

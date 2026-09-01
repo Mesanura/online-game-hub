@@ -90,7 +90,7 @@ async function assertCompletedReplay(
   }
   expect(room).toMatchObject({
     gameId: "connect-four",
-    gameVersion: "1.0.0",
+    gameVersion: "1.1.0",
     currentRound: { roundNumber, revision: 7, status: "completed" },
   });
   const currentRound = room.currentRound;
@@ -119,7 +119,7 @@ async function assertCompletedReplay(
     expect(rebuiltReplay?.header).toMatchObject({
       replayFormatVersion: 1,
       gameId: "connect-four",
-      gameVersion: "1.0.0",
+      gameVersion: "1.1.0",
     });
     expect(rebuiltReplay?.actions).toHaveLength(7);
     expect(verifyReplay(rebuiltReplay, resolveGameDefinition)).toMatchObject({
@@ -314,7 +314,7 @@ test("two guests play two authoritative Connect Four rounds with independent rep
     expect.objectContaining({
       roundNumber: 1,
       gameId: "connect-four",
-      gameVersion: "1.0.0",
+      gameVersion: "1.1.0",
       status: "completed",
       finalRevision: 7,
       playerSlotId: slotA,
@@ -373,7 +373,7 @@ test("two guests play two authoritative Connect Four rounds with independent rep
       matchId: expect.any(String),
       roundNumber: expect.any(Number),
       gameId: "connect-four",
-      gameVersion: "1.0.0",
+      gameVersion: "1.1.0",
       status: "completed",
       finalRevision: 7,
       playerSlotId: slotA,

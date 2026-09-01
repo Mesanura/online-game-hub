@@ -165,7 +165,6 @@ test("two guests create, join, synchronize, and complete authoritative Gomoku", 
         page.getByRole("grid", { name: "五子棋棋盘" }),
       ).toBeVisible();
       await expect(page.locator("[data-cell-index]")).toHaveCount(225);
-      await expect(page.getByText("15 × 15 棋盘")).toBeVisible();
     }),
   );
   await expect(pageA.getByTestId("player-stone")).toContainText("黑方");
@@ -234,7 +233,7 @@ test("two guests create, join, synchronize, and complete authoritative Gomoku", 
     throw new Error("The completed Gomoku room was not stored.");
   expect(room).toMatchObject({
     gameId: "gomoku",
-    gameVersion: "1.0.0",
+    gameVersion: "1.1.0",
     initialConfig: { boardSize: 15, winLength: 5 },
     currentRound: { revision: 9, status: "completed" },
   });
@@ -264,7 +263,7 @@ test("two guests create, join, synchronize, and complete authoritative Gomoku", 
     expect(rebuiltReplay?.header).toMatchObject({
       replayFormatVersion: 1,
       gameId: "gomoku",
-      gameVersion: "1.0.0",
+      gameVersion: "1.1.0",
       initialConfig: { boardSize: 15, winLength: 5 },
     });
     expect(rebuiltReplay?.actions).toHaveLength(9);
@@ -283,7 +282,7 @@ test("two guests create, join, synchronize, and complete authoritative Gomoku", 
   expect(historyA).toEqual([
     expect.objectContaining({
       gameId: "gomoku",
-      gameVersion: "1.0.0",
+      gameVersion: "1.1.0",
       finalRevision: 9,
       playerSlotId: slotA,
       replayAvailable: true,

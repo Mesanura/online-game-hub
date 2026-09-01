@@ -530,7 +530,7 @@ describe("real PostgreSQL authoritative persistence", () => {
       const replayRoundOneId = storedRoundOne?.currentRound?.replayId ?? "";
       expect(storedRoundOne).toMatchObject({
         gameId: "connect-four",
-        gameVersion: "1.0.0",
+        gameVersion: "1.1.0",
         currentRound: { roundNumber: 1, revision: 7, status: "completed" },
       });
 
@@ -574,7 +574,7 @@ describe("real PostgreSQL authoritative persistence", () => {
       const replayRoundTwoId = storedRoundTwo?.currentRound?.replayId ?? "";
       expect(storedRoundTwo).toMatchObject({
         gameId: "connect-four",
-        gameVersion: "1.0.0",
+        gameVersion: "1.1.0",
         currentRound: { roundNumber: 2, revision: 7, status: "completed" },
       });
       expect(replayRoundTwoId).not.toBe(replayRoundOneId);
@@ -630,7 +630,7 @@ describe("real PostgreSQL authoritative persistence", () => {
       const abandonedReplayId = abandonedStored?.currentRound?.replayId ?? "";
       expect(abandonedStored).toMatchObject({
         gameId: "connect-four",
-        gameVersion: "1.0.0",
+        gameVersion: "1.1.0",
         currentRound: { roundNumber: 1, revision: 0, status: "abandoned" },
       });
 
@@ -654,7 +654,7 @@ describe("real PostgreSQL authoritative persistence", () => {
           expect(replay?.header).toMatchObject({
             replayFormatVersion: 1,
             gameId: "connect-four",
-            gameVersion: "1.0.0",
+            gameVersion: "1.1.0",
           });
           expect(replay?.actions).toHaveLength(7);
           expect(verifyReplay(replay, resolveGameDefinition)).toMatchObject({
@@ -680,7 +680,7 @@ describe("real PostgreSQL authoritative persistence", () => {
           expect.arrayContaining([
             expect.objectContaining({
               gameId: "connect-four",
-              gameVersion: "1.0.0",
+              gameVersion: "1.1.0",
               roundNumber: 1,
               status: "completed",
               finalRevision: 7,
@@ -689,7 +689,7 @@ describe("real PostgreSQL authoritative persistence", () => {
             }),
             expect.objectContaining({
               gameId: "connect-four",
-              gameVersion: "1.0.0",
+              gameVersion: "1.1.0",
               roundNumber: 2,
               status: "completed",
               finalRevision: 7,
@@ -716,7 +716,7 @@ describe("real PostgreSQL authoritative persistence", () => {
         ).resolves.toEqual([
           expect.objectContaining({
             gameId: "connect-four",
-            gameVersion: "1.0.0",
+            gameVersion: "1.1.0",
             roundNumber: 1,
             status: "abandoned",
             finalRevision: 0,
