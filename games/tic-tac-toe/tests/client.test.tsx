@@ -33,6 +33,24 @@ describe("Tic-Tac-Toe Client Module", () => {
     ).toBe(false);
   });
 
+  it("exposes a strict resignation action factory", () => {
+    expect(ticTacToeClientModule.createResignAction?.()).toEqual({
+      type: "RESIGN",
+    });
+    expect(
+      ticTacToeViewSchema.safeParse({
+        ...view,
+        nextTurnSlotId: null,
+        outcome: {
+          type: "WIN",
+          reason: "RESIGNATION",
+          winnerSlotId: "slot-1",
+          resignedSlotId: "slot-2",
+        },
+      }).success,
+    ).toBe(true);
+  });
+
   it("renders the board, player mark, and turn", () => {
     const html = renderToStaticMarkup(
       createElement(TicTacToeClient, {

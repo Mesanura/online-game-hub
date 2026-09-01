@@ -1,0 +1,32 @@
+{
+  "header": {
+    "replayFormatVersion": 1,
+    "gameId": "tic-tac-toe",
+    "gameVersion": "1.1.0",
+    "rng": {
+      "algorithm": "fnv1a32-counter-v1",
+      "seed": "golden-tic-tac-toe-1.1-resignation"
+    },
+    "initialConfig": null,
+    "players": [{ "slotId": "player-x" }, { "slotId": "player-o" }]
+  },
+  "actions": [
+    {
+      "sequence": 1,
+      "actorSlotId": "player-x",
+      "action": { "type": "PLACE_MARK", "cell": 4 }
+    },
+    {
+      "sequence": 2,
+      "actorSlotId": "player-x",
+      "action": { "type": "RESIGN" }
+    }
+  ],
+  "recordedRngCursor": 0,
+  "recordedOutcome": {
+    "type": "WIN",
+    "reason": "RESIGNATION",
+    "winnerSlotId": "player-o",
+    "resignedSlotId": "player-x"
+  }
+}

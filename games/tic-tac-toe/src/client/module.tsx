@@ -37,7 +37,7 @@ const boardSchema = z.tuple([
   z.string().min(1).nullable(),
 ]);
 
-const outcomeSchema = z.discriminatedUnion("type", [
+const outcomeSchema = z.union([
   z
     .object({
       type: z.literal("WIN"),
@@ -47,6 +47,14 @@ const outcomeSchema = z.discriminatedUnion("type", [
         cellIndexSchema,
         cellIndexSchema,
       ]),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("WIN"),
+      reason: z.literal("RESIGNATION"),
+      winnerSlotId: z.string().min(1),
+      resignedSlotId: z.string().min(1),
     })
     .strict(),
   z.object({ type: z.literal("DRAW") }).strict(),
@@ -100,7 +108,7 @@ export function TicTacToeClient(
     yourPlayer.slotId === props.view.nextTurnSlotId &&
     props.view.outcome === null;
   const winningCells =
-    props.view.outcome?.type === "WIN"
+    props.view.outcome?.type === "WIN" && "winningCells" in props.view.outcome
       ? new Set<TicTacToeCellIndex>(props.view.outcome.winningCells)
       : new Set<TicTacToeCellIndex>();
   const outcomeText = outcomeLabel(props.view);
@@ -167,6 +175,7 @@ export function TicTacToeClient(
 export const ticTacToeClientModule = {
   gameId: ticTacToeManifest.id,
   gameVersion: ticTacToeManifest.gameVersion,
+  createResignAction: (): TicTacToeAction => ({ type: "RESIGN" }),
   parseView(input) {
     return ticTacToeViewSchema.parse(input) as unknown as TicTacToeView;
   },

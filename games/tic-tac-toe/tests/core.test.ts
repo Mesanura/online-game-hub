@@ -75,7 +75,7 @@ function play(
 }
 
 describe("schemas and initialization", () => {
-  it("accepts only null config and strict PLACE_MARK intent", () => {
+  it("accepts only null config and strict PLACE_MARK | RESIGN intent", () => {
     expect(ticTacToeConfigSchema.safeParse(null).success).toBe(true);
     expect(ticTacToeConfigSchema.safeParse({}).success).toBe(false);
     expect(
@@ -91,6 +91,12 @@ describe("schemas and initialization", () => {
         actorSlotId: playerO,
       }).success,
     ).toBe(false);
+    expect(ticTacToeActionSchema.safeParse({ type: "RESIGN" }).success).toBe(
+      true,
+    );
+    expect(
+      ticTacToeActionSchema.safeParse({ type: "RESIGN", cell: 0 }).success,
+    ).toBe(false);
   });
 
   it("initializes deterministically without consuming RNG", () => {
@@ -100,6 +106,7 @@ describe("schemas and initialization", () => {
     expect(first.state.board).toEqual(Array<null>(9).fill(null));
     expect(first.state.players).toEqual(players);
     expect(first.state.nextPlayerIndex).toBe(0);
+    expect(first.state.resignedSlotId).toBeNull();
     expect(first.rng.cursor).toBe(0);
     expect(getOutcome(first.state)).toBeNull();
   });
@@ -187,6 +194,44 @@ describe("transitions", () => {
     expect(occupied).toEqual({ status: "rejected", code: "CELL_OCCUPIED" });
   });
 
+  it("accepts an off-turn resignation but rejects an outsider immutably", () => {
+    const initial = initialize("resign-seed");
+    const action = Object.freeze({ type: "RESIGN" } as const);
+    const before = JSON.parse(JSON.stringify(initial)) as unknown;
+    const resigned = transition({
+      state: initial.state,
+      actorSlotId: playerO,
+      action,
+      rng: initial.rng,
+    });
+
+    expect(initial).toEqual(before);
+    expect(action).toEqual({ type: "RESIGN" });
+    expect(resigned.status).toBe("accepted");
+    if (resigned.status !== "accepted") {
+      throw new Error("Expected off-turn resignation to be accepted.");
+    }
+    expect(resigned.state.board).toBe(initial.state.board);
+    expect(resigned.state.nextPlayerIndex).toBe(0);
+    expect(resigned.state.resignedSlotId).toBe(playerO);
+    expect(resigned.rng).toBe(initial.rng);
+    expect(getOutcome(resigned.state)).toEqual({
+      type: "WIN",
+      reason: "RESIGNATION",
+      winnerSlotId: playerX,
+      resignedSlotId: playerO,
+    });
+
+    const outsider = transition({
+      state: initial.state,
+      actorSlotId: definePlayerSlotId("outsider"),
+      action,
+      rng: initial.rng,
+    });
+    expect(outsider).toEqual({ status: "rejected", code: "NOT_A_PLAYER" });
+    expect(initial).toEqual(before);
+  });
+
   it("does not expose candidate state or advance RNG on rejection", () => {
     const initial = initialize();
     const result = transition({
@@ -265,6 +310,34 @@ describe("outcomes", () => {
       expect(JSON.stringify(state)).toBe(before);
     }
   });
+
+  it("rejects every action after resignation", () => {
+    const initial = initialize();
+    const resigned = transition({
+      state: initial.state,
+      actorSlotId: playerO,
+      action: { type: "RESIGN" },
+      rng: initial.rng,
+    });
+    if (resigned.status !== "accepted") {
+      throw new Error("Expected resignation to be accepted.");
+    }
+    const before = JSON.stringify(resigned.state);
+    for (const action of [
+      { type: "PLACE_MARK", cell: 0 },
+      { type: "RESIGN" },
+    ] as const) {
+      expect(
+        transition({
+          state: resigned.state,
+          actorSlotId: playerX,
+          action,
+          rng: resigned.rng,
+        }),
+      ).toEqual({ status: "rejected", code: "MATCH_ALREADY_FINISHED" });
+    }
+    expect(JSON.stringify(resigned.state)).toBe(before);
+  });
 });
 
 describe("serialization, projection, and determinism", () => {
@@ -277,6 +350,30 @@ describe("serialization, projection, and determinism", () => {
       viewer: { kind: "player", slotId: playerX },
     });
     for (const value of [state, action, view, outcome]) {
+      expect(isJsonValue(value)).toBe(true);
+      expect(JSON.parse(JSON.stringify(value)) as unknown).toEqual(value);
+    }
+
+    const initial = initialize();
+    const resignation = transition({
+      state: initial.state,
+      actorSlotId: playerO,
+      action: { type: "RESIGN" },
+      rng: initial.rng,
+    });
+    if (resignation.status !== "accepted") {
+      throw new Error("Expected resignation to be accepted.");
+    }
+    const resignedView = projectView({
+      state: resignation.state,
+      viewer: { kind: "spectator" },
+    });
+    for (const value of [
+      resignation.state,
+      { type: "RESIGN" },
+      resignedView,
+      resignedView.outcome,
+    ]) {
       expect(isJsonValue(value)).toBe(true);
       expect(JSON.parse(JSON.stringify(value)) as unknown).toEqual(value);
     }

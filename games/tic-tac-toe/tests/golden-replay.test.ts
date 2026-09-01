@@ -10,7 +10,10 @@ import type {
 } from "@online-game-hub/game-server-runtime";
 import { describe, expect, it } from "vitest";
 
-import { ticTacToeDefinition } from "../src/core/index.js";
+import {
+  ticTacToeDefinition,
+  ticTacToeDefinitionV1_0_0,
+} from "../src/core/index.js";
 
 interface MutableReplay {
   header: {
@@ -36,12 +39,28 @@ const fixtureUrl = new URL(
 );
 const fixtureText = readFileSync(fixtureUrl, "utf8");
 const goldenReplay = JSON.parse(fixtureText) as CanonicalReplay;
-const erasedDefinition = eraseGameDefinition(ticTacToeDefinition);
+const currentWinReplay = JSON.parse(
+  readFileSync(
+    new URL("./fixtures/tic-tac-toe-1.1.0-win.json", import.meta.url),
+    "utf8",
+  ),
+) as CanonicalReplay;
+const currentResignationReplay = JSON.parse(
+  readFileSync(
+    new URL("./fixtures/tic-tac-toe-1.1.0-resignation.json", import.meta.url),
+    "utf8",
+  ),
+) as CanonicalReplay;
+const erasedDefinitions = [
+  eraseGameDefinition(ticTacToeDefinitionV1_0_0),
+  eraseGameDefinition(ticTacToeDefinition),
+];
 const exactResolver: GameDefinitionResolver = (gameId, gameVersion) =>
-  gameId === ticTacToeDefinition.manifest.id &&
-  gameVersion === ticTacToeDefinition.manifest.gameVersion
-    ? erasedDefinition
-    : undefined;
+  erasedDefinitions.find(
+    (definition) =>
+      definition.manifest.id === gameId &&
+      definition.manifest.gameVersion === gameVersion,
+  );
 
 function cloneReplay(): MutableReplay {
   return JSON.parse(fixtureText) as MutableReplay;
@@ -86,6 +105,9 @@ describe("Tic-Tac-Toe 1.0.0 golden replay", () => {
         ],
       },
     });
+    if (first.status === "verified") {
+      expect(first.state).not.toHaveProperty("resignedSlotId");
+    }
   });
 
   it("rejects unknown exact game and version", () => {
@@ -161,5 +183,62 @@ describe("Tic-Tac-Toe 1.0.0 golden replay", () => {
     const replay = cloneReplay();
     replay.header.replayFormatVersion = 2;
     expectInvalid(replay, "UNSUPPORTED_REPLAY_FORMAT");
+  });
+});
+
+describe("Tic-Tac-Toe 1.1.0 golden replays", () => {
+  it("keeps normal play deterministic with the current exact definition", () => {
+    expect(verifyReplay(currentWinReplay, exactResolver)).toMatchObject({
+      status: "verified",
+      rng: { cursor: 0 },
+      outcome: {
+        type: "WIN",
+        winnerSlotId: "player-x",
+        winningCells: [0, 1, 2],
+      },
+      state: { resignedSlotId: null },
+    });
+  });
+
+  it("rebuilds an accepted off-turn resignation exactly", () => {
+    expect(currentResignationReplay.actions).toEqual([
+      {
+        sequence: 1,
+        actorSlotId: "player-x",
+        action: { type: "PLACE_MARK", cell: 4 },
+      },
+      {
+        sequence: 2,
+        actorSlotId: "player-x",
+        action: { type: "RESIGN" },
+      },
+    ]);
+    expect(verifyReplay(currentResignationReplay, exactResolver)).toMatchObject(
+      {
+        status: "verified",
+        rng: { cursor: 0 },
+        state: {
+          nextPlayerIndex: 1,
+          resignedSlotId: "player-x",
+        },
+        outcome: {
+          type: "WIN",
+          reason: "RESIGNATION",
+          winnerSlotId: "player-o",
+          resignedSlotId: "player-x",
+        },
+      },
+    );
+  });
+
+  it("keeps resignation unavailable to the frozen 1.0.0 schema", () => {
+    expect(
+      ticTacToeDefinitionV1_0_0.actionSchema.safeParse({ type: "RESIGN" })
+        .success,
+    ).toBe(false);
+    expect(
+      ticTacToeDefinition.actionSchema.safeParse({ type: "RESIGN" }).success,
+    ).toBe(true);
+    expect(ticTacToeDefinitionV1_0_0).not.toBe(ticTacToeDefinition);
   });
 });
