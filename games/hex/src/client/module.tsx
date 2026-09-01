@@ -7,11 +7,7 @@ import type {
   GameClientProps,
 } from "@online-game-hub/game-client-sdk";
 
-import {
-  HEX_BOARD_SIZE,
-  HEX_CELL_COUNT,
-  HEX_RESIGN_CONFIRMATION_MESSAGE,
-} from "../constants.js";
+import { HEX_BOARD_SIZE, HEX_CELL_COUNT } from "../constants.js";
 import { hexManifest } from "../manifest.js";
 import type { HexAction, HexColor, HexView } from "../types.js";
 
@@ -231,12 +227,6 @@ export function createResignIntent(): HexAction {
   return { type: "RESIGN" };
 }
 
-export function confirmHexResignation(
-  confirmAction: (message: string) => boolean,
-): boolean {
-  return confirmAction(HEX_RESIGN_CONFIRMATION_MESSAGE);
-}
-
 export function HexClient(props: GameClientProps<HexView, HexAction>) {
   const [submitting, setSubmitting] = useState(false);
   const yourPlayer = props.view.players.find(
@@ -262,11 +252,6 @@ export function HexClient(props: GameClientProps<HexView, HexAction>) {
     } finally {
       setSubmitting(false);
     }
-  };
-
-  const resign = (): void => {
-    if (!confirmHexResignation(window.confirm.bind(window))) return;
-    void submitIntent(createResignIntent());
   };
 
   return (
@@ -371,21 +356,6 @@ export function HexClient(props: GameClientProps<HexView, HexAction>) {
           )}
         </div>
       </div>
-      {props.view.yourColor === null ? null : (
-        <button
-          className="danger-button hex-resign-button"
-          data-testid="resign-game"
-          disabled={
-            props.connectionState !== "connected" ||
-            submitting ||
-            props.view.outcome !== null
-          }
-          onClick={resign}
-          type="button"
-        >
-          投降
-        </button>
-      )}
     </section>
   );
 }
@@ -396,6 +366,6 @@ export const hexClientModule = {
   parseView(input) {
     return hexViewSchema.parse(input) as unknown as HexView;
   },
-  createResignAction: (): HexAction => ({ type: "RESIGN" }),
+  createResignAction: createResignIntent,
   Component: HexClient,
 } satisfies GameClientModule<HexView, HexAction>;

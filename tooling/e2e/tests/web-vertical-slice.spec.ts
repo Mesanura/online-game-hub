@@ -43,6 +43,20 @@ async function expectRevision(
   );
 }
 
+function handleResignDialog(
+  page: Page,
+  operation: "accept" | "dismiss",
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    page.once("dialog", (dialog) => {
+      const message = dialog.message();
+      const handling =
+        operation === "accept" ? dialog.accept() : dialog.dismiss();
+      void handling.then(() => resolve(message), reject);
+    });
+  });
+}
+
 async function playAcceptedMove(
   actor: Page,
   viewers: readonly Page[],
@@ -638,5 +652,77 @@ test("two isolated guests complete win/draw, converge on reconnect, and cannot s
     .toEqual({ status: "abandoned", revision: 0 });
 
   expect(browserErrors).toEqual([]);
+  await Promise.all([contextA.close(), contextB.close()]);
+});
+
+test("the shared HUD cancels and confirms a Tic-Tac-Toe resignation once", async ({
+  browser,
+}) => {
+  const contextA = await browser.newContext();
+  const contextB = await browser.newContext();
+  const pageA = await contextA.newPage();
+  const pageB = await contextB.newPage();
+  const resignedRoom = await createAndJoinRoom(pageA, pageB);
+
+  await Promise.all(
+    [pageA, pageB].map((page) =>
+      expect(page.getByTestId("resign-game")).toBeVisible(),
+    ),
+  );
+  const resignButton = pageB.getByTestId("resign-game");
+
+  const canceledDialog = handleResignDialog(pageB, "dismiss");
+  await resignButton.click();
+  expect(await canceledDialog).toContain("投降后对手将立即获胜");
+  await expectRevision([pageA, pageB], 0);
+  await Promise.all(
+    [pageA, pageB].map((page) =>
+      expect(page.getByTestId("match-status")).toHaveText("对局进行中"),
+    ),
+  );
+
+  const acceptedDialog = handleResignDialog(pageB, "accept");
+  await resignButton.click();
+  expect(await acceptedDialog).toContain("投降后对手将立即获胜");
+  await expectRevision([pageA, pageB], 1);
+  await Promise.all(
+    [pageA, pageB].map((page) =>
+      expect(page.getByTestId("match-status")).toHaveText("对局已完成"),
+    ),
+  );
+
+  const room = await harness.gameServer.roomStore.getByRoomCode(
+    resignedRoom.roomCode,
+  );
+  expect(room?.currentRound).toMatchObject({
+    revision: 1,
+    status: "completed",
+    outcome: {
+      type: "WIN",
+      reason: "RESIGNATION",
+      winnerSlotId: resignedRoom.slotA,
+      resignedSlotId: resignedRoom.slotB,
+    },
+  });
+  const replay = await harness.gameServer.replayStore.get(
+    room?.currentRound?.replayId ?? "",
+  );
+  expect(replay?.actions).toEqual([
+    {
+      sequence: 1,
+      actorSlotId: resignedRoom.slotB,
+      action: { type: "RESIGN" },
+    },
+  ]);
+  expect(verifyReplay(replay, resolveGameDefinition)).toMatchObject({
+    status: "verified",
+    outcome: {
+      type: "WIN",
+      reason: "RESIGNATION",
+      winnerSlotId: resignedRoom.slotA,
+      resignedSlotId: resignedRoom.slotB,
+    },
+  });
+
   await Promise.all([contextA.close(), contextB.close()]);
 });

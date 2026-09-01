@@ -3,9 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
 import {
-  HEX_RESIGN_CONFIRMATION_MESSAGE,
   HexClient,
-  confirmHexResignation,
   createPlaceStoneIntent,
   createResignIntent,
   hexClientModule,
@@ -86,15 +84,6 @@ describe("Hex Client Module", () => {
       expect(intent).not.toHaveProperty("revision");
       expect(intent).not.toHaveProperty("randomResult");
     }
-  });
-
-  it("uses the exact second-confirmation warning and honors confirm/cancel", () => {
-    const confirm = vi.fn(() => true);
-    const cancel = vi.fn(() => false);
-    expect(confirmHexResignation(confirm)).toBe(true);
-    expect(confirm).toHaveBeenCalledWith(HEX_RESIGN_CONFIRMATION_MESSAGE);
-    expect(confirmHexResignation(cancel)).toBe(false);
-    expect(cancel).toHaveBeenCalledWith(HEX_RESIGN_CONFIRMATION_MESSAGE);
   });
 
   it("maps all three Hex axes to the pointy-top visual layout", () => {
@@ -194,7 +183,7 @@ describe("Hex Client Module", () => {
     expect(html).not.toContain("○");
   });
 
-  it("disables occupied/off-turn/disconnected cells and exposes resignation only to players", () => {
+  it("disables occupied/off-turn cells and delegates resignation to the shared host", () => {
     const html = render();
     expect(html).toMatch(
       /data-cell-index="60" data-color="BLUE"[^>]*disabled=""/u,
@@ -202,13 +191,14 @@ describe("Hex Client Module", () => {
     expect(html).not.toMatch(
       /data-cell-index="58" data-color="EMPTY"[^>]*disabled=""/u,
     );
-    expect(html).toContain('data-testid="resign-game"');
+    expect(html).not.toContain('data-testid="resign-game"');
+    expect(hexClientModule.createResignAction?.()).toEqual({ type: "RESIGN" });
 
     const redHtml = render({ ...view, yourColor: "RED" });
     expect(redHtml).toMatch(
       /data-cell-index="58" data-color="EMPTY"[^>]*disabled=""/u,
     );
-    expect(redHtml).not.toMatch(/data-testid="resign-game" disabled=""/u);
+    expect(redHtml).not.toContain('data-testid="resign-game"');
 
     const spectatorHtml = render({ ...view, yourColor: null });
     expect(spectatorHtml).not.toContain('data-testid="resign-game"');

@@ -36,6 +36,20 @@ async function expectRevision(
   );
 }
 
+function handleResignDialog(
+  page: Page,
+  operation: "accept" | "dismiss",
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    page.once("dialog", (dialog) => {
+      const message = dialog.message();
+      const handling =
+        operation === "accept" ? dialog.accept() : dialog.dismiss();
+      void handling.then(() => resolve(message), reject);
+    });
+  });
+}
+
 async function playAcceptedDisc(
   actor: Page,
   viewers: readonly Page[],
@@ -58,6 +72,38 @@ async function readHistory(
     readonly matches?: readonly Record<string, unknown>[];
   };
   return body.matches ?? [];
+}
+
+async function startActiveRound(
+  pageA: Page,
+  pageB: Page,
+): Promise<{
+  readonly roomCode: string;
+  readonly slotA: string;
+  readonly slotB: string;
+}> {
+  await pageA.goto(`${harness.webUrl}/games/reversi`);
+  await pageA.getByTestId("create-room").click();
+  await pageA.getByTestId("starter-owner").click();
+  const inviteUrl = await pageA.getByTestId("invite-link").getAttribute("href");
+  if (inviteUrl === null)
+    throw new Error("Reversi did not expose an invitation URL.");
+  const roomCode = new URL(inviteUrl).pathname.split("/").at(-1) ?? "";
+
+  await pageB.goto(inviteUrl);
+  await pageA.getByTestId("toggle-round-ready").click();
+  await pageB.getByTestId("toggle-round-ready").click();
+  await Promise.all(
+    [pageA, pageB].map((page) =>
+      expect(page.getByTestId("match-status")).toHaveText("对局进行中"),
+    ),
+  );
+  const slotA = (await pageA.getByTestId("player-slot").textContent())?.trim();
+  const slotB = (await pageB.getByTestId("player-slot").textContent())?.trim();
+  if (slotA === undefined || slotB === undefined) {
+    throw new Error("A connected Reversi player is missing its stable slot.");
+  }
+  return { roomCode, slotA, slotB };
 }
 
 test("two guests complete authoritative Reversi with flips and a non-full terminal board", async ({
@@ -309,5 +355,78 @@ test("two guests complete authoritative Reversi with flips and a non-full termin
     ),
   );
   expect(browserErrors).toEqual([]);
+  await Promise.all([contextA.close(), contextB.close()]);
+});
+
+test("the shared HUD cancels and confirms a Reversi resignation once", async ({
+  browser,
+}) => {
+  const contextA = await browser.newContext();
+  const contextB = await browser.newContext();
+  const pageA = await contextA.newPage();
+  const pageB = await contextB.newPage();
+  const resignedRoom = await startActiveRound(pageA, pageB);
+
+  await Promise.all(
+    [pageA, pageB].map((page) =>
+      expect(page.getByTestId("resign-game")).toBeVisible(),
+    ),
+  );
+  const resignButton = pageB.getByTestId("resign-game");
+  const canceledDialog = handleResignDialog(pageB, "dismiss");
+  await resignButton.click();
+  expect(await canceledDialog).toContain("投降后对手将立即获胜");
+  await expectRevision([pageA, pageB], 0);
+  await Promise.all(
+    [pageA, pageB].map((page) =>
+      expect(page.getByTestId("match-status")).toHaveText("对局进行中"),
+    ),
+  );
+
+  const acceptedDialog = handleResignDialog(pageB, "accept");
+  await resignButton.click();
+  expect(await acceptedDialog).toContain("投降后对手将立即获胜");
+  await expectRevision([pageA, pageB], 1);
+  await Promise.all(
+    [pageA, pageB].map((page) =>
+      expect(page.getByTestId("match-status")).toHaveText("对局已完成"),
+    ),
+  );
+
+  const room = await harness.gameServer.roomStore.getByRoomCode(
+    resignedRoom.roomCode,
+  );
+  const round = room?.currentRound;
+  if (round === null || round === undefined) {
+    throw new Error("The completed Reversi resignation round was not stored.");
+  }
+  expect(round).toMatchObject({
+    revision: 1,
+    status: "completed",
+    outcome: {
+      type: "WIN",
+      reason: "RESIGNATION",
+      winnerSlotId: resignedRoom.slotA,
+      resignedSlotId: resignedRoom.slotB,
+    },
+  });
+  const replay = await harness.gameServer.replayStore.get(round.replayId);
+  expect(replay?.actions).toEqual([
+    {
+      sequence: 1,
+      actorSlotId: resignedRoom.slotB,
+      action: { type: "RESIGN" },
+    },
+  ]);
+  expect(verifyReplay(replay, resolveGameDefinition)).toMatchObject({
+    status: "verified",
+    outcome: {
+      type: "WIN",
+      reason: "RESIGNATION",
+      winnerSlotId: resignedRoom.slotA,
+      resignedSlotId: resignedRoom.slotB,
+    },
+  });
+
   await Promise.all([contextA.close(), contextB.close()]);
 });

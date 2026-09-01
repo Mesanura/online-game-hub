@@ -22,7 +22,7 @@ import {
   X,
 } from "@phosphor-icons/react";
 import Link from "next/link";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
 import type { GameClientHostState } from "@online-game-hub/game-client-sdk";
 
@@ -33,6 +33,9 @@ import {
 } from "./game-room-host";
 
 export type GameRoomPageMode = "entry" | "room" | "play";
+
+export const RESIGN_CONFIRMATION_MESSAGE =
+  "确定要投降吗？投降后对手将立即获胜，且本局无法继续。";
 
 interface GameRoomPageProps {
   readonly gameId: string;
@@ -645,6 +648,7 @@ function LoadingView({ label }: { readonly label: string }) {
 }
 
 function PlayView({ title }: Pick<GameRoomPageProps, "title">) {
+  const [resignPending, setResignPending] = useState(false);
   const {
     busy,
     closeRoom,
@@ -681,6 +685,24 @@ function PlayView({ title }: Pick<GameRoomPageProps, "title">) {
   const GameComponent = clientModule.Component;
   const summary = viewSummary(parsedView);
   const isCompleted = snapshot.status === "completed";
+  const canResign =
+    snapshot.status === "active" &&
+    snapshot.viewer.kind === "player" &&
+    clientModule.createResignAction !== undefined;
+  const resign = async (): Promise<void> => {
+    const createResignAction = clientModule.createResignAction;
+    if (!canResign || createResignAction === undefined || resignPending) return;
+    if (!window.confirm(RESIGN_CONFIRMATION_MESSAGE)) return;
+
+    setResignPending(true);
+    try {
+      await host.submitAction(createResignAction());
+    } catch {
+      // The generic host renders transport and authoritative rejection state.
+    } finally {
+      setResignPending(false);
+    }
+  };
   return (
     <div className="page-shell console-page play-page">
       <aside className="game-rail play-rail clay-surface">
@@ -715,11 +737,25 @@ function PlayView({ title }: Pick<GameRoomPageProps, "title">) {
             <span>房间码</span>
             <strong data-testid="room-code">{room.roomCode}</strong>
           </div>
+          {canResign ? (
+            <button
+              className="clay-button clay-button-resign"
+              data-testid="resign-game"
+              disabled={
+                busy || resignPending || state.connectionState !== "connected"
+              }
+              onClick={() => void resign()}
+              type="button"
+            >
+              <WarningCircle size={18} weight="bold" aria-hidden="true" />{" "}
+              {resignPending ? "正在投降…" : "投降"}
+            </button>
+          ) : null}
           {lifecycle.isOwner ? (
             <button
               className="clay-button clay-button-danger"
               data-testid="close-room"
-              disabled={busy}
+              disabled={busy || resignPending}
               onClick={() => void closeRoom()}
               type="button"
             >
@@ -729,7 +765,7 @@ function PlayView({ title }: Pick<GameRoomPageProps, "title">) {
             <button
               className="clay-button clay-button-danger"
               data-testid="leave-room"
-              disabled={busy}
+              disabled={busy || resignPending}
               onClick={() => void leaveRoom()}
               type="button"
             >

@@ -11,8 +11,6 @@ import { verifyReplay } from "@online-game-hub/game-server-runtime";
 import { startE2eHarness } from "../src/harness.js";
 import type { E2eHarness } from "../src/harness.js";
 
-const RESIGN_CONFIRMATION =
-  "投降后本局将立即判对手获胜，且无法撤销。确定投降吗？";
 const BLUE_WINNING_PATH = Array.from({ length: 11 }, (_, row) => row * 11);
 
 let harness: E2eHarness;
@@ -38,6 +36,20 @@ async function expectRevision(
       expect(page.getByTestId("revision")).toHaveText(String(revision)),
     ),
   );
+}
+
+function handleResignDialog(
+  page: Page,
+  operation: "accept" | "dismiss",
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    page.once("dialog", (dialog) => {
+      const message = dialog.message();
+      const handling =
+        operation === "accept" ? dialog.accept() : dialog.dismiss();
+      void handling.then(() => resolve(message), reject);
+    });
+  });
 }
 
 async function playAcceptedStone(
@@ -95,21 +107,7 @@ async function currentCompletedReplay(
   return currentRound.replayId;
 }
 
-function handleNextDialog(
-  page: Page,
-  operation: "accept" | "dismiss",
-): Promise<string> {
-  return new Promise((resolve, reject) => {
-    page.once("dialog", (dialog) => {
-      const message = dialog.message();
-      const handling =
-        operation === "accept" ? dialog.accept() : dialog.dismiss();
-      void handling.then(() => resolve(message), reject);
-    });
-  });
-}
-
-test("two guests complete Hex by connection, then cancel and confirm off-turn resignation", async ({
+test("two guests complete Hex by connection, then use the shared HUD to cancel and confirm an off-turn resignation", async ({
   browser,
 }) => {
   const contextA = await browser.newContext();
@@ -301,17 +299,25 @@ test("two guests complete Hex by connection, then cancel and confirm off-turn re
   await expect(pageA.getByTestId("player-slot")).toHaveText(slotA);
   await expect(pageB.getByTestId("player-slot")).toHaveText(slotB);
 
+  await Promise.all(
+    [pageA, pageB].map((page) =>
+      expect(page.getByTestId("resign-game")).toBeVisible(),
+    ),
+  );
   const resignButton = pageB.getByTestId("resign-game");
-  await expect(resignButton).toBeEnabled();
-  const canceledDialog = handleNextDialog(pageB, "dismiss");
+  const canceledDialog = handleResignDialog(pageB, "dismiss");
   await resignButton.click();
-  expect(await canceledDialog).toBe(RESIGN_CONFIRMATION);
+  expect(await canceledDialog).toContain("投降后对手将立即获胜");
   await expectRevision([pageA, pageB], 0);
-  await expect(pageB.getByTestId("match-status")).toHaveText("对局进行中");
+  await Promise.all(
+    [pageA, pageB].map((page) =>
+      expect(page.getByTestId("match-status")).toHaveText("对局进行中"),
+    ),
+  );
 
-  const acceptedDialog = handleNextDialog(pageB, "accept");
+  const acceptedDialog = handleResignDialog(pageB, "accept");
   await resignButton.click();
-  expect(await acceptedDialog).toBe(RESIGN_CONFIRMATION);
+  expect(await acceptedDialog).toContain("投降后对手将立即获胜");
   await expectRevision([pageA, pageB], 1);
   await Promise.all(
     [pageA, pageB].map((page) =>
