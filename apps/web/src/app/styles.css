@@ -15,12 +15,8 @@
   --ink: #3d332e;
   --muted: #806f64;
   --line: #e4c6a7;
-  --shadow-out:
-    0.65rem 0.85rem 1.35rem rgb(169 118 77 / 20%),
-    -0.35rem -0.35rem 0.9rem rgb(255 255 255 / 88%);
-  --shadow-lift-soft:
-    0.3rem 0.42rem 0.72rem rgb(169 118 77 / 18%),
-    -0.22rem -0.22rem 0.55rem rgb(255 255 255 / 86%);
+  --shadow-out: 0.65rem 0.85rem 1.35rem rgb(169 118 77 / 20%);
+  --shadow-lift-soft: 0.3rem 0.42rem 0.72rem rgb(169 118 77 / 18%);
   --shadow-convex:
     inset 0.24rem 0.28rem 0.5rem rgb(255 255 255 / 56%),
     inset -0.28rem -0.34rem 0.58rem rgb(122 78 48 / 14%);
@@ -357,7 +353,6 @@ summary:focus-visible {
   border-radius: 2.15rem;
   box-shadow:
     0.9rem 1.15rem 2.2rem rgb(151 97 57 / 22%),
-    -0.55rem -0.55rem 1.25rem rgb(255 255 255 / 96%),
     var(--shadow-convex);
   display: grid;
   gap: 1.25rem;
