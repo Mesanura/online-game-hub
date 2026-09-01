@@ -294,6 +294,6 @@ Registry 必须能够按 exact `gameVersion` 读取旧 replay 所需的 definiti
 
 M6 当时由五子棋证明非 `null` Config 可直接通过既有 create/runtime/replay 契约；为让通用 Web 无游戏分支地取得创建默认值，`GameManifest` 新增必填 `defaultConfig`，并同步迁移所有游戏与消费者。额外六贯棋证明 strict Action union 可同时承载落子与投降、Outcome 可保存变长 canonical path。黑白棋进一步证明一次 transition 可表达多方向翻转、无合法行动、同 slot 续行和非满盘终局；当时无需修改 `GameDefinition`、`GameClientModule`、Protocol V1 或 replay envelope。
 
-当前规则增强仅为跨五游戏共用 HUD 的真实需求给 `GameClientModule` 增加可选 `createResignAction`，typed/erased contract 同步且旧模块仍兼容。井字棋、四子棋、五子棋与黑白棋以 `1.1.0` 承载新 Action/State/Outcome schema，独立 frozen `1.0.0` 保留；六贯棋保持 `1.0.0`。Protocol V2、Replay Format V1 和数据库 schema 不变。
+当前规则增强仅为跨五游戏共用 HUD 的真实需求给 `GameClientModule` 增加可选 `createResignAction`，typed/erased contract 同步且旧模块仍兼容。井字棋、四子棋、五子棋与黑白棋以 `1.1.0` 承载新 Action/State/Outcome schema，独立 frozen `1.0.0` 保留；六贯棋保持 `1.0.0`。后续 Protocol V3 只扩展房间控制，不改变任何游戏 Core、Replay Format V1 或数据库 schema。
 
 完整测试矩阵见 [TESTING.md](./TESTING.md)。

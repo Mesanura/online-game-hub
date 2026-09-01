@@ -308,18 +308,36 @@ export function HexClient(props: GameClientProps<HexView, HexAction>) {
       <h2 className="sr-only" id="hex-heading">
         六贯棋棋盘
       </h2>
-      <p data-testid="player-color">
+      <p className="game-status-line" data-testid="player-color">
         {props.view.yourColor === null
           ? "你正在旁观"
           : `你的棋子：${colorLabel(props.view.yourColor)}`}
+        {props.view.yourColor === null ? null : (
+          <span
+            aria-hidden="true"
+            className="game-status-dot"
+            data-color={props.view.yourColor}
+          />
+        )}
       </p>
-      <p aria-live="polite" data-testid="turn-status">
+      <p
+        aria-live="polite"
+        className="game-status-line"
+        data-testid="turn-status"
+      >
         {outcomeText ??
           (nextColor === null
             ? "等待服务器同步回合"
             : isYourTurn
               ? "轮到你落子"
               : `当前回合：${colorLabel(nextColor)}`)}
+        {outcomeText !== null || nextColor === null ? null : (
+          <span
+            aria-hidden="true"
+            className="game-status-dot"
+            data-color={nextColor}
+          />
+        )}
       </p>
       <div className="hex-board-scroll">
         <div

@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const PROTOCOL_VERSION = 2 as const;
+export const PROTOCOL_VERSION = 3 as const;
 export const MAX_GAME_ACTION_BYTES = 16_384;
 export const GAME_ROOM_NAME = "game" as const;
 export const GAME_ACTION_MESSAGE = "game.action" as const;
@@ -151,7 +151,7 @@ export const gameActionCommandSchema = z
   .strict();
 export type GameActionCommand = z.infer<typeof gameActionCommandSchema>;
 
-export const starterChoiceSchema = z.enum(["OWNER", "NON_OWNER"]);
+export const starterChoiceSchema = z.enum(["OWNER", "NON_OWNER", "RANDOM"]);
 export type StarterChoice = z.infer<typeof starterChoiceSchema>;
 
 const roomControlBaseSchema = z.object({
@@ -172,6 +172,9 @@ export const roomControlCommandSchema = z.discriminatedUnion("operation", [
     .strict(),
   roomControlBaseSchema
     .extend({ operation: z.literal("CANCEL_ROUND_READY") })
+    .strict(),
+  roomControlBaseSchema
+    .extend({ operation: z.literal("START_REMATCH") })
     .strict(),
   roomControlBaseSchema.extend({ operation: z.literal("CLOSE_ROOM") }).strict(),
 ]);

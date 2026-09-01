@@ -254,10 +254,17 @@ export function ReversiClient(
       <h2 className="sr-only" id="reversi-heading">
         黑白棋棋盘
       </h2>
-      <p data-testid="player-color">
+      <p className="game-status-line" data-testid="player-color">
         {props.view.yourDisc === null
           ? "你正在旁观"
           : `你的棋子：${discLabel(props.view.yourDisc)}`}
+        {props.view.yourDisc === null ? null : (
+          <span
+            aria-hidden="true"
+            className="game-status-dot"
+            data-color={props.view.yourDisc}
+          />
+        )}
       </p>
       <div aria-label="棋子数量" className="reversi-score" role="group">
         <span data-testid="black-disc-count">
@@ -267,13 +274,24 @@ export function ReversiClient(
           白方：{props.view.discCounts.WHITE}
         </span>
       </div>
-      <p aria-live="polite" data-testid="turn-status">
+      <p
+        aria-live="polite"
+        className="game-status-line"
+        data-testid="turn-status"
+      >
         {outcomeText ??
           (nextDisc === null
             ? "等待服务器同步回合"
             : isYourTurn
               ? "轮到你落子"
               : `当前回合：${discLabel(nextDisc)}`)}
+        {outcomeText !== null || nextDisc === null ? null : (
+          <span
+            aria-hidden="true"
+            className="game-status-dot"
+            data-color={nextDisc}
+          />
+        )}
       </p>
       <div className="reversi-board-scroll">
         <div

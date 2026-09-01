@@ -1,6 +1,6 @@
 # 测试策略
 
-> 状态：Protocol V2 测试策略（逐局先手与 Room/Round 分离已纳入）
+> 状态：Protocol V3 测试策略（逐局先手、随机先手与 Room/Round 分离已纳入）
 > 本文是测试层级、职责、最低场景和质量门禁的权威来源。具体业务范围见 [PRODUCT.md](./PRODUCT.md)。
 
 ## 1. 目标
@@ -116,7 +116,7 @@ Golden fixture 只在确认规则或版本策略变化后更新。不能通过�
 - 确认 `action` 在通用层保持 `unknown`，并由选中的 game schema 再解析；
 - server response 不包含 stack、ticket、cookie、完整 State 或 RNG seed；
 - encode/decode round trip 保持稳定字段；
-- Protocol V2 exact schemas 拒绝 V1、缺字段和 extra fields；`room.control` 严格区分 starter 选择/ready/cancel/close，拒绝非法 starter 与 identity 字段；`room.lifecycle` 拒绝不一致 current/next Round、ready/closed 状态；Action/snapshot 的 `roundNumber` 必填并拒绝非法值；
+- Protocol V3 exact schemas 拒绝旧版本、缺字段和 extra fields；`room.control` 严格区分 starter 选择/ready/cancel/immediate rematch/close，拒绝非法 starter 与 identity 字段；`room.lifecycle` 拒绝不一致 current/next Round、ready/closed 状态；Action/snapshot 的 `roundNumber` 必填并拒绝非法值；
 - platform error 与 `gameRuleCode` 的映射不混淆。
 
 ## 7. Game Server Integration Tests
@@ -140,7 +140,7 @@ Server integration tests 位于 `apps/game-server/tests/game-server.integration.
 - M3 使用两个 viewer slot 验证每个 snapshot 都来自 `projectView`，且不含 State、RNG seed 或 Core-only 字段。第一个隐藏信息游戏加入时，再提供最小 fixture 证明不同 slots 不会互相看到秘密字段；不为 M3 虚构新游戏。
 - 首局允许 `currentRound = null` 且没有 snapshot；满足全部设置条件后直接创建 active Round，active → completed/abandoned 合法且不可逆；同 live room 下一轮创建新的 Match/replay/RNG/revision 序列，不重写上一轮。
 - Outcome 只由 Core 产生，断线状态只由平台 lifecycle 处理。
-- 房主加入前预选/提前 ready、非房主伪造选择、未选 starter 时拒绝 ready、不同选择清全部 ready、重复选择保留 ready、断线/takeover 只清对应 ready、双方 ready 开新轮、terminal outsider 拒绝、owner close、non-owner leave 和 5 分钟 terminal TTL 都由平台处理。
+- 房主加入前预选/提前 ready、非房主伪造选择、未选 starter 时拒绝 ready、随机先手只改变本轮 playerOrder 而不消费游戏 RNG、不同选择清全部 ready、重复选择保留 ready、断线/takeover 只清对应 ready、双方 ready 开新轮、双方在线时复用上一轮 playerOrder 的 immediate rematch、terminal outsider 拒绝、owner close、non-owner leave 和 5 分钟 terminal TTL 都由平台处理。
 - 首局与后续轮都注入 Round 启动失败，验证 replay header 已创建而 Match archive 失败时保留相同 pending replay ID/seed/playerOrder，并以新 command ID 幂等重试。
 
 ### 7.3 Reconnect
@@ -149,7 +149,7 @@ Server integration tests 位于 `apps/game-server/tests/game-server.integration.
 - 新有效连接接管后旧连接无法继续提交 Action。
 - 不同 session 不能窃取保留 slot。
 - 超时后执行房间策略，旧 reconnection token 不再恢复席位。
-- V2 明确不测试进程重启后的 live room 恢复；只验证重启后已完成 replay、match history 仍可读取，并验证启动协调会把单实例遗留的旧 `waiting`/当前 `active` archive 标记为 `abandoned`。从未开始 Round 的 room 不应产生 archive。
+- V3 明确不测试进程重启后的 live room 恢复；只验证重启后已完成 replay、match history 仍可读取，并验证启动协调会把单实例遗留的旧 `waiting`/当前 `active` archive 标记为 `abandoned`。从未开始 Round 的 room 不应产生 archive。
 
 使用 fake clock 驱动 60 秒超时，测试不得真实等待一分钟。
 
@@ -166,7 +166,7 @@ Multiplayer integration 使用两个独立客户端连接同一真实 room，验
 
 这些测试覆盖网络时序，不承担穷举游戏规则的职责。
 
-真实 integration cases 覆盖：health/metrics 与 Protocol V2 ticket trust boundary；井字棋、四子棋、五子棋、六贯棋和黑白棋双客户端 stable slots、无 snapshot setup、active/completed、invalid/rule-rejected commands、per-viewer snapshot 与 verified canonical replay；replay append failure 不确认/不提交；新 ticket + 新 reservation 的 reconnect、connection takeover、错误 session theft 和 fake-clock 60 秒 abandoned；逐局 starter/ready/cancel、相反 `playerOrder`、跨轮 duplicate/错轮防护、terminal outsider、房主关闭、非房主 active leave 和 terminal TTL。井字棋还覆盖房主预选/提前 ready、权限伪造、选择清 ready、首局/后续轮 archive 失败重试；四子棋继续覆盖满列、横向胜局、42-action 平局、两轮独立 replay 与 abandoned 无伪造 Outcome；五子棋以 19×19 Config 覆盖创建/加入、361-cell View、错误回合、占用 cell、9-action 五连胜与 canonical replay；六贯棋覆盖本轮 BLUE/RED role、schema-invalid、错轮、stale、占用、duplicate、21-action canonical path 胜局、再次选择同一先手的第二轮与 RED off-turn `RESIGN` replay。ticket verifier、ports、composition logger 另有无 transport 的 contract/unit tests。
+真实 integration cases 覆盖：health/metrics 与 Protocol V3 ticket trust boundary；井字棋、四子棋、五子棋、六贯棋和黑白棋双客户端 stable slots、无 snapshot setup、active/completed、invalid/rule-rejected commands、per-viewer snapshot 与 verified canonical replay；replay append failure 不确认/不提交；新 ticket + 新 reservation 的 reconnect、connection takeover、错误 session theft 和 fake-clock 60 秒 abandoned；逐局 starter/ready/cancel、随机 starter、复用 playerOrder 的 immediate rematch、跨轮 duplicate/错轮防护、terminal outsider、房主关闭、非房主 active leave 和 terminal TTL。井字棋还覆盖房主预选/提前 ready、权限伪造、选择清 ready、首局/后续轮 archive 失败重试；四子棋继续覆盖满列、横向胜局、42-action 平局、两轮独立 replay 与 abandoned 无伪造 Outcome；五子棋以 19×19 Config 覆盖创建/加入、361-cell View、错误回合、占用 cell、9-action 五连胜与 canonical replay；六贯棋覆盖本轮 BLUE/RED role、schema-invalid、错轮、stale、占用、duplicate、21-action canonical path 胜局、再次选择同一先手的第二轮与 RED off-turn `RESIGN` replay。ticket verifier、ports、composition logger 另有无 transport 的 contract/unit tests。
 
 黑白棋 integration 额外覆盖本轮 BLACK/WHITE role、schema-invalid/伪造 actor、错回合与无翻转拒绝不推进 revision/replay、权威翻转、revision 18 后 WHITE 强制连续行动、25-action 非满盘终局、PASS-free canonical replay，以及同房间第二轮 revision 重置、独立 Match/replay 与 11-action 非满盘终局。
 

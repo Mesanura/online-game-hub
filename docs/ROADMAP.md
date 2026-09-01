@@ -1,6 +1,6 @@
 # 开发路线图
 
-> 状态：M1–M6、Protocol V2 逐局先手、三阶段 Web、窄版 create-game 与通用投降/规则版本增强已完成
+> 状态：M1–M6、Protocol V3 随机先手/即时重开、三阶段 Web、窄版 create-game 与通用投降/规则版本增强已完成
 > 本文是项目阶段顺序和里程碑退出条件的权威来源。里程碑按依赖排序，不承诺具体日期。
 
 ## 原则
@@ -174,7 +174,7 @@
 - Protocol V2 使 Action/Snapshot 的 `roundNumber` 必填，并以严格 discriminated union 提供 `SELECT_STARTER`、`READY_FOR_ROUND`、`CANCEL_ROUND_READY`、`CLOSE_ROOM`；Host 可在首局没有 snapshot 时只根据 lifecycle 工作；
 - 通用 Web 在无 snapshot 时展示邀请与下一局设置，completed 时保留终局棋盘并并列展示设置；五套 E2E 使用稳定 test id 覆盖相同流程，井字棋第二局明确反转先手。
 
-该增强只面向当前所有已注册的双人游戏，不预先加入多人 starter policy、随机先手、观战、房主迁移或 active room 跨进程恢复。M2–M6 小节中的 “Protocol V1” 描述保留为各里程碑完成当时的历史事实；当前部署契约以 [NETWORK_PROTOCOL.md](./NETWORK_PROTOCOL.md) 的 Protocol V2 为准。
+该增强只面向当前所有已注册的双人游戏，当时不预先加入多人 starter policy、随机先手、观战、房主迁移或 active room 跨进程恢复。M2–M6 小节中的 “Protocol V1” 描述保留为各里程碑完成当时的历史事实；当前部署契约以 [NETWORK_PROTOCOL.md](./NETWORK_PROTOCOL.md) 的 Protocol V3 为准。
 
 ## 已完成平台增强：三阶段 Claymorphism Web 体验
 
@@ -209,6 +209,16 @@
 - registry 同时 exact-resolve 历史/当前版本；创建新房间先读取 catalog manifest，再 exact 选择 current definition，不依赖登记数组顺序；
 - 六贯棋 Core、邻接算法和 `gameVersion 1.0.0` 保持不变；新增 BLUE/RED 第三轴 accepted-Action regression，并由真实 server integration 验证 canonical path、终局拒绝和 replay；
 - canonical replay 仍只记录规范化且 accepted 的 Action。四游戏 server table 验证正常 Action 后同 actor off-turn resignation、revision/completed/Outcome、单一 `RESIGN` event 与 exact verification；Protocol V2、Replay Format V1 和数据库 schema/migration 均无需修改。
+
+## 已完成平台增强：Protocol V3 随机先手与即时重开
+
+> 实施状态：已完成（2026-09-01）。五款游戏共用设置、结果 HUD、Host 与 Runtime 已迁移；Replay Format V1、数据库 schema 和全部游戏版本保持不变。
+
+- `StarterChoice` 增加 `RANDOM`，由 Game Server 使用本轮新 seed 规范决定 owner/non-owner 顺序；选择过程不推进交给 Game Core 的 RNG cursor，最终 `playerOrder` 同时写入 Core 初始化、Replay header 和 Match archive；
+- `room.control` 增加 `START_REMATCH`；completed 后任一原玩家可在双方在线时复用上一轮实际 `playerOrder` 立即创建独立新 Round，不复用 State、revision、Outcome、Replay 或 Match；
+- 结果 HUD 提供“重新对局”和“设置规则”两个操作；后者保留原下一局设置流程，前者直接发送即时重开 intent；
+- starter 设置统一显示“我方先手”、“对方先手”、“随机先手”并以细线分隔；五款游戏的棋盘状态文本追加对应棋子和当前回合颜色标记；
+- `RANDOM` 会出现在严格 lifecycle schema，旧 V2 客户端无法安全解析，因此 wire envelope 提升为 Protocol V3；V1/V2 ticket、request 和 message 均 exact 拒绝，不做混合版本猜测。
 
 ## M7：按证据扩展平台
 

@@ -331,6 +331,7 @@ describe.sequential("authoritative Colyseus Game Server", () => {
         "RSGAMEBB",
         "RSGAMECC",
         "RSGAMEDD",
+        "RAND2345",
       ]),
       logger: { write: (event) => logs.push(event) },
     });
@@ -2981,4 +2982,114 @@ describe.sequential("authoritative Colyseus Game Server", () => {
       await Promise.all([roomA.leave(true), roomB.leave(true)]);
     },
   );
+
+  it("resolves a random starter server-side and starts an immediate rematch with the same order", async () => {
+    const roomA = await new ColyseusClient(address.httpUrl).create(
+      GAME_ROOM_NAME,
+      {
+        type: "room.create",
+        protocolVersion: PROTOCOL_VERSION,
+        ticket: authority.issue("random-rematch-a"),
+        gameId: "tic-tac-toe",
+        initialConfig: null,
+      },
+    );
+    const inboxA = new MessageInbox(roomA);
+    const connectedA = await inboxA.next(
+      (message) => message.type === "room.connected",
+    );
+    if (connectedA.type !== "room.connected") {
+      throw new Error("Random rematch creator did not receive room metadata.");
+    }
+    const roomB = await new ColyseusClient(address.httpUrl).join(
+      GAME_ROOM_NAME,
+      {
+        type: "room.join",
+        protocolVersion: PROTOCOL_VERSION,
+        ticket: authority.issue("random-rematch-b"),
+        roomCode: connectedA.roomCode,
+      },
+    );
+    const inboxB = new MessageInbox(roomB);
+    await inboxB.next((message) => message.type === "room.connected");
+
+    const activeA = inboxA.next(
+      (message) => isSnapshot(message) && message.status === "active",
+    );
+    const activeB = inboxB.next(
+      (message) => isSnapshot(message) && message.status === "active",
+    );
+    startRound(roomA, roomB, "random-round", "RANDOM");
+    await Promise.all([activeA, activeB]);
+
+    const firstRound = await roomStore.getByRoomCode(connectedA.roomCode);
+    const playerOrder = firstRound?.currentRound?.playerOrder;
+    expect(playerOrder).toEqual(expect.arrayContaining(["slot-1", "slot-2"]));
+    expect(playerOrder).toHaveLength(2);
+    const firstRoom = playerOrder?.[0] === "slot-1" ? roomA : roomB;
+    const firstInbox = playerOrder?.[0] === "slot-1" ? inboxA : inboxB;
+    const otherInbox = playerOrder?.[0] === "slot-1" ? inboxB : inboxA;
+
+    const placed = firstInbox.next(
+      (message) =>
+        isSnapshot(message) && message.causedByCommandId === "random-place",
+    );
+    const placedBroadcast = otherInbox.next(
+      (message) => isSnapshot(message) && message.revision === 1,
+    );
+    firstRoom.send(
+      GAME_ACTION_MESSAGE,
+      command("random-place", 0, { type: "PLACE_MARK", cell: 0 }),
+    );
+    await Promise.all([placed, placedBroadcast]);
+
+    const completedA = inboxA.next(
+      (message) => isSnapshot(message) && message.status === "completed",
+    );
+    const completedB = inboxB.next(
+      (message) => isSnapshot(message) && message.status === "completed",
+    );
+    firstRoom.send(
+      GAME_ACTION_MESSAGE,
+      command("random-resign", 1, { type: "RESIGN" }),
+    );
+    await Promise.all([completedA, completedB]);
+
+    const completedRound = await roomStore.getByRoomCode(connectedA.roomCode);
+    const completedReplay = await replayStore.get(
+      completedRound?.currentRound?.replayId ?? "",
+    );
+    expect(verifyReplay(completedReplay, resolveGameDefinition)).toMatchObject({
+      status: "verified",
+      rng: { cursor: 0 },
+    });
+
+    const rematchA = inboxA.next(
+      (message) =>
+        isSnapshot(message) &&
+        message.roundNumber === 2 &&
+        message.status === "active",
+    );
+    const rematchB = inboxB.next(
+      (message) =>
+        isSnapshot(message) &&
+        message.roundNumber === 2 &&
+        message.status === "active",
+    );
+    roomB.send(
+      ROOM_CONTROL_MESSAGE,
+      controlCommand("start-immediate-rematch", "START_REMATCH"),
+    );
+    await Promise.all([rematchA, rematchB]);
+
+    const rematchRound = await roomStore.getByRoomCode(connectedA.roomCode);
+    expect(rematchRound?.currentRound).toMatchObject({
+      roundNumber: 2,
+      playerOrder,
+      revision: 0,
+      status: "active",
+    });
+
+    await Promise.all([roomA.leave(true), roomB.leave(true)]);
+  });
 });

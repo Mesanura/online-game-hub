@@ -23,6 +23,8 @@ import type {
 } from "@online-game-hub/game-client-sdk";
 import { loadGameClientModule } from "@online-game-hub/game-registry/client";
 
+type StarterChoice = Parameters<GameClientHost["selectStarter"]>[0];
+
 export const connectionLabels = {
   idle: "尚未连接",
   loading: "准备连接",
@@ -56,8 +58,9 @@ interface GameRoomHostContextValue {
   readonly setRoomCode: (value: string) => void;
   readonly createRoom: () => Promise<void>;
   readonly joinRoom: () => Promise<void>;
-  readonly selectStarter: (starter: "OWNER" | "NON_OWNER") => Promise<void>;
+  readonly selectStarter: (starter: StarterChoice) => Promise<void>;
   readonly toggleRoundReady: () => Promise<void>;
+  readonly startRematch: () => Promise<void>;
   readonly copyInviteLink: () => Promise<void>;
   readonly selectInviteFallback: () => void;
   readonly closeRoom: () => Promise<void>;
@@ -297,7 +300,7 @@ export function GameRoomHostProvider({
   }, [gameId, host, roomCode]);
 
   const selectStarter = useCallback(
-    async (starter: "OWNER" | "NON_OWNER"): Promise<void> => {
+    async (starter: StarterChoice): Promise<void> => {
       setBusy(true);
       setLocalError(null);
       try {
@@ -310,6 +313,18 @@ export function GameRoomHostProvider({
     },
     [host],
   );
+
+  const startRematch = useCallback(async (): Promise<void> => {
+    setBusy(true);
+    setLocalError(null);
+    try {
+      await host.startRematch();
+    } catch {
+      setLocalError("无法立即重新对局，请确认双方均已在线。");
+    } finally {
+      setBusy(false);
+    }
+  }, [host]);
 
   const toggleRoundReady = useCallback(async (): Promise<void> => {
     setBusy(true);
@@ -416,6 +431,7 @@ export function GameRoomHostProvider({
       joinRoom,
       selectStarter,
       toggleRoundReady,
+      startRematch,
       copyInviteLink,
       selectInviteFallback,
       closeRoom,
@@ -441,6 +457,7 @@ export function GameRoomHostProvider({
       roomCode,
       selectInviteFallback,
       selectStarter,
+      startRematch,
       state,
       toggleRoundReady,
     ],

@@ -192,18 +192,36 @@ export function ConnectFourClient(
       <h2 className="sr-only" id="connect-four-heading">
         四子棋棋盘
       </h2>
-      <p data-testid="player-disc">
+      <p className="game-status-line" data-testid="player-disc">
         {props.view.yourDisc === null
           ? "你正在旁观"
           : `你的棋子：${discLabel(props.view.yourDisc)}`}
+        {props.view.yourDisc === null ? null : (
+          <span
+            aria-hidden="true"
+            className="game-status-dot"
+            data-color={props.view.yourDisc}
+          />
+        )}
       </p>
-      <p aria-live="polite" data-testid="turn-status">
+      <p
+        aria-live="polite"
+        className="game-status-line"
+        data-testid="turn-status"
+      >
         {outcomeText ??
           (nextDisc === null
             ? "等待服务器同步回合"
             : isYourTurn
               ? "轮到你选择一列"
               : `当前回合：${discLabel(nextDisc)}`)}
+        {outcomeText !== null || nextDisc === null ? null : (
+          <span
+            aria-hidden="true"
+            className="game-status-dot"
+            data-color={nextDisc}
+          />
+        )}
       </p>
       <div
         aria-label="选择落子列"

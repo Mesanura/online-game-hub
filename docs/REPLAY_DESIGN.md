@@ -1,6 +1,6 @@
 # Replay 设计
 
-> 状态：Replay Format V1（Protocol V2 的逐局先手已纳入）
+> 状态：Replay Format V1（Protocol V3 的逐局先手、随机先手与即时重开已纳入）
 > 本文是 canonical replay 内容、确定性重建、版本兼容和存储端口的权威来源。Core 随机性规则见 [GAME_PLUGIN_SPEC.md](./GAME_PLUGIN_SPEC.md)。
 
 ## 1. 目标

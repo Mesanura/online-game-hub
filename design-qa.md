@@ -1,50 +1,58 @@
-# 六贯棋棋盘设计 QA
+# 六贯棋及多游戏平台视觉与交互 QA
 
 ## 对比目标
 
-- Source visual truth: `C:\Users\Zohar\AppData\Local\Temp\codex-clipboard-c192c6ab-6237-450a-a595-5d22a5cbfff5.png`
-- Implementation screenshot: `C:\Users\Zohar\.codex\visualizations\2026\09\01\01a05cba-aa99-7250-a55d-320c78eb1935\hex-board-qa\implementation-hex-1280x720-text-inset.png`
-- Full-view comparison: `C:\Users\Zohar\.codex\visualizations\2026\09\01\01a05cba-aa99-7250-a55d-320c78eb1935\hex-board-qa\reference-and-implementation-1280x720-text-inset.png`
-- State: real local two-player Hex match after one BLUE and one RED placement; BLUE to move.
-- Viewport: `1280 x 720` CSS px. The browser screenshot is `1280 x 720` px; browser device scale factor was `1.5`, and the comparison normalizes both screenshots to `520` px tall without changing aspect ratios.
-- Source image: `878 x 402` px. The side-by-side comparison image is `2060 x 520` px.
+- Source visual truth: `C:\Users\Zohar\AppData\Local\Temp\codex-clipboard-d181ff55-a36f-47fd-b6b3-99629a751c1f.png` (胜利路径)、`C:\Users\Zohar\AppData\Local\Temp\codex-clipboard-fb726f45-7d0d-47f4-b9be-c1b6bcf4112d.png` (结果 HUD)、`C:\Users\Zohar\AppData\Local\Temp\codex-clipboard-cc1b32e8-8a8a-414a-9d74-cb7a26a5a4e0.png` (随机先手)、`C:\Users\Zohar\AppData\Local\Temp\codex-clipboard-1b86e505-b3a8-4cce-93dd-2326c5aab466.png` (状态文本)。棋盘布局基线为 `C:\Users\Zohar\AppData\Local\Temp\codex-clipboard-c192c6ab-6237-450a-a595-5d22a5cbfff5.png`。
+- Implementation screenshots: `C:\Users\Zohar\.codex\visualizations\2026\09\01\01a05cba-aa99-7250-a55d-320c78eb1935\hex-board-qa\implementation-hex-1280x720-text-inset.png` (active board baseline) and `C:\Users\Zohar\.codex\visualizations\2026\09\01\01a05cba-aa99-7250-a55d-320c78eb1935\hex-rematch-qa\waiting-random-1280x720.png` (latest waiting-page browser capture)。
+- Source pixels: `1414 x 768` board, `381 x 373` result HUD, `1524 x 341` starter settings, `235 x 101` status text. Baseline implementation pixels: `1265 x 712`; waiting-page capture pixels: `750 x 721` as rendered by the in-app browser capture surface.
+- CSS viewport: `1280 x 720`; browser device scale factor: `1.5`. Comparison normalizes captures to the same visible viewport aspect ratio and does not treat browser chrome or capture-surface scaling as product content.
+- State: real two-player Hex room through room setup, random starter selection, and active round. The user manually completed placement/finish checks in the in-app browser; the agent's later local-action recapture was blocked by browser security review.
 
 ## Full-View Evidence
 
-The implementation keeps the reference's horizontal flat-top Hex rhombus, with BLUE boundaries on the lower-left and upper-right edges and RED boundaries on the upper-left and lower-right edges. The colored boundaries follow the exterior hex segments rather than forming straight diagonals. Edge labels sit beyond the bands. The implementation intentionally retains the product's existing clay surface, palette, HUD, and Chinese game copy rather than copying the photograph's paper texture. The two status lines now have a small inline inset so their text no longer sits against the panel's upper-left highlight.
+The implementation uses a horizontal flat-top 11 x 11 Hex board. BLUE bands map to lower-left and upper-right edges; RED bands map to upper-left and lower-right edges. Exterior labels sit outside the colored edge bands. The compact board area fits the common `1280 x 720` desktop viewport without a board-container scrollbar. Waiting-page capture shows all three starter choices in one segmented row, with thin dividers and the selected random option.
 
-At the `1280 x 720` verification viewport, the board scroll container measured `916 x 509` CSS px and its `scrollWidth`/`scrollHeight` equaled its client size. The board itself measured `774 x 490` CSS px, so the full board is visible without scrolling. A cell measured `44 x 38.10` CSS px and a placed piece measured the same `44 x 38.10` CSS px.
+The active board baseline shows equal regular-hex cell and piece silhouettes, inset upper-left status copy, and the two color dots. The final CSS-only highlight iteration widens the winning-path inner ring to `0.2rem`, expands the soft glow to `0.65rem`, and keeps the effect clipped inside the piece; it removes the previous solid outer white edge and halo.
 
 ## Focused Region Evidence
 
-The four corners and the first two placed pieces are readable in the implementation screenshot, so no separate crop is needed. They confirm the colored boundary assignment, the label placement beyond each line, and the equal cell/piece silhouette.
+The board corners and placed-piece region in the active capture verify edge ownership, exterior coordinate labels, and equal cell/piece sizing. The waiting-page capture verifies the three starter labels, separator lines, selected state, compact vertical rhythm, and readable room controls. The source result-HUD image is compared against the implementation's two-action result layout in the component and client tests; no extra result action remains.
 
 ## Required Fidelity Surfaces
 
-- Fonts and typography: existing Noto Sans SC/PingFang stack, weights, and small-label hierarchy remain consistent with the product; exterior labels retain sufficient contrast against the clay board.
-- Spacing and layout rhythm: desktop board padding, board status spacing, and panel padding are reduced; the full board fits the common `1280 x 720` desktop viewport without a board-container scrollbar.
-- Colors and visual tokens: BLUE uses the existing teal token and RED uses the existing coral token; bands are visually heavier than internal grid outlines and retain their semantic distinction.
-- Image quality and asset fidelity: the target contains a photographed reference board rather than a required product asset. The implementation uses the existing functional board UI and does not substitute any logo, illustration, or non-standard icon.
-- Copy and content: live Chinese player, turn, room, and coordinate text remain intact; coordinates are now oriented `A-K` / `1-11` for the rotated board.
+- Fonts and typography: existing Noto Sans SC/PingFang stack, weights, line heights, and Chinese hierarchy remain consistent; status text is inset from the highlight and color dots are aligned inline.
+- Spacing and layout rhythm: board padding, status spacing, Hex panel padding, and result action spacing are compact; the 11 x 11 board remains fully visible at the target desktop viewport.
+- Colors and visual tokens: BLUE/RED edge bands and piece colors use the existing teal/coral tokens; winning-path white is now a translucent inner ring and blur rather than an opaque external border; starter dividers use a restrained one-pixel tokenized line.
+- Image quality and asset fidelity: the references are screenshots of board/UI states, not product image assets. The implementation uses functional DOM/CSS and the existing icon library; no logo, illustration, or non-standard asset is replaced by a placeholder.
+- Copy and content: result actions are `重新对局` and `设置规则`; starter choices are `我方先手`、`对方先手`、`随机先手`; all five games expose matching color-dot status copy.
+
+## Primary Interactions and Console Check
+
+- Verified in the browser: create room, join with a second isolated guest, select random starter, synchronize the waiting state, and enter an active Hex round.
+- User manually verified placement and color-dot turn changes in the in-app browser. The agent did not bypass the browser policy after local board clicks were denied.
+- Console review found no application errors. One warning recorded was a stale room-connection close from the earlier preview process during service restart; the new `4102` Game Server health endpoint and `3102` Web route both returned successfully.
 
 ## Findings
 
-No actionable P0, P1, or P2 findings.
+No actionable P0, P1, or P2 findings remain.
 
-- [P3] The reference's physical-board gray grid and the product's warm clay grid are intentionally different visual materials. This is consistent with the existing application design system and does not affect the requested geometry or edge semantics.
+- [P3] The reference's physical-board texture and gray grid differ from the product's warm clay surface and grid tokens. This is an intentional design-system difference and does not affect requested geometry, ownership, or path marking.
 
 ## Comparison History
 
-1. Initial implementation comparison found the board was visually correct at large desktop sizes but could require container scrolling at shorter desktop heights. The board cell sizing, board padding, status spacing, and Hex panel padding were reduced.
-2. Follow-up review found the upper-left status text too close to the panel highlight. A small `padding-inline-start` was added to both Hex status paragraphs without changing their vertical rhythm.
-3. Post-fix evidence is the `1280 x 720` screenshot and the measurements above: both scroll axes fit without overflow, the status text starts 5.76px inside its paragraph box, and the piece remains equal in size to its cell.
+1. Initial board comparison found the horizontal layout correct but shorter desktop heights could require scrolling. Cell sizing, board padding, status spacing, and Hex panel padding were reduced.
+2. Upper-left status text was too close to the panel highlight. Both status lines gained a small inline inset.
+3. The result HUD was changed to two actions, starter settings gained the random option and dividers, and all five game modules gained inline color dots. The real two-player room flow and affected client/server tests passed.
+4. User acceptance found the winning-path white marker too subtle. The marker was changed from an external solid white edge to a clipped inner highlight, then widened again: `inset: 1px`, `0.2rem` inner ring, `0.65rem` soft glow, `0.08rem` blur. Hex client tests and Web build passed after the final adjustment.
 
 ## Implementation Checklist
 
-1. Horizontal flat-top 11 x 11 layout implemented.
-2. BLUE and RED exterior bands mapped to the requested opposing sides.
-3. Exterior coordinates positioned outside the colored bands.
-4. Regular-hex proportions and equal-size pieces verified.
-5. Desktop compactness verified at `1280 x 720`.
+1. Horizontal flat-top 11 x 11 layout and opposing BLUE/RED edge bands implemented.
+2. Exterior coordinate labels positioned outside the colored bands.
+3. Regular-hex proportions and equal-size pieces verified.
+4. Hex status text inset and color dots verified across active turns.
+5. Three starter choices with separators and two result actions verified.
+6. Winning path uses a clear clipped inner white highlight with no external white halo.
+7. Desktop compactness and affected automated flows verified at `1280 x 720`.
 
 final result: passed

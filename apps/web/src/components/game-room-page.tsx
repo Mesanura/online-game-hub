@@ -13,6 +13,8 @@ import {
   LockKeyOpen,
   SignOut,
   Sparkle,
+  ArrowsClockwise,
+  Shuffle,
   Trophy,
   UserCircle,
   UserPlus,
@@ -494,7 +496,7 @@ function RoomView({ title }: Pick<GameRoomPageProps, "title">) {
                 type="button"
               >
                 <span className="stone stone-black" aria-hidden="true" />
-                我先
+                我方先手
               </button>
               <button
                 aria-pressed={nextRound.starter === "NON_OWNER"}
@@ -505,7 +507,18 @@ function RoomView({ title }: Pick<GameRoomPageProps, "title">) {
                 type="button"
               >
                 <span className="stone stone-white" aria-hidden="true" />
-                对方先
+                对方先手
+              </button>
+              <button
+                aria-pressed={nextRound.starter === "RANDOM"}
+                className="starter-choice"
+                data-testid="starter-random"
+                disabled={busy}
+                onClick={() => void selectStarter("RANDOM")}
+                type="button"
+              >
+                <Shuffle size={20} weight="bold" aria-hidden="true" />
+                随机先手
               </button>
             </div>
           ) : (
@@ -514,7 +527,9 @@ function RoomView({ title }: Pick<GameRoomPageProps, "title">) {
                 ? "等待房主选择先手方。"
                 : nextRound?.starter === "OWNER"
                   ? "房主选择由房主先手。"
-                  : "房主选择由另一位玩家先手。"}
+                  : nextRound?.starter === "NON_OWNER"
+                    ? "房主选择由另一位玩家先手。"
+                    : "房主选择随机决定先手。"}
             </p>
           )}
           <div className="round-dock-actions">
@@ -656,6 +671,7 @@ function PlayView({ title }: Pick<GameRoomPageProps, "title">) {
     host,
     leaveRoom,
     openNextRoundSetup,
+    startRematch,
     state,
   } = useGameRoomHost();
   const snapshot = state.snapshot;
@@ -813,15 +829,27 @@ function PlayView({ title }: Pick<GameRoomPageProps, "title">) {
               <p className="eyebrow">本局结果</p>
               <h2 id="result-heading">{summary.result ?? "对局已完成"}</h2>
             </div>
-            <button
-              className="clay-button clay-button-primary"
-              data-testid="next-round-settings"
-              onClick={openNextRoundSetup}
-              type="button"
-            >
-              下一局设置{" "}
-              <ArrowRight size={20} weight="bold" aria-hidden="true" />
-            </button>
+            <div className="result-actions">
+              <button
+                className="clay-button clay-button-primary"
+                data-testid="rematch-game"
+                disabled={busy || state.connectionState !== "connected"}
+                onClick={() => void startRematch()}
+                type="button"
+              >
+                <ArrowsClockwise size={20} weight="bold" aria-hidden="true" />
+                重新对局
+              </button>
+              <button
+                className="clay-button clay-button-secondary"
+                data-testid="next-round-settings"
+                onClick={openNextRoundSetup}
+                type="button"
+              >
+                设置规则
+                <ArrowRight size={20} weight="bold" aria-hidden="true" />
+              </button>
+            </div>
           </section>
         ) : null}
       </main>

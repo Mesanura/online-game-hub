@@ -5,6 +5,7 @@ import {
   RNG_ALGORITHM_V1,
   createRng,
   isJsonValue,
+  nextInt,
 } from "@online-game-hub/game-sdk";
 import type {
   JsonValue,
@@ -807,6 +808,44 @@ export function createAuthoritativeGameRoomClass(
           this.#readySessions.clear();
           this.#pendingRound = null;
         }
+      } else if (command.operation === "START_REMATCH") {
+        if (!this.#allParticipantsConnected()) {
+          this.#rejectControlAndCache(
+            client,
+            commandKey,
+            "ROOM_CONTROL_NOT_ALLOWED",
+            command.commandId,
+          );
+          return;
+        }
+        const completedRound = aggregate.currentRound;
+        const ownerSlot = aggregate.slots.find(
+          (slot) => slot.playerSessionId === this.#creatorSessionId,
+        );
+        if (
+          completedRound === null ||
+          completedRound.status !== "completed" ||
+          ownerSlot === undefined
+        ) {
+          this.#rejectControlAndCache(
+            client,
+            commandKey,
+            "ROOM_CONTROL_NOT_ALLOWED",
+            command.commandId,
+          );
+          return;
+        }
+        this.#starterChoice =
+          completedRound.playerOrder[0] === ownerSlot.slotId
+            ? "OWNER"
+            : "NON_OWNER";
+        this.#readySessions.clear();
+        for (const slot of aggregate.slots) {
+          if (slot.playerSessionId !== null) {
+            this.#readySessions.add(slot.playerSessionId);
+          }
+        }
+        this.#pendingRound = null;
       } else if (command.operation === "CANCEL_ROUND_READY") {
         this.#readySessions.delete(clientData.playerSessionId);
       } else {
@@ -873,14 +912,15 @@ export function createAuthoritativeGameRoomClass(
       if (ownerSlot === undefined || nonOwnerSlot === undefined) {
         throw new Error("A round requires both assigned players.");
       }
-      const playerOrder =
-        this.#starterChoice === "OWNER"
-          ? [ownerSlot.slotId, nonOwnerSlot.slotId]
-          : [nonOwnerSlot.slotId, ownerSlot.slotId];
-
       let pending = this.#pendingRound;
       if (pending === null) {
         const initialRng = createRng(ids.createRngSeed());
+        const randomStartsWithOwner = nextInt(initialRng, 2).value === 0;
+        const playerOrder =
+          this.#starterChoice === "OWNER" ||
+          (this.#starterChoice === "RANDOM" && randomStartsWithOwner)
+            ? [ownerSlot.slotId, nonOwnerSlot.slotId]
+            : [nonOwnerSlot.slotId, ownerSlot.slotId];
         pending = {
           replayId: ids.createReplayId(),
           roundNumber,
@@ -1084,6 +1124,19 @@ export function createAuthoritativeGameRoomClass(
           (session) =>
             this.#activeClientBySession.has(session) &&
             this.#readySessions.has(session),
+        )
+      );
+    }
+
+    #allParticipantsConnected(): boolean {
+      const aggregate = this.#requireAggregate();
+      const participants = aggregate.slots
+        .map((slot) => slot.playerSessionId)
+        .filter((session): session is string => session !== null);
+      return (
+        participants.length >= aggregate.definition.manifest.minPlayers &&
+        participants.every((session) =>
+          this.#activeClientBySession.has(session),
         )
       );
     }

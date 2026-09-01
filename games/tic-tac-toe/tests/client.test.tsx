@@ -62,6 +62,8 @@ describe("Tic-Tac-Toe Client Module", () => {
     );
     expect(html).toContain("你的棋子：X");
     expect(html).toContain("轮到你落子");
+    expect(html.match(/class="game-status-dot"/gu)).toHaveLength(2);
+    expect(html).toContain('data-color="BLACK"');
     expect(html).not.toContain("3 × 3 棋盘");
     expect(html.match(/data-cell-index=/gu)).toHaveLength(9);
     expect(html).not.toContain("nextPlayerIndex");

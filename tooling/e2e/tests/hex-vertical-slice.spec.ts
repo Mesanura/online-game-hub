@@ -133,6 +133,7 @@ test("two guests complete Hex by connection, then use the shared HUD to cancel a
   await expect(pageA.getByTestId("connection-state")).toHaveText("已连接");
   await expect(pageA.getByTestId("game-stage")).toHaveCount(0);
   await expect(pageA.getByTestId("match-status")).toHaveCount(0);
+  await expect(pageA.getByTestId("starter-random")).toHaveText("随机先手");
   await pageA.getByTestId("starter-owner").click();
 
   const inviteUrl = await pageA.getByTestId("invite-link").getAttribute("href");
@@ -268,6 +269,8 @@ test("two guests complete Hex by connection, then use the shared HUD to cancel a
   );
   await expect(pageA.getByTestId("turn-status")).toContainText("胜者：你");
   await expect(pageB.getByTestId("turn-status")).toContainText("胜者：对手");
+  await expect(pageA.getByTestId("rematch-game")).toHaveText("重新对局");
+  await expect(pageA.getByTestId("next-round-settings")).toHaveText("设置规则");
   await expect(pageA.locator(".hex-cell.winning-cell")).toHaveCount(11);
   for (const cell of BLUE_WINNING_PATH) {
     await expect(pageA.locator(`[data-cell-index="${cell}"]`)).toHaveClass(
@@ -278,11 +281,20 @@ test("two guests complete Hex by connection, then use the shared HUD to cancel a
       "BLUE",
     );
   }
-  const glowFilter = await pageA
+  const winningHighlight = await pageA
     .locator(".hex-cell.winning-cell .hex-piece")
     .first()
-    .evaluate((element) => getComputedStyle(element).filter);
-  expect(glowFilter).toContain("drop-shadow");
+    .evaluate((element) => {
+      const highlight = getComputedStyle(element, "::after");
+      return {
+        boxShadow: highlight.boxShadow,
+        filter: highlight.filter,
+        opacity: highlight.opacity,
+      };
+    });
+  expect(winningHighlight.filter).toContain("blur");
+  expect(winningHighlight.boxShadow).toContain("rgba");
+  expect(winningHighlight.opacity).toBe("1");
   const roundOneReplayId = await currentCompletedReplay(
     roomCode,
     1,

@@ -149,6 +149,8 @@ describe("Hex Client Module", () => {
     expect(html).not.toContain("11 × 11 棋盘");
     expect(html).toContain("你的棋子：蓝方");
     expect(html).toContain("轮到你落子");
+    expect(html.match(/class="game-status-dot"/gu)).toHaveLength(2);
+    expect(html).toContain('data-color="BLUE"');
     expect(html).toContain('aria-label="六贯棋棋盘"');
     expect(html).toContain('data-coordinate="A1"');
     expect(html).toContain('data-coordinate="A11"');

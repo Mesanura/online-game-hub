@@ -130,18 +130,36 @@ export function TicTacToeClient(
       <h2 className="sr-only" id="tic-tac-toe-heading">
         井字棋棋盘
       </h2>
-      <p data-testid="player-mark">
+      <p className="game-status-line" data-testid="player-mark">
         {props.view.yourMark === null
           ? "你正在旁观"
           : `你的棋子：${props.view.yourMark}`}
+        {props.view.yourMark === null ? null : (
+          <span
+            aria-hidden="true"
+            className="game-status-dot"
+            data-color={props.view.yourMark === "X" ? "BLACK" : "WHITE"}
+          />
+        )}
       </p>
-      <p data-testid="turn-status" aria-live="polite">
+      <p
+        className="game-status-line"
+        data-testid="turn-status"
+        aria-live="polite"
+      >
         {outcomeText ??
           (nextMark === null
             ? "等待服务器同步回合"
             : isYourTurn
               ? "轮到你落子"
               : `当前回合：${nextMark}`)}
+        {outcomeText !== null || nextMark === null ? null : (
+          <span
+            aria-hidden="true"
+            className="game-status-dot"
+            data-color={nextMark === "X" ? "BLACK" : "WHITE"}
+          />
+        )}
       </p>
       <div aria-label="井字棋棋盘" className="tic-tac-toe-board" role="grid">
         {props.view.board.map((slotId, cell) => {

@@ -49,8 +49,8 @@ const snapshot = {
 } as const;
 
 describe("transport conventions", () => {
-  it("keeps Protocol V2 room and custom message names stable", () => {
-    expect(PROTOCOL_VERSION).toBe(2);
+  it("keeps Protocol V3 room and custom message names stable", () => {
+    expect(PROTOCOL_VERSION).toBe(3);
     expect(GAME_ROOM_NAME).toBe("game");
     expect(GAME_ACTION_MESSAGE).toBe("game.action");
     expect(ROOM_CONTROL_MESSAGE).toBe("room.control");
@@ -69,9 +69,19 @@ describe("room control", () => {
         starter: "OWNER",
       }),
     ).toMatchObject({ operation: "SELECT_STARTER", starter: "OWNER" });
+    expect(
+      roomControlCommandSchema.parse({
+        type: "room.control",
+        protocolVersion: PROTOCOL_VERSION,
+        commandId: "select-random",
+        operation: "SELECT_STARTER",
+        starter: "RANDOM",
+      }),
+    ).toMatchObject({ operation: "SELECT_STARTER", starter: "RANDOM" });
     for (const operation of [
       "READY_FOR_ROUND",
       "CANCEL_ROUND_READY",
+      "START_REMATCH",
       "CLOSE_ROOM",
     ] as const) {
       expect(
@@ -98,7 +108,7 @@ describe("room control", () => {
         protocolVersion: PROTOCOL_VERSION,
         commandId: "invalid-starter",
         operation: "SELECT_STARTER",
-        starter: "RANDOM",
+        starter: "SPECTATOR",
       }).success,
     ).toBe(false);
   });

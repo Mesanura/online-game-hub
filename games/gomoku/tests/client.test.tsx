@@ -110,6 +110,8 @@ describe("Gomoku Client Module", () => {
     expect(html).not.toContain("15 × 15 棋盘");
     expect(html).toContain("你的棋子：黑方");
     expect(html).toContain("轮到你落子");
+    expect(html.match(/class="game-status-dot"/gu)).toHaveLength(2);
+    expect(html).toContain('data-color="BLACK"');
     expect(html).toContain('aria-label="五子棋棋盘"');
     expect(html).toContain('aria-label="第 8 行第 8 列，黑方"');
     expect(html.match(/data-cell-index=/gu)).toHaveLength(225);

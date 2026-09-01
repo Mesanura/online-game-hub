@@ -99,6 +99,8 @@ describe("Connect Four Client Module", () => {
     );
     expect(html).toContain("你的棋子：红方");
     expect(html).toContain("轮到你选择一列");
+    expect(html.match(/class="game-status-dot"/gu)).toHaveLength(2);
+    expect(html).toContain('data-color="RED"');
     expect(html.match(/data-column-index=/gu)).toHaveLength(7);
     expect(html.match(/data-cell-index=/gu)).toHaveLength(42);
     expect(html).toContain('aria-label="第 7 列落子"');

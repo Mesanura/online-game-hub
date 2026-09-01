@@ -144,7 +144,7 @@ function lifecycle(
   options: {
     readonly causedByCommandId?: string;
     readonly status?: "active" | "completed" | "abandoned";
-    readonly starter?: "OWNER" | "NON_OWNER" | null;
+    readonly starter?: "OWNER" | "NON_OWNER" | "RANDOM" | null;
     readonly selfReady?: boolean;
     readonly readyPlayerCount?: number;
     readonly closed?: boolean;
@@ -472,6 +472,39 @@ describe("GameClientHost", () => {
     await expect(
       host.submitAction({ type: "PLACE_MARK", cell: 0 }),
     ).rejects.toThrow("not active");
+  });
+
+  it("sends an immediate rematch control and adopts the new round lifecycle", async () => {
+    const room = new FakeRoom();
+    const host = new GameClientHost({
+      gameServerUrl: "http://127.0.0.1:1234",
+      ticketProvider: async () => "ticket-1",
+      transport: new FakeTransport([room]),
+      commandIds: { createCommandId: () => "rematch-1" },
+    });
+    await host.joinRoom("tic-tac-toe", "ABCD2345");
+    room.emit(connected);
+    room.emitLifecycle(lifecycle(1, { status: "completed" }));
+    room.emit(snapshot(5, undefined, 1, "completed"));
+
+    const rematch = host.startRematch();
+    expect(room.sent.at(-1)).toMatchObject({
+      type: ROOM_CONTROL_MESSAGE,
+      payload: { commandId: "rematch-1", operation: "START_REMATCH" },
+    });
+    room.emitLifecycle(
+      lifecycle(2, {
+        causedByCommandId: "rematch-1",
+      }),
+    );
+    await expect(rematch).resolves.toBeUndefined();
+    expect(host.getState()).toMatchObject({
+      roomLifecycle: {
+        currentRound: { roundNumber: 2, status: "active" },
+        nextRound: null,
+      },
+      snapshot: null,
+    });
   });
 
   it("fails closed when snapshot status disagrees with the current round", async () => {

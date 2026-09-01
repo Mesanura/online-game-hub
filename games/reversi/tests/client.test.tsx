@@ -105,6 +105,8 @@ describe("Reversi Client Module", () => {
     expect(html).not.toContain("8 × 8 棋盘");
     expect(html).toContain("你的棋子：黑方");
     expect(html).toContain("轮到你落子");
+    expect(html.match(/class="game-status-dot"/gu)).toHaveLength(2);
+    expect(html).toContain('data-color="BLACK"');
     expect(html).toContain('aria-label="黑白棋棋盘"');
     expect(html).toContain('data-testid="black-disc-count">黑方：2');
     expect(html).toContain('data-testid="white-disc-count">白方：2');

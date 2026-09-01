@@ -282,6 +282,10 @@ export class GameClientHost<View = unknown, Outcome = unknown> {
     return this.#sendControl({ operation: "CANCEL_ROUND_READY" });
   }
 
+  public startRematch(): Promise<void> {
+    return this.#sendControl({ operation: "START_REMATCH" });
+  }
+
   public closeRoom(): Promise<void> {
     return this.#sendControl({ operation: "CLOSE_ROOM" });
   }

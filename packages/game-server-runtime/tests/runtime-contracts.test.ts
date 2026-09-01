@@ -53,7 +53,7 @@ describe("ticket verifier port test authority", () => {
     await expect(authority.verify(valid)).resolves.toMatchObject({
       status: "verified",
       playerSessionId: "session-a",
-      claims: { protocolVersion: 2, audience: "game-server" },
+      claims: { protocolVersion: 3, audience: "game-server" },
     });
     await expect(authority.verify(undefined)).resolves.toMatchObject({
       status: "rejected",

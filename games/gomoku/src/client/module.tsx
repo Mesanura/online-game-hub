@@ -189,18 +189,36 @@ export function GomokuClient(props: GameClientProps<GomokuView, GomokuAction>) {
       <h2 className="sr-only" id="gomoku-heading">
         五子棋棋盘
       </h2>
-      <p data-testid="player-stone">
+      <p className="game-status-line" data-testid="player-stone">
         {props.view.yourStone === null
           ? "你正在旁观"
           : `你的棋子：${stoneLabel(props.view.yourStone)}`}
+        {props.view.yourStone === null ? null : (
+          <span
+            aria-hidden="true"
+            className="game-status-dot"
+            data-color={props.view.yourStone}
+          />
+        )}
       </p>
-      <p aria-live="polite" data-testid="turn-status">
+      <p
+        aria-live="polite"
+        className="game-status-line"
+        data-testid="turn-status"
+      >
         {outcomeText ??
           (nextStone === null
             ? "等待服务器同步回合"
             : isYourTurn
               ? "轮到你落子"
               : `当前回合：${stoneLabel(nextStone)}`)}
+        {outcomeText !== null || nextStone === null ? null : (
+          <span
+            aria-hidden="true"
+            className="game-status-dot"
+            data-color={nextStone}
+          />
+        )}
       </p>
       <div className="gomoku-board-scroll">
         <div
