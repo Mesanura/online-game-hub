@@ -86,26 +86,26 @@ describe("Hex Client Module", () => {
     }
   });
 
-  it("maps all three Hex axes to the pointy-top visual layout", () => {
+  it("maps all three Hex axes to the horizontal flat-top visual layout", () => {
     expect(hexLayoutForCell(0)).toMatchObject({
       row: 0,
       column: 0,
       x: 0,
       y: 0,
-      style: { gridColumn: "31 / span 6", gridRow: "1 / span 4" },
+      style: { gridColumn: "1 / span 4", gridRow: "11 / span 2" },
     });
-    expect(hexLayoutForCell(1)).toMatchObject({ x: 0.5, y: 0.75 });
-    expect(hexLayoutForCell(11)).toMatchObject({ x: -0.5, y: 0.75 });
-    expect(hexLayoutForCell(12)).toMatchObject({ x: 0, y: 1.5 });
+    expect(hexLayoutForCell(1)).toMatchObject({ x: 0.75, y: 0.5 });
+    expect(hexLayoutForCell(11)).toMatchObject({ x: 0.75, y: -0.5 });
+    expect(hexLayoutForCell(12)).toMatchObject({ x: 1.5, y: 0 });
     expect(hexLayoutForCell(120)).toMatchObject({
       row: 10,
       column: 10,
-      x: 0,
-      y: 15,
-      style: { gridColumn: "31 / span 6", gridRow: "61 / span 4" },
+      x: 15,
+      y: 0,
+      style: { gridColumn: "61 / span 4", gridRow: "11 / span 2" },
     });
-    expect(hexEdgeBandPath("top")).toBe(
-      "M 550,0 L 600,75 L 650,150 L 700,225 L 750,300 L 800,375 L 850,450 L 900,525 L 950,600 L 1000,675 L 1050,750",
+    expect(hexEdgeBandPath("upper-left")).toBe(
+      "M 0,550 L 25,500 L 75,500 L 100,450 L 150,450 L 175,400 L 225,400 L 250,350 L 300,350 L 325,300 L 375,300 L 400,250 L 450,250 L 475,200 L 525,200 L 550,150 L 600,150 L 625,100 L 675,100 L 700,50 L 750,50 L 775,0 L 825,0",
     );
   });
 
@@ -144,29 +144,29 @@ describe("Hex Client Module", () => {
     }
   });
 
-  it("renders 121 accessible diamond cells, edge labels, coordinates, turn, and color", () => {
+  it("renders 121 accessible regular hex cells, edge labels, coordinates, turn, and color", () => {
     const html = render();
     expect(html).not.toContain("11 × 11 棋盘");
     expect(html).toContain("你的棋子：蓝方");
     expect(html).toContain("轮到你落子");
     expect(html).toContain('aria-label="六贯棋棋盘"');
-    expect(html).toContain('data-coordinate="K1"');
-    expect(html).toContain('data-coordinate="K11"');
     expect(html).toContain('data-coordinate="A1"');
     expect(html).toContain('data-coordinate="A11"');
+    expect(html).toContain('data-coordinate="K1"');
+    expect(html).toContain('data-coordinate="K11"');
     expect(html).toContain('aria-label="F6，蓝方"');
     expect(html.match(/data-cell-index=/gu)).toHaveLength(121);
     expect(html.match(/class="hex-coordinate /gu)).toHaveLength(44);
-    expect(html).toContain("hex-coordinate-top");
-    expect(html).toContain("hex-coordinate-right");
-    expect(html).toContain("hex-coordinate-bottom");
-    expect(html).toContain("hex-coordinate-left");
+    expect(html).toContain("hex-coordinate-upper-left");
+    expect(html).toContain("hex-coordinate-upper-right");
+    expect(html).toContain("hex-coordinate-lower-right");
+    expect(html).toContain("hex-coordinate-lower-left");
     expect(html.match(/class="hex-edge-band /gu)).toHaveLength(4);
     expect(html).toMatch(
-      /data-cell-index="1"[^>]*data-layout-x="0\.5"[^>]*data-layout-y="0\.75"/u,
+      /data-cell-index="1"[^>]*data-layout-x="0\.75"[^>]*data-layout-y="0\.5"/u,
     );
     expect(html).toMatch(
-      /data-cell-index="11"[^>]*data-layout-x="-0\.5"[^>]*data-layout-y="0\.75"/u,
+      /data-cell-index="11"[^>]*data-layout-x="0\.75"[^>]*data-layout-y="-0\.5"/u,
     );
     expect(html).not.toContain("nextPlayerIndex");
   });

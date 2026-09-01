@@ -143,7 +143,7 @@ function outcomeLabel(view: Readonly<HexView>): string | null {
 function coordinateForCell(cell: number): string {
   const row = Math.floor(cell / HEX_BOARD_SIZE);
   const column = cell % HEX_BOARD_SIZE;
-  return `${String.fromCharCode("K".charCodeAt(0) - row)}${column + 1}`;
+  return `${String.fromCharCode("A".charCodeAt(0) + row)}${column + 1}`;
 }
 
 export function hexLayoutForCell(cell: number): {
@@ -158,47 +158,93 @@ export function hexLayoutForCell(cell: number): {
   return {
     row,
     column,
-    x: (column - row) / 2,
-    y: ((row + column) * 3) / 4,
+    x: ((row + column) * 3) / 4,
+    y: (column - row) / 2,
     style: {
-      gridColumn: `${(column - row + HEX_BOARD_SIZE - 1) * 3 + 1} / span 6`,
-      gridRow: `${(row + column) * 3 + 1} / span 4`,
+      gridColumn: `${(row + column) * 3 + 1} / span 4`,
+      gridRow: `${column - row + HEX_BOARD_SIZE} / span 2`,
     },
   };
 }
 
-const hexEdgeKinds = ["top", "right", "bottom", "left"] as const;
+const hexEdgeKinds = [
+  "upper-left",
+  "upper-right",
+  "lower-right",
+  "lower-left",
+] as const;
 
 type HexEdgeKind = (typeof hexEdgeKinds)[number];
 
 function edgeCoordinate(kind: HexEdgeKind, index: number) {
-  const row = kind === "top" ? 0 : kind === "bottom" ? 10 : index;
-  const column = kind === "left" ? 0 : kind === "right" ? 10 : index;
+  const row = kind === "lower-left" ? 0 : kind === "upper-right" ? 10 : index;
+  const column =
+    kind === "upper-left" ? 0 : kind === "lower-right" ? 10 : index;
   const label =
-    kind === "top" || kind === "bottom"
-      ? String(index + 1)
-      : String.fromCharCode("K".charCodeAt(0) - index);
+    kind === "upper-left" || kind === "lower-right"
+      ? String.fromCharCode("A".charCodeAt(0) + index)
+      : String(index + 1);
   return { row, column, label };
 }
 
-function toSvgPoint(
-  layout: Pick<ReturnType<typeof hexLayoutForCell>, "x" | "y">,
-  offsetX = 0,
-  offsetY = 0,
-): string {
-  return `${(layout.x + 5.5 + offsetX) * 100},${(layout.y + 0.5 + offsetY) * 100}`;
+type HexVertex =
+  "top-left" | "top-right" | "right" | "bottom-right" | "bottom-left" | "left";
+
+const vertexOffsets: Readonly<Record<HexVertex, readonly [number, number]>> = {
+  "top-left": [-0.25, -0.5],
+  "top-right": [0.25, -0.5],
+  right: [0.5, 0],
+  "bottom-right": [0.25, 0.5],
+  "bottom-left": [-0.25, 0.5],
+  left: [-0.5, 0],
+};
+
+function svgPoint(row: number, column: number, vertex: HexVertex): string {
+  const layout = hexLayoutForCell(row * HEX_BOARD_SIZE + column);
+  const [offsetX, offsetY] = vertexOffsets[vertex];
+  return `${(layout.x + 0.5 + offsetX) * 100},${(layout.y + 5.5 + offsetY) * 100}`;
 }
 
 export function hexEdgeBandPath(kind: HexEdgeKind): string {
-  const offsetX = kind === "left" ? -0.5 : kind === "right" ? 0.5 : 0;
-  const offsetY = kind === "top" ? -0.5 : kind === "bottom" ? 0.5 : 0;
-  return Array.from({ length: HEX_BOARD_SIZE }, (_, index) => {
-    const coordinate = edgeCoordinate(kind, index);
-    const layout = hexLayoutForCell(
-      coordinate.row * HEX_BOARD_SIZE + coordinate.column,
-    );
-    return `${index === 0 ? "M" : "L"} ${toSvgPoint(layout, offsetX, offsetY)}`;
-  }).join(" ");
+  const points: string[] = [];
+  const append = (row: number, column: number, vertex: HexVertex) => {
+    const point = svgPoint(row, column, vertex);
+    if (points.at(-1) !== point) points.push(point);
+  };
+
+  if (kind === "upper-left") {
+    append(0, 0, "left");
+    for (let row = 0; row < HEX_BOARD_SIZE; row += 1) {
+      append(row, 0, "top-left");
+      append(row, 0, "top-right");
+    }
+  } else if (kind === "upper-right") {
+    append(HEX_BOARD_SIZE - 1, 0, "top-right");
+    for (let column = 0; column < HEX_BOARD_SIZE; column += 1) {
+      append(HEX_BOARD_SIZE - 1, column, "right");
+      if (column < HEX_BOARD_SIZE - 1) {
+        append(HEX_BOARD_SIZE - 1, column + 1, "top-right");
+      }
+    }
+  } else if (kind === "lower-right") {
+    append(0, HEX_BOARD_SIZE - 1, "bottom-right");
+    for (let row = 0; row < HEX_BOARD_SIZE; row += 1) {
+      append(row, HEX_BOARD_SIZE - 1, "right");
+      if (row < HEX_BOARD_SIZE - 1) {
+        append(row + 1, HEX_BOARD_SIZE - 1, "bottom-right");
+      }
+    }
+  } else {
+    append(0, 0, "left");
+    for (let column = 0; column < HEX_BOARD_SIZE; column += 1) {
+      append(0, column, "bottom-left");
+      append(0, column, "bottom-right");
+    }
+  }
+
+  return points
+    .map((point, index) => `${index === 0 ? "M" : "L"} ${point}`)
+    .join(" ");
 }
 
 export function hexCellsShareSide(
@@ -210,12 +256,12 @@ export function hexCellsShareSide(
   const deltaX = second.x - first.x;
   const deltaY = second.y - first.y;
   return [
-    [-0.5, -0.75],
-    [-1, 0],
-    [-0.5, 0.75],
-    [0.5, 0.75],
-    [1, 0],
-    [0.5, -0.75],
+    [-0.75, 0.5],
+    [0, 1],
+    [-0.75, -0.5],
+    [0.75, 0.5],
+    [0, -1],
+    [0.75, -0.5],
   ].some(([x, y]) => deltaX === x && deltaY === y);
 }
 
@@ -317,23 +363,23 @@ export function HexClient(props: GameClientProps<HexView, HexAction>) {
             aria-hidden="true"
             className="hex-edge-bands"
             preserveAspectRatio="none"
-            viewBox="0 0 1100 1600"
+            viewBox="0 0 1600 1100"
           >
             <path
-              className="hex-edge-band hex-edge-band-blue"
-              d={hexEdgeBandPath("top")}
-            />
-            <path
               className="hex-edge-band hex-edge-band-red"
-              d={hexEdgeBandPath("right")}
+              d={hexEdgeBandPath("upper-left")}
             />
             <path
               className="hex-edge-band hex-edge-band-blue"
-              d={hexEdgeBandPath("bottom")}
+              d={hexEdgeBandPath("upper-right")}
             />
             <path
               className="hex-edge-band hex-edge-band-red"
-              d={hexEdgeBandPath("left")}
+              d={hexEdgeBandPath("lower-right")}
+            />
+            <path
+              className="hex-edge-band hex-edge-band-blue"
+              d={hexEdgeBandPath("lower-left")}
             />
           </svg>
           {hexEdgeKinds.flatMap((kind) =>

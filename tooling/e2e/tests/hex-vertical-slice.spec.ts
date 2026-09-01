@@ -160,10 +160,10 @@ test("two guests complete Hex by connection, then use the shared HUD to cancel a
         page.getByRole("grid", { name: "六贯棋棋盘" }),
       ).toBeVisible();
       await expect(page.locator("[data-cell-index]")).toHaveCount(121);
-      await expect(page.locator(".hex-coordinate-top")).toHaveCount(11);
-      await expect(page.locator(".hex-coordinate-right")).toHaveCount(11);
-      await expect(page.locator(".hex-coordinate-bottom")).toHaveCount(11);
-      await expect(page.locator(".hex-coordinate-left")).toHaveCount(11);
+      await expect(page.locator(".hex-coordinate-upper-left")).toHaveCount(11);
+      await expect(page.locator(".hex-coordinate-upper-right")).toHaveCount(11);
+      await expect(page.locator(".hex-coordinate-lower-right")).toHaveCount(11);
+      await expect(page.locator(".hex-coordinate-lower-left")).toHaveCount(11);
       await expect(page.locator(".hex-edge-band-blue")).toHaveCount(2);
       await expect(page.locator(".hex-edge-band-red")).toHaveCount(2);
       await expect(page.locator('[data-coordinate="K1"]')).toHaveCount(1);
@@ -172,19 +172,33 @@ test("two guests complete Hex by connection, then use the shared HUD to cancel a
       await expect(page.locator('[data-coordinate="A11"]')).toHaveCount(1);
       await expect(page.locator('[data-cell-index="1"]')).toHaveAttribute(
         "data-layout-x",
-        "0.5",
+        "0.75",
       );
       await expect(page.locator('[data-cell-index="1"]')).toHaveAttribute(
         "data-layout-y",
-        "0.75",
+        "0.5",
       );
       await expect(page.locator('[data-cell-index="11"]')).toHaveAttribute(
         "data-layout-x",
-        "-0.5",
+        "0.75",
       );
       await expect(page.locator('[data-cell-index="11"]')).toHaveAttribute(
         "data-layout-y",
-        "0.75",
+        "-0.5",
+      );
+      const boardScroll = await page
+        .locator(".hex-board-scroll")
+        .evaluate((element) => ({
+          clientHeight: element.clientHeight,
+          clientWidth: element.clientWidth,
+          scrollHeight: element.scrollHeight,
+          scrollWidth: element.scrollWidth,
+        }));
+      expect(boardScroll.scrollHeight).toBeLessThanOrEqual(
+        boardScroll.clientHeight + 1,
+      );
+      expect(boardScroll.scrollWidth).toBeLessThanOrEqual(
+        boardScroll.clientWidth + 1,
       );
     }),
   );

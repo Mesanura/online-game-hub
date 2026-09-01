@@ -1,66 +1,50 @@
-# Design QA: remove upper-left outer glow
+# 六贯棋棋盘设计 QA
 
-## Comparison target
+## 对比目标
 
-- Source visual truth:
-  - User-supplied catalog-card screenshot, 447 × 505 pixels (session-local; not committed).
-  - User-supplied game-entry screenshot, 376 × 1001 pixels (session-local; not committed).
-- Browser-rendered implementation:
-  - `artifacts/design-qa/shadow-catalog-focused-447x505.png`
-  - `artifacts/design-qa/shadow-entry-376x1001.png`
-- Routes: `/games` and `/games/tic-tac-toe`
-- State: default catalog and game-entry states
-- Targeted change: remove the white outer glow above and to the left of raised components while preserving the inset highlight along their upper-left interior edges. Existing layout and content are not recreation targets.
+- Source visual truth: `C:\Users\Zohar\AppData\Local\Temp\codex-clipboard-c192c6ab-6237-450a-a595-5d22a5cbfff5.png`
+- Implementation screenshot: `C:\Users\Zohar\.codex\visualizations\2026\09\01\01a05cba-aa99-7250-a55d-320c78eb1935\hex-board-qa\implementation-hex-1280x720-text-inset.png`
+- Full-view comparison: `C:\Users\Zohar\.codex\visualizations\2026\09\01\01a05cba-aa99-7250-a55d-320c78eb1935\hex-board-qa\reference-and-implementation-1280x720-text-inset.png`
+- State: real local two-player Hex match after one BLUE and one RED placement; BLUE to move.
+- Viewport: `1280 x 720` CSS px. The browser screenshot is `1280 x 720` px; browser device scale factor was `1.5`, and the comparison normalizes both screenshots to `520` px tall without changing aspect ratios.
+- Source image: `878 x 402` px. The side-by-side comparison image is `2060 x 520` px.
 
-## Viewport and normalization
+## Full-View Evidence
 
-- Catalog source and implementation: 447 × 505 pixels; implementation CSS viewport 447 × 505; device pixel ratio approximately 1; compared at native 1:1 density.
-- Game-entry source and implementation: 376 × 1001 pixels; implementation CSS viewport 376 × 1001; device pixel ratio approximately 1; compared at native 1:1 density.
-- The current responsive game-entry composition differs from the older supplied capture, so the comparison is limited to the explicitly marked shadow treatment on raised surfaces, icons, navigation, and buttons.
+The implementation keeps the reference's horizontal flat-top Hex rhombus, with BLUE boundaries on the lower-left and upper-right edges and RED boundaries on the upper-left and lower-right edges. The colored boundaries follow the exterior hex segments rather than forming straight diagonals. Edge labels sit beyond the bands. The implementation intentionally retains the product's existing clay surface, palette, HUD, and Chinese game copy rather than copying the photograph's paper texture. The two status lines now have a small inline inset so their text no longer sits against the panel's upper-left highlight.
 
-## Full-view comparison evidence
+At the `1280 x 720` verification viewport, the board scroll container measured `916 x 509` CSS px and its `scrollWidth`/`scrollHeight` equaled its client size. The board itself measured `774 x 490` CSS px, so the full board is visible without scrolling. A cell measured `44 x 38.10` CSS px and a placed piece measured the same `44 x 38.10` CSS px.
 
-- The source captures show a bright white halo extending outside the upper and left edges of the marked surfaces.
-- The implementation captures show only the warm lower-right elevation shadow outside each raised surface.
-- The upper-left interior highlight remains visible on catalog cards, icons, the return control, action cards, and pill buttons.
-- Computed browser styles confirm that raised components have one positive-offset outer shadow plus the two existing inset convex layers; no negative-offset white outer shadow remains.
+## Focused Region Evidence
 
-## Focused-region comparison evidence
+The four corners and the first two placed pieces are readable in the implementation screenshot, so no separate crop is needed. They confirm the colored boundary assignment, the label placement beyond each line, and the equal cell/piece silhouette.
 
-- `shadow-catalog-focused-447x505.png` keeps the first card and icon boundaries legible at native density, so a separate enlarged crop was unnecessary.
-- The focused catalog comparison confirms a clean upper-left exterior edge and an intact upper-left inset highlight on both the card and its icon.
+## Required Fidelity Surfaces
 
-## Required fidelity surfaces
-
-- Fonts and typography: unchanged; family, sizes, weights, line heights, wrapping, and copy remain the existing implementation.
-- Spacing and layout rhythm: unchanged; the only affected elevation layers are the shared raised-surface shadows and the console shell's explicit outer shadow.
-- Colors and visual tokens: warm lower-right elevation colors are unchanged; only the negative-offset white outer glow layers were removed.
-- Image quality and asset fidelity: no raster, icon, or illustration assets were changed; existing icon-library rendering remains intact.
-- Copy and content: unchanged.
+- Fonts and typography: existing Noto Sans SC/PingFang stack, weights, and small-label hierarchy remain consistent with the product; exterior labels retain sufficient contrast against the clay board.
+- Spacing and layout rhythm: desktop board padding, board status spacing, and panel padding are reduced; the full board fits the common `1280 x 720` desktop viewport without a board-container scrollbar.
+- Colors and visual tokens: BLUE uses the existing teal token and RED uses the existing coral token; bands are visually heavier than internal grid outlines and retain their semantic distinction.
+- Image quality and asset fidelity: the target contains a photographed reference board rather than a required product asset. The implementation uses the existing functional board UI and does not substitute any logo, illustration, or non-standard icon.
+- Copy and content: live Chinese player, turn, room, and coordinate text remain intact; coordinates are now oriented `A-K` / `1-11` for the rotated board.
 
 ## Findings
 
-- No actionable P0, P1, or P2 differences remain for the requested shadow treatment.
-- No P3 follow-up is required for this scoped change.
+No actionable P0, P1, or P2 findings.
 
-## Interaction and runtime evidence
+- [P3] The reference's physical-board gray grid and the product's warm clay grid are intentionally different visual materials. This is consistent with the existing application design system and does not affect the requested geometry or edge semantics.
 
-- The catalog's first “创建或加入房间” path reached `/games/tic-tac-toe` during visual verification.
-- The “返回游戏目录” control navigated from `/games/tic-tac-toe` to `/games`, and browser back restored the entry route.
-- Browser console errors checked: none.
+## Comparison History
 
-## Comparison history
+1. Initial implementation comparison found the board was visually correct at large desktop sizes but could require container scrolling at shorter desktop heights. The board cell sizing, board padding, status spacing, and Hex panel padding were reduced.
+2. Follow-up review found the upper-left status text too close to the panel highlight. A small `padding-inline-start` was added to both Hex status paragraphs without changing their vertical rhythm.
+3. Post-fix evidence is the `1280 x 720` screenshot and the measurements above: both scroll axes fit without overflow, the status text starts 5.76px inside its paragraph box, and the piece remains equal in size to its cell.
 
-1. Initial finding: shared raised-surface tokens and the console shell contained negative horizontal and vertical white shadows, producing the reported upper-left outer glow.
-2. Fix: removed those three negative-offset outer layers while leaving `--shadow-convex` unchanged.
-3. Post-fix evidence: both browser captures show the upper-left exterior glow removed, and computed styles retain the inset white highlight.
+## Implementation Checklist
 
-## Implementation checklist
-
-- [x] Remove upper-left outer glow from standard raised surfaces.
-- [x] Remove upper-left outer glow from softly lifted icons and controls.
-- [x] Remove the console shell's standalone upper-left outer glow.
-- [x] Preserve the upper-left inset highlight.
-- [x] Verify catalog and game-entry views at the supplied pixel sizes.
+1. Horizontal flat-top 11 x 11 layout implemented.
+2. BLUE and RED exterior bands mapped to the requested opposing sides.
+3. Exterior coordinates positioned outside the colored bands.
+4. Regular-hex proportions and equal-size pieces verified.
+5. Desktop compactness verified at `1280 x 720`.
 
 final result: passed

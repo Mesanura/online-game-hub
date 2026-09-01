@@ -1358,50 +1358,80 @@ summary:focus-visible {
   width: 28%;
 }
 .hex-board-scroll {
+  max-height: calc(100svh - 13rem);
   overflow: auto;
 }
+.hex-panel {
+  padding: clamp(0.45rem, 1vh, 0.7rem);
+}
+.play-page .hex-panel > p {
+  line-height: 1.25;
+  margin: 0.1rem 0;
+  padding-inline-start: clamp(0.35rem, 0.8vh, 0.55rem);
+}
 .hex-board {
-  --hex-cell-width: 2.25rem;
-  --hex-cell-height: 2.6rem;
+  --hex-cell-width: clamp(2.75rem, 6vh, 3.25rem);
+  --hex-cell-height: calc(var(--hex-cell-width) * 0.8660254);
+  --hex-board-padding: calc(var(--hex-cell-width) * 0.8);
   display: grid;
-  grid-template-columns: repeat(66, calc(var(--hex-cell-width) / 6));
-  grid-template-rows: repeat(64, calc(var(--hex-cell-height) / 4));
-  margin: 0.75rem auto;
-  padding: 2.25rem;
+  grid-template-columns: repeat(64, calc(var(--hex-cell-width) / 4));
+  grid-template-rows: repeat(22, calc(var(--hex-cell-height) / 2));
+  margin: 0.25rem auto 0;
+  padding: var(--hex-board-padding);
   position: relative;
   width: max-content;
 }
 .hex-cell {
   align-items: center;
   align-self: stretch;
-  background: #f2dfbd;
+  background: #d5a875;
   border: 0;
   border-radius: 0;
-  clip-path: polygon(50% 0, 93.3% 25%, 93.3% 75%, 50% 100%, 6.7% 75%, 6.7% 25%);
+  clip-path: polygon(0 50%, 25% 0, 75% 0, 100% 50%, 75% 100%, 25% 100%);
   display: flex;
   justify-content: center;
-  min-height: var(--hex-cell-height);
+  min-height: 0;
   padding: 0;
   position: relative;
+}
+.hex-cell::before {
+  background: #f2dfbd;
+  clip-path: inherit;
+  content: "";
+  inset: 1px;
+  position: absolute;
 }
 .hex-cell:disabled {
   opacity: 1;
 }
+.hex-cell:not(:disabled):hover {
+  filter: none;
+  transform: none;
+}
+.hex-cell:not(:disabled):hover::before {
+  background: #f8e9cb;
+}
+.hex-cell:not(:disabled):focus-visible {
+  box-shadow: none;
+  filter: drop-shadow(0 0 0.16rem #fff)
+    drop-shadow(0 0 0.24rem var(--teal-deep));
+}
 .hex-edge-bands {
-  height: calc(var(--hex-cell-height) * 16);
-  left: 2.25rem;
+  height: calc(var(--hex-cell-height) * 11);
+  left: var(--hex-board-padding);
   overflow: visible;
   pointer-events: none;
   position: absolute;
-  top: 2.25rem;
-  width: calc(var(--hex-cell-width) * 11);
+  top: var(--hex-board-padding);
+  width: calc(var(--hex-cell-width) * 16);
   z-index: 3;
 }
 .hex-edge-band {
   fill: none;
-  stroke-linecap: round;
+  stroke-linecap: square;
   stroke-linejoin: round;
-  stroke-width: 12;
+  stroke-width: 0.32rem;
+  vector-effect: non-scaling-stroke;
 }
 .hex-edge-band-blue {
   stroke: var(--teal);
@@ -1411,11 +1441,10 @@ summary:focus-visible {
 }
 .hex-piece {
   background: var(--teal-deep);
-  clip-path: inherit;
+  clip-path: polygon(0 50%, 25% 0, 75% 0, 100% 50%, 75% 100%, 25% 100%);
   display: block;
-  height: 86%;
-  position: relative;
-  width: 86%;
+  inset: 0;
+  position: absolute;
   z-index: 1;
 }
 .hex-cell[data-color="RED"] .hex-piece {
@@ -1427,32 +1456,44 @@ summary:focus-visible {
 }
 .hex-coordinate {
   align-self: center;
-  font-size: 0.72rem;
+  font-size: 0.76rem;
   font-weight: 900;
   justify-self: center;
   pointer-events: none;
-  text-shadow: 0 1px 0 rgb(0 0 0 / 25%);
+  text-shadow: 0 1px 0 rgb(255 255 255 / 76%);
   z-index: 4;
 }
-.hex-coordinate-left,
-.hex-coordinate-right {
+.hex-coordinate-upper-left,
+.hex-coordinate-lower-right {
   color: var(--coral-deep);
 }
-.hex-coordinate-top,
-.hex-coordinate-bottom {
+.hex-coordinate-upper-right,
+.hex-coordinate-lower-left {
   color: var(--teal-deep);
 }
-.hex-coordinate-top {
-  transform: translate(20%, -94%);
+.hex-coordinate-upper-left {
+  transform: translate(
+    calc(var(--hex-cell-width) * -0.42),
+    calc(var(--hex-cell-height) * -0.7)
+  );
 }
-.hex-coordinate-right {
-  transform: translate(108%, 0);
+.hex-coordinate-upper-right {
+  transform: translate(
+    calc(var(--hex-cell-width) * 0.42),
+    calc(var(--hex-cell-height) * -0.7)
+  );
 }
-.hex-coordinate-bottom {
-  transform: translate(-20%, 94%);
+.hex-coordinate-lower-right {
+  transform: translate(
+    calc(var(--hex-cell-width) * 0.42),
+    calc(var(--hex-cell-height) * 0.7)
+  );
 }
-.hex-coordinate-left {
-  transform: translate(-108%, 0);
+.hex-coordinate-lower-left {
+  transform: translate(
+    calc(var(--hex-cell-width) * -0.42),
+    calc(var(--hex-cell-height) * 0.7)
+  );
 }
 @keyframes clay-spin {
   to {
@@ -1719,8 +1760,8 @@ summary:focus-visible {
     --reversi-cell-size: 2.75rem;
   }
   .hex-board {
-    --hex-cell-width: 3.1rem;
-    --hex-cell-height: 2.75rem;
+    --hex-cell-width: 3.25rem;
+    --hex-board-padding: calc(var(--hex-cell-width) * 0.95);
   }
   .gomoku-board-scroll,
   .reversi-board-scroll,
