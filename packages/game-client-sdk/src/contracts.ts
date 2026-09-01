@@ -14,6 +14,7 @@ export interface GameClientModule<View = unknown, Action = unknown> {
   readonly gameId: string;
   readonly gameVersion: string;
   parseView(input: unknown): View;
+  readonly createResignAction?: () => Action;
   readonly Component: ComponentType<GameClientProps<View, Action>>;
 }
 
@@ -21,6 +22,7 @@ export interface UnknownGameClientModule {
   readonly gameId: string;
   readonly gameVersion: string;
   parseView(input: unknown): unknown;
+  readonly createResignAction?: () => unknown;
   readonly Component: ComponentType<GameClientProps<unknown, unknown>>;
 }
 
