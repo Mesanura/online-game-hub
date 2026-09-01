@@ -1,11 +1,10 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-import {
-  GUEST_SESSION_COOKIE_NAME,
-  createGuestSessionAuthority,
-} from "../../../server/guest-session";
-import { listGuestMatchHistory } from "../../../server/match-history";
+import { ACCOUNT_SESSION_COOKIE_NAME } from "../../../server/account-session";
+import { resolveAccountSession } from "../../../server/auth-service";
+import { clearAuthenticatedCookies } from "../../../server/auth-response";
+import { listUserMatchHistory } from "../../../server/match-history";
 import { getWebServerConfig } from "../../../server/runtime-config";
 
 export const dynamic = "force-dynamic";
@@ -19,22 +18,21 @@ const PRIVATE_HEADERS = {
 export async function GET(request: NextRequest) {
   try {
     const config = getWebServerConfig();
-    const authority = createGuestSessionAuthority({
-      secret: config.guestSessionSecret,
-    });
-    const session = authority.verify(
-      request.cookies.get(GUEST_SESSION_COOKIE_NAME)?.value,
-    );
-    if (session.status !== "verified") {
-      return NextResponse.json(
-        { code: "GUEST_SESSION_REQUIRED" },
+    const accountToken = request.cookies.get(
+      ACCOUNT_SESSION_COOKIE_NAME,
+    )?.value;
+    const account = await resolveAccountSession(config, accountToken);
+    if (account === null) {
+      const response = NextResponse.json(
+        { code: "ACCOUNT_SESSION_REQUIRED" },
         { status: 401, headers: PRIVATE_HEADERS },
       );
+      if (accountToken !== undefined) {
+        clearAuthenticatedCookies(response, config);
+      }
+      return response;
     }
-    const matches = await listGuestMatchHistory(
-      config,
-      session.playerSessionId,
-    );
+    const matches = await listUserMatchHistory(config, account.userId);
     return NextResponse.json(
       { matches },
       { status: 200, headers: PRIVATE_HEADERS },

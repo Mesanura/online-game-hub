@@ -64,6 +64,13 @@ summary:focus-visible {
   position: relative;
   z-index: 10;
 }
+.site-header nav {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  justify-content: flex-end;
+}
 .brand,
 .header-nav-link,
 .text-link,
@@ -104,6 +111,73 @@ summary:focus-visible {
   margin: 0 auto;
   max-width: 92rem;
   padding: clamp(1.5rem, 3vw, 3.5rem) clamp(1rem, 4vw, 4.5rem);
+}
+.auth-page,
+.account-page,
+.history-page {
+  max-width: 58rem;
+}
+.auth-form {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+  max-width: 34rem;
+  padding: clamp(1rem, 3vw, 2rem);
+}
+.auth-form h2,
+.auth-form p {
+  margin: 0;
+}
+.auth-form label {
+  font-size: 0.85rem;
+  font-weight: 800;
+}
+.auth-form input {
+  background: var(--clay-light);
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  color: var(--ink);
+  min-height: 3rem;
+  padding: 0.7rem 0.85rem;
+}
+.form-error {
+  color: #9f363d;
+}
+.form-hint {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+.account-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin: 1.25rem 0;
+}
+.empty-state {
+  padding: clamp(1.25rem, 4vw, 2.5rem);
+}
+.empty-state h2,
+.empty-state p {
+  margin-top: 0;
+}
+.history-list {
+  display: grid;
+  gap: 0.85rem;
+}
+.history-row {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  padding: 1rem 1.15rem;
+}
+.history-row > div {
+  display: grid;
+  gap: 0.25rem;
+}
+.history-row > div:last-child {
+  color: var(--muted);
+  font-size: 0.85rem;
+  text-align: right;
 }
 .clay-surface {
   background: var(--clay);

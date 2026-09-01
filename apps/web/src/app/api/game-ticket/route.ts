@@ -9,12 +9,14 @@ import {
   guestSessionCookieOptions,
   resolveGuestSession,
 } from "../../../server/guest-session";
+import { ACCOUNT_SESSION_COOKIE_NAME } from "../../../server/account-session";
+import { resolveAccountSession } from "../../../server/auth-service";
 import { getWebServerConfig } from "../../../server/runtime-config";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-export function POST(request: NextRequest) {
+export async function POST(request: NextRequest) {
   try {
     const config = getWebServerConfig();
     const guestAuthority = createGuestSessionAuthority({
@@ -24,21 +26,42 @@ export function POST(request: NextRequest) {
       request.cookies.get(GUEST_SESSION_COOKIE_NAME)?.value,
       guestAuthority,
     );
+    const accountToken = request.cookies.get(
+      ACCOUNT_SESSION_COOKIE_NAME,
+    )?.value;
+    const account = await resolveAccountSession(config, accountToken);
+    const invalidAccountSession =
+      accountToken !== undefined && account === null;
+    const rotatedGuest = invalidAccountSession ? guestAuthority.create() : null;
+    const playerSessionId =
+      rotatedGuest?.playerSessionId ?? session.playerSessionId;
     const ticketAuthority = createHmacGameServerTicketAuthority({
       issuer: config.ticketIssuer,
       secret: config.ticketSecret,
       lifetimeSeconds: config.ticketLifetimeSeconds,
     });
     const response = NextResponse.json(
-      { ticket: ticketAuthority.issue(session.playerSessionId) },
+      {
+        ticket: ticketAuthority.issue(playerSessionId, account?.userId),
+      },
       { headers: { "cache-control": "no-store, private" } },
     );
-    if (session.cookieValueToSet !== null) {
+    const guestCookieValue = rotatedGuest?.token ?? session.cookieValueToSet;
+    if (guestCookieValue !== null) {
       response.cookies.set(
         GUEST_SESSION_COOKIE_NAME,
-        session.cookieValueToSet,
+        guestCookieValue,
         guestSessionCookieOptions(config.guestCookieSecure),
       );
+    }
+    if (invalidAccountSession) {
+      response.cookies.set(ACCOUNT_SESSION_COOKIE_NAME, "", {
+        httpOnly: true,
+        sameSite: "lax",
+        secure: config.guestCookieSecure,
+        path: "/",
+        maxAge: 0,
+      });
     }
     return response;
   } catch {

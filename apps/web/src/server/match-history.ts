@@ -8,9 +8,9 @@ import type { MatchHistoryItem } from "@online-game-hub/database";
 
 import type { WebServerConfig } from "./config";
 
-export async function listGuestMatchHistory(
+export async function listUserMatchHistory(
   config: WebServerConfig,
-  playerSessionId: string,
+  userId: string,
 ): Promise<readonly MatchHistoryItem[]> {
   if (config.databaseMode !== "postgres" || config.databaseUrl === null) {
     throw new Error("MATCH_HISTORY_DATABASE_UNAVAILABLE");
@@ -21,8 +21,8 @@ export async function listGuestMatchHistory(
     maxConnections: 2,
   });
   try {
-    return await new PostgresMatchRepository(client.database).listForGuest(
-      playerSessionId,
+    return await new PostgresMatchRepository(client.database).listForUser(
+      userId,
     );
   } finally {
     await client.close();

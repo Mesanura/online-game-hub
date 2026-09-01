@@ -12,6 +12,8 @@ const ARGON2_OPTIONS = {
   hashLength: 32,
 } as const;
 
+let dummyPasswordHash: Promise<string> | null = null;
+
 export function normalizeUsername(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const normalized = value.toLowerCase();
@@ -43,4 +45,9 @@ export async function verifyPassword(
   } catch {
     return false;
   }
+}
+
+export function getDummyPasswordHash(): Promise<string> {
+  dummyPasswordHash ??= hashPassword("not-a-real-account-password");
+  return dummyPasswordHash;
 }
