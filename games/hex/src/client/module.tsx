@@ -1,4 +1,4 @@
-import { Fragment, useState } from "react";
+import { useState } from "react";
 import type { CSSProperties } from "react";
 import { z } from "zod";
 
@@ -150,26 +150,77 @@ function coordinateForCell(cell: number): string {
   return `${String.fromCharCode("K".charCodeAt(0) - row)}${column + 1}`;
 }
 
-function gridStyle(row: number, column: number): CSSProperties {
+export function hexLayoutForCell(cell: number): {
+  readonly row: number;
+  readonly column: number;
+  readonly x: number;
+  readonly y: number;
+  readonly style: CSSProperties;
+} {
+  const row = Math.floor(cell / HEX_BOARD_SIZE);
+  const column = cell % HEX_BOARD_SIZE;
   return {
-    gridColumn: `${(column - row + HEX_BOARD_SIZE - 1) * 3 + 1} / span 4`,
-    gridRow: `${row + column + 1} / span 2`,
+    row,
+    column,
+    x: (column - row) / 2,
+    y: ((row + column) * 3) / 4,
+    style: {
+      gridColumn: `${(column - row + HEX_BOARD_SIZE - 1) * 3 + 1} / span 6`,
+      gridRow: `${(row + column) * 3 + 1} / span 4`,
+    },
   };
 }
 
-function edgeCoordinate(
-  kind:
-    "red-top-left" | "red-bottom-right" | "blue-top-right" | "blue-bottom-left",
-  index: number,
-) {
-  const row =
-    kind === "blue-top-right" ? 0 : kind === "blue-bottom-left" ? 10 : index;
-  const column =
-    kind === "red-top-left" ? 0 : kind === "red-bottom-right" ? 10 : index;
-  const label = kind.startsWith("red")
-    ? String.fromCharCode("K".charCodeAt(0) - index)
-    : String(index + 1);
+const hexEdgeKinds = ["top", "right", "bottom", "left"] as const;
+
+type HexEdgeKind = (typeof hexEdgeKinds)[number];
+
+function edgeCoordinate(kind: HexEdgeKind, index: number) {
+  const row = kind === "top" ? 0 : kind === "bottom" ? 10 : index;
+  const column = kind === "left" ? 0 : kind === "right" ? 10 : index;
+  const label =
+    kind === "top" || kind === "bottom"
+      ? String(index + 1)
+      : String.fromCharCode("K".charCodeAt(0) - index);
   return { row, column, label };
+}
+
+function toSvgPoint(
+  layout: Pick<ReturnType<typeof hexLayoutForCell>, "x" | "y">,
+  offsetX = 0,
+  offsetY = 0,
+): string {
+  return `${(layout.x + 5.5 + offsetX) * 100},${(layout.y + 0.5 + offsetY) * 100}`;
+}
+
+export function hexEdgeBandPath(kind: HexEdgeKind): string {
+  const offsetX = kind === "left" ? -0.5 : kind === "right" ? 0.5 : 0;
+  const offsetY = kind === "top" ? -0.5 : kind === "bottom" ? 0.5 : 0;
+  return Array.from({ length: HEX_BOARD_SIZE }, (_, index) => {
+    const coordinate = edgeCoordinate(kind, index);
+    const layout = hexLayoutForCell(
+      coordinate.row * HEX_BOARD_SIZE + coordinate.column,
+    );
+    return `${index === 0 ? "M" : "L"} ${toSvgPoint(layout, offsetX, offsetY)}`;
+  }).join(" ");
+}
+
+export function hexCellsShareSide(
+  firstCell: number,
+  secondCell: number,
+): boolean {
+  const first = hexLayoutForCell(firstCell);
+  const second = hexLayoutForCell(secondCell);
+  const deltaX = second.x - first.x;
+  const deltaY = second.y - first.y;
+  return [
+    [-0.5, -0.75],
+    [-1, 0],
+    [-0.5, 0.75],
+    [0.5, 0.75],
+    [1, 0],
+    [0.5, -0.75],
+  ].some(([x, y]) => deltaX === x && deltaY === y);
 }
 
 export function createPlaceStoneIntent(cell: number): HexAction {
@@ -218,19 +269,14 @@ export function HexClient(props: GameClientProps<HexView, HexAction>) {
     void submitIntent(createResignIntent());
   };
 
-  const edgeKinds = [
-    "red-top-left",
-    "red-bottom-right",
-    "blue-top-right",
-    "blue-bottom-left",
-  ] as const;
-
   return (
     <section
       aria-labelledby="hex-heading"
       className="game-board-panel hex-panel"
     >
-      <h2 id="hex-heading">11 × 11 棋盘</h2>
+      <h2 className="sr-only" id="hex-heading">
+        六贯棋棋盘
+      </h2>
       <p data-testid="player-color">
         {props.view.yourColor === null
           ? "你正在旁观"
@@ -254,25 +300,16 @@ export function HexClient(props: GameClientProps<HexView, HexAction>) {
         >
           {props.view.board.map((slotId, cell) => {
             const color = colorForSlot(props.view, slotId);
-            const row = Math.floor(cell / HEX_BOARD_SIZE);
-            const column = cell % HEX_BOARD_SIZE;
-            const edgeClasses = [
-              column === 0 ? "hex-edge-red-top-left" : null,
-              column === HEX_BOARD_SIZE - 1
-                ? "hex-edge-red-bottom-right"
-                : null,
-              row === 0 ? "hex-edge-blue-top-right" : null,
-              row === HEX_BOARD_SIZE - 1 ? "hex-edge-blue-bottom-left" : null,
-            ]
-              .filter((value): value is string => value !== null)
-              .join(" ");
+            const layout = hexLayoutForCell(cell);
             return (
               <button
                 aria-label={`${coordinateForCell(cell)}，${color === null ? "空" : colorLabel(color)}`}
-                className={`hex-cell ${edgeClasses}${winningPath.has(cell) ? " winning-cell" : ""}`}
+                className={`hex-cell${winningPath.has(cell) ? " winning-cell" : ""}`}
                 data-cell-index={cell}
                 data-color={color ?? "EMPTY"}
                 data-coordinate={coordinateForCell(cell)}
+                data-layout-x={layout.x}
+                data-layout-y={layout.y}
                 disabled={
                   props.connectionState !== "connected" ||
                   submitting ||
@@ -282,7 +319,7 @@ export function HexClient(props: GameClientProps<HexView, HexAction>) {
                 key={cell}
                 onClick={() => void submitIntent(createPlaceStoneIntent(cell))}
                 role="gridcell"
-                style={gridStyle(row, column)}
+                style={layout.style}
                 type="button"
               >
                 {color === null ? null : (
@@ -291,23 +328,47 @@ export function HexClient(props: GameClientProps<HexView, HexAction>) {
               </button>
             );
           })}
-          {edgeKinds.map((kind) => (
-            <Fragment key={kind}>
-              {Array.from({ length: HEX_BOARD_SIZE }, (_, index) => {
-                const coordinate = edgeCoordinate(kind, index);
-                return (
-                  <span
-                    aria-hidden="true"
-                    className={`hex-coordinate hex-coordinate-${kind}`}
-                    key={`${kind}-${index}`}
-                    style={gridStyle(coordinate.row, coordinate.column)}
-                  >
-                    {coordinate.label}
-                  </span>
-                );
-              })}
-            </Fragment>
-          ))}
+          <svg
+            aria-hidden="true"
+            className="hex-edge-bands"
+            preserveAspectRatio="none"
+            viewBox="0 0 1100 1600"
+          >
+            <path
+              className="hex-edge-band hex-edge-band-blue"
+              d={hexEdgeBandPath("top")}
+            />
+            <path
+              className="hex-edge-band hex-edge-band-red"
+              d={hexEdgeBandPath("right")}
+            />
+            <path
+              className="hex-edge-band hex-edge-band-blue"
+              d={hexEdgeBandPath("bottom")}
+            />
+            <path
+              className="hex-edge-band hex-edge-band-red"
+              d={hexEdgeBandPath("left")}
+            />
+          </svg>
+          {hexEdgeKinds.flatMap((kind) =>
+            Array.from({ length: HEX_BOARD_SIZE }, (_, index) => {
+              const coordinate = edgeCoordinate(kind, index);
+              const layout = hexLayoutForCell(
+                coordinate.row * HEX_BOARD_SIZE + coordinate.column,
+              );
+              return (
+                <span
+                  aria-hidden="true"
+                  className={`hex-coordinate hex-coordinate-${kind}`}
+                  key={`${kind}-${index}`}
+                  style={layout.style}
+                >
+                  {coordinate.label}
+                </span>
+              );
+            }),
+          )}
         </div>
       </div>
       {props.view.yourColor === null ? null : (
