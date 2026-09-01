@@ -15,6 +15,13 @@
       "when": 1788075616119,
       "tag": "0001_yummy_doctor_octopus",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1788291725641,
+      "tag": "0002_futuristic_marvel_boy",
+      "breakpoints": true
     }
   ]
 }

@@ -16,6 +16,7 @@ import type {
 import { resolveGameDefinition } from "@online-game-hub/game-registry/server";
 
 import {
+  PostgresAccountRepository,
   PostgresMatchArchive,
   PostgresMatchRepository,
   PostgresReplayStore,
@@ -23,13 +24,17 @@ import {
   applyDatabaseMigrations,
   createPostgresDatabaseClient,
 } from "../src/index.js";
-import type { DatabaseError, GuestAssociationError } from "../src/index.js";
+import type {
+  AccountRepositoryError,
+  DatabaseError,
+  GuestAssociationError,
+} from "../src/index.js";
 import {
   createIsolatedTestDatabase,
   requireTestDatabaseUrl,
 } from "../src/testing.js";
 import type { IsolatedTestDatabase } from "../src/testing.js";
-import { replays } from "../src/schema.js";
+import { accountSessions, replays } from "../src/schema.js";
 
 const header = {
   replayFormatVersion: REPLAY_FORMAT_VERSION,
@@ -129,6 +134,7 @@ function currentRound(room: StoredGameRoom): StoredGameRound {
 describe.sequential("PostgreSQL + Drizzle persistence", () => {
   let isolated: IsolatedTestDatabase;
   let replayStore: PostgresReplayStore;
+  let accountRepository: PostgresAccountRepository;
   let matchRepository: PostgresMatchRepository;
   let roomStore: InMemoryRoomStore;
   let matchArchive: PostgresMatchArchive;
@@ -140,6 +146,7 @@ describe.sequential("PostgreSQL + Drizzle persistence", () => {
       requireTestDatabaseUrl(process.env),
     );
     replayStore = new PostgresReplayStore(isolated.client.database);
+    accountRepository = new PostgresAccountRepository(isolated.client.database);
     matchRepository = new PostgresMatchRepository(isolated.client.database);
     roomStore = new InMemoryRoomStore();
     matchArchive = new PostgresMatchArchive(matchRepository);
@@ -161,13 +168,104 @@ describe.sequential("PostgreSQL + Drizzle persistence", () => {
       `,
     );
     expect(rows.map((row) => row.table_name)).toEqual([
+      "account_sessions",
       "guest_user_associations",
       "match_players",
       "matches",
+      "password_credentials",
       "replay_actions",
       "replays",
       "users",
     ]);
+  });
+
+  it("persists unique password accounts and hashed revocable sessions", async () => {
+    const token = "raw-session-token-that-must-never-be-stored";
+    const tokenHash = "a".repeat(64);
+    const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    const registered = await accountRepository.registerPasswordAccount(
+      "alice_123",
+      "$argon2id$v=19$m=19456,t=2,p=1$stored-parameterized-hash",
+      { tokenHash, expiresAt },
+    );
+    expect(registered).toMatchObject({
+      username: "alice_123",
+      tokenHash,
+    });
+    expect(registered.userId).toMatch(/^[0-9a-f-]{36}$/u);
+    await expect(
+      accountRepository.resolveAccountSession(tokenHash, new Date()),
+    ).resolves.toMatchObject({ username: "alice_123", tokenHash });
+
+    const storedSessions = await isolated.client.database
+      .select({ tokenHash: accountSessions.tokenHash })
+      .from(accountSessions);
+    expect(storedSessions).toContainEqual({ tokenHash });
+    expect(JSON.stringify(storedSessions)).not.toContain(token);
+
+    await expect(
+      accountRepository.registerPasswordAccount(
+        "alice_123",
+        "$argon2id$v=19$m=19456,t=2,p=1$another-hash",
+        { tokenHash: "b".repeat(64), expiresAt },
+      ),
+    ).rejects.toEqual(
+      expect.objectContaining<Partial<AccountRepositoryError>>({
+        code: "USERNAME_UNAVAILABLE",
+      }),
+    );
+  });
+
+  it("expires, deletes, and revokes account sessions transactionally", async () => {
+    const currentHash = "c".repeat(64);
+    const otherHash = "d".repeat(64);
+    const expiresAt = new Date(Date.now() + 60_000);
+    const registered = await accountRepository.registerPasswordAccount(
+      "session_user",
+      "$argon2id$v=19$m=19456,t=2,p=1$old-hash",
+      { tokenHash: currentHash, expiresAt },
+    );
+    await accountRepository.createAccountSession(registered.userId, {
+      tokenHash: otherHash,
+      expiresAt,
+    });
+    await expect(
+      accountRepository.resolveAccountSession(
+        currentHash,
+        new Date(expiresAt.getTime()),
+      ),
+    ).resolves.toBeNull();
+
+    await accountRepository.changePasswordAndRevokeOtherSessions(
+      registered.userId,
+      "$argon2id$v=19$m=19456,t=2,p=1$old-hash",
+      "$argon2id$v=19$m=19456,t=2,p=1$new-hash",
+      currentHash,
+    );
+    await expect(
+      accountRepository.resolveAccountSession(otherHash, new Date()),
+    ).resolves.toBeNull();
+    await expect(
+      accountRepository.resolveAccountSession(currentHash, new Date()),
+    ).resolves.toMatchObject({ userId: registered.userId });
+    await expect(
+      accountRepository.findPasswordAccountByUsername("session_user"),
+    ).resolves.toMatchObject({
+      passwordHash: "$argon2id$v=19$m=19456,t=2,p=1$new-hash",
+    });
+
+    await expect(
+      accountRepository.changePasswordAndRevokeOtherSessions(
+        registered.userId,
+        "$argon2id$v=19$m=19456,t=2,p=1$old-hash",
+        "$argon2id$v=19$m=19456,t=2,p=1$unexpected",
+        currentHash,
+      ),
+    ).rejects.toMatchObject({ code: "ACCOUNT_STATE_CONFLICT" });
+    await accountRepository.deleteAccountSession(currentHash);
+    await expect(
+      accountRepository.resolveAccountSession(currentHash, new Date()),
+    ).resolves.toBeNull();
   });
 
   it("persists replay create/append/complete across new connections", async () => {

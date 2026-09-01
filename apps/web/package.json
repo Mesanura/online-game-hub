@@ -16,6 +16,7 @@
     "@online-game-hub/game-registry": "workspace:*",
     "@online-game-hub/game-server-ticket": "workspace:*",
     "@phosphor-icons/react": "^2.1.10",
+    "argon2": "^0.45.1",
     "next": "16.3.3",
     "react": "19.2.8",
     "react-dom": "19.2.8",

@@ -11,6 +11,7 @@ import {
   text,
   timestamp,
   unique,
+  uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
 
@@ -57,6 +58,77 @@ export const guestUserAssociations = pgTable(
       sql`length(${table.playerSessionId}) > 0`,
     ),
     index("guest_user_associations_user_idx").on(table.userId),
+  ],
+);
+
+export const passwordCredentials = pgTable(
+  "password_credentials",
+  {
+    userId: uuid("user_id")
+      .primaryKey()
+      .references(() => users.id, { onDelete: "cascade" }),
+    username: text("username").notNull(),
+    passwordHash: text("password_hash").notNull(),
+    createdAt: timestamp("created_at", {
+      mode: "date",
+      withTimezone: true,
+    })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", {
+      mode: "date",
+      withTimezone: true,
+    })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    uniqueIndex("password_credentials_username_unique").on(table.username),
+    check(
+      "password_credentials_username_format",
+      sql`${table.username} ~ '^[a-z0-9_]{3,24}$'`,
+    ),
+    check(
+      "password_credentials_hash_length",
+      sql`length(${table.passwordHash}) between 1 and 1024`,
+    ),
+    check(
+      "password_credentials_timestamps_valid",
+      sql`${table.createdAt} <= ${table.updatedAt} and ${table.updatedAt} <= now()`,
+    ),
+  ],
+);
+
+export const accountSessions = pgTable(
+  "account_sessions",
+  {
+    id: uuid("id").primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    tokenHash: text("token_hash").notNull(),
+    createdAt: timestamp("created_at", {
+      mode: "date",
+      withTimezone: true,
+    })
+      .defaultNow()
+      .notNull(),
+    expiresAt: timestamp("expires_at", {
+      mode: "date",
+      withTimezone: true,
+    }).notNull(),
+  },
+  (table) => [
+    uniqueIndex("account_sessions_token_hash_unique").on(table.tokenHash),
+    index("account_sessions_user_expiry_idx").on(table.userId, table.expiresAt),
+    check(
+      "account_sessions_token_hash_format",
+      sql`${table.tokenHash} ~ '^[0-9a-f]{64}$'`,
+    ),
+    check(
+      "account_sessions_expiry_valid",
+      sql`${table.expiresAt} > ${table.createdAt}`,
+    ),
   ],
 );
 
@@ -256,9 +328,11 @@ export const replayActions = pgTable(
 );
 
 export const databaseSchema = {
+  accountSessions,
   guestUserAssociations,
   matchPlayers,
   matches,
+  passwordCredentials,
   replayActions,
   replays,
   users,
