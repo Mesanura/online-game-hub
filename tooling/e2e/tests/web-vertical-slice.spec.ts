@@ -329,6 +329,15 @@ test("two isolated guests complete win/draw, converge on reconnect, and cannot s
   capturePageErrors(pageA, browserErrors);
   capturePageErrors(pageB, browserErrors);
 
+  await pageA.goto(`${harness.webUrl}/games`);
+  const catalogHeading = pageA.locator(".catalog-heading");
+  await expect(
+    catalogHeading.getByTestId("catalog-return-home"),
+  ).toHaveAttribute("href", "/");
+  await expect(
+    catalogHeading.locator("div").first().locator(":scope > :first-child"),
+  ).toHaveText("返回首页");
+
   await pageB.goto(`${harness.webUrl}/games/tic-tac-toe`);
   await pageB.locator("#room-code").fill(" fake2345 ");
   await pageB.getByTestId("join-room").click();
@@ -543,7 +552,6 @@ test("two isolated guests complete win/draw, converge on reconnect, and cannot s
   await expect(terminalOutsiderPage.getByTestId("player-slot")).toHaveCount(0);
   await terminalOutsiderContext.close();
 
-  await pageA.getByTestId("game-menu").click();
   await pageA.getByTestId("close-room").click();
   await Promise.all(
     [pageA, pageB].map((page) =>
@@ -585,7 +593,6 @@ test("two isolated guests complete win/draw, converge on reconnect, and cannot s
     leaveConfirmation = dialog.message();
     await dialog.accept();
   });
-  await pageB.getByTestId("game-menu").click();
   await pageB.getByTestId("leave-room").click();
   expect(leaveConfirmation).toContain("离开会立即终止当前对局");
   await expect(pageB.getByTestId("room-notice")).toHaveText("已离开房间。");

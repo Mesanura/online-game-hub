@@ -363,7 +363,6 @@ test("two guests play two authoritative Connect Four rounds with independent rep
   await expect(unrelatedHistory.json()).resolves.toEqual({ matches: [] });
   await unrelatedContext.close();
 
-  await pageA.getByTestId("game-menu").click();
   await pageA.getByTestId("close-room").click();
   await Promise.all(
     [pageA, pageB].map((page) =>

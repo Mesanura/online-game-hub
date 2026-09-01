@@ -184,6 +184,7 @@ Room 必须串行处理 Action。任何未来多实例方案都必须维持“�
 - Next App Router 以 `/games/[gameId]`、`/games/[gameId]/rooms/[roomCode]` 和 `/games/[gameId]/rooms/[roomCode]/play` 表达入口、等待和对局三个真实页面阶段。`GameClientHostProvider` 位于 `[gameId]/layout`，三个子路由共享同一 host，路由切换不重建连接或重复 join；旧 `/games/[gameId]?roomCode=...` 由服务端兼容重定向到规范房间 URL。
 - 通用 `GameClientHost` 获取新 ticket 后调用 Colyseus `create`/`join`；join 在 SDK 调用前执行 `trim().toUpperCase()`。连接成功先以 `room.connected` 的 stable slot 和 `room.lifecycle` 为准；首局未启动时没有 snapshot，只有 active/completed Round 才有完整 `match.snapshot`。
 - Web 只从当前非敏感 gameId/roomCode 构造 canonical invite URL，并通过 Clipboard API 提供 copying/copied/failed 和手动选择后备。lifecycle 的 waiting/next-round setup 映射到房间页，active 映射到 play，completed 保留在 play；closed 原因返回入口。刷新与 reconnect 都先由 host 收敛服务器 lifecycle，再决定规范路由。
+- 对局页不复用等待页的邀请控件或额外连接详情；左侧 HUD 底部从 `room.roomCode` 显示房间码，并仅依据 server lifecycle 的 `isOwner` 选择 `closeRoom()` 或 `leaveRoom()`。两个方法在 active Round 仍由 Web 提供确认，UI 不自行裁定关闭或 abandoned 结果。
 - host 只保存当前 per-viewer View snapshot、`roomLifecycle`、round/revision、连接/拒绝状态。`submitAction` 生成 `commandId` 并从最新 lifecycle/snapshot 填充 `roundNumber` 和 `expectedRevision`；它不持有或重演 authoritative State。
 - 所有 server payload 都先通过 Protocol V2 exact schema。duplicate、stale、schema-invalid 和 game-rule rejection 不在浏览器模拟；host 接受服务器附带或随后发送的完整 snapshot 收敛。
 - transport 非主动关闭时，host 在 60 秒窗口内以指数退避获取新 ticket 并重新执行 room-code join，生成新的 seat reservation；不使用 SDK reconnection token 证明席位所有权。

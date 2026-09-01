@@ -162,16 +162,32 @@ test("two guests complete Hex by connection, then cancel and confirm off-turn re
         page.getByRole("grid", { name: "六贯棋棋盘" }),
       ).toBeVisible();
       await expect(page.locator("[data-cell-index]")).toHaveCount(121);
-      await expect(page.locator(".hex-coordinate-red-top-left")).toHaveCount(
-        11,
-      );
-      await expect(page.locator(".hex-coordinate-blue-top-right")).toHaveCount(
-        11,
-      );
+      await expect(page.locator(".hex-coordinate-top")).toHaveCount(11);
+      await expect(page.locator(".hex-coordinate-right")).toHaveCount(11);
+      await expect(page.locator(".hex-coordinate-bottom")).toHaveCount(11);
+      await expect(page.locator(".hex-coordinate-left")).toHaveCount(11);
+      await expect(page.locator(".hex-edge-band-blue")).toHaveCount(2);
+      await expect(page.locator(".hex-edge-band-red")).toHaveCount(2);
       await expect(page.locator('[data-coordinate="K1"]')).toHaveCount(1);
       await expect(page.locator('[data-coordinate="K11"]')).toHaveCount(1);
       await expect(page.locator('[data-coordinate="A1"]')).toHaveCount(1);
       await expect(page.locator('[data-coordinate="A11"]')).toHaveCount(1);
+      await expect(page.locator('[data-cell-index="1"]')).toHaveAttribute(
+        "data-layout-x",
+        "0.5",
+      );
+      await expect(page.locator('[data-cell-index="1"]')).toHaveAttribute(
+        "data-layout-y",
+        "0.75",
+      );
+      await expect(page.locator('[data-cell-index="11"]')).toHaveAttribute(
+        "data-layout-x",
+        "-0.5",
+      );
+      await expect(page.locator('[data-cell-index="11"]')).toHaveAttribute(
+        "data-layout-y",
+        "0.75",
+      );
     }),
   );
   await expect(pageA.getByTestId("player-color")).toContainText("蓝方");
@@ -369,7 +385,6 @@ test("two guests complete Hex by connection, then cancel and confirm off-turn re
     });
   }
 
-  await pageA.getByTestId("game-menu").click();
   await pageA.getByTestId("close-room").click();
   await Promise.all(
     [pageA, pageB].map((page) =>

@@ -10,13 +10,17 @@ export default function GamesPage() {
     <div className="page-shell catalog-page">
       <div className="catalog-heading">
         <div>
+          <Link
+            className="clay-button clay-button-secondary"
+            data-testid="catalog-return-home"
+            href="/"
+          >
+            <ArrowLeft size={18} weight="bold" aria-hidden="true" /> 返回首页
+          </Link>
           <p className="eyebrow">游戏目录</p>
           <h1>选择一款游戏</h1>
           <p>挑一款熟悉的棋盘游戏，创建房间并邀请朋友。</p>
         </div>
-        <Link className="clay-button clay-button-secondary" href="/">
-          <ArrowLeft size={18} weight="bold" aria-hidden="true" /> 返回首页
-        </Link>
       </div>
       <div className="catalog-grid">
         {gameCatalog.map((game) => (

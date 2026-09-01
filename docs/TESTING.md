@@ -205,7 +205,7 @@ Multiplayer integration 使用两个独立客户端连接同一真实 room，验
 9. 另一 active room 用 fake clock 前进 60,001 ms，验证 `RECONNECT_TIMEOUT` abandoned 并关闭 live room；
 10. 关闭并重建 database adapter 后，两轮 history metadata 和 completed canonical replays 仍存在；浏览器只看到安全 metadata，不看到数据库或 replay 细节。
 
-Web E2E 同时验证三阶段 App Router：创建/加入和 canonical 邀请进入等待页，旧 `?roomCode=` 兼容入口规范化，双方 ready 后自动进入 `/play`，active 刷新/reconnect 回到 `/play`，completed 保留最终棋盘并通过“下一局设置”返回等待页，closed 返回入口并显示原因。复制邀请覆盖 Clipboard 成功状态与 API 失败后的可操作手动复制后备；active 房间的关闭/离开操作必须从菜单触发并保留确认。
+Web E2E 同时验证三阶段 App Router：创建/加入和 canonical 邀请进入等待页，旧 `?roomCode=` 兼容入口规范化，双方 ready 后自动进入 `/play`，active 刷新/reconnect 回到 `/play`，completed 保留最终棋盘并通过“下一局设置”返回等待页，closed 返回入口并显示原因。复制邀请覆盖 Clipboard 成功状态与 API 失败后的可操作手动复制后备；五套 E2E 都从对局左侧 HUD 底部的直接关闭/离开控件触发操作，并验证 active 房间保留确认。
 
 `tooling/e2e/tests/connect-four-vertical-slice.spec.ts` 保留上述真实 Next/PostgreSQL/Colyseus harness，独立验证：
 

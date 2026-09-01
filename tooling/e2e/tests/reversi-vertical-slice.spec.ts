@@ -302,7 +302,6 @@ test("two guests complete authoritative Reversi with flips and a non-full termin
     expect(match).not.toHaveProperty("seed");
   }
 
-  await pageA.getByTestId("game-menu").click();
   await pageA.getByTestId("close-room").click();
   await Promise.all(
     [pageA, pageB].map((page) =>

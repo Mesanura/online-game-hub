@@ -7,7 +7,6 @@ import {
   CheckCircle,
   Copy,
   Crown,
-  DotsThree,
   GameController,
   House,
   Link as LinkIcon,
@@ -23,7 +22,7 @@ import {
   X,
 } from "@phosphor-icons/react";
 import Link from "next/link";
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo } from "react";
 
 import type { GameClientHostState } from "@online-game-hub/game-client-sdk";
 
@@ -60,33 +59,6 @@ function rejectionLabel(state: GameClientHostState): string | null {
     return rules[rejection.gameRuleCode ?? ""] ?? "服务器拒绝了这步操作。";
   }
   return `服务器拒绝了操作（${rejection.code}）。`;
-}
-
-function IconButton({
-  label,
-  children,
-  onClick,
-  testId,
-  disabled = false,
-}: {
-  readonly label: string;
-  readonly children: ReactNode;
-  readonly onClick?: () => void;
-  readonly testId?: string;
-  readonly disabled?: boolean;
-}) {
-  return (
-    <button
-      aria-label={label}
-      className="icon-button"
-      data-testid={testId}
-      disabled={disabled}
-      onClick={onClick}
-      type="button"
-    >
-      {children}
-    </button>
-  );
 }
 
 function ConnectionBadge({
@@ -673,18 +645,13 @@ function LoadingView({ label }: { readonly label: string }) {
 }
 
 function PlayView({ title }: Pick<GameRoomPageProps, "title">) {
-  const [menuOpen, setMenuOpen] = useState(false);
   const {
     busy,
     closeRoom,
     clientModule,
-    copyInviteLink,
     host,
-    inviteCopyState,
-    inviteUrl,
     leaveRoom,
     openNextRoundSetup,
-    selectInviteFallback,
     state,
   } = useGameRoomHost();
   const snapshot = state.snapshot;
@@ -717,9 +684,6 @@ function PlayView({ title }: Pick<GameRoomPageProps, "title">) {
   return (
     <div className="page-shell console-page play-page">
       <aside className="game-rail play-rail clay-surface">
-        <IconButton label="打开离开房间菜单" onClick={() => setMenuOpen(true)}>
-          <ArrowLeft size={22} weight="bold" aria-hidden="true" />
-        </IconButton>
         <div className="game-mark game-mark-large" aria-hidden="true">
           <GameController size={32} weight="duotone" />
         </div>
@@ -746,16 +710,33 @@ function PlayView({ title }: Pick<GameRoomPageProps, "title">) {
           <span>{isCompleted ? "对局已完成" : `当前：${summary.current}`}</span>
         </div>
         <ConnectionBadge state={state} testId="connection-state" />
-        <IconButton
-          label="打开房间菜单"
-          onClick={() => setMenuOpen((open) => !open)}
-          testId="game-menu"
-        >
-          <DotsThree size={25} weight="bold" aria-hidden="true" />
-        </IconButton>
-        <span className="sr-only" data-testid="room-code">
-          {room.roomCode}
-        </span>
+        <div className="play-room-controls">
+          <div className="rail-meta">
+            <span>房间码</span>
+            <strong data-testid="room-code">{room.roomCode}</strong>
+          </div>
+          {lifecycle.isOwner ? (
+            <button
+              className="clay-button clay-button-danger"
+              data-testid="close-room"
+              disabled={busy}
+              onClick={() => void closeRoom()}
+              type="button"
+            >
+              <X size={18} weight="bold" aria-hidden="true" /> 关闭房间
+            </button>
+          ) : (
+            <button
+              className="clay-button clay-button-danger"
+              data-testid="leave-room"
+              disabled={busy}
+              onClick={() => void leaveRoom()}
+              type="button"
+            >
+              <SignOut size={18} weight="bold" aria-hidden="true" /> 离开房间
+            </button>
+          )}
+        </div>
         <span className="sr-only" data-testid="player-slot">
           {room.playerSlotId}
         </span>
@@ -770,53 +751,6 @@ function PlayView({ title }: Pick<GameRoomPageProps, "title">) {
           {snapshot.status === "completed" ? "对局已完成" : "对局进行中"}
         </span>
       </aside>
-      {menuOpen ? (
-        <aside aria-label="房间菜单" className="play-menu clay-surface">
-          <div className="play-menu-heading">
-            <h2>房间菜单</h2>
-            <IconButton label="关闭房间菜单" onClick={() => setMenuOpen(false)}>
-              <X size={21} weight="bold" aria-hidden="true" />
-            </IconButton>
-          </div>
-          <p className="menu-room-code">
-            房间码 <strong>{room.roomCode}</strong>
-          </p>
-          <InviteButton
-            inviteUrl={inviteUrl}
-            copyState={inviteCopyState}
-            onCopy={() => void copyInviteLink()}
-            onFallback={selectInviteFallback}
-          />
-          <details className="connection-details">
-            <summary>连接详情</summary>
-            <p>
-              <ConnectionBadge state={state} />
-            </p>
-            <p>当前同步版本：{snapshot.revision}</p>
-          </details>
-          {lifecycle.isOwner ? (
-            <button
-              className="menu-danger"
-              data-testid="close-room"
-              disabled={busy}
-              onClick={() => void closeRoom()}
-              type="button"
-            >
-              <X size={18} weight="bold" aria-hidden="true" /> 关闭房间
-            </button>
-          ) : (
-            <button
-              className="menu-danger"
-              data-testid="leave-room"
-              disabled={busy}
-              onClick={() => void leaveRoom()}
-              type="button"
-            >
-              <SignOut size={18} weight="bold" aria-hidden="true" /> 离开房间
-            </button>
-          )}
-        </aside>
-      ) : null}
       <main className="play-stage-layout">
         <div className="game-stage" data-testid="game-stage">
           <GameComponent
