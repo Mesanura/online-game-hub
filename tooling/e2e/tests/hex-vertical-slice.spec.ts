@@ -9,6 +9,7 @@ import { resolveGameDefinition } from "@online-game-hub/game-registry/server";
 import { verifyReplay } from "@online-game-hub/game-server-runtime";
 
 import { startE2eHarness } from "../src/harness.js";
+import { registerE2eAccount } from "../src/account.js";
 import type { E2eHarness } from "../src/harness.js";
 
 const BLUE_WINNING_PATH = Array.from({ length: 11 }, (_, row) => row * 11);
@@ -107,13 +108,17 @@ async function currentCompletedReplay(
   return currentRound.replayId;
 }
 
-test("two guests complete Hex by connection, then use the shared HUD to cancel and confirm an off-turn resignation", async ({
+test("two accounts complete Hex by connection, then use the shared HUD to cancel and confirm an off-turn resignation", async ({
   browser,
 }) => {
   const contextA = await browser.newContext();
   const contextB = await browser.newContext();
   const pageA = await contextA.newPage();
   const pageB = await contextB.newPage();
+  await Promise.all([
+    registerE2eAccount(pageA.request, harness.webUrl, "hex_account_a"),
+    registerE2eAccount(pageB.request, harness.webUrl, "hex_account_b"),
+  ]);
   const browserErrors: string[] = [];
   capturePageErrors(pageA, browserErrors);
   capturePageErrors(pageB, browserErrors);

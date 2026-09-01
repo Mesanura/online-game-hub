@@ -1,6 +1,6 @@
 # 产品目标与范围
 
-> 状态：产品基线（M1–M6 已完成，当前使用 Protocol V3）
+> 状态：产品基线（M1–M7-A 已完成，当前使用 Protocol V4）
 > 本文是产品目标、范围和非目标的权威来源。技术实现边界见 [ARCHITECTURE.md](./ARCHITECTURE.md)。
 
 ## 1. 产品愿景
@@ -65,7 +65,7 @@
 - 60 秒席位保留和重连后的完整同步；
 - canonical replay 记录、确定性重建和自动化验证；
 - 首局及后续局统一选择先手、ready/cancel，同一 live room 多轮、房主关闭、非房主离开和有界回收；
-- 每轮独立 PostgreSQL Match/Replay archive，以及当前 guest 私有的最小 history metadata。
+- 每轮独立 PostgreSQL Match/Replay archive，以及账户私有的最小 history metadata；游客无历史入口。
 
 当前生产 composition 使用内存 live `RoomStore` 和 PostgreSQL `ReplayStore`/`MatchArchive`。创建房间只产生 room code、Config 与 stable slots；首局尚未开始的房间没有 Core State、Replay 或 Match，也不进入历史。已开始/完成轮次可持久化读取，但进程重启仍不会恢复 live room、socket、timer 或 authoritative State；启动协调只会把旧 schema 中遗留的 `waiting` 和当前 `active` archive 诚实标记为 `abandoned`。
 
@@ -95,7 +95,15 @@
 
 Web View 明确提供合法落点、当前行动 slot、BLACK/WHITE 棋子数和 Outcome；客户端不扫描夹线、不判断跳过或终局。强制跳过不是 PASS Action，不增加额外 revision，也不进入 canonical replay。黑白棋复用既有双人房间、多轮、stable slots、projection、Replay V1、PostgreSQL archive/history 和通用 Web 页面，M6 因此完成。
 
-## 5. 长期产品能力
+## 5. M7-A：密码账户与登录态对局归属
+
+M7-A 提供用户名+密码账户。用户名规范化为 lowercase ASCII `[a-z0-9_]{3,24}` 且唯一；密码长度 12–128，使用 Argon2id。账户 session 为 30 天 opaque HttpOnly cookie，可退出撤销；登录、注册、退出和失效 session 都轮换 guest session。
+
+游客仍可创建、加入、重连和完成全部对局，但没有历史或 replay 读取入口。注册/登录不会认领此前游客比赛；只有登录身份进入房间并在 Round 开始时快照的玩家才写入 `match_players.user_id`。匿名 Round 永久保持 `null`，后续归档重试、登录或退出不会回填。账户历史最多显示最近 50 条安全 metadata；replay 私有 UI、下载和逐步播放属于 M7-B。
+
+账户操作在 live room 中会明确提示离开后失去席位；同房间后续 Round 沿用 stable slot 的快照身份，不允许匿名/账户升级、降级或换号接管。
+
+## 6. 长期产品能力
 
 以下能力在架构上不得被阻碍，但不要求在首个纵向切片实现：
 
@@ -112,21 +120,21 @@ Web View 明确提供合法落点、当前行动 slot、BLACK/WHITE 棋子数和
 
 实时 2D 游戏将使用与离散 Action 游戏不同的 runtime contract，但继续复用平台身份、房间、目录和比赛生命周期等能力。
 
-## 6. 当前明确非目标
+## 7. 当前明确非目标
 
 M6 完成后当前仍不实现：
 
 - 完整 Lobby 或公开房间浏览；
-- 正式用户注册、登录、密码和第三方 OAuth；
+- 邮箱、找回密码、邮件验证、管理员重置和第三方 OAuth；
 - 公开比赛列表、完整历史产品、公开 replay 或排行榜；
 - 自动 Matchmaking；
 - 观战功能；
 - Redis、Kubernetes、微服务拆分或多区域部署；
-- 完整 replay 播放器；
+- 公开 replay、replay 播放器和 M7-B 之前的账户私有 replay UI；
 - 一批并行开发的新游戏；
 - 为尚未验证的未来游戏提前设计通用脚本系统或复杂 ECS。
 
-## 7. 成功标准
+## 8. 成功标准
 
 平台架构达到可继续开发的标准，需要同时满足：
 

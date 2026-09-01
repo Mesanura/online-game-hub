@@ -1,6 +1,6 @@
 # 开发路线图
 
-> 状态：M1–M6、Protocol V3 随机先手/即时重开、三阶段 Web、窄版 create-game 与通用投降/规则版本增强已完成
+> 状态：M1–M6、Protocol V4 账户身份、密码账户/私有历史、三阶段 Web、窄版 create-game 与通用投降/规则版本增强已完成
 > 本文是项目阶段顺序和里程碑退出条件的权威来源。里程碑按依赖排序，不承诺具体日期。
 
 ## 原则
@@ -94,9 +94,9 @@
 
 退出条件：两名访客能在浏览器完成一场比赛；刷新后在宽限期内恢复；canonical replay 验证通过。
 
-## M5：持久化与账号基础
+## M5：持久化基础
 
-> 实施状态：已完成（2026-08-30）。PostgreSQL/Drizzle migration、durable replay、Match archive、guest-to-account 服务端基础、私有 history API、同房间多轮/关闭纵切、真实数据库 integration 与 PostgreSQL-backed Playwright 已通过验证。
+> 实施状态：已完成（2026-08-30）。PostgreSQL/Drizzle migration、durable replay、Match archive、同房间多轮/关闭纵切、真实数据库 integration 与 PostgreSQL-backed Playwright 已通过验证。
 
 开始条件：M4 稳定，产品确认需要跨重启历史。
 
@@ -105,8 +105,7 @@
 - PostgreSQL + Drizzle 基础和 migrations；
 - `User`、`Match`、`MatchPlayer`、`Replay` 的最小 schema；
 - durable `ReplayStore` 和比赛历史读取；
-- guest-to-account 身份迁移；
-- canonical replay 保持 server-only，history API 只返回当前 guest 的最小平台 metadata；
+- canonical replay 保持 server-only；账户归属留待 M7-A；
 - 两名原玩家在同一 live room ready/cancel 后开始独立下一轮，保留 room code/stable slots；每轮拥有独立 Match、replay、revision 和 `roundNumber` history；
 - 房主关闭、非房主主动离开、active 确认、terminal outsider 拒绝、60 秒 reconnect close 与 5 分钟 completed TTL；
 - 单实例启动把遗留 waiting/active archive 标记 abandoned，不恢复 active State；
@@ -174,7 +173,7 @@
 - Protocol V2 使 Action/Snapshot 的 `roundNumber` 必填，并以严格 discriminated union 提供 `SELECT_STARTER`、`READY_FOR_ROUND`、`CANCEL_ROUND_READY`、`CLOSE_ROOM`；Host 可在首局没有 snapshot 时只根据 lifecycle 工作；
 - 通用 Web 在无 snapshot 时展示邀请与下一局设置，completed 时保留终局棋盘并并列展示设置；五套 E2E 使用稳定 test id 覆盖相同流程，井字棋第二局明确反转先手。
 
-该增强只面向当前所有已注册的双人游戏，当时不预先加入多人 starter policy、随机先手、观战、房主迁移或 active room 跨进程恢复。M2–M6 小节中的 “Protocol V1” 描述保留为各里程碑完成当时的历史事实；当前部署契约以 [NETWORK_PROTOCOL.md](./NETWORK_PROTOCOL.md) 的 Protocol V3 为准。
+该增强只面向当前所有已注册的双人游戏，当时不预先加入多人 starter policy、随机先手、观战、房主迁移或 active room 跨进程恢复。M2–M6 小节中的 “Protocol V1” 描述保留为各里程碑完成当时的历史事实；当前部署契约以 [NETWORK_PROTOCOL.md](./NETWORK_PROTOCOL.md) 的 Protocol V4 为准。
 
 ## 已完成平台增强：三阶段 Claymorphism Web 体验
 
@@ -219,6 +218,15 @@
 - 结果 HUD 提供“重新对局”和“设置规则”两个操作；后者保留原下一局设置流程，前者直接发送即时重开 intent；
 - starter 设置统一显示“我方先手”、“对方先手”、“随机先手”并以细线分隔；五款游戏的棋盘状态文本追加对应棋子和当前回合颜色标记；
 - `RANDOM` 会出现在严格 lifecycle schema，旧 V2 客户端无法安全解析，因此 wire envelope 提升为 Protocol V3；V1/V2 ticket、request 和 message 均 exact 拒绝，不做混合版本猜测。
+
+## M7-A：密码账户与登录态对局归属
+
+> 实施状态：已完成（2026-09-02）。Protocol V4、用户名+密码账户、可撤销 30 天 session、账户/游客混合对局、Round 开始身份快照、账户私有历史和 Web 认证页面已实现。
+
+- `password_credentials` 与 `account_sessions` 独立于通用 `users`；Argon2id hash、SHA-256 token hash-at-rest、同源 JSON mutation、单实例有界限速和 Secure/HttpOnly/Lax cookie；
+- ticket claims 的可选 `userId` 使 Protocol V4 显式拒绝 V1–V3；Game Server 只信 verifier 结果，slot 私有保存账户身份并在 Round 开始写入 `match_players.user_id`；
+- 游客可完整创建/加入/重连/完成，但匿名历史 API 返回 401；注册、登录、退出或归档重试不会认领/回填旧游客 Round；
+- 账户历史最多 50 条安全 metadata；不提供 replay payload、下载、公开分享或播放器，M7-B 才开发账户私有 replay UI。
 
 ## M7：按证据扩展平台
 

@@ -10,6 +10,7 @@ import { verifyReplay } from "@online-game-hub/game-server-runtime";
 
 import { startE2eHarness } from "../src/harness.js";
 import type { E2eHarness } from "../src/harness.js";
+import { registerE2eAccount } from "../src/account.js";
 
 interface JoinedRoom {
   readonly inviteUrl: string;
@@ -280,7 +281,7 @@ async function assertPrivateCompletedHistory(
       match.status === "completed" && match.finalRevision === expectedRevision,
   );
   if (matchA === undefined || typeof matchA.matchId !== "string") {
-    throw new Error("Guest A history did not contain the completed match.");
+    throw new Error("Account A history did not contain the completed match.");
   }
   expect(matchA).toEqual({
     matchId: matchA.matchId,
@@ -322,7 +323,7 @@ async function assertPrivateCompletedHistory(
   return matchA.matchId;
 }
 
-test("two isolated guests complete win/draw, converge on reconnect, and cannot steal state", async ({
+test("two isolated accounts complete win/draw, converge on reconnect, and cannot steal state", async ({
   browser,
 }) => {
   const contextA = await browser.newContext();
@@ -340,6 +341,10 @@ test("two isolated guests complete win/draw, converge on reconnect, and cannot s
 
   let pageA = await contextA.newPage();
   const pageB = await contextB.newPage();
+  await Promise.all([
+    registerE2eAccount(pageA.request, harness.webUrl, "web_account_a"),
+    registerE2eAccount(pageB.request, harness.webUrl, "web_account_b"),
+  ]);
   capturePageErrors(pageA, browserErrors);
   capturePageErrors(pageB, browserErrors);
 
@@ -472,10 +477,14 @@ test("two isolated guests complete win/draw, converge on reconnect, and cannot s
   );
   expect(missingSession.status()).toBe(401);
   await expect(missingSession.json()).resolves.toEqual({
-    code: "GUEST_SESSION_REQUIRED",
+    code: "ACCOUNT_SESSION_REQUIRED",
   });
   const unrelatedPage = await unrelatedContext.newPage();
-  await unrelatedPage.goto(harness.webUrl);
+  await registerE2eAccount(
+    unrelatedPage.request,
+    harness.webUrl,
+    "web_unrelated",
+  );
   const unrelatedHistory = await unrelatedPage.request.get(
     `${harness.webUrl}/api/matches?matchId=${persistedMatchId}&playerSessionId=forged`,
   );

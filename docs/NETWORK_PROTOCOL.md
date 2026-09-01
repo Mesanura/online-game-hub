@@ -1,6 +1,6 @@
 # 网络协议
 
-> 状态：Protocol V3（随机先手、即时重开与统一 Round 准备）
+> 状态：Protocol V4（账户身份、随机先手、即时重开与统一 Round 准备）
 > 本文是 Web、Game Server 与浏览器之间身份、房间、消息、revision 和重连语义的权威来源。游戏规则 payload 见 [GAME_PLUGIN_SPEC.md](./GAME_PLUGIN_SPEC.md)。
 
 ## 1. 协议目标
@@ -23,9 +23,11 @@
 
 浏览器直接连接 Game Server。Next.js 不代理 WebSocket，也不保存 authoritative match State。
 
+M7-A 当前部署使用 Protocol V4。文中提及 V1–V3 的位置描述历史里程碑或兼容拒绝规则；所有现行 request、ticket、message 和 reconnect 语义以 V4 exact schema 为准。
+
 ## 3. 协议版本
 
-所有 application-level envelope 携带整数 `protocolVersion`。V3 值为 `3`；V1/V2 request、ticket 或 message 由 exact schema 拒绝，不在同一 server 内做兼容猜测。
+所有 application-level envelope 携带整数 `protocolVersion`。V4 值为 `4`；V1/V2/V3 request、ticket 或 message 由 exact schema 拒绝，不在同一 server 内做兼容猜测。V4 的 ticket claims 新增可选 `userId`，因此不静默复用 V3。
 
 - 版本表示 wire envelope 兼容性，不等同于 `gameVersion` 或 `replayFormatVersion`。
 - Game Server 在连接或首条消息阶段拒绝不支持的版本。
@@ -39,7 +41,7 @@ Next Proxy 在首次页面请求验证或建立匿名 guest session。平台生�
 
 Cookie 固定为 `HttpOnly`、`SameSite=Lax`、`Path=/`、`Max-Age=604800`；生产环境强制 `Secure`，development/test 的本地 loopback HTTP 可明确配置 `Secure=false`。guest session secret 至少 32 UTF-8 bytes，只存在于 Web server runtime；cookie 值、secret 和解析出的 `PlayerSessionId` 不进入客户端 JavaScript、日志或错误响应。
 
-M5 仍不实现登录、OAuth、密码或数据库 session。服务器端可以把经可信未来认证边界提供的 UserId 与 guest session 事务化关联：同一 guest→同一 User 重试幂等，关联到不同 User 会冲突失败；没有任何允许浏览器提交 UserId 的 claim API。当前 guest cookie 不加入 UserId，房间和 Game Core 继续只依赖平台 session/slot 抽象。
+登录、注册、退出和失效账户 session 会轮换 guest cookie；同一 live seat 不允许在匿名和账户身份之间切换。游客仍可完整游玩，但没有历史读取入口；旧游客 Round 不会因之后注册或登录而被认领。
 
 ### 4.2 Game Server Ticket
 
@@ -50,17 +52,18 @@ interface GameServerTicketClaims {
   issuer: string;
   audience: "game-server";
   playerSessionId: string;
+  userId?: string;
   issuedAt: number;
   expiresAt: number;
   ticketId: string;
-  protocolVersion: 3;
+  protocolVersion: 4;
 }
 ```
 
 - `@online-game-hub/game-server-ticket` 使用两个 canonical base64url segments（JSON claims 与 HMAC-SHA256 signature），secret 至少 32 UTF-8 bytes。默认 lifetime 为 30 秒，可配置范围为 1–300 秒。
 - Issuer 生成服务器控制的 `ticketId`、`issuedAt`、`expiresAt`、audience 和 `protocolVersion`；浏览器只取得完整 bearer ticket，不能选择 `PlayerSessionId` 或修改 claims。
-- Verifier 在建立身份前以 timing-safe comparison 验证 signature，并严格验证 Protocol V3 claims schema、配置的 issuer、固定 audience、`issuedAt <= now` 和 `expiresAt > now`。缺失、超大、非 canonical、篡改、过期、未来签发或版本错误 ticket 都被拒绝。
-- Web 与 Game Server 通过环境注入完全一致的 issuer/ticket secret；guest session secret 必须独立。生产 `apps/game-server` adapter 不导入 testing subpath，`TestTicketAuthority` 只供 contract/integration tests。
+- Verifier 在建立身份前以 timing-safe comparison 验证 signature，并严格验证 Protocol V4 claims schema、配置的 issuer、固定 audience、`issuedAt <= now` 和 `expiresAt > now`。缺失、超大、非 canonical、篡改、过期、未来签发或版本错误 ticket 都被拒绝。
+- Web 与 Game Server 通过环境注入完全一致的 issuer/ticket secret；guest session secret 必须独立。只有可信账户 session 才能让 Web 签入 `userId`；浏览器不能提交或修改它。Game Server 将 verifier 返回的账户身份保存在 slot 私有字段，lifecycle/snapshot/View/日志均不发送。生产 `apps/game-server` adapter 不导入 testing subpath，`TestTicketAuthority` 只供 contract/integration tests。
 - Ticket 可以短暂存在于 `GameClientHost` 的调用栈以完成 Colyseus reservation，但不得持久化到 URL、local/session storage、UI、日志或错误响应；secret 永远不进入客户端 bundle。
 - M4 不实现 key management 或 rotation infrastructure；变更共享 secret 需要协调两个进程重启。
 
@@ -76,7 +79,7 @@ interface GameServerTicketClaims {
 
 ### 4.4 Private Match History API
 
-`GET /api/matches` 是 Web same-origin、当前 guest 私有的平台 metadata 查询，不是 Protocol V3 WebSocket envelope，也不改变 `protocolVersion`。route 只接受经当前部署 secret 验证的 `ogh_guest` cookie；缺失/无效 session 返回 `401 { "code": "GUEST_SESSION_REQUIRED" }`，数据库或配置失败返回 `503 { "code": "MATCH_HISTORY_UNAVAILABLE" }`。成功为：
+`GET /api/matches` 是 Web same-origin、当前账户私有的平台 metadata 查询，不是 WebSocket envelope。route 只接受有效 `ogh_account` session；匿名或失效 session 返回 `401 { "code": "ACCOUNT_SESSION_REQUIRED" }`，数据库或配置失败返回 `503 { "code": "MATCH_HISTORY_UNAVAILABLE" }`。成功为：
 
 ```ts
 interface MatchHistoryResponse {
@@ -96,7 +99,7 @@ interface MatchHistoryResponse {
 }
 ```
 
-结果最多 50 条并稳定排序；response 设置 `Cache-Control: no-store, private` 与 `Vary: Cookie`。query/body 中的 `PlayerSessionId`、`UserId`、slot 或 room ID 一律不作为授权输入。其他 guest 即使猜到 match ID，也只能得到自己的列表，不泄漏参与关系。API 不返回 canonical replay、Config、Action、Outcome、RNG seed、authoritative State、其他参与者 identity、database row ID 或 credential。
+结果最多 50 条并稳定排序；response 设置 `Cache-Control: no-store, private` 与 `Vary: Cookie`。query/body 中的 `PlayerSessionId`、`UserId`、slot 或 room ID 一律不作为授权输入。其他账户即使猜到 match ID，也只能得到自己的列表，不泄漏参与关系。API 不返回 canonical replay、replay ID、Config、Action、Outcome、RNG seed、authoritative State、session identity 或 credential。
 
 ## 5. 房间标识与流程
 
@@ -104,12 +107,12 @@ interface MatchHistoryResponse {
 
 ### 5.1 创建房间
 
-V3 matchmaking options 使用以下 strict request；客户端不能选择 `gameVersion`、slot 或内部 `roomId`：
+V4 matchmaking options 使用以下 strict request；客户端不能选择 `gameVersion`、slot、UserId 或内部 `roomId`：
 
 ```ts
 interface CreateGameRoomRequest {
   type: "room.create";
-  protocolVersion: 3;
+  protocolVersion: 4;
   ticket: string;
   gameId: string;
   initialConfig: unknown;
@@ -127,7 +130,7 @@ interface CreateGameRoomRequest {
 ```ts
 interface JoinGameRoomRequest {
   type: "room.join";
-  protocolVersion: 3;
+  protocolVersion: 4;
   ticket: string;
   roomCode: string;
 }
@@ -140,7 +143,7 @@ interface JoinGameRoomRequest {
 
 客户端不得选择 `PlayerSlotId`、伪造其他玩家身份或要求加入内部 `roomId`。
 
-V3 room code 是去掉首尾空白后转为大写的 8 位 `[A-HJ-NP-Z2-9]` 字符串。Colyseus 会在 room 的 Zod transform 之前使用原始 matchmaking options 执行 `roomCode` filter，因此调用 SDK `join` 前必须已经把 code 规范化为大写；不能依赖 room 内部 transform 修正 filter 输入。
+V4 room code 是去掉首尾空白后转为大写的 8 位 `[A-HJ-NP-Z2-9]` 字符串。Colyseus 会在 room 的 Zod transform 之前使用原始 matchmaking options 执行 `roomCode` filter，因此调用 SDK `join` 前必须已经把 code 规范化为大写；不能依赖 room 内部 transform 修正 filter 输入。
 
 ### 5.3 连接确认
 
@@ -149,7 +152,7 @@ WebSocket join 成功后，Server 先在 `protocol` message channel 发送：
 ```ts
 interface RoomConnected {
   type: "room.connected";
-  protocolVersion: 3;
+  protocolVersion: 4;
   roomCode: string;
   gameId: string;
   gameVersion: string;
@@ -167,7 +170,7 @@ interface RoomConnected {
 type MatchStatus = "waiting" | "active" | "completed" | "abandoned";
 ```
 
-- `waiting`：只为旧 PostgreSQL rows/history schema 兼容保留；Protocol V3 live `currentRound` 不使用该状态。
+- `waiting`：只为旧 PostgreSQL rows/history schema 兼容保留；Protocol V4 live `currentRound` 不使用该状态。
 - `active`：比赛已开始，可以按平台和游戏规则处理 Action。
 - `completed`：Core 返回 Outcome；不再接受改变结果的 Action。
 - `abandoned`：已经 active 的 Round 因离开、断线超时或管理原因终止，可能没有游戏 Outcome。首局尚未开始的 room 关闭时不创建 abandoned Match。
@@ -178,7 +181,7 @@ type MatchStatus = "waiting" | "active" | "completed" | "abandoned";
 
 一个 live room 可以顺序承载多轮，但每轮都由 `roundNumber = 1, 2, ...` 标识，并拥有独立 `playerOrder`、Match、RNG、revision 序列和 canonical replay。room code、Config 和 stable slots 不变；`playerOrder` 由房主逐局选择，可在 `[ownerSlot, nonOwnerSlot]` 与反向顺序间变化。Core 初始化与 replay header 必须使用完全相同的顺序，新轮 revision 从 `0` 开始。
 
-首局与 completed 后续局都进入统一的 `nextRound` setup。V3 使用独立 Colyseus custom message type `room.control`，命令是严格 discriminated union：
+首局与 completed 后续局都进入统一的 `nextRound` setup。V4 使用独立 Colyseus custom message type `room.control`，命令是严格 discriminated union：
 
 ```ts
 type StarterChoice = "OWNER" | "NON_OWNER" | "RANDOM";
@@ -186,14 +189,14 @@ type StarterChoice = "OWNER" | "NON_OWNER" | "RANDOM";
 type RoomControlCommand =
   | {
       type: "room.control";
-      protocolVersion: 3;
+      protocolVersion: 4;
       commandId: string;
       operation: "SELECT_STARTER";
       starter: StarterChoice;
     }
   | {
       type: "room.control";
-      protocolVersion: 3;
+      protocolVersion: 4;
       commandId: string;
       operation:
         | "READY_FOR_ROUND"
@@ -208,7 +211,7 @@ Server 在同一 `room.control` channel 按 viewer 返回：
 ```ts
 interface RoomLifecycleState {
   type: "room.lifecycle";
-  protocolVersion: 3;
+  protocolVersion: 4;
   isOwner: boolean;
   currentRound: {
     roundNumber: number;
@@ -243,12 +246,12 @@ interface RoomLifecycleState {
 
 ## 7. Client Action Envelope
 
-V3 transport 名称固定为：Colyseus room name `game`；客户端 custom message type `game.action`；所有 application-level server envelope 通过 custom message type `protocol` 发送，并由 envelope 自身的 `type` 区分 `room.connected`、`match.snapshot` 和 `command.rejected`。
+V4 transport 名称固定为：Colyseus room name `game`；客户端 custom message type `game.action`；所有 application-level server envelope 通过 custom message type `protocol` 发送，并由 envelope 自身的 `type` 区分 `room.connected`、`match.snapshot` 和 `command.rejected`。
 
 ```ts
 interface GameActionCommand {
   type: "game.action";
-  protocolVersion: 3;
+  protocolVersion: 4;
   commandId: string;
   roundNumber: number;
   expectedRevision: number;
@@ -257,15 +260,15 @@ interface GameActionCommand {
 ```
 
 - `commandId` 由客户端为每次用户意图生成，在同一 session/live room 内唯一。
-- `roundNumber` 在 V3 必填；缺失由 strict schema 拒绝，与当前轮不一致时返回 `STALE_REVISION` 和当前 snapshot，不进入 Core。
+- `roundNumber` 在 V4 必填；缺失由 strict schema 拒绝，与当前轮不一致时返回 `STALE_REVISION` 和当前 snapshot，不进入 Core。
 - `expectedRevision` 是用户产生 Action 时看到的 revision。
 - `action` 先由通用 envelope schema 读取为 `unknown`，再由当前游戏的 `actionSchema` 解析。
-- V3 通用 schema 要求 `action` 是 JSON value，且序列化后的 UTF-8 长度不超过 16 KiB；transport 仍应在进入 Zod/Core 前设置总消息上限。
+- V4 通用 schema 要求 `action` 是 JSON value，且序列化后的 UTF-8 长度不超过 16 KiB；transport 仍应在进入 Zod/Core 前设置总消息上限。
 - Envelope 不包含 actor、State、Outcome、RNG seed 或新 revision。
 
-四子棋通过同一 Protocol V3 envelope 发送 `{ type: "DROP_DISC", column }`。越界 column 属于 `INVALID_ACTION_PAYLOAD`，合法形状但错误回合/满列属于带 opaque `gameRuleCode` 的 `GAME_RULE_REJECTED`；duplicate、stale、错轮和终局拒绝继续使用现有平台语义。Transport 不知道重力、row 或四连规则。
+四子棋通过同一 Protocol V4 envelope 发送 `{ type: "DROP_DISC", column }`。越界 column 属于 `INVALID_ACTION_PAYLOAD`，合法形状但错误回合/满列属于带 opaque `gameRuleCode` 的 `GAME_RULE_REJECTED`；duplicate、stale、错轮和终局拒绝继续使用现有平台语义。Transport 不知道重力、row 或四连规则。
 
-五子棋同样通过 Protocol V3 创建请求传递 `{ boardSize: 15 | 19, winLength: 5 }` Config，并用 Action envelope 发送 `{ type: "PLACE_STONE", cell }`。Action 不含 actor、State、Outcome、revision 或随机结果；transport 不知道棋盘坐标、占用、五连/长连或平局。Config/Action schema-invalid payload 使用现有错误，合法形状但错误回合、占用或按当前 Config 越界由 Core 以 opaque `gameRuleCode` 拒绝。
+五子棋同样通过 Protocol V4 创建请求传递 `{ boardSize: 15 | 19, winLength: 5 }` Config，并用 Action envelope 发送 `{ type: "PLACE_STONE", cell }`。Action 不含 actor、State、Outcome、revision 或随机结果；transport 不知道棋盘坐标、占用、五连/长连或平局。Config/Action schema-invalid payload 使用现有错误，合法形状但错误回合、占用或按当前 Config 越界由 Core 以 opaque `gameRuleCode` 拒绝。
 
 六贯棋以 `initialConfig: null` 创建，并通过同一 envelope 发送 strict `{ type: "PLACE_STONE", cell } | { type: "RESIGN" }`。Transport 不知道六边邻接、连接路径、颜色、投降是否受回合限制或胜者；本轮 `players[0]` 由 starter choice 决定并获得 BLUE。schema-invalid/extra fields 仍是 `INVALID_ACTION_PAYLOAD`，合法形状的错轮、占用、越界和终局由 Core/现有 lifecycle 错误处理。accepted `RESIGN` 与 accepted placement 一样递增 revision 并进入 replay。
 
@@ -279,7 +282,7 @@ interface GameActionCommand {
 - schema invalid、platform rejected、game-rule rejected 和 duplicate Action 不增加 revision。
 - Room 在单一串行队列中处理命令，不并发调用 Core。
 - `expectedRevision` 不等于当前 revision 时返回 `STALE_REVISION` 和最新 snapshot，命令不进入 Core。
-- Server 以 `PlayerSessionId + commandId` 为 key 缓存 command outcome。V3 内存缓存保留整个 live room lifetime，包括后续轮次；重复 `commandId` 返回带原 `roundNumber` 的原结果，不重复调用 Core、消费 RNG、追加 replay 或广播 snapshot。
+- Server 以 `PlayerSessionId + commandId` 为 key 缓存 command outcome。V4 内存缓存保留整个 live room lifetime，包括后续轮次；重复 `commandId` 返回带原 `roundNumber` 的原结果，不重复调用 Core、消费 RNG、追加 replay 或广播 snapshot。
 - 后续长生命周期房间可以加入有界淘汰，但保留窗口不得短于客户端正常重连与请求重试窗口。
 
 ## 9. Server Snapshot
@@ -287,7 +290,7 @@ interface GameActionCommand {
 ```ts
 interface MatchSnapshot<View, Outcome> {
   type: "match.snapshot";
-  protocolVersion: 3;
+  protocolVersion: 4;
   gameId: string;
   gameVersion: string;
   roundNumber: number;
@@ -307,14 +310,14 @@ interface MatchSnapshot<View, Outcome> {
 - `causedByCommandId` 用于让发起客户端确认命令；其他客户端可以不接收该字段。
 - 初次连接、accepted Action、重连和 stale revision 恢复都使用相同 snapshot 语义。
 
-V3 不要求把 game State 建模为共享 Colyseus Schema。Colyseus 管理 room/transport，generic runtime 可以使用类型化 custom messages 发送 per-viewer JSON snapshot，避免 transport 类型泄漏到 Core。
+V4 不要求把 game State 建模为共享 Colyseus Schema。Colyseus 管理 room/transport，generic runtime 可以使用类型化 custom messages 发送 per-viewer JSON snapshot，避免 transport 类型泄漏到 Core。
 
 ## 10. Rejection Envelope
 
 ```ts
 interface CommandRejected {
   type: "command.rejected";
-  protocolVersion: 3;
+  protocolVersion: 4;
   commandId?: string;
   code: ProtocolErrorCode;
   revision?: number;
@@ -324,7 +327,7 @@ interface CommandRejected {
 }
 ```
 
-V3 `ProtocolErrorCode` 至少包括：
+V4 `ProtocolErrorCode` 至少包括：
 
 | Code                           | 语义                                 | Retryable                        |
 | ------------------------------ | ------------------------------------ | -------------------------------- |
@@ -346,16 +349,16 @@ V3 `ProtocolErrorCode` 至少包括：
 
 - Game Server 将 `PlayerSessionId` 映射到稳定 `PlayerSlotId`。
 - 意外断线后席位默认保留 60 秒，房间保持 authoritative State。
-- 客户端使用同一有效 guest session、新 ticket 和新的 Colyseus `join` seat reservation 重新连接；V3 不把 SDK reconnection token 作为 authoritative 恢复凭证。
+- 客户端使用同一有效 PlayerSessionId 与 slot 账户身份、新 ticket 和新的 Colyseus `join` seat reservation 重新连接；V4 不把 SDK reconnection token 作为 authoritative 恢复凭证。
 - Server 验证 session 与 slot 所有权后发送当前 lifecycle；存在 current Round 时再发送完整 snapshot。setup 阶段的重连仍可没有 snapshot，并且该 session 的 ready 已被清除。
 - 每个 slot 同时只允许一个可操作连接；新的有效连接接管后，旧连接失去提交 Action 的权限。
-- 超过 60 秒后，V3 平台策略关闭 live room；若当前 Round active 则标记 `abandoned`，若首局尚未开始则不创建 Match。旧 SDK reconnection token 和新的 join 都不能恢复该席位。未来判负策略仍由平台 lifecycle 负责，具体游戏不得直接处理 socket timeout。
+- 超过 60 秒后，V4 平台策略关闭 live room；若当前 Round active 则标记 `abandoned`，若首局尚未开始则不创建 Match。旧 SDK reconnection token 和新的 join 都不能恢复该席位。未来判负策略仍由平台 lifecycle 负责，具体游戏不得直接处理 socket timeout。
 - Server 进程重启不在 live room 恢复保证内，因为 RoomStore、待开局设置与 authoritative State 仍在内存。只保证 completed replay/history 跨连接与进程读取，并在单实例启动时把旧 waiting/当前 active archive 标记 abandoned；从未开始 Round 的 room 没有 archive 可标记。
 
 ### 11.1 Client Host 收敛语义
 
 - `GameClientHostState` 明确暴露 `idle | loading | connecting | connected | reconnecting | closed`，以及独立的 room metadata、`roomLifecycle`、最新 snapshot、command rejection 和 ticket/room/protocol/closed error。
-- `createRoom(gameId, initialConfig)` 和 `joinRoom(gameId, roomCode)` 每次先通过 provider 获取新 ticket；join 在调用 Colyseus SDK 前执行 `trim().toUpperCase()` 并用 Protocol V3 schema 校验。
+- `createRoom(gameId, initialConfig)` 和 `joinRoom(gameId, roomCode)` 每次先通过 provider 获取新 ticket；join 在调用 Colyseus SDK 前执行 `trim().toUpperCase()` 并用 Protocol V4 schema 校验。
 - Host 将每个 `protocol` transport payload 当作 `unknown`，只有通过 `serverMessageSchema` 且 game/room/version/viewer identity 与当前连接一致后才更新状态；非法或不一致消息会关闭连接并报告 `INVALID_SERVER_MESSAGE`。
 - `submitAction(action)` 只在 current Round 为 active、snapshot 与 lifecycle 的 round/status 一致时可用；它使用安全 UUID command ID，并填充必填 `roundNumber` 和 `expectedRevision`。Host 不接收 actor/State/Outcome，也不计算下一个 revision；pending promise 只由同轮 matching rejection 或服务器 snapshot 结算。
 - Rejection 中若包含 snapshot，host 先应用完整 snapshot 再暴露 rejection。duplicate、stale 和 reconnect 都通过 server snapshot 收敛，不在客户端 replay Action 或推导 authoritative State。
@@ -374,7 +377,7 @@ V3 `ProtocolErrorCode` 至少包括：
 
 日志和指标使用 `roomId`、`gameId`、`gameVersion`、revision、错误码和经过脱敏的 session correlation ID；不得记录 bearer secret 或完整私密 Action。
 
-V3 内存 collector 暴露的最小指标：
+V4 内存 collector 暴露的最小指标：
 
 - `active_rooms`、`active_connections`；
 - `actions_accepted_total`、`actions_rejected_total`；

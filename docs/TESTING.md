@@ -1,6 +1,6 @@
 # 测试策略
 
-> 状态：Protocol V3 测试策略（逐局先手、随机先手与 Room/Round 分离已纳入）
+> 状态：Protocol V4/M7-A 测试策略（账户 session、可信 UserId、Round 身份快照与 V3 拒绝已纳入）
 > 本文是测试层级、职责、最低场景和质量门禁的权威来源。具体业务范围见 [PRODUCT.md](./PRODUCT.md)。
 
 ## 1. 目标
@@ -116,7 +116,7 @@ Golden fixture 只在确认规则或版本策略变化后更新。不能通过�
 - 确认 `action` 在通用层保持 `unknown`，并由选中的 game schema 再解析；
 - server response 不包含 stack、ticket、cookie、完整 State 或 RNG seed；
 - encode/decode round trip 保持稳定字段；
-- Protocol V3 exact schemas 拒绝旧版本、缺字段和 extra fields；`room.control` 严格区分 starter 选择/ready/cancel/immediate rematch/close，拒绝非法 starter 与 identity 字段；`room.lifecycle` 拒绝不一致 current/next Round、ready/closed 状态；Action/snapshot 的 `roundNumber` 必填并拒绝非法值；
+- Protocol V4 exact schemas 拒绝 V1–V3、缺字段和 extra fields；ticket 覆盖账户/游客 claim、伪造 UserId 与 extra fields；`room.control` 严格区分 starter 选择/ready/cancel/immediate rematch/close，拒绝非法 starter 与 identity 字段；`room.lifecycle` 拒绝不一致 current/next Round、ready/closed 状态；Action/snapshot 的 `roundNumber` 必填并拒绝非法值；
 - platform error 与 `gameRuleCode` 的映射不混淆。
 
 ## 7. Game Server Integration Tests
@@ -188,20 +188,20 @@ Multiplayer integration 使用两个独立客户端连接同一真实 room，验
 - 创建但未开始首局的 live room 没有 Match/MatchPlayer；首局真正启动时直接创建 active Match，旧 waiting rows 继续兼容；
 - 同一 `runtime_room_id` 可有连续正整数轮次，但 `(runtime_room_id, round_number)` 唯一；后续轮只接受与 completed 前轮相同 game/version/slot/session 的参与者，并持有独立 replay；
 - participants 集合不随 `playerOrder` 反转；两轮 Replay header 的有序 players 与各自 Core 初始化顺序一致；
-- guest history 只返回当前 server-verified guest 的安全 metadata，猜测其他 guest 的 match ID 不泄漏参与关系；
-- guest-to-account association 在事务中幂等，且不能把已关联记录覆盖到另一 User；
+- 匿名 `/api/matches` 返回 401；账户历史只按 UserId 返回最近 50 条安全 metadata，不能查询其他账户，也不泄漏 replay ID/seed/State/session ID；
+- 匿名 Round 的 `match_players.user_id` 永久为 null；注册/登录、归档重试不回填；登录后新 Round 正确记录 UserId；
 - adapter/connection shutdown 后无遗留 client；数据库错误经稳定 code 清洗，不泄漏 SQL、DSN、session、ticket、State、seed 或 canonical replay。
 
 ## 10. Playwright E2E
 
-`tooling/e2e/tests/web-vertical-slice.spec.ts` 使用两个隔离 browser contexts，代表两个匿名访客：
+`tooling/e2e/tests/web-vertical-slice.spec.ts` 使用两个隔离且已登录的 browser contexts 验证账户归属与既有房间行为；`auth-vertical-slice.spec.ts` 另以双浏览器先完成游客局，再注册并完成账户局：
 
 1. A 创建井字棋 room 后在无 snapshot 页面预选“我先”，B 以规范化 room code 加入；双方 ready 后才获得不同 stable slots、相同 room code/revision 和各自完整 View；
 2. 越过 disabled affordance 提交非当前玩家 intent 和重复点击，真实 Server 不产生额外 revision、棋盘或 replay action；
-3. 两者完成第 1 局 5-revision 胜局并验证 WIN；临时断线仍以同一 guest、新 ticket/new reservation 恢复原 slot；
+3. 两者完成第 1 局 5-revision 胜局并验证 WIN；临时断线仍以同一账户身份和 PlayerSessionId、新 ticket/new reservation 恢复原 slot；
 4. A 为第 2 局选择“对方先”，ready、cancel、再次 ready，B ready 后在同一 room code 和 stable slots 进入新 `playerOrder`，页面显示轮次且 revision 重置为 `0`；
 5. 两者以交换后的 X/O 角色完成第 2 局 9-revision 平局并验证 DRAW；两轮各有独立 Match/replay/history，Replay header 顺序相反且均通过 `verifyReplay`，history 返回 `roundNumber`；
-6. 第三 guest 猜到 completed room code 仍被 `ROOM_NOT_JOINABLE` 拒绝；A/B 的 HttpOnly guest cookies 与私有 history 授权继续隔离；
+6. 第三 context 猜到 completed room code 仍被 `ROOM_NOT_JOINABLE` 拒绝；另一账户查询不到 A/B history；
 7. completed room 由房主关闭并返回入口；另一个尚未开始首局的 room 由房主无确认关闭，且不产生 abandoned Match；
 8. active room 中非房主确认离开后当前 Match abandoned、双方返回入口；取消确认不会离开；
 9. 另一 active room 用 fake clock 前进 60,001 ms，验证 `RECONNECT_TIMEOUT` abandoned 并关闭 live room；
@@ -211,12 +211,12 @@ Web E2E 同时验证三阶段 App Router：创建/加入和 canonical 邀请进�
 
 `tooling/e2e/tests/connect-four-vertical-slice.spec.ts` 保留上述真实 Next/PostgreSQL/Colyseus harness，独立验证：
 
-1. 两个 guest contexts 从统一目录进入四子棋，并以同一通用游戏页创建/加入真实 room；
+1. 两个 account contexts 从统一目录进入四子棋，并以同一通用游戏页创建/加入真实 room；
 2. 越过非当前玩家 disabled column 操作提交真实恶意 intent，双方 revision/棋盘保持 `0`；
 3. 双方完成 7-revision 权威横向胜局，浏览器只显示服务器 View；
 4. 房主再次选择先手，双方 ready 后在相同 room code/stable slots 进入第 2 局并再次完成胜局；
 5. 两轮使用不同 Match/replay，均由新 PostgreSQL connection 读取并通过 exact registry verifier；
-6. 两个 guest 的 history 只含各自 slot 的安全平台 metadata，第三 guest 与伪造 query 无法读取。
+6. 两个账户的 history 只含各自 slot 的安全平台 metadata，第三账户与伪造 query 无法读取；认证纵切同时验证游客 API 401、游客局不认领、退出失效与同账户另一设备恢复历史。
 
 `tooling/e2e/tests/gomoku-vertical-slice.spec.ts` 使用相同真实 harness，独立验证：
 

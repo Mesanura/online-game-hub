@@ -9,6 +9,7 @@ import { resolveGameDefinition } from "@online-game-hub/game-registry/server";
 import { verifyReplay } from "@online-game-hub/game-server-runtime";
 
 import { startE2eHarness } from "../src/harness.js";
+import { registerE2eAccount } from "../src/account.js";
 import type { E2eHarness } from "../src/harness.js";
 
 let harness: E2eHarness;
@@ -179,13 +180,17 @@ async function startActiveRound(
   return { roomCode, slotA, slotB };
 }
 
-test("two guests play two authoritative Connect Four rounds with independent replay and private history", async ({
+test("two accounts play two authoritative Connect Four rounds with independent replay and private history", async ({
   browser,
 }) => {
   const contextA = await browser.newContext();
   const contextB = await browser.newContext();
   const pageA = await contextA.newPage();
   const pageB = await contextB.newPage();
+  await Promise.all([
+    registerE2eAccount(pageA.request, harness.webUrl, "connect_four_a"),
+    registerE2eAccount(pageB.request, harness.webUrl, "connect_four_b"),
+  ]);
   const browserErrors: string[] = [];
   capturePageErrors(pageA, browserErrors);
   capturePageErrors(pageB, browserErrors);
@@ -408,7 +413,10 @@ test("two guests play two authoritative Connect Four rounds with independent rep
   const unrelatedHistory = await unrelatedPage.request.get(
     `${harness.webUrl}/api/matches?matchId=${String(historyA[0]?.matchId)}&playerSessionId=forged`,
   );
-  await expect(unrelatedHistory.json()).resolves.toEqual({ matches: [] });
+  expect(unrelatedHistory.status()).toBe(401);
+  await expect(unrelatedHistory.json()).resolves.toEqual({
+    code: "ACCOUNT_SESSION_REQUIRED",
+  });
   await unrelatedContext.close();
 
   await pageA.getByTestId("close-room").click();
