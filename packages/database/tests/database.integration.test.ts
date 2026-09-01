@@ -24,11 +24,7 @@ import {
   applyDatabaseMigrations,
   createPostgresDatabaseClient,
 } from "../src/index.js";
-import type {
-  AccountRepositoryError,
-  DatabaseError,
-  GuestAssociationError,
-} from "../src/index.js";
+import type { AccountRepositoryError, DatabaseError } from "../src/index.js";
 import {
   createIsolatedTestDatabase,
   requireTestDatabaseUrl,
@@ -87,6 +83,8 @@ function roomRecord(
   roomCode: string,
   replayId: string,
   firstSession: string,
+  firstUserId: string | null = null,
+  secondUserId: string | null = null,
 ): StoredGameRoom {
   return {
     roomId,
@@ -98,11 +96,13 @@ function roomRecord(
       {
         slotId: "slot-1",
         playerSessionId: firstSession,
+        userId: firstUserId,
         reservedUntilMilliseconds: null,
       },
       {
         slotId: "slot-2",
         playerSessionId: `${firstSession}-opponent`,
+        userId: secondUserId,
         reservedUntilMilliseconds: null,
       },
     ],
@@ -139,7 +139,6 @@ describe.sequential("PostgreSQL + Drizzle persistence", () => {
   let roomStore: InMemoryRoomStore;
   let matchArchive: PostgresMatchArchive;
   let userRepository: PostgresUserRepository;
-  let completedMatchId: string;
 
   beforeAll(async () => {
     isolated = await createIsolatedTestDatabase(
@@ -169,7 +168,6 @@ describe.sequential("PostgreSQL + Drizzle persistence", () => {
     );
     expect(rows.map((row) => row.table_name)).toEqual([
       "account_sessions",
-      "guest_user_associations",
       "match_players",
       "matches",
       "password_credentials",
@@ -366,17 +364,21 @@ describe.sequential("PostgreSQL + Drizzle persistence", () => {
   });
 
   it("archives completed and abandoned matches with private stable history", async () => {
+    const userA = await userRepository.createUser();
+    const userB = await userRepository.createUser();
     await replayStore.create("replay-completed-match", header);
     const waiting = roomRecord(
       "runtime-completed",
       "HJST2345",
       "replay-completed-match",
       "guest-history-a",
+      userA.userId,
+      userB.userId,
     );
     await roomStore.create({ ...waiting, currentRound: null });
-    await expect(
-      matchRepository.listForGuest("guest-history-a"),
-    ).resolves.toEqual([]);
+    await expect(matchRepository.listForUser(userA.userId)).resolves.toEqual(
+      [],
+    );
     const [firstPlayer, secondPlayer] = waiting.players;
     if (firstPlayer === undefined || secondPlayer === undefined) {
       throw new Error("Expected two preallocated player slots.");
@@ -418,8 +420,8 @@ describe.sequential("PostgreSQL + Drizzle persistence", () => {
     await matchArchive.saveRound(completed);
     await roomStore.save(completed);
 
-    const historyA = await matchRepository.listForGuest("guest-history-a");
-    const historyB = await matchRepository.listForGuest("guest-history-b");
+    const historyA = await matchRepository.listForUser(userA.userId);
+    const historyB = await matchRepository.listForUser(userB.userId);
     expect(historyA[0]).toMatchObject({
       gameId: "tic-tac-toe",
       gameVersion: "1.0.0",
@@ -432,14 +434,14 @@ describe.sequential("PostgreSQL + Drizzle persistence", () => {
       matchId: historyA[0]?.matchId,
       playerSlotId: "slot-2",
     });
-    completedMatchId = historyA[0]?.matchId ?? "";
-
     await replayStore.create("replay-abandoned-match", header);
     const abandonedWaiting = roomRecord(
       "runtime-abandoned",
       "ABND2345",
       "replay-abandoned-match",
       "guest-history-a",
+      userA.userId,
+      userB.userId,
     );
     await matchArchive.createRound(abandonedWaiting);
     await matchArchive.saveRound({
@@ -449,8 +451,7 @@ describe.sequential("PostgreSQL + Drizzle persistence", () => {
         status: "abandoned",
       },
     });
-    const historyAfterAbandon =
-      await matchRepository.listForGuest("guest-history-a");
+    const historyAfterAbandon = await matchRepository.listForUser(userA.userId);
     expect(historyAfterAbandon).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -467,12 +468,16 @@ describe.sequential("PostgreSQL + Drizzle persistence", () => {
   });
 
   it("archives consecutive rounds in one runtime room with independent replay and history", async () => {
+    const userA = await userRepository.createUser();
+    const userB = await userRepository.createUser();
     await replayStore.create("replay-round-one", header);
     const waiting = roomRecord(
       "runtime-multi-round",
       "RUND2345",
       "replay-round-one",
       "guest-round-a",
+      userA.userId,
+      userB.userId,
     );
     const [firstPlayer, secondPlayer] = waiting.players;
     if (firstPlayer === undefined || secondPlayer === undefined) {
@@ -552,7 +557,7 @@ describe.sequential("PostgreSQL + Drizzle persistence", () => {
       },
     });
 
-    const history = await matchRepository.listForGuest("guest-round-a");
+    const history = await matchRepository.listForUser(userA.userId);
     expect(history).toHaveLength(2);
     expect(history.map((item) => item.roundNumber).sort()).toEqual([1, 2]);
     expect(new Set(history.map((item) => item.matchId)).size).toBe(2);
@@ -595,9 +600,9 @@ describe.sequential("PostgreSQL + Drizzle persistence", () => {
       const rebuiltMatches = new PostgresMatchRepository(
         rebuiltClient.database,
       );
-      await expect(
-        rebuiltMatches.listForGuest("guest-round-a"),
-      ).resolves.toEqual(history);
+      await expect(rebuiltMatches.listForUser(userA.userId)).resolves.toEqual(
+        history,
+      );
       const rebuiltReplay = await new PostgresReplayStore(
         rebuiltClient.database,
       ).get("replay-round-two");
@@ -610,12 +615,15 @@ describe.sequential("PostgreSQL + Drizzle persistence", () => {
   });
 
   it("rebuilds history after adapter reconstruction and enforces guest ownership", async () => {
+    const privateUser = await userRepository.createUser();
+    const unrelatedUser = await userRepository.createUser();
     await replayStore.create("replay-private-match", header);
     const privateWaiting = roomRecord(
       "runtime-private",
       "PRJV2345",
       "replay-private-match",
       "guest-private",
+      privateUser.userId,
     );
     await matchArchive.createRound(privateWaiting);
     await matchArchive.saveRound({
@@ -625,7 +633,9 @@ describe.sequential("PostgreSQL + Drizzle persistence", () => {
         status: "abandoned",
       },
     });
-    const privateHistory = await matchRepository.listForGuest("guest-private");
+    const privateHistory = await matchRepository.listForUser(
+      privateUser.userId,
+    );
     const privateMatchId = privateHistory[0]?.matchId;
     if (privateMatchId === undefined) {
       throw new Error("Private history match was not archived.");
@@ -642,11 +652,16 @@ describe.sequential("PostgreSQL + Drizzle persistence", () => {
       );
       const rebuiltReplays = new PostgresReplayStore(rebuiltClient.database);
       await expect(
-        rebuiltMatches.getForGuest("guest-history-a", privateMatchId),
-      ).resolves.toBeNull();
+        rebuiltMatches.listForUser(unrelatedUser.userId),
+      ).resolves.toEqual([]);
       await expect(
-        rebuiltMatches.getForGuest("guest-private", privateMatchId),
-      ).resolves.toMatchObject({ status: "abandoned" });
+        rebuiltMatches.listForUser(privateUser.userId),
+      ).resolves.toEqual([
+        expect.objectContaining({
+          matchId: privateMatchId,
+          status: "abandoned",
+        }),
+      ]);
       const completedReplay = await rebuiltReplays.get(
         "replay-completed-match",
       );
@@ -658,77 +673,66 @@ describe.sequential("PostgreSQL + Drizzle persistence", () => {
     }
   });
 
-  it("associates guest history transactionally and prevents cross-user takeover", async () => {
-    const userA = await userRepository.createUser();
-    const userB = await userRepository.createUser();
-    await userRepository.associateGuestWithUser(
-      "guest-history-a",
-      userA.userId,
+  it("never claims anonymous rounds and only records identity snapshotted at round start", async () => {
+    await replayStore.create("replay-anonymous-snapshot", header);
+    const anonymous = roomRecord(
+      "runtime-anonymous-snapshot",
+      "ANON2345",
+      "replay-anonymous-snapshot",
+      "stable-session-a",
     );
-    await userRepository.associateGuestWithUser(
-      "guest-history-a",
-      userA.userId,
-    );
+    await matchArchive.createRound(anonymous);
+
+    const user = await userRepository.createUser();
     await expect(
-      userRepository.associateGuestWithUser("guest-history-a", userB.userId),
-    ).rejects.toEqual(
-      expect.objectContaining<Partial<GuestAssociationError>>({
-        code: "GUEST_ASSOCIATION_CONFLICT",
+      matchArchive.saveRound({
+        ...anonymous,
+        players: anonymous.players.map((player) => ({
+          ...player,
+          userId: player.slotId === "slot-1" ? user.userId : null,
+        })),
       }),
-    );
-    await expect(
-      userRepository.associateGuestWithUser(
-        "guest-history-a",
-        "00000000-0000-4000-8000-000000000000",
-      ),
-    ).rejects.toMatchObject({ code: "USER_NOT_FOUND" });
+    ).rejects.toMatchObject({ code: "DATABASE_OPERATION_ERROR" });
+    await expect(matchRepository.listForUser(user.userId)).resolves.toEqual([]);
 
-    const userHistory = await matchRepository.listForUser(userA.userId);
-    expect(userHistory.some((item) => item.matchId === completedMatchId)).toBe(
-      true,
+    await replayStore.create("replay-account-snapshot", header);
+    const accountRound = roomRecord(
+      "runtime-account-snapshot",
+      "ACCT2345",
+      "replay-account-snapshot",
+      "rotated-session-a",
+      user.userId,
     );
-    const guestHistory = await matchRepository.listForGuest("guest-history-a");
-    expect(guestHistory.some((item) => item.matchId === completedMatchId)).toBe(
-      true,
-    );
-
-    await replayStore.create("replay-after-association", header);
-    const futureWaiting = roomRecord(
-      "runtime-after-association",
-      "LJNK2345",
-      "replay-after-association",
-      "guest-history-a",
-    );
-    await matchArchive.createRound(futureWaiting);
+    await matchArchive.createRound(accountRound);
     await matchArchive.saveRound({
-      ...futureWaiting,
+      ...accountRound,
       currentRound: {
-        ...currentRound(futureWaiting),
+        ...currentRound(accountRound),
         status: "abandoned",
       },
     });
-    const futureUserHistory = await matchRepository.listForUser(userA.userId);
-    expect(
-      futureUserHistory.some(
-        (item) =>
-          item.status === "abandoned" && item.matchId !== completedMatchId,
-      ),
-    ).toBe(true);
+    await expect(matchRepository.listForUser(user.userId)).resolves.toEqual([
+      expect.objectContaining({
+        roundNumber: 1,
+        status: "abandoned",
+        playerSlotId: "slot-1",
+      }),
+    ]);
   });
 
   it("marks residual waiting/active archives abandoned without restoring rooms", async () => {
+    const user = await userRepository.createUser();
     await replayStore.create("replay-startup-residual", header);
     const residual = roomRecord(
       "runtime-residual",
       "LEFT2345",
       "replay-startup-residual",
       "guest-residual",
+      user.userId,
     );
     await matchArchive.createRound(residual);
     expect(await matchRepository.abandonIncompleteMatches()).toBeGreaterThan(0);
-    await expect(
-      matchRepository.listForGuest("guest-residual"),
-    ).resolves.toEqual([
+    await expect(matchRepository.listForUser(user.userId)).resolves.toEqual([
       expect.objectContaining({
         status: "abandoned",
         replayAvailable: false,

@@ -332,6 +332,7 @@ describe.sequential("authoritative Colyseus Game Server", () => {
         "RSGAMECC",
         "RSGAMEDD",
         "RAND2345",
+        "ACCT2345",
       ]),
       logger: { write: (event) => logs.push(event) },
     });
@@ -3091,5 +3092,84 @@ describe.sequential("authoritative Colyseus Game Server", () => {
     });
 
     await Promise.all([roomA.leave(true), roomB.leave(true)]);
+  });
+
+  it("keeps account identity private and rejects slot identity upgrade or downgrade", async () => {
+    const accountUserId = "11111111-1111-4111-8111-111111111111";
+    const joinedUserId = "22222222-2222-4222-8222-222222222222";
+    const ownerClient = new ColyseusClient(address.httpUrl);
+    const guestClient = new ColyseusClient(address.httpUrl);
+    const ownerRoom = await ownerClient.create(GAME_ROOM_NAME, {
+      type: "room.create",
+      protocolVersion: PROTOCOL_VERSION,
+      ticket: authority.issue("account-owner-session", {
+        userId: accountUserId,
+      }),
+      gameId: "tic-tac-toe",
+      initialConfig: null,
+    });
+    const ownerInbox = new MessageInbox(ownerRoom);
+    const connected = await ownerInbox.next(
+      (message) => message.type === "room.connected",
+    );
+    if (connected.type !== "room.connected") {
+      throw new Error("Account owner did not receive room metadata.");
+    }
+    const guestRoom = await guestClient.join(GAME_ROOM_NAME, {
+      type: "room.join",
+      protocolVersion: PROTOCOL_VERSION,
+      ticket: authority.issue("mixed-guest-session"),
+      roomCode: connected.roomCode,
+    });
+    const guestInbox = new MessageInbox(guestRoom);
+    await guestInbox.next((message) => message.type === "room.connected");
+
+    const storedSetup = await roomStore.getByRoomCode(connected.roomCode);
+    expect(storedSetup?.players).toEqual([
+      expect.objectContaining({
+        playerSessionId: "account-owner-session",
+        userId: accountUserId,
+      }),
+      expect.objectContaining({
+        playerSessionId: "mixed-guest-session",
+        userId: null,
+      }),
+    ]);
+    await expect(
+      new ColyseusClient(address.httpUrl).join(GAME_ROOM_NAME, {
+        type: "room.join",
+        protocolVersion: PROTOCOL_VERSION,
+        ticket: authority.issue("mixed-guest-session", {
+          userId: joinedUserId,
+        }),
+        roomCode: connected.roomCode,
+      }),
+    ).rejects.toThrow();
+    await expect(
+      new ColyseusClient(address.httpUrl).join(GAME_ROOM_NAME, {
+        type: "room.join",
+        protocolVersion: PROTOCOL_VERSION,
+        ticket: authority.issue("account-owner-session"),
+        roomCode: connected.roomCode,
+      }),
+    ).rejects.toThrow();
+
+    const activeOwner = ownerInbox.next(
+      (message) => isSnapshot(message) && message.status === "active",
+    );
+    const activeGuest = guestInbox.next(
+      (message) => isSnapshot(message) && message.status === "active",
+    );
+    startRound(ownerRoom, guestRoom, "account-mixed-round");
+    const snapshots = await Promise.all([activeOwner, activeGuest]);
+    expect(JSON.stringify(snapshots)).not.toContain(accountUserId);
+    const storedRound = await roomStore.getByRoomCode(connected.roomCode);
+    expect(storedRound?.currentRound).toMatchObject({
+      roundNumber: 1,
+      status: "active",
+    });
+    expect(storedRound?.players[1]?.userId).toBeNull();
+
+    await Promise.all([ownerRoom.leave(true), guestRoom.leave(true)]);
   });
 });

@@ -21,7 +21,7 @@ function encodeUnsafeClaims(claims: unknown): string {
 }
 
 describe("HMAC Game Server ticket authority", () => {
-  it("issues short-lived Protocol V3 claims controlled by the server", () => {
+  it("issues short-lived Protocol V4 guest and account claims controlled by the server", () => {
     const authority = createHmacGameServerTicketAuthority({
       issuer: "web-test",
       secret: SECRET,
@@ -43,6 +43,19 @@ describe("HMAC Game Server ticket authority", () => {
       },
     });
     expect(ticket).not.toContain(SECRET);
+
+    const accountTicket = authority.issue(
+      "session-b",
+      "11111111-1111-4111-8111-111111111111",
+    );
+    expect(authority.verify(accountTicket)).toMatchObject({
+      status: "verified",
+      claims: {
+        playerSessionId: "session-b",
+        userId: "11111111-1111-4111-8111-111111111111",
+        protocolVersion: PROTOCOL_VERSION,
+      },
+    });
   });
 
   it.each([
@@ -90,7 +103,7 @@ describe("HMAC Game Server ticket authority", () => {
     ).toEqual({ status: "rejected", code: "WRONG_AUDIENCE" });
     expect(
       authority.verify(
-        encodeUnsafeClaims({ ...validClaims, protocolVersion: 1 }),
+        encodeUnsafeClaims({ ...validClaims, protocolVersion: 3 }),
       ),
     ).toEqual({
       status: "rejected",

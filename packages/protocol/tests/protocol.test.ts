@@ -49,8 +49,8 @@ const snapshot = {
 } as const;
 
 describe("transport conventions", () => {
-  it("keeps Protocol V3 room and custom message names stable", () => {
-    expect(PROTOCOL_VERSION).toBe(3);
+  it("keeps Protocol V4 room and custom message names stable", () => {
+    expect(PROTOCOL_VERSION).toBe(4);
     expect(GAME_ROOM_NAME).toBe("game");
     expect(GAME_ACTION_MESSAGE).toBe("game.action");
     expect(ROOM_CONTROL_MESSAGE).toBe("room.control");
@@ -186,7 +186,7 @@ describe("room control", () => {
 });
 
 describe("GameActionCommand", () => {
-  it("parses a strict V2 envelope and keeps action unknown", () => {
+  it("parses a strict V4 envelope and keeps action unknown", () => {
     const parsed = gameActionCommandSchema.parse(actionCommand);
     expect(parsed).toEqual(actionCommand);
     expectTypeOf<GameActionCommand["action"]>().toBeUnknown();
@@ -202,7 +202,7 @@ describe("GameActionCommand", () => {
   });
 
   it.each([
-    [{ ...actionCommand, protocolVersion: 1 }],
+    [{ ...actionCommand, protocolVersion: 3 }],
     [{ ...actionCommand, expectedRevision: -1 }],
     [{ ...actionCommand, expectedRevision: 1.5 }],
     [{ ...actionCommand, expectedRevision: Number.MAX_SAFE_INTEGER + 1 }],
@@ -339,6 +339,12 @@ describe("ticket and room matchmaking contracts", () => {
   it("parses strict ticket claims and rejects incompatible claims", () => {
     expect(gameServerTicketClaimsSchema.parse(claims)).toEqual(claims);
     expect(
+      gameServerTicketClaimsSchema.parse({
+        ...claims,
+        userId: "11111111-1111-4111-8111-111111111111",
+      }),
+    ).toMatchObject({ userId: "11111111-1111-4111-8111-111111111111" });
+    expect(
       gameServerTicketClaimsSchema.safeParse({
         ...claims,
         audience: "another-service",
@@ -354,6 +360,19 @@ describe("ticket and room matchmaking contracts", () => {
       gameServerTicketClaimsSchema.safeParse({
         ...claims,
         expiresAt: claims.issuedAt,
+      }).success,
+    ).toBe(false);
+    expect(
+      gameServerTicketClaimsSchema.safeParse({
+        ...claims,
+        userId: "forged-user-id",
+      }).success,
+    ).toBe(false);
+    expect(
+      gameServerTicketClaimsSchema.safeParse({
+        ...claims,
+        userId: "11111111-1111-4111-8111-111111111111",
+        role: "admin",
       }).success,
     ).toBe(false);
   });

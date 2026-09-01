@@ -38,29 +38,6 @@ export const users = pgTable(
   ],
 );
 
-export const guestUserAssociations = pgTable(
-  "guest_user_associations",
-  {
-    playerSessionId: text("player_session_id").primaryKey(),
-    userId: uuid("user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "restrict" }),
-    createdAt: timestamp("created_at", {
-      mode: "date",
-      withTimezone: true,
-    })
-      .defaultNow()
-      .notNull(),
-  },
-  (table) => [
-    check(
-      "guest_user_associations_session_not_empty",
-      sql`length(${table.playerSessionId}) > 0`,
-    ),
-    index("guest_user_associations_user_idx").on(table.userId),
-  ],
-);
-
 export const passwordCredentials = pgTable(
   "password_credentials",
   {
@@ -329,7 +306,6 @@ export const replayActions = pgTable(
 
 export const databaseSchema = {
   accountSessions,
-  guestUserAssociations,
   matchPlayers,
   matches,
   passwordCredentials,

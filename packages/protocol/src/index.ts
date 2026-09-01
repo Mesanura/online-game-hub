@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const PROTOCOL_VERSION = 3 as const;
+export const PROTOCOL_VERSION = 4 as const;
 export const MAX_GAME_ACTION_BYTES = 16_384;
 export const GAME_ROOM_NAME = "game" as const;
 export const GAME_ACTION_MESSAGE = "game.action" as const;
@@ -299,6 +299,7 @@ export const gameServerTicketClaimsSchema = z
     issuer: z.string().min(1).max(128),
     audience: z.literal(GAME_SERVER_TICKET_AUDIENCE),
     playerSessionId: z.string().min(1).max(128),
+    userId: z.uuid().optional(),
     issuedAt: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
     expiresAt: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
     ticketId: z.string().min(1).max(128),

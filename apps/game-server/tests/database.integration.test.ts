@@ -3,6 +3,7 @@ import type { Room as ClientRoom } from "@colyseus/sdk";
 import {
   PostgresMatchRepository,
   PostgresReplayStore,
+  PostgresUserRepository,
   createPostgresDatabaseClient,
 } from "@online-game-hub/database";
 import {
@@ -239,12 +240,15 @@ describe("real PostgreSQL authoritative persistence", () => {
     let roomB: ClientRoom | undefined;
     try {
       const address = await app.start();
+      const users = new PostgresUserRepository(isolated.client.database);
+      const accountA = await users.createUser();
+      const unrelatedAccount = await users.createUser();
       const clientA = new ColyseusClient(address.httpUrl);
       const clientB = new ColyseusClient(address.httpUrl);
       roomA = await clientA.create(GAME_ROOM_NAME, {
         type: "room.create",
         protocolVersion: PROTOCOL_VERSION,
-        ticket: tickets.issue("database-guest-a"),
+        ticket: tickets.issue("database-account-a", accountA.userId),
         gameId: "tic-tac-toe",
         initialConfig: null,
       });
@@ -389,26 +393,16 @@ describe("real PostgreSQL authoritative persistence", () => {
           verifyReplay(rebuiltReplay, resolveGameDefinition),
         ).toMatchObject({ status: "verified" });
         const matches = new PostgresMatchRepository(rebuiltClient.database);
-        await expect(matches.listForGuest("database-guest-a")).resolves.toEqual(
-          [
-            expect.objectContaining({
-              status: "completed",
-              finalRevision: 5,
-              playerSlotId: "slot-1",
-              replayAvailable: true,
-            }),
-          ],
-        );
-        await expect(matches.listForGuest("database-guest-b")).resolves.toEqual(
-          [
-            expect.objectContaining({
-              status: "completed",
-              playerSlotId: "slot-2",
-            }),
-          ],
-        );
+        await expect(matches.listForUser(accountA.userId)).resolves.toEqual([
+          expect.objectContaining({
+            status: "completed",
+            finalRevision: 5,
+            playerSlotId: "slot-1",
+            replayAvailable: true,
+          }),
+        ]);
         await expect(
-          matches.listForGuest("database-unrelated-guest"),
+          matches.listForUser(unrelatedAccount.userId),
         ).resolves.toEqual([]);
       } finally {
         await rebuiltClient.close();
@@ -455,10 +449,15 @@ describe("real PostgreSQL authoritative persistence", () => {
     let abandonedRoomB: ClientRoom | undefined;
     try {
       const address = await app.start();
+      const users = new PostgresUserRepository(isolated.client.database);
+      const accountA = await users.createUser();
+      const accountB = await users.createUser();
+      const abandonedAccount = await users.createUser();
+      const unrelatedAccount = await users.createUser();
       roomA = await new ColyseusClient(address.httpUrl).create(GAME_ROOM_NAME, {
         type: "room.create",
         protocolVersion: PROTOCOL_VERSION,
-        ticket: tickets.issue("database-connect-four-a"),
+        ticket: tickets.issue("database-connect-four-a", accountA.userId),
         gameId: "connect-four",
         initialConfig: null,
       });
@@ -476,7 +475,7 @@ describe("real PostgreSQL authoritative persistence", () => {
       roomB = await new ColyseusClient(address.httpUrl).join(GAME_ROOM_NAME, {
         type: "room.join",
         protocolVersion: PROTOCOL_VERSION,
-        ticket: tickets.issue("database-connect-four-b"),
+        ticket: tickets.issue("database-connect-four-b", accountB.userId),
         roomCode: "CFDB2345",
       });
       const inboxB = new MessageInbox(roomB);
@@ -584,7 +583,10 @@ describe("real PostgreSQL authoritative persistence", () => {
         {
           type: "room.create",
           protocolVersion: PROTOCOL_VERSION,
-          ticket: tickets.issue("database-connect-four-abandoned-a"),
+          ticket: tickets.issue(
+            "database-connect-four-abandoned-a",
+            abandonedAccount.userId,
+          ),
           gameId: "connect-four",
           initialConfig: null,
         },
@@ -672,7 +674,7 @@ describe("real PostgreSQL authoritative persistence", () => {
         });
 
         const matches = new PostgresMatchRepository(rebuiltClient.database);
-        const history = await matches.listForGuest("database-connect-four-a");
+        const history = await matches.listForUser(accountA.userId);
         expect(history).toHaveLength(2);
         expect(history.map((item) => item.roundNumber).sort()).toEqual([1, 2]);
         expect(new Set(history.map((item) => item.matchId)).size).toBe(2);
@@ -709,10 +711,10 @@ describe("real PostgreSQL authoritative persistence", () => {
           expect(serializedHistory).not.toContain(forbidden);
         }
         await expect(
-          matches.listForGuest("database-connect-four-unrelated"),
+          matches.listForUser(unrelatedAccount.userId),
         ).resolves.toEqual([]);
         await expect(
-          matches.listForGuest("database-connect-four-abandoned-a"),
+          matches.listForUser(abandonedAccount.userId),
         ).resolves.toEqual([
           expect.objectContaining({
             gameId: "connect-four",

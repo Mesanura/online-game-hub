@@ -17,12 +17,7 @@ import type { MatchStatus } from "@online-game-hub/protocol";
 
 import type { OnlineGameHubDatabase } from "./client.js";
 import { DatabaseError } from "./errors.js";
-import {
-  guestUserAssociations,
-  matchPlayers,
-  matches,
-  replays,
-} from "./schema.js";
+import { matchPlayers, matches, replays } from "./schema.js";
 
 export const MAX_MATCH_HISTORY_RESULTS = 50;
 
@@ -78,7 +73,11 @@ function validStoredRoom(room: StoredGameRoom): boolean {
     room.players.every(
       (player) =>
         player.slotId.length > 0 &&
-        (player.playerSessionId === null || player.playerSessionId.length > 0),
+        (player.playerSessionId === null ||
+          player.playerSessionId.length > 0) &&
+        (player.userId === undefined ||
+          player.userId === null ||
+          validUuid(player.userId)),
     ) &&
     new Set(room.players.map((player) => player.slotId)).size ===
       room.players.length &&
@@ -89,17 +88,6 @@ function validStoredRoom(room: StoredGameRoom): boolean {
     ) &&
     new Set(assignedSessions).size === assignedSessions.length
   );
-}
-
-async function lockGuestSessions(
-  transaction: DatabaseTransaction,
-  playerSessionIds: readonly string[],
-): Promise<void> {
-  for (const playerSessionId of [...new Set(playerSessionIds)].sort()) {
-    await transaction.execute(
-      sql`select pg_advisory_xact_lock(hashtextextended(${playerSessionId}, 0))`,
-    );
-  }
 }
 
 async function lockRuntimeRoom(
@@ -120,6 +108,7 @@ async function assertSameParticipants(
     .select({
       playerSlotId: matchPlayers.playerSlotId,
       playerSessionId: matchPlayers.playerSessionId,
+      userId: matchPlayers.userId,
     })
     .from(matchPlayers)
     .where(eq(matchPlayers.matchId, previousMatchId));
@@ -133,6 +122,7 @@ async function assertSameParticipants(
     .map((player) => ({
       playerSlotId: player.slotId,
       playerSessionId: player.playerSessionId,
+      userId: player.userId ?? null,
     }));
   if (
     previousPlayers.length !== currentPlayers.length ||
@@ -141,7 +131,8 @@ async function assertSameParticipants(
         !previousPlayers.some(
           (previous) =>
             previous.playerSlotId === current.playerSlotId &&
-            previous.playerSessionId === current.playerSessionId,
+            previous.playerSessionId === current.playerSessionId &&
+            previous.userId === current.userId,
         ),
     )
   ) {
@@ -158,24 +149,14 @@ async function recordAssignedPlayers(
     (player): player is typeof player & { readonly playerSessionId: string } =>
       player.playerSessionId !== null,
   );
-  await lockGuestSessions(
-    transaction,
-    assigned.map((player) => player.playerSessionId),
-  );
   for (const player of assigned) {
-    const associationRows = await transaction
-      .select({ userId: guestUserAssociations.userId })
-      .from(guestUserAssociations)
-      .where(eq(guestUserAssociations.playerSessionId, player.playerSessionId))
-      .limit(1);
-    const userId = associationRows[0]?.userId ?? null;
     await transaction
       .insert(matchPlayers)
       .values({
         matchId,
         playerSlotId: player.slotId,
         playerSessionId: player.playerSessionId,
-        userId,
+        userId: player.userId ?? null,
       })
       .onConflictDoNothing();
     const storedRows = await transaction
@@ -195,7 +176,7 @@ async function recordAssignedPlayers(
     if (
       stored === undefined ||
       stored.playerSessionId !== player.playerSessionId ||
-      stored.userId !== userId
+      stored.userId !== (player.userId ?? null)
     ) {
       throw new DatabaseError("DATABASE_OPERATION_ERROR");
     }
@@ -461,16 +442,6 @@ export class PostgresMatchRepository {
     }
   }
 
-  public async listForGuest(
-    playerSessionId: string,
-    limit = MAX_MATCH_HISTORY_RESULTS,
-  ): Promise<readonly MatchHistoryItem[]> {
-    if (playerSessionId.length === 0) {
-      throw new DatabaseError("DATABASE_CONFIGURATION_ERROR");
-    }
-    return this.#list(eq(matchPlayers.playerSessionId, playerSessionId), limit);
-  }
-
   public async listForUser(
     userId: string,
     limit = MAX_MATCH_HISTORY_RESULTS,
@@ -479,22 +450,6 @@ export class PostgresMatchRepository {
       throw new DatabaseError("DATABASE_CONFIGURATION_ERROR");
     }
     return this.#list(eq(matchPlayers.userId, userId), limit);
-  }
-
-  public async getForGuest(
-    playerSessionId: string,
-    matchId: string,
-  ): Promise<MatchHistoryItem | null> {
-    if (playerSessionId.length === 0 || !validUuid(matchId)) return null;
-    const identityCondition = and(
-      eq(matchPlayers.playerSessionId, playerSessionId),
-      eq(matches.id, matchId),
-    );
-    if (identityCondition === undefined) {
-      throw new DatabaseError("DATABASE_OPERATION_ERROR");
-    }
-    const rows = await this.#historyRows(identityCondition, 1);
-    return rows[0] ?? null;
   }
 
   async #list(

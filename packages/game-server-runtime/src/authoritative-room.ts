@@ -104,6 +104,7 @@ export type AuthoritativeGameRoomClass = new () => Room<{
 interface RuntimeSlot {
   readonly slotId: PlayerSlotId;
   playerSessionId: string | null;
+  userId: string | null;
   reservedUntilMilliseconds: number | null;
   timeout: CancelTimer | null;
 }
@@ -140,6 +141,7 @@ interface PendingRound {
 
 interface RuntimeClientData {
   readonly playerSessionId: string;
+  readonly userId: string | null;
   readonly slotId: PlayerSlotId;
   counted: boolean;
 }
@@ -218,7 +220,10 @@ export function createAuthoritativeGameRoomClass(
     public static override async onAuth(
       _token: string,
       options: unknown,
-    ): Promise<{ readonly playerSessionId: string }> {
+    ): Promise<{
+      readonly playerSessionId: string;
+      readonly userId: string | null;
+    }> {
       const request = gameRoomRequestSchema.safeParse(options);
       if (!request.success) {
         const unsupported =
@@ -239,7 +244,10 @@ export function createAuthoritativeGameRoomClass(
       if (verification.status === "rejected") {
         throw protocolServerError(verification.protocolCode);
       }
-      return { playerSessionId: verification.playerSessionId };
+      return {
+        playerSessionId: verification.playerSessionId,
+        userId: verification.userId,
+      };
     }
 
     public override async onCreate(options: unknown): Promise<void> {
@@ -284,6 +292,7 @@ export function createAuthoritativeGameRoomClass(
       const slots = Array.from({ length: maxPlayers }, (_, index) => ({
         slotId: ids.createPlayerSlotId(index),
         playerSessionId: index === 0 ? verification.playerSessionId : null,
+        userId: index === 0 ? verification.userId : null,
         reservedUntilMilliseconds: null,
         timeout: null,
       }));
@@ -339,6 +348,7 @@ export function createAuthoritativeGameRoomClass(
       await this.#enqueue(async () => {
         const aggregate = this.#requireAggregate();
         const playerSessionId = this.#clientSession(client);
+        const userId = this.#clientUserId(client);
         const request = gameRoomRequestSchema.safeParse(options);
         if (!request.success) {
           throw protocolServerError(
@@ -368,6 +378,9 @@ export function createAuthoritativeGameRoomClass(
         let slot = aggregate.slots.find(
           (candidate) => candidate.playerSessionId === playerSessionId,
         );
+        if (slot !== undefined && slot.userId !== userId) {
+          throw protocolServerError("NOT_A_PLAYER");
+        }
         if (slot === undefined) {
           if (aggregate.currentRound?.status === "completed") {
             throw protocolServerError("ROOM_NOT_JOINABLE");
@@ -382,6 +395,7 @@ export function createAuthoritativeGameRoomClass(
             throw protocolServerError("ROOM_FULL");
           }
           slot.playerSessionId = playerSessionId;
+          slot.userId = userId;
         }
 
         const wasReconnect = slot.reservedUntilMilliseconds !== null;
@@ -398,6 +412,7 @@ export function createAuthoritativeGameRoomClass(
         this.#activeClientBySession.set(playerSessionId, client);
         const clientData: RuntimeClientData = {
           playerSessionId,
+          userId,
           slotId: slot.slotId,
           counted: true,
         };
@@ -1211,6 +1226,20 @@ export function createAuthoritativeGameRoomClass(
       return auth.playerSessionId;
     }
 
+    #clientUserId(client: Client): string | null {
+      const auth = client.auth as { readonly userId?: unknown } | undefined;
+      if (auth?.userId === null) return null;
+      if (
+        typeof auth?.userId !== "string" ||
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(
+          auth.userId,
+        )
+      ) {
+        throw protocolServerError("UNAUTHENTICATED");
+      }
+      return auth.userId;
+    }
+
     #labels(): Required<MetricLabels> {
       const manifest = this.#requireAggregate().definition.manifest;
       return {
@@ -1465,6 +1494,7 @@ export function createAuthoritativeGameRoomClass(
       const players: StoredPlayerSlot[] = aggregate.slots.map((slot) => ({
         slotId: slot.slotId,
         playerSessionId: slot.playerSessionId,
+        userId: slot.userId ?? null,
         reservedUntilMilliseconds: slot.reservedUntilMilliseconds,
       }));
       const round = aggregate.currentRound;

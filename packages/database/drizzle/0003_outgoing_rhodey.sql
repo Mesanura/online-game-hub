@@ -1,0 +1,1 @@
+DROP TABLE "guest_user_associations" CASCADE;

@@ -34,6 +34,7 @@ export function createGameServerTicketVerifier(
         playerSessionId: definePlayerSessionId(
           verification.claims.playerSessionId,
         ),
+        userId: verification.claims.userId ?? null,
         claims: verification.claims,
       };
     },

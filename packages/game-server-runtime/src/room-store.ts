@@ -5,6 +5,7 @@ import type { MatchStatus, RoomCloseReason } from "@online-game-hub/protocol";
 export interface StoredPlayerSlot {
   readonly slotId: string;
   readonly playerSessionId: string | null;
+  readonly userId?: string | null;
   readonly reservedUntilMilliseconds: number | null;
 }
 
@@ -108,6 +109,14 @@ function validRoom(room: StoredGameRoom): boolean {
     room.gameId.length > 0 &&
     room.gameVersion.length > 0 &&
     room.players.length > 0 &&
+    room.players.every(
+      (player) =>
+        player.userId === undefined ||
+        player.userId === null ||
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(
+          player.userId,
+        ),
+    ) &&
     slots.every((slot) => slot.length > 0) &&
     new Set(slots).size === slots.length &&
     isJsonValue(room.initialConfig) &&

@@ -19,11 +19,13 @@ const storedRoom = {
     {
       slotId: "slot-1",
       playerSessionId: "session-a",
+      userId: null,
       reservedUntilMilliseconds: null,
     },
     {
       slotId: "slot-2",
       playerSessionId: null,
+      userId: null,
       reservedUntilMilliseconds: null,
     },
   ],
@@ -53,7 +55,8 @@ describe("ticket verifier port test authority", () => {
     await expect(authority.verify(valid)).resolves.toMatchObject({
       status: "verified",
       playerSessionId: "session-a",
-      claims: { protocolVersion: 3, audience: "game-server" },
+      userId: null,
+      claims: { protocolVersion: 4, audience: "game-server" },
     });
     await expect(authority.verify(undefined)).resolves.toMatchObject({
       status: "rejected",

@@ -28,6 +28,7 @@ export type TicketVerificationResult =
   | {
       readonly status: "verified";
       readonly playerSessionId: PlayerSessionId;
+      readonly userId: string | null;
       readonly claims: GameServerTicketClaims;
     }
   | {
