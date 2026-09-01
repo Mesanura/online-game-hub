@@ -1,6 +1,6 @@
 # Online Game Hub
 
-这是一个 server-authoritative、replay-first 的多人网页游戏平台 monorepo。M1–M6 已完成；四子棋、五子棋、额外六贯棋与黑白棋依次证明既有 Game Plugin 可表达重力、Config、六边连接/投降，以及八方向翻转、无合法行动、强制跳过和非满盘终局。所有游戏继续复用显式 registry、Client Module、authoritative runtime、per-viewer projection、Replay V1、PostgreSQL Match/history 和 Web vertical slice。创建 live room 后不立即创建比赛；首局及每次重开都由房主选择“我先/对方先”，双方 ready 且在线后才按本轮 `playerOrder` 创建独立 Match、Replay 和 State。room code 与 stable slots 跨轮不变，标准先手角色随 `playerOrder` 变化。当前 wire 为 Protocol V2；Replay Format V1 与井字棋/四子棋/五子棋/六贯棋/黑白棋 1.0.0 保持不变。OAuth、公开 replay 与活动房间恢复仍未实现。
+这是一个 server-authoritative、replay-first 的多人网页游戏平台 monorepo。M1–M6 已完成；四子棋、五子棋、额外六贯棋与黑白棋依次证明既有 Game Plugin 可表达重力、Config、六边连接/投降，以及八方向翻转、无合法行动、强制跳过和非满盘终局。所有游戏继续复用显式 registry、Client Module、authoritative runtime、per-viewer projection、Replay V1、PostgreSQL Match/history 和 Web vertical slice。创建 live room 后不立即创建比赛；首局及每次重开都由房主选择“我先/对方先”，双方 ready 且在线后才按本轮 `playerOrder` 创建独立 Match、Replay 和 State。room code 与 stable slots 跨轮不变，标准先手角色随 `playerOrder` 变化。当前 wire 为 Protocol V2；井字棋、四子棋、五子棋与黑白棋的 current rules 为 `1.1.0`，并以独立 frozen `1.0.0` definition 继续读取旧 replay；六贯棋保持 `1.0.0`。五款游戏都通过可选 Client Module Action factory 接入共用 HUD 的二次确认投降，accepted `RESIGN` 仍使用 Replay Format V1。OAuth、公开 replay 与活动房间恢复仍未实现。
 
 ## 开始之前
 
@@ -156,11 +156,11 @@ packages/
   protocol/                # Protocol V2 strict Zod schemas 与推导类型
   ui/                      # 空 public entry
 games/
-  connect-four/             # 单 package：7×6 manifest/core/client + 1.0.0 golden replay
-  gomoku/                   # 单 package：15×15/19×19 Config、core/client + 1.0.0 golden replay
+  connect-four/             # 单 package：7×6 current 1.1.0 + frozen 1.0.0 replay
+  gomoku/                   # 单 package：15×15/19×19 current 1.1.0 + frozen 1.0.0 replay
   hex/                      # 单 package：11×11 六贯棋、投降、canonical path + 1.0.0 golden replay
-  reversi/                  # 单 package：8×8 黑白棋、翻转/跳过 + 1.0.0 golden replay
-  tic-tac-toe/             # 单 package：manifest/core/client + 1.0.0 golden replay
+  reversi/                  # 单 package：8×8 翻转/跳过 current 1.1.0 + frozen 1.0.0 replay
+  tic-tac-toe/             # 单 package：3×3 current 1.1.0 + frozen 1.0.0 replay
 tooling/
   e2e/                     # 随机端口真实 Next/Colyseus 双 context Playwright
   repository-check/        # 依赖、循环、Markdown 链接检查及 fixture tests
@@ -174,9 +174,11 @@ M6 五子棋没有新增外部依赖，也没有修改当时的 `protocol`、`ga
 
 额外六贯棋继续复用 `defaultConfig: null`、双人 stable slots、完整 per-viewer snapshot、同房间多轮、accepted Action replay 和 PostgreSQL archive；`PLACE_STONE` 与 `RESIGN` 都只作为游戏 intent 进入现有 envelope。它没有新增外部依赖，也没有修改当时的 `game-sdk`、Protocol V1、Replay Format V1、`game-client-sdk`、`game-server-runtime`、database schema 或 migration。当前 Protocol V2 只让平台逐局决定有序 players；六贯棋仍以 `players[0]` 为 BLUE 标准先手，不需要新游戏版本。六贯棋仍需显式 registry、Next transpile 和 Web CSS 登记；该阶段据此暂不创建 `tools/create-game`，并继续保留黑白棋对翻转/跳过回合的独立验证。
 
-黑白棋 1.0.0 固定 8×8 与 null Config；`players[0]` 为 BLACK 并先手，客户端只提交 `PLACE_DISC(cell)`。Protocol V2 由逐局设置决定哪个 stable slot 成为该轮 `players[0]`，不会修改黑白棋规则或 game version。Core 同时翻转全部合法方向；若对方无合法行动则保持当前 slot，双方均无合法行动或棋盘填满时按棋子数产生 WIN/DRAW。强制跳过不增加 revision、不产生 PASS 或 replay Action。Client 只渲染服务器 View 提供的合法落点、当前行动方、棋子数和 Outcome。该游戏上线时没有新增外部依赖，也没有修改当时的 `game-sdk`、Protocol V1、Replay Format V1、`game-client-sdk`、`game-server-runtime`、`game-server-ticket`、database source/schema/migration 或既有游戏版本。
+黑白棋最初以 1.0.0 固定 8×8 与 null Config；`players[0]` 为 BLACK 并先手，客户端只提交 `PLACE_DISC(cell)`。Protocol V2 由逐局设置决定哪个 stable slot 成为该轮 `players[0]`，不会修改黑白棋规则或 game version。Core 同时翻转全部合法方向；若对方无合法行动则保持当前 slot，双方均无合法行动或棋盘填满时按棋子数产生 WIN/DRAW。强制跳过不增加 revision、不产生 PASS 或 replay Action。Client 只渲染服务器 View 提供的合法落点、当前行动方、棋子数和 Outcome。该游戏上线时没有新增外部依赖，也没有修改当时的 `game-sdk`、Protocol V1、Replay Format V1、`game-client-sdk`、`game-server-runtime`、`game-server-ticket`、database source/schema/migration 或既有游戏版本。
 
 M6 黑白棋 package 内仍为 16 个文件；游戏外非文档改动为 10 个唯一文件：registry package/catalog/client/server、lockfile 和 Next transpile 共 6 个机械登记文件，Web CSS 1 个，registry/integration/E2E 验证 3 个。连续多个游戏证明 package 骨架和显式登记稳定后，现已独立实现窄 `tools/create-game`，只自动化 package/export/tsconfig 与上述 registry/build 登记并保持幂等；具体规则、样式、golden、integration 和 E2E 序列仍不模板化。
+
+后续规则增强把井字棋、四子棋、五子棋和黑白棋发布为 current `1.1.0`：strict `RESIGN` 在活跃比赛中允许 off-turn 提交，State 保存 `resignedSlotId`，对手获得 `RESIGNATION` WIN。四个 `1.0.0` definition 与原 golden fixture 保持独立冻结；registry 同时 exact-resolve 历史/当前版本，并严格按 catalog manifest 的 exact version 创建新房间。六贯棋 Core 与版本保持 `1.0.0`。通用 HUD 只在 Client Module 暴露 `createResignAction` 时显示并二次确认投降，游戏组件不再各自实现按钮；Protocol V2、Replay Format V1 与数据库 schema 都没有变化。
 
 ## 自动化边界
 

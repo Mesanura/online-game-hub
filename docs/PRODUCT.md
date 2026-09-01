@@ -38,9 +38,10 @@
 4. 比赛结束后平台产生结构化 Outcome 和 canonical replay。
 5. 一局结束后回到统一的下一局设置：房主重新选择先手方，两名原玩家分别准备或取消；双方都准备且仍在线时，在同一房间和 stable slots 下开始下一局。
 6. 每轮都是独立的 Match、canonical replay 和私有 history 记录，不把多轮合并成一场比赛。
-7. 房主可以关闭房间，非房主可以主动离开；终止 active 对局前界面必须要求确认。
+7. 五款游戏都可从共用 HUD 发起投降；取消确认不产生 Action，确认后由服务器 exact rules 判定并让对手以 `RESIGNATION` 获胜。
+8. 房主可以关闭房间，非房主可以主动离开；终止 active 对局前界面必须要求确认。
 
-等待页以复制按钮提供不含身份凭据的邀请 URL，不长期暴露原始 URL；复制需要 loading/success/failure 与可手动选择的后备。实际对局在桌面优先保持浏览器页面本身不滚动；左侧 HUD 底部始终显示房间码，并按房主身份直接提供关闭或离开操作，终止 active 对局前必须确认。大型棋盘只允许在自己的容器中缩放或滚动，并在移动端保留至少 44px 的有效操作目标。
+等待页以复制按钮提供不含身份凭据的邀请 URL，不长期暴露原始 URL；复制需要 loading/success/failure 与可手动选择的后备。实际对局在桌面优先保持浏览器页面本身不滚动；左侧 HUD 底部始终显示房间码、共用投降入口，以及按房主身份选择的关闭或离开操作。投降与终止 active 对局分别确认；投降按钮只生成游戏 Action，不取代服务器合法性判断。大型棋盘只允许在自己的容器中缩放或滚动，并在移动端保留至少 44px 的有效操作目标。
 
 ### 3.3 断线恢复
 
@@ -68,15 +69,17 @@
 
 当前生产 composition 使用内存 live `RoomStore` 和 PostgreSQL `ReplayStore`/`MatchArchive`。创建房间只产生 room code、Config 与 stable slots；首局尚未开始的房间没有 Core State、Replay 或 Match，也不进入历史。已开始/完成轮次可持久化读取，但进程重启仍不会恢复 live room、socket、timer 或 authoritative State；启动协调只会把旧 schema 中遗留的 `waiting` 和当前 `active` archive 诚实标记为 `abandoned`。
 
+井字棋 current `1.1.0` 在原 3×3 落子规则上增加 strict off-turn `RESIGN` 与 `RESIGNATION` WIN；独立 frozen `1.0.0` 只接受 `PLACE_MARK` 并继续读取原 replay。
+
 ### 4.1 第二游戏扩展验证
 
-四子棋 1.0.0 已从同一目录和通用游戏页提供标准 7 列 × 6 行、两人轮流重力落子、横/纵/双对角四连胜与满盘平局。它复用与井字棋相同的 create/join/reconnect、逐局先手选择、stable slots、多轮 ready/cancel、close/leave、canonical replay、PostgreSQL archive 和私有 history 行为；浏览器只提交 column intent，服务端决定落点和 Outcome。
+四子棋 current `1.1.0` 从同一目录和通用游戏页提供标准 7 列 × 6 行、两人轮流重力落子、横/纵/双对角四连胜、满盘平局与 strict off-turn `RESIGN`。它复用与井字棋相同的 create/join/reconnect、逐局先手选择、stable slots、多轮 ready/cancel、close/leave、canonical replay、PostgreSQL archive 和私有 history 行为；浏览器只提交 column 或投降 intent，服务端决定落点和 Outcome。frozen `1.0.0` 继续只接受落子并读取原 replay。
 
 该阶段没有新增平台产品能力，不包含 AI、计时、悔棋、公开房间、Matchmaking、观战或公开 replay。
 
 ### 4.2 第三游戏与 Config 扩展验证
 
-五子棋 1.0.0 已从同一目录和通用游戏页提供默认 15×15 棋盘，并由 strict Config 支持 19×19；`winLength` 固定为 5，连续五子或以上获胜。两名玩家按本轮 `playerOrder` 轮流在 row-major cell 落子；房间内 stable slot 不变，但房主可逐局指定自己或对方获得标准先手角色。浏览器只提交 `{ type: "PLACE_STONE", cell }`，服务端决定回合、占用、长连、平局与 Outcome。
+五子棋 current `1.1.0` 从同一目录和通用游戏页提供默认 15×15 棋盘，并由 strict Config 支持 19×19；`winLength` 固定为 5，连续五子或以上获胜。两名玩家按本轮 `playerOrder` 轮流在 row-major cell 落子；房间内 stable slot 不变，但房主可逐局指定自己或对方获得标准先手角色。浏览器只提交 `PLACE_STONE(cell) | RESIGN` intent，服务端决定回合、占用、长连、平局与 Outcome；frozen `1.0.0` 继续只接受落子并读取原 replay。
 
 五子棋复用既有 create/join/reconnect、多轮、close/leave、per-viewer `projectView`、canonical replay、PostgreSQL archive/history 和真实双浏览器链路。通用 Web 从 manifest 的 JSON-safe `defaultConfig` 创建默认房间，不在平台代码中加入五子棋规则分支。该阶段不包含 AI、禁手、交换规则、计时、悔棋、观战、公开 replay 或 Matchmaking。
 
@@ -84,11 +87,11 @@
 
 六贯棋 1.0.0 作为用户确认的额外游戏提供固定 11×11 菱形六边格棋盘。本轮 `players[0]` 为蓝方并先手、连接上右/下左两边，`players[1]` 为红方并连接上左/下右两边；房主选择谁先手，就由谁在该局获得蓝方，不改变 stable slot 或规则，也不启用交换规则。玩家每回合只提交 `PLACE_STONE(cell)`，也可在任一活跃时刻提交不受回合限制的 `RESIGN`，由 Core 产生连接或投降 WIN Outcome；不存在 DRAW。
 
-连接 Outcome 使用确定性的 multi-source BFS 保存 canonical 最短 `winningPath`，客户端只按服务器 View 对该路径显示白色模糊发光边框。投降按钮由客户端二次确认，取消不产生 Action；断线、关闭、主动离开和 reconnect timeout 仍由平台 lifecycle 产生 `abandoned`。六贯棋复用既有双人房间、stable slots、多轮、reconnect、Replay V1、PostgreSQL archive/history 和通用 Web 页面，不新增观战连接、交换、AI、计时、悔棋或公开 replay；该额外游戏在实现当时也不替代随后独立完成的 M6 黑白棋阶段。
+连接 Outcome 使用确定性的 multi-source BFS 保存 canonical 最短 `winningPath`，客户端只按服务器 View 对该路径显示白色模糊发光边框。六贯棋通过 Client Module Action factory 接入共用 HUD 的二次确认投降，取消不产生 Action；断线、关闭、主动离开和 reconnect timeout 仍由平台 lifecycle 产生 `abandoned`。六贯棋复用既有双人房间、stable slots、多轮、reconnect、Replay V1、PostgreSQL archive/history 和通用 Web 页面，不新增观战连接、交换、AI、计时、悔棋或公开 replay；其 Core 与 `gameVersion 1.0.0` 保持不变。
 
 ### 4.4 黑白棋与 M6 收尾
 
-黑白棋 1.0.0 提供固定 8×8 标准双人规则。本轮 `players[0]` 对应 BLACK 并先手、`players[1]` 对应 WHITE；房主选择谁先手，就由谁在该局获得 BLACK，不改变 stable slot 或黑白棋规则。初始四子固定，玩家只提交 `PLACE_DISC(cell)`。服务器在全部八方向计算夹线并同时翻转；若下一方没有合法行动则由 Core 自动保持当前行动方，双方均无合法行动时即使棋盘未满也立即按棋子数产生 WIN/DRAW。
+黑白棋 current `1.1.0` 提供固定 8×8 标准双人规则。本轮 `players[0]` 对应 BLACK 并先手、`players[1]` 对应 WHITE；房主选择谁先手，就由谁在该局获得 BLACK，不改变 stable slot 或黑白棋规则。初始四子固定，玩家提交 `PLACE_DISC(cell) | RESIGN` intent。服务器在全部八方向计算夹线并同时翻转；若下一方没有合法行动则由 Core 自动保持当前行动方，双方均无合法行动时即使棋盘未满也立即按棋子数产生 WIN/DRAW。投降不受回合限制；frozen `1.0.0` 继续只接受落子并读取原 replay。
 
 Web View 明确提供合法落点、当前行动 slot、BLACK/WHITE 棋子数和 Outcome；客户端不扫描夹线、不判断跳过或终局。强制跳过不是 PASS Action，不增加额外 revision，也不进入 canonical replay。黑白棋复用既有双人房间、多轮、stable slots、projection、Replay V1、PostgreSQL archive/history 和通用 Web 页面，M6 因此完成。
 

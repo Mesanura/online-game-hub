@@ -230,21 +230,24 @@ interface GameClientModule<View, Action> {
   gameId: GameId;
   gameVersion: GameVersion;
   parseView(input: unknown): View;
+  createResignAction?: () => Action;
   Component: React.ComponentType<GameClientProps<View, Action>>;
 }
 ```
 
-通用 host 负责添加 `commandId` 和 `expectedRevision`、管理连接、显示平台错误和处理重连。具体游戏组件只渲染 View、采集意图并调用 `submitAction`。
+通用 host 负责添加 `commandId` 和 `expectedRevision`、管理连接、显示平台错误和处理重连。具体游戏组件只渲染 View、采集意图并调用 `submitAction`。可投降游戏以可选 `createResignAction` 返回该版本的最小投降 Action；共用 HUD 负责 active player 可见性、二次确认和提交，但不解释或验证 Action。
 
 客户端可以重复实现提示性逻辑以改善 UX，但提示不是权威；服务器 Core 始终重新验证 Action。
 
-四子棋 1.0.0 验证了该契约可表达固定 7×6 View、每列可访问操作和 `DROP_DISC(column)` intent，而无需让 Client Module 导入 Core、计算重力落点、扫描胜负、预测 Outcome 或推进 revision。客户端 View schema 是对不可信 server payload 的运行时边界，不等于在浏览器重建 authoritative State。
+井字棋、四子棋、五子棋与黑白棋 current `1.1.0` 都暴露 `createResignAction`；各自 frozen `1.0.0` definition 继续只解析原落子 Action。该 client factory 不属于 replay 或 wire envelope，也不能让旧 Core 接受新 Action。
 
-五子棋 1.0.0 继续使用同一 Client Module contract：View 明确携带 15 或 19 的 `boardSize` 与固定 `winLength: 5`，客户端按完整 View 渲染 225/361 个 cell 并只提交 `PLACE_STONE(cell)`。客户端不导入 Core、不扫描连续棋子，也不把 View、actor、Outcome 或 revision 放入 Action。
+四子棋 current `1.1.0` 验证了该契约可表达固定 7×6 View、每列可访问操作、`DROP_DISC(column)` intent 与共用 HUD 的 `RESIGN`，而无需让 Client Module 导入 Core、计算重力落点、扫描胜负、预测 Outcome 或推进 revision。客户端 View schema 是对不可信 server payload 的运行时边界，不等于在浏览器重建 authoritative State。
 
-六贯棋 1.0.0 使用同一 contract 渲染固定 121-cell 公开 View，并只提交 `PLACE_STONE(cell)` 或经二次确认的 `RESIGN`。连接路径完全来自服务器 Outcome；客户端不扫描连通性、不自行选择 winning path，取消投降确认也不提交 Action。`RESIGN` 是否不受回合限制仍由 Core 裁定，通用 host/runtime 无需理解其语义。
+五子棋 current `1.1.0` 继续使用同一 Client Module contract：View 明确携带 15 或 19 的 `boardSize` 与固定 `winLength: 5`，客户端按完整 View 渲染 225/361 个 cell 并提交 `PLACE_STONE(cell)` 或 factory 生成的 `RESIGN`。客户端不导入 Core、不扫描连续棋子，也不把 View、actor、Outcome 或 revision 放入 Action。
 
-黑白棋 1.0.0 使用同一 contract 渲染固定 64-cell 公开 View，并只提交 `PLACE_DISC(cell)`。View 由服务器明确提供 `legalMoves`、`nextTurnSlotId`、BLACK/WHITE 棋子数和 Outcome；客户端不扫描八方向夹线、不计算翻转、不判断是否跳过或终局。对方无合法行动时，Core 在该次 accepted transition 内保持当前行动 slot；没有 `PASS` Action，也不需要 Client Module 或 runtime 特例。
+六贯棋 `1.0.0` 使用同一 contract 渲染固定 121-cell 公开 View，并提交 `PLACE_STONE(cell)` 或 factory 生成的 `RESIGN`。连接路径完全来自服务器 Outcome；客户端不扫描连通性、不自行选择 winning path，共用 HUD 取消投降确认也不提交 Action。`RESIGN` 是否不受回合限制仍由 Core 裁定，通用 host/runtime 无需理解其语义。
+
+黑白棋 current `1.1.0` 使用同一 contract 渲染固定 64-cell 公开 View，并提交 `PLACE_DISC(cell)` 或 factory 生成的 `RESIGN`。View 由服务器明确提供 `legalMoves`、`nextTurnSlotId`、BLACK/WHITE 棋子数和 Outcome；客户端不扫描八方向夹线、不计算翻转、不判断是否跳过或终局。对方无合法行动时，Core 在该次 accepted transition 内保持当前行动 slot；没有 `PASS` Action，也不需要 runtime 特例。
 
 ## 9. Manifest 与 Export Map
 
@@ -276,7 +279,7 @@ interface GameClientModule<View, Action> {
 
 只改变 CSS、动画、无语义文案或等价性能优化，不需要提升 `gameVersion`。
 
-Registry 必须能够按 exact `gameVersion` 读取旧 replay 所需的 definition。旧实现可以在迁移为稳定归档后退役，具体策略见 [REPLAY_DESIGN.md](./REPLAY_DESIGN.md)。
+Registry 必须能够按 exact `gameVersion` 读取旧 replay 所需的 definition。“current”先由 catalog manifest 选定版本，再走同一 exact resolver；不得依赖 definition 登记顺序。旧实现可以在迁移为稳定归档后退役，具体策略见 [REPLAY_DESIGN.md](./REPLAY_DESIGN.md)。
 
 ## 11. Plugin Definition of Done
 
@@ -289,6 +292,8 @@ Registry 必须能够按 exact `gameVersion` 读取旧 replay 所需的 definiti
 - `projectView` 的信息泄漏测试通过；
 - package 只通过声明的 public subpath exports 被消费。
 
-M6 五子棋证明非 `null` Config 可直接通过既有 create/runtime/replay 契约；为让通用 Web 无游戏分支地取得创建默认值，`GameManifest` 新增必填 `defaultConfig`，并同步迁移所有游戏与消费者。额外六贯棋证明 strict Action union 可同时承载落子与投降、Outcome 可保存变长 canonical path。黑白棋进一步证明一次 transition 可表达多方向翻转、无合法行动、同 slot 续行和非满盘终局。三者都无需修改 `GameDefinition`、`GameClientModule`、Protocol V1 或 replay envelope，M6 已完成。
+M6 当时由五子棋证明非 `null` Config 可直接通过既有 create/runtime/replay 契约；为让通用 Web 无游戏分支地取得创建默认值，`GameManifest` 新增必填 `defaultConfig`，并同步迁移所有游戏与消费者。额外六贯棋证明 strict Action union 可同时承载落子与投降、Outcome 可保存变长 canonical path。黑白棋进一步证明一次 transition 可表达多方向翻转、无合法行动、同 slot 续行和非满盘终局；当时无需修改 `GameDefinition`、`GameClientModule`、Protocol V1 或 replay envelope。
+
+当前规则增强仅为跨五游戏共用 HUD 的真实需求给 `GameClientModule` 增加可选 `createResignAction`，typed/erased contract 同步且旧模块仍兼容。井字棋、四子棋、五子棋与黑白棋以 `1.1.0` 承载新 Action/State/Outcome schema，独立 frozen `1.0.0` 保留；六贯棋保持 `1.0.0`。Protocol V2、Replay Format V1 和数据库 schema 不变。
 
 完整测试矩阵见 [TESTING.md](./TESTING.md)。

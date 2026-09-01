@@ -1,6 +1,6 @@
 # 开发路线图
 
-> 状态：M1–M6、Protocol V2 逐局先手、三阶段 Web 与窄版 create-game 已完成
+> 状态：M1–M6、Protocol V2 逐局先手、三阶段 Web、窄版 create-game 与通用投降/规则版本增强已完成
 > 本文是项目阶段顺序和里程碑退出条件的权威来源。里程碑按依赖排序，不承诺具体日期。
 
 ## 原则
@@ -163,7 +163,7 @@
 
 ## 已完成平台增强：Protocol V2 与逐局先手
 
-> 实施状态：已完成（2026-08-31）。Protocol/Host/Runtime/Database adapter/Web 与五游戏纵切已迁移；Replay Format V1、五个游戏 1.0.0、PostgreSQL schema 和 migration 保持不变。
+> 实施状态：已完成（2026-08-31）。Protocol/Host/Runtime/Database adapter/Web 与五游戏纵切已迁移；该增强完成时 Replay Format V1、五个游戏 1.0.0、PostgreSQL schema 和 migration 保持不变。后续规则版本见“通用投降与规则/Replay 版本”增强。
 
 本增强在进入 M7 候选能力前收敛现有双人房间流程：
 
@@ -178,13 +178,13 @@
 
 ## 已完成平台增强：三阶段 Claymorphism Web 体验
 
-> 实施状态：已完成（2026-09-01）。五个游戏共用入口、等待和对局真实路由；Game Core、Protocol V2、Replay Format V1、数据库 schema 和全部游戏版本保持不变。
+> 实施状态：已完成（2026-09-01）。五个游戏共用入口、等待和对局真实路由；该 UI 增强本身未改变 Game Core、Protocol V2、Replay Format V1、数据库 schema 或当时的游戏版本。
 
 - 首页、游戏目录与五游戏流程统一为暖奶油、蜜桃/珊瑚/蓝绿色 Claymorphism tokens，并保留明显 focus、reduced motion、语义状态和键盘操作；
 - `/games/[gameId]` 只创建/加入，`/rooms/[roomCode]` 只处理稳定席位、邀请、先手与准备，`/play` 只承载 active/completed 棋盘；服务器 lifecycle 决定规范阶段；
 - `[gameId]/layout` 跨三个子路由保留同一 `GameClientHost`，兼容旧 `?roomCode=`，刷新/reconnect 不重复 join 或丢失 stable slot；
 - 邀请改为 Clipboard API 按钮，含 copying/copied/failed、`aria-live` 和手动复制后备，不复制身份凭据；
-- 桌面对局页面本身不因 HUD 滚动；大型棋盘在专属容器内滚动，移动端有效落点至少 44px；终局保留最终棋盘并从“下一局设置”回到等待页；
+- 桌面对局页面本身不因 HUD 滚动；大型棋盘在专属容器内滚动，移动端有效落点至少 44px；终局保留最终棋盘并从“下一局设置”回到等待页；后续通用投降增强继续复用同一 HUD；
 - PostgreSQL-backed 五套 Playwright 继续覆盖双方准备、两轮、reconnect、completed/closed、canonical replay 和私有 history，未新增观战、昵称、计时、Matchmaking 或规则配置。
 
 ## 已完成开发工具增强：窄版 `tools/create-game`
@@ -197,7 +197,18 @@
 - 通过固定静态 marker 幂等更新 registry dependency、catalog、lazy client loader、exact/current server definitions 和 Next transpile allowlist，继续禁止目录扫描与运行时插件发现；
 - 在写入前完成全量 preflight，冲突/部分登记零写入；写入或根目录固定 pnpm lockfile-only 更新失败时回滚本轮目标；
 - 隔离临时 fixture 覆盖精确输出、第二次零 diff、非法输入、目录/package/gameId/symbol 冲突、部分/重复登记、lockfile 失败回滚、CLI help/退出码和稳定输出；
-- 成功后只打印人工 Definition of Done 清单。Protocol V2、Replay Format V1、database schema、五款游戏 `gameVersion 1.0.0` 与平台 public runtime API 均未改变。
+- 成功后只打印人工 Definition of Done 清单。该工具增强本身未改变 Protocol V2、Replay Format V1、database schema、当时五款游戏的 `gameVersion 1.0.0` 或平台 public runtime API。
+
+## 已完成平台增强：通用投降与规则/Replay 版本
+
+> 实施状态：已完成（2026-09-01）。五游戏共用投降 HUD 与 exact 历史/当前规则并存已通过 Core、client、registry、golden、真实 Colyseus 和 Playwright 验证。
+
+- `GameClientModule` typed/erased contract 新增可选 `createResignAction`；五个 current modules 都提供最小 strict `RESIGN`，共用 HUD 统一处理 active player 可见性、二次确认与提交，游戏组件不再各自实现投降按钮；
+- 井字棋、四子棋、五子棋与黑白棋 current `gameVersion` 提升为 `1.1.0`，增加 off-turn `RESIGN`、State `resignedSlotId` 与 `RESIGNATION` WIN；普通落子、胜负、计分、Config 与 RNG 规则保持不变；
+- 四个 `1.0.0` definition 独立 frozen、不 alias current、继续拒绝 `RESIGN`；原 golden fixture 不改写，current `1.1.0` 各有 normal 与 resignation fixtures；
+- registry 同时 exact-resolve 历史/当前版本；创建新房间先读取 catalog manifest，再 exact 选择 current definition，不依赖登记数组顺序；
+- 六贯棋 Core、邻接算法和 `gameVersion 1.0.0` 保持不变；新增 BLUE/RED 第三轴 accepted-Action regression，并由真实 server integration 验证 canonical path、终局拒绝和 replay；
+- canonical replay 仍只记录规范化且 accepted 的 Action。四游戏 server table 验证正常 Action 后同 actor off-turn resignation、revision/completed/Outcome、单一 `RESIGN` event 与 exact verification；Protocol V2、Replay Format V1 和数据库 schema/migration 均无需修改。
 
 ## M7：按证据扩展平台
 
@@ -213,4 +224,4 @@
 
 ## 下一轮建议
 
-M6、逐局先手、三阶段 Web 与窄版 `tools/create-game` 均已完成，不再向这些已收敛任务追加产品能力。下一轮由产品证据从 M7 候选能力中单独立项；不要把 OAuth、Lobby、Matchmaking、排行榜、观战、公开 replay、durable active room、Redis 或多实例混成同一任务。
+M6、逐局先手、三阶段 Web、窄版 `tools/create-game` 与通用投降/规则版本增强均已完成，不再向这些已收敛任务追加产品能力。下一轮由产品证据从 M7 候选能力中单独立项；不要把 OAuth、Lobby、Matchmaking、排行榜、观战、公开 replay、durable active room、Redis 或多实例混成同一任务。

@@ -75,15 +75,15 @@
 | Projection      | 每种 viewer 只得到被授权字段，State 不直接泄漏                          |
 | Determinism     | 相同输入重复运行得到深度相等的 State、RNG 和 Outcome                    |
 
-井字棋至少覆盖所有获胜方向、平局、重复落子、错误回合、越界 cell 和终局后落子。
+井字棋至少覆盖所有获胜方向、平局、重复落子、错误回合、越界 cell、strict/off-turn `RESIGN`、resignation projection 和终局后 Action；frozen `1.0.0` fixture 必须继续拒绝 `RESIGN` 并 exact 重建。
 
-四子棋至少覆盖重力、轮次切换、7 个满列、越界 column、非当前玩家、横向/纵向/双对角获胜、合法 42-action 平局、终局拒绝、immutability、serialization、projection 和零 RNG cursor determinism。
+四子棋至少覆盖重力、轮次切换、7 个满列、越界 column、非当前玩家、横向/纵向/双对角获胜、合法 42-action 平局、strict/off-turn `RESIGN`、resignation projection、终局拒绝、immutability、serialization、projection 和零 RNG cursor determinism；frozen `1.0.0` fixture 保持 exact。
 
-五子棋至少覆盖 15×15/19×19 strict Config、默认 Config、初始化、轮次、越界/占用 cell、非当前玩家、横向/纵向/双对角胜局、连续五子以上长连、合法 225-action 满盘平局、终局拒绝、Config/State/Action/RNG immutability、serialization、projection 和零 RNG cursor seeded determinism。
+五子棋至少覆盖 15×15/19×19 strict Config、默认 Config、初始化、轮次、越界/占用 cell、非当前玩家、横向/纵向/双对角胜局、连续五子以上长连、合法 225-action 满盘平局、strict/off-turn `RESIGN`、resignation projection、终局拒绝、Config/State/Action/RNG immutability、serialization、projection 和零 RNG cursor seeded determinism；frozen `1.0.0` fixture 保持 exact。
 
 六贯棋至少覆盖 null Config、strict `PLACE_STONE | RESIGN`、固定 11×11 初始化、BLUE 先手、六方向邻接、四边/四角、禁止 row wrap、BLUE/RED 连接、未完成路径、canonical 最短路径与 tie-break、所有领域拒绝顺序、off-turn resignation、无 DRAW、终局拒绝、损坏 State 不变量、immutability、serialization、player/spectator projection 和零 RNG cursor seeded determinism。
 
-黑白棋至少覆盖 null Config、标准 8×8 初始四子与 BLACK/WHITE slot 映射、八方向单线/多线同时翻转、边界/角落/禁止 row wrap、错误 slot/回合/越界/占用/无翻转落子、对方无行动时同 slot 续行、双方无行动的非满盘终局、满盘 BLACK/WHITE 胜局与平局、终局拒绝、Config/State/Action/RNG immutability、serialization、player/spectator projection、服务器 View 的合法落点/棋子数/Outcome 和零 RNG cursor seeded determinism。
+黑白棋至少覆盖 null Config、标准 8×8 初始四子与 BLACK/WHITE slot 映射、八方向单线/多线同时翻转、边界/角落/禁止 row wrap、错误 slot/回合/越界/占用/无翻转落子、对方无行动时同 slot 续行、双方无行动的非满盘终局、满盘 BLACK/WHITE 胜局与平局、strict/off-turn `RESIGN`、resignation projection、终局拒绝、Config/State/Action/RNG immutability、serialization、player/spectator projection、服务器 View 的合法落点/棋子数/Outcome 和零 RNG cursor seeded determinism；frozen `1.0.0` fixture 保持 exact。
 
 ### 4.2 Property 与 Table-driven Tests
 
@@ -170,6 +170,8 @@ Multiplayer integration 使用两个独立客户端连接同一真实 room，验
 
 黑白棋 integration 额外覆盖本轮 BLACK/WHITE role、schema-invalid/伪造 actor、错回合与无翻转拒绝不推进 revision/replay、权威翻转、revision 18 后 WHITE 强制连续行动、25-action 非满盘终局、PASS-free canonical replay，以及同房间第二轮 revision 重置、独立 Match/replay 与 11-action 非满盘终局。
 
+四个 current `1.1.0` 游戏另以 table 覆盖一个正常 accepted Action 后同 actor off-turn `RESIGN`：revision 只加到 `2`、比赛 completed、对手 `RESIGNATION` WIN、replay 恰有一条 `RESIGN` 且 exact verification 通过。六贯棋连接轮使用必须经过 `(+1,-1)` 邻格的 21-action BLUE canonical path，并覆盖终局拒绝；Core 另以 accepted Action 同时回归 BLUE/RED 两个第三轴方向。
+
 ## 9. PostgreSQL Integration Tests
 
 `packages/database/tests/database.integration.test.ts` 和 `apps/game-server/tests/database.integration.test.ts` 连接真实 PostgreSQL，不使用 SQLite，也不 mock Drizzle driver。根 `pnpm test:database` 会先构建依赖 package，再执行这两组 tests；缺少显式的测试 DSN 时 fail closed，不会回退或连接默认开发数据库。
@@ -205,7 +207,7 @@ Multiplayer integration 使用两个独立客户端连接同一真实 room，验
 9. 另一 active room 用 fake clock 前进 60,001 ms，验证 `RECONNECT_TIMEOUT` abandoned 并关闭 live room；
 10. 关闭并重建 database adapter 后，两轮 history metadata 和 completed canonical replays 仍存在；浏览器只看到安全 metadata，不看到数据库或 replay 细节。
 
-Web E2E 同时验证三阶段 App Router：创建/加入和 canonical 邀请进入等待页，旧 `?roomCode=` 兼容入口规范化，双方 ready 后自动进入 `/play`，active 刷新/reconnect 回到 `/play`，completed 保留最终棋盘并通过“下一局设置”返回等待页，closed 返回入口并显示原因。复制邀请覆盖 Clipboard 成功状态与 API 失败后的可操作手动复制后备；五套 E2E 都从对局左侧 HUD 底部的直接关闭/离开控件触发操作，并验证 active 房间保留确认。
+Web E2E 同时验证三阶段 App Router：创建/加入和 canonical 邀请进入等待页，旧 `?roomCode=` 兼容入口规范化，双方 ready 后自动进入 `/play`，active 刷新/reconnect 回到 `/play`，completed 保留最终棋盘并通过“下一局设置”返回等待页，closed 返回入口并显示原因。复制邀请覆盖 Clipboard 成功状态与 API 失败后的可操作手动复制后备；五套 E2E 都从对局左侧共用 HUD 取消一次投降并确认一次，验证取消不产生 Action、确认只产生一个 `RESIGN`/revision、双方收敛到 `RESIGNATION` WIN 且 PostgreSQL replay exact verification 通过。HUD 仍直接提供关闭/离开并为 active 房间保留独立确认。
 
 `tooling/e2e/tests/connect-four-vertical-slice.spec.ts` 保留上述真实 Next/PostgreSQL/Colyseus harness，独立验证：
 
@@ -229,7 +231,7 @@ Web E2E 同时验证三阶段 App Router：创建/加入和 canonical 邀请进�
 1. 目录、页面、11×11 菱形棋盘、四条红蓝边、A–K/1–11 坐标和本轮 BLUE/RED roles；
 2. 越过 disabled cell 的 RED 错轮 intent 被真实 Server 拒绝且 revision 保持 `0`；
 3. 第一轮完成 21-revision BLUE 连接胜局，11-cell canonical path 只以白色模糊发光边框高亮；
-4. 房主再次选择自己先手，双方在同一 room/stable slots 开始第二轮，因此该测试中角色保持不变；RED 在 BLUE 回合取消投降确认时不产生 Action；
+4. 房主再次选择自己先手，双方在同一 room/stable slots 开始第二轮，因此该测试中角色保持不变；RED 在 BLUE 回合从共用 HUD 取消投降确认时不产生 Action；
 5. RED 再次确认投降后产生 1-revision RESIGNATION WIN，不显示连接路径 glow；
 6. 两轮独立 Match/replay 从 PostgreSQL 新 connection 重读并验证，双方 private history 返回两条安全 metadata。
 
