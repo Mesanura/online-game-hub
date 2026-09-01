@@ -27,7 +27,7 @@ const cellIndexSchema = z
 const boardSchema = z
   .array(slotIdSchema.nullable())
   .length(CONNECT_FOUR_CELL_COUNT);
-const outcomeSchema = z.discriminatedUnion("type", [
+const outcomeSchema = z.union([
   z
     .object({
       type: z.literal("WIN"),
@@ -38,6 +38,14 @@ const outcomeSchema = z.discriminatedUnion("type", [
         cellIndexSchema,
         cellIndexSchema,
       ]),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("WIN"),
+      reason: z.literal("RESIGNATION"),
+      winnerSlotId: slotIdSchema,
+      resignedSlotId: slotIdSchema,
     })
     .strict(),
   z.object({ type: z.literal("DRAW") }).strict(),
@@ -88,6 +96,17 @@ export const connectFourViewSchema = z
         code: "custom",
         message: "The winner must reference a visible player slot.",
         path: ["outcome", "winnerSlotId"],
+      });
+    }
+    if (
+      view.outcome?.type === "WIN" &&
+      "reason" in view.outcome &&
+      !slots.includes(view.outcome.resignedSlotId)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "The resigned slot must reference a visible player slot.",
+        path: ["outcome", "resignedSlotId"],
       });
     }
   });
@@ -144,8 +163,7 @@ export function ConnectFourClient(
   const nextDisc = discForSlot(props.view, props.view.nextTurnSlotId);
   const outcomeText = outcomeLabel(props.view);
   const winningCells =
-    props.view.outcome?.type === "WIN" &&
-    "winningCells" in props.view.outcome
+    props.view.outcome?.type === "WIN" && "winningCells" in props.view.outcome
       ? new Set<number>(props.view.outcome.winningCells)
       : new Set<number>();
   const previewsAllowed =
@@ -254,6 +272,7 @@ export function ConnectFourClient(
 export const connectFourClientModule = {
   gameId: connectFourManifest.id,
   gameVersion: connectFourManifest.gameVersion,
+  createResignAction: (): ConnectFourAction => ({ type: "RESIGN" }),
   parseView(input) {
     return connectFourViewSchema.parse(input) as unknown as ConnectFourView;
   },

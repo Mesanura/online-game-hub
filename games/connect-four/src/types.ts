@@ -8,18 +8,27 @@ export type ConnectFourState = {
   readonly players: readonly [PlayerSlotId, PlayerSlotId];
   readonly board: ConnectFourBoard;
   readonly nextPlayerIndex: 0 | 1;
+  readonly resignedSlotId: PlayerSlotId | null;
 };
 
-export type ConnectFourAction = {
-  readonly type: "DROP_DISC";
-  readonly column: number;
-};
+export type ConnectFourAction =
+  | {
+      readonly type: "DROP_DISC";
+      readonly column: number;
+    }
+  | { readonly type: "RESIGN" };
 
 export type ConnectFourOutcome =
   | {
       readonly type: "WIN";
       readonly winnerSlotId: PlayerSlotId;
       readonly winningCells: readonly [number, number, number, number];
+    }
+  | {
+      readonly type: "WIN";
+      readonly reason: "RESIGNATION";
+      readonly winnerSlotId: PlayerSlotId;
+      readonly resignedSlotId: PlayerSlotId;
     }
   | { readonly type: "DRAW" };
 

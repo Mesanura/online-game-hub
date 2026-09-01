@@ -1,0 +1,32 @@
+{
+  "header": {
+    "replayFormatVersion": 1,
+    "gameId": "connect-four",
+    "gameVersion": "1.1.0",
+    "rng": {
+      "algorithm": "fnv1a32-counter-v1",
+      "seed": "golden-connect-four-1.1-resignation"
+    },
+    "initialConfig": null,
+    "players": [{ "slotId": "player-red" }, { "slotId": "player-yellow" }]
+  },
+  "actions": [
+    {
+      "sequence": 1,
+      "actorSlotId": "player-red",
+      "action": { "type": "DROP_DISC", "column": 3 }
+    },
+    {
+      "sequence": 2,
+      "actorSlotId": "player-red",
+      "action": { "type": "RESIGN" }
+    }
+  ],
+  "recordedRngCursor": 0,
+  "recordedOutcome": {
+    "type": "WIN",
+    "reason": "RESIGNATION",
+    "winnerSlotId": "player-yellow",
+    "resignedSlotId": "player-red"
+  }
+}

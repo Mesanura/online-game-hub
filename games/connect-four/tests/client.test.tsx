@@ -60,6 +60,24 @@ describe("Connect Four Client Module", () => {
     expect(intent).not.toHaveProperty("outcome");
   });
 
+  it("exposes and parses strict resignation support", () => {
+    expect(connectFourClientModule.createResignAction?.()).toEqual({
+      type: "RESIGN",
+    });
+    expect(
+      connectFourViewSchema.safeParse({
+        ...view,
+        nextTurnSlotId: null,
+        outcome: {
+          type: "WIN",
+          reason: "RESIGNATION",
+          winnerSlotId: "slot-red",
+          resignedSlotId: "slot-yellow",
+        },
+      }).success,
+    ).toBe(true);
+  });
+
   it("derives a column preview from the lowest empty View cell", () => {
     const board = createBoard();
     expect(lowestOpenCellInColumn(board, 0)).toBe(28);

@@ -10,7 +10,10 @@ import type {
 } from "@online-game-hub/game-server-runtime";
 import { describe, expect, it } from "vitest";
 
-import { connectFourDefinition } from "../src/core/index.js";
+import {
+  connectFourDefinition,
+  connectFourDefinitionV1_0_0,
+} from "../src/core/index.js";
 
 interface MutableReplay {
   header: {
@@ -36,12 +39,28 @@ const fixtureUrl = new URL(
 );
 const fixtureText = readFileSync(fixtureUrl, "utf8");
 const goldenReplay = JSON.parse(fixtureText) as CanonicalReplay;
-const erasedDefinition = eraseGameDefinition(connectFourDefinition);
+const currentWinReplay = JSON.parse(
+  readFileSync(
+    new URL("./fixtures/connect-four-1.1.0-win.json", import.meta.url),
+    "utf8",
+  ),
+) as CanonicalReplay;
+const currentResignationReplay = JSON.parse(
+  readFileSync(
+    new URL("./fixtures/connect-four-1.1.0-resignation.json", import.meta.url),
+    "utf8",
+  ),
+) as CanonicalReplay;
+const erasedDefinitions = [
+  eraseGameDefinition(connectFourDefinitionV1_0_0),
+  eraseGameDefinition(connectFourDefinition),
+];
 const exactResolver: GameDefinitionResolver = (gameId, gameVersion) =>
-  gameId === connectFourDefinition.manifest.id &&
-  gameVersion === connectFourDefinition.manifest.gameVersion
-    ? erasedDefinition
-    : undefined;
+  erasedDefinitions.find(
+    (definition) =>
+      definition.manifest.id === gameId &&
+      definition.manifest.gameVersion === gameVersion,
+  );
 
 function cloneReplay(): MutableReplay {
   return JSON.parse(fixtureText) as MutableReplay;
@@ -117,6 +136,9 @@ describe("Connect Four 1.0.0 golden replay", () => {
         ],
       },
     });
+    if (first.status === "verified") {
+      expect(first.state).not.toHaveProperty("resignedSlotId");
+    }
   });
 
   it("requires the exact game and version", () => {
@@ -158,5 +180,62 @@ describe("Connect Four 1.0.0 golden replay", () => {
     const format = cloneReplay();
     format.header.replayFormatVersion = 2;
     expectInvalid(format, "UNSUPPORTED_REPLAY_FORMAT");
+  });
+});
+
+describe("Connect Four 1.1.0 golden replays", () => {
+  it("keeps normal play deterministic", () => {
+    expect(verifyReplay(currentWinReplay, exactResolver)).toMatchObject({
+      status: "verified",
+      rng: { cursor: 0 },
+      state: { resignedSlotId: null },
+      outcome: {
+        type: "WIN",
+        winnerSlotId: "player-red",
+        winningCells: [35, 36, 37, 38],
+      },
+    });
+  });
+
+  it("rebuilds an accepted off-turn resignation exactly", () => {
+    expect(currentResignationReplay.actions).toEqual([
+      {
+        sequence: 1,
+        actorSlotId: "player-red",
+        action: { type: "DROP_DISC", column: 3 },
+      },
+      {
+        sequence: 2,
+        actorSlotId: "player-red",
+        action: { type: "RESIGN" },
+      },
+    ]);
+    expect(verifyReplay(currentResignationReplay, exactResolver)).toMatchObject(
+      {
+        status: "verified",
+        rng: { cursor: 0 },
+        state: {
+          nextPlayerIndex: 1,
+          resignedSlotId: "player-red",
+        },
+        outcome: {
+          type: "WIN",
+          reason: "RESIGNATION",
+          winnerSlotId: "player-yellow",
+          resignedSlotId: "player-red",
+        },
+      },
+    );
+  });
+
+  it("keeps resignation unavailable to the frozen 1.0.0 schema", () => {
+    expect(
+      connectFourDefinitionV1_0_0.actionSchema.safeParse({ type: "RESIGN" })
+        .success,
+    ).toBe(false);
+    expect(
+      connectFourDefinition.actionSchema.safeParse({ type: "RESIGN" }).success,
+    ).toBe(true);
+    expect(connectFourDefinitionV1_0_0).not.toBe(connectFourDefinition);
   });
 });
