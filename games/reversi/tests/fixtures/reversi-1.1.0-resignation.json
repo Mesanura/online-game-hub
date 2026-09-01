@@ -1,0 +1,32 @@
+{
+  "header": {
+    "replayFormatVersion": 1,
+    "gameId": "reversi",
+    "gameVersion": "1.1.0",
+    "rng": {
+      "algorithm": "fnv1a32-counter-v1",
+      "seed": "golden-reversi-1.1-resignation"
+    },
+    "initialConfig": null,
+    "players": [{ "slotId": "player-black" }, { "slotId": "player-white" }]
+  },
+  "actions": [
+    {
+      "sequence": 1,
+      "actorSlotId": "player-black",
+      "action": { "type": "PLACE_DISC", "cell": 19 }
+    },
+    {
+      "sequence": 2,
+      "actorSlotId": "player-black",
+      "action": { "type": "RESIGN" }
+    }
+  ],
+  "recordedRngCursor": 0,
+  "recordedOutcome": {
+    "type": "WIN",
+    "reason": "RESIGNATION",
+    "winnerSlotId": "player-white",
+    "resignedSlotId": "player-black"
+  }
+}

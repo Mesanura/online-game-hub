@@ -81,6 +81,25 @@ describe("Reversi Client Module", () => {
     expect(intent).not.toHaveProperty("randomResult");
   });
 
+  it("exposes and parses strict resignation support", () => {
+    expect(reversiClientModule.createResignAction?.()).toEqual({
+      type: "RESIGN",
+    });
+    expect(
+      reversiViewSchema.safeParse({
+        ...view,
+        nextTurnSlotId: null,
+        legalMoves: [],
+        outcome: {
+          type: "WIN",
+          reason: "RESIGNATION",
+          winnerSlotId: "slot-black",
+          resignedSlotId: "slot-white",
+        },
+      }).success,
+    ).toBe(true);
+  });
+
   it("renders an accessible responsive 8 × 8 board, stable colors, counts, and server legal moves", () => {
     const html = render();
     expect(html).not.toContain("8 × 8 棋盘");

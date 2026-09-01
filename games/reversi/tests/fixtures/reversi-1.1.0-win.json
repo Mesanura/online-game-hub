@@ -1,0 +1,76 @@
+{
+  "header": {
+    "replayFormatVersion": 1,
+    "gameId": "reversi",
+    "gameVersion": "1.1.0",
+    "rng": {
+      "algorithm": "fnv1a32-counter-v1",
+      "seed": "golden-reversi-1.1-win"
+    },
+    "initialConfig": null,
+    "players": [{ "slotId": "player-black" }, { "slotId": "player-white" }]
+  },
+  "actions": [
+    {
+      "sequence": 1,
+      "actorSlotId": "player-black",
+      "action": { "type": "PLACE_DISC", "cell": 37 }
+    },
+    {
+      "sequence": 2,
+      "actorSlotId": "player-white",
+      "action": { "type": "PLACE_DISC", "cell": 29 }
+    },
+    {
+      "sequence": 3,
+      "actorSlotId": "player-black",
+      "action": { "type": "PLACE_DISC", "cell": 21 }
+    },
+    {
+      "sequence": 4,
+      "actorSlotId": "player-white",
+      "action": { "type": "PLACE_DISC", "cell": 30 }
+    },
+    {
+      "sequence": 5,
+      "actorSlotId": "player-black",
+      "action": { "type": "PLACE_DISC", "cell": 23 }
+    },
+    {
+      "sequence": 6,
+      "actorSlotId": "player-white",
+      "action": { "type": "PLACE_DISC", "cell": 44 }
+    },
+    {
+      "sequence": 7,
+      "actorSlotId": "player-black",
+      "action": { "type": "PLACE_DISC", "cell": 19 }
+    },
+    {
+      "sequence": 8,
+      "actorSlotId": "player-white",
+      "action": { "type": "PLACE_DISC", "cell": 45 }
+    },
+    {
+      "sequence": 9,
+      "actorSlotId": "player-black",
+      "action": { "type": "PLACE_DISC", "cell": 53 }
+    },
+    {
+      "sequence": 10,
+      "actorSlotId": "player-white",
+      "action": { "type": "PLACE_DISC", "cell": 34 }
+    },
+    {
+      "sequence": 11,
+      "actorSlotId": "player-black",
+      "action": { "type": "PLACE_DISC", "cell": 33 }
+    }
+  ],
+  "recordedRngCursor": 0,
+  "recordedOutcome": {
+    "type": "WIN",
+    "winnerSlotId": "player-black",
+    "discCounts": { "BLACK": 15, "WHITE": 0 }
+  }
+}

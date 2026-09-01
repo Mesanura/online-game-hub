@@ -28,12 +28,20 @@ const discCountsSchema = z
   })
   .strict();
 const boardSchema = z.array(slotIdSchema.nullable()).length(REVERSI_CELL_COUNT);
-const outcomeSchema = z.discriminatedUnion("type", [
+const outcomeSchema = z.union([
   z
     .object({
       type: z.literal("WIN"),
       winnerSlotId: slotIdSchema,
       discCounts: discCountsSchema,
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("WIN"),
+      reason: z.literal("RESIGNATION"),
+      winnerSlotId: slotIdSchema,
+      resignedSlotId: slotIdSchema,
     })
     .strict(),
   z.object({ type: z.literal("DRAW"), discCounts: discCountsSchema }).strict(),
@@ -121,6 +129,20 @@ export const reversiViewSchema = z
         message: "A terminal view may not expose another move.",
       });
     }
+    if (view.outcome.type === "WIN" && "reason" in view.outcome) {
+      if (
+        !slots.includes(view.outcome.winnerSlotId) ||
+        !slots.includes(view.outcome.resignedSlotId) ||
+        view.outcome.winnerSlotId === view.outcome.resignedSlotId
+      ) {
+        context.addIssue({
+          code: "custom",
+          message: "Resignation must reference distinct visible players.",
+          path: ["outcome"],
+        });
+      }
+      return;
+    }
     if (
       view.outcome.discCounts.BLACK !== view.discCounts.BLACK ||
       view.outcome.discCounts.WHITE !== view.discCounts.WHITE
@@ -172,6 +194,13 @@ function outcomeLabel(
   view: Readonly<ReversiView>,
   outcome: Readonly<ReversiOutcome>,
 ): string {
+  if (outcome.type === "WIN" && "reason" in outcome) {
+    const winnerDisc = discForSlot(view, outcome.winnerSlotId);
+    if (winnerDisc === null) return "比赛已因投降分出胜负";
+    if (view.yourDisc === null)
+      return `胜者：${discLabel(winnerDisc)}（对手投降）`;
+    return `胜者：${view.yourDisc === winnerDisc ? "你" : "对手"}（${discLabel(winnerDisc)}，投降）`;
+  }
   const score = `${outcome.discCounts.BLACK} 比 ${outcome.discCounts.WHITE}`;
   if (outcome.type === "DRAW") return `平局（${score}）`;
   const winnerDisc = discForSlot(view, outcome.winnerSlotId);
@@ -300,6 +329,7 @@ export function ReversiClient(
 export const reversiClientModule = {
   gameId: reversiManifest.id,
   gameVersion: reversiManifest.gameVersion,
+  createResignAction: (): ReversiAction => ({ type: "RESIGN" }),
   parseView(input) {
     return reversiViewSchema.parse(input) as unknown as ReversiView;
   },

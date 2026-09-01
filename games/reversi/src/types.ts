@@ -12,18 +12,27 @@ export type ReversiState = {
   readonly players: readonly [PlayerSlotId, PlayerSlotId];
   readonly board: ReversiBoard;
   readonly nextPlayerIndex: 0 | 1;
+  readonly resignedSlotId: PlayerSlotId | null;
 };
 
-export type ReversiAction = {
-  readonly type: "PLACE_DISC";
-  readonly cell: number;
-};
+export type ReversiAction =
+  | {
+      readonly type: "PLACE_DISC";
+      readonly cell: number;
+    }
+  | { readonly type: "RESIGN" };
 
 export type ReversiOutcome =
   | {
       readonly type: "WIN";
       readonly winnerSlotId: PlayerSlotId;
       readonly discCounts: ReversiDiscCounts;
+    }
+  | {
+      readonly type: "WIN";
+      readonly reason: "RESIGNATION";
+      readonly winnerSlotId: PlayerSlotId;
+      readonly resignedSlotId: PlayerSlotId;
     }
   | { readonly type: "DRAW"; readonly discCounts: ReversiDiscCounts };
 

@@ -10,7 +10,10 @@ import type {
 } from "@online-game-hub/game-server-runtime";
 import { describe, expect, it } from "vitest";
 
-import { reversiDefinition } from "../src/core/index.js";
+import {
+  reversiDefinition,
+  reversiDefinitionV1_0_0,
+} from "../src/core/index.js";
 
 interface MutableReplay {
   header: {
@@ -36,12 +39,28 @@ const fixtureUrl = new URL(
 );
 const fixtureText = readFileSync(fixtureUrl, "utf8");
 const goldenReplay = JSON.parse(fixtureText) as CanonicalReplay;
-const erasedDefinition = eraseGameDefinition(reversiDefinition);
+const currentWinReplay = JSON.parse(
+  readFileSync(
+    new URL("./fixtures/reversi-1.1.0-win.json", import.meta.url),
+    "utf8",
+  ),
+) as CanonicalReplay;
+const currentResignationReplay = JSON.parse(
+  readFileSync(
+    new URL("./fixtures/reversi-1.1.0-resignation.json", import.meta.url),
+    "utf8",
+  ),
+) as CanonicalReplay;
+const erasedDefinitions = [
+  eraseGameDefinition(reversiDefinitionV1_0_0),
+  eraseGameDefinition(reversiDefinition),
+];
 const exactResolver: GameDefinitionResolver = (gameId, gameVersion) =>
-  gameId === reversiDefinition.manifest.id &&
-  gameVersion === reversiDefinition.manifest.gameVersion
-    ? erasedDefinition
-    : undefined;
+  erasedDefinitions.find(
+    (definition) =>
+      definition.manifest.id === gameId &&
+      definition.manifest.gameVersion === gameVersion,
+  );
 
 function cloneReplay(): MutableReplay {
   return JSON.parse(fixtureText) as MutableReplay;
@@ -83,6 +102,7 @@ describe("Reversi 1.0.0 golden replay", () => {
     expect(
       state.board.filter((owner) => owner === "player-white"),
     ).toHaveLength(45);
+    expect(first.state).not.toHaveProperty("resignedSlotId");
   });
 
   it("records only accepted placements while forced skips retain sequence/revision continuity", () => {
@@ -187,5 +207,62 @@ describe("Reversi 1.0.0 golden replay", () => {
       discCounts: { BLACK: 19, WHITE: 45 },
     };
     expectInvalid(outcome, "OUTCOME_MISMATCH");
+  });
+});
+
+describe("Reversi 1.1.0 golden replays", () => {
+  it("keeps normal placement and terminal scoring deterministic", () => {
+    expect(verifyReplay(currentWinReplay, exactResolver)).toMatchObject({
+      status: "verified",
+      rng: { cursor: 0 },
+      state: { resignedSlotId: null },
+      outcome: {
+        type: "WIN",
+        winnerSlotId: "player-black",
+        discCounts: { BLACK: 15, WHITE: 0 },
+      },
+    });
+  });
+
+  it("rebuilds an accepted off-turn resignation exactly", () => {
+    expect(currentResignationReplay.actions).toEqual([
+      {
+        sequence: 1,
+        actorSlotId: "player-black",
+        action: { type: "PLACE_DISC", cell: 19 },
+      },
+      {
+        sequence: 2,
+        actorSlotId: "player-black",
+        action: { type: "RESIGN" },
+      },
+    ]);
+    expect(verifyReplay(currentResignationReplay, exactResolver)).toMatchObject(
+      {
+        status: "verified",
+        rng: { cursor: 0 },
+        state: {
+          nextPlayerIndex: 1,
+          resignedSlotId: "player-black",
+        },
+        outcome: {
+          type: "WIN",
+          reason: "RESIGNATION",
+          winnerSlotId: "player-white",
+          resignedSlotId: "player-black",
+        },
+      },
+    );
+  });
+
+  it("keeps resignation unavailable to the frozen 1.0.0 schema", () => {
+    expect(
+      reversiDefinitionV1_0_0.actionSchema.safeParse({ type: "RESIGN" })
+        .success,
+    ).toBe(false);
+    expect(
+      reversiDefinition.actionSchema.safeParse({ type: "RESIGN" }).success,
+    ).toBe(true);
+    expect(reversiDefinitionV1_0_0).not.toBe(reversiDefinition);
   });
 });

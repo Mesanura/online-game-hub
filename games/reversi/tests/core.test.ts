@@ -61,6 +61,7 @@ function stateWithBoard(
     players,
     board,
     nextPlayerIndex,
+    resignedSlotId: null,
   }) as unknown as ReversiState;
 }
 
@@ -77,7 +78,7 @@ function play(
 }
 
 describe("Config, Action, and initialization", () => {
-  it("accepts only null Config and a strict minimal PLACE_DISC intent", () => {
+  it("accepts only null Config and strict PLACE_DISC | RESIGN intents", () => {
     expect(reversiConfigSchema.parse(null)).toBeNull();
     for (const invalid of [{}, [], false, 0, "null"]) {
       expect(reversiConfigSchema.safeParse(invalid).success).toBe(false);
@@ -86,6 +87,9 @@ describe("Config, Action, and initialization", () => {
     expect(
       reversiActionSchema.safeParse({ type: "PLACE_DISC", cell: 63 }).success,
     ).toBe(true);
+    expect(reversiActionSchema.safeParse({ type: "RESIGN" }).success).toBe(
+      true,
+    );
     for (const invalid of [
       { type: "PLACE_DISC", cell: -1 },
       { type: "PLACE_DISC", cell: 64 },
@@ -96,6 +100,7 @@ describe("Config, Action, and initialization", () => {
       { type: "PLACE_DISC", cell: 19, outcome: {} },
       { type: "PLACE_DISC", cell: 19, revision: 0 },
       { type: "PASS" },
+      { type: "RESIGN", cell: 19 },
     ]) {
       expect(reversiActionSchema.safeParse(invalid).success).toBe(false);
     }
@@ -108,6 +113,7 @@ describe("Config, Action, and initialization", () => {
     expect(first).toEqual(second);
     expect(first.state.players).toEqual(players);
     expect(first.state.nextPlayerIndex).toBe(0);
+    expect(first.state.resignedSlotId).toBeNull();
     expect(first.state.board.filter((cell) => cell !== null)).toHaveLength(4);
     expect(first.state.board[27]).toBe(playerWhite);
     expect(first.state.board[36]).toBe(playerWhite);
@@ -225,6 +231,42 @@ describe("captures and legality", () => {
       expect(initial.rng.cursor).toBe(0);
     }
   });
+
+  it("accepts off-turn resignation and rejects outsider resignation immutably", () => {
+    const initial = initialize("resign-seed");
+    const action = Object.freeze({ type: "RESIGN" } as const);
+    const before = JSON.parse(JSON.stringify(initial)) as unknown;
+    const result = transition({
+      state: initial.state,
+      actorSlotId: playerWhite,
+      action,
+      rng: initial.rng,
+    });
+    expect(initial).toEqual(before);
+    expect(result.status).toBe("accepted");
+    if (result.status !== "accepted") {
+      throw new Error("Expected off-turn resignation to be accepted.");
+    }
+    expect(result.state.board).toEqual(initial.state.board);
+    expect(result.state.nextPlayerIndex).toBe(0);
+    expect(result.state.resignedSlotId).toBe(playerWhite);
+    expect(result.rng).toBe(initial.rng);
+    expect(getOutcome(result.state)).toEqual({
+      type: "WIN",
+      reason: "RESIGNATION",
+      winnerSlotId: playerBlack,
+      resignedSlotId: playerWhite,
+    });
+    expect(
+      transition({
+        state: initial.state,
+        actorSlotId: definePlayerSlotId("outsider"),
+        action,
+        rng: initial.rng,
+      }),
+    ).toEqual({ status: "rejected", code: "NOT_A_PLAYER" });
+    expect(initial).toEqual(before);
+  });
 });
 
 describe("forced skips and terminal outcomes", () => {
@@ -326,6 +368,34 @@ describe("forced skips and terminal outcomes", () => {
       }),
     ).toEqual({ status: "rejected", code: "MATCH_ALREADY_FINISHED" });
   });
+
+  it("rejects every Action after resignation", () => {
+    const initial = initialize();
+    const resignation = transition({
+      state: initial.state,
+      actorSlotId: playerWhite,
+      action: { type: "RESIGN" },
+      rng: initial.rng,
+    });
+    if (resignation.status !== "accepted") {
+      throw new Error("Expected resignation to be accepted.");
+    }
+    const before = JSON.stringify(resignation.state);
+    for (const action of [
+      { type: "PLACE_DISC", cell: 19 },
+      { type: "RESIGN" },
+    ] as const) {
+      expect(
+        transition({
+          state: resignation.state,
+          actorSlotId: playerBlack,
+          action,
+          rng: resignation.rng,
+        }),
+      ).toEqual({ status: "rejected", code: "MATCH_ALREADY_FINISHED" });
+    }
+    expect(JSON.stringify(resignation.state)).toBe(before);
+  });
 });
 
 describe("immutability, serialization, projection, and determinism", () => {
@@ -368,6 +438,32 @@ describe("immutability, serialization, projection, and determinism", () => {
     expect(reversiViewSchema.safeParse(view).success).toBe(true);
     expect(reversiOutcomeSchema.safeParse(outcome).success).toBe(true);
     for (const value of [null, terminal.state, action, view, outcome]) {
+      expect(isJsonValue(value)).toBe(true);
+      expect(JSON.parse(JSON.stringify(value)) as unknown).toEqual(value);
+    }
+
+    const initial = initialize();
+    const resignation = transition({
+      state: initial.state,
+      actorSlotId: playerWhite,
+      action: { type: "RESIGN" },
+      rng: initial.rng,
+    });
+    if (resignation.status !== "accepted") {
+      throw new Error("Expected resignation to be accepted.");
+    }
+    const resignedView = projectView({
+      state: resignation.state,
+      viewer: { kind: "spectator" },
+    });
+    expect(reversiStateSchema.safeParse(resignation.state).success).toBe(true);
+    expect(reversiViewSchema.safeParse(resignedView).success).toBe(true);
+    for (const value of [
+      resignation.state,
+      { type: "RESIGN" },
+      resignedView,
+      resignedView.outcome,
+    ]) {
       expect(isJsonValue(value)).toBe(true);
       expect(JSON.parse(JSON.stringify(value)) as unknown).toEqual(value);
     }
