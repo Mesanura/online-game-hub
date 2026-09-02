@@ -1499,6 +1499,67 @@ summary:focus-visible {
   height: 28%;
   width: 28%;
 }
+.replay-page {
+  max-width: 76rem;
+}
+.replay-heading {
+  display: grid;
+  gap: 0.35rem;
+  margin-bottom: 1rem;
+}
+.replay-heading h1 {
+  margin: 0;
+}
+.replay-main {
+  display: grid;
+  gap: 1rem;
+}
+.replay-board-shell {
+  min-width: 0;
+  overflow: hidden;
+  padding: 1rem;
+}
+.replay-frame-label {
+  font-weight: 800;
+  margin-bottom: 0.5rem;
+  text-align: center;
+}
+.replay-board-shell .game-board-panel {
+  pointer-events: none;
+}
+.replay-controls {
+  align-items: center;
+  display: grid;
+  gap: 0.8rem;
+  justify-items: center;
+  padding: 1rem;
+}
+.replay-control-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  justify-content: center;
+}
+.replay-control-buttons .icon-button {
+  min-height: 2.75rem;
+  min-width: 2.75rem;
+}
+.replay-controls input[type="range"] {
+  accent-color: var(--teal-deep);
+  width: min(100%, 36rem);
+}
+.history-replay-link {
+  justify-self: end;
+}
+@media (max-width: 46rem) {
+  .history-replay-link {
+    justify-self: stretch;
+    text-align: center;
+  }
+  .replay-board-shell {
+    overflow: auto;
+  }
+}
 .hex-board-scroll {
   max-height: calc(100svh - 13rem);
   overflow: auto;
