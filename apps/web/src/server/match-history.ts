@@ -5,6 +5,7 @@ import {
   createPostgresDatabaseClient,
 } from "@online-game-hub/database";
 import type { MatchHistoryItem } from "@online-game-hub/database";
+import type { UserMatchReplayRead } from "@online-game-hub/database";
 
 import type { WebServerConfig } from "./config";
 
@@ -24,6 +25,28 @@ export async function listUserMatchHistory(
     return await new PostgresMatchRepository(client.database).listForUser(
       userId,
     );
+  } finally {
+    await client.close();
+  }
+}
+
+export async function getUserMatchReplay(
+  config: WebServerConfig,
+  userId: string,
+  matchId: string,
+): Promise<UserMatchReplayRead> {
+  if (config.databaseMode !== "postgres" || config.databaseUrl === null) {
+    throw new Error("MATCH_HISTORY_DATABASE_UNAVAILABLE");
+  }
+  const client = createPostgresDatabaseClient({
+    url: config.databaseUrl,
+    applicationName: "online-game-hub-web-replay",
+    maxConnections: 2,
+  });
+  try {
+    return await new PostgresMatchRepository(
+      client.database,
+    ).getCompletedReplayForUser(userId, matchId);
   } finally {
     await client.close();
   }

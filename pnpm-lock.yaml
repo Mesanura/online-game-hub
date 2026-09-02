@@ -87,6 +87,12 @@ importers:
       '@online-game-hub/game-registry':
         specifier: workspace:*
         version: link:../../packages/game-registry
+      '@online-game-hub/game-sdk':
+        specifier: workspace:*
+        version: link:../../packages/game-sdk
+      '@online-game-hub/game-server-runtime':
+        specifier: workspace:*
+        version: link:../../packages/game-server-runtime
       '@online-game-hub/game-server-ticket':
         specifier: workspace:*
         version: link:../../packages/game-server-ticket
