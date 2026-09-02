@@ -222,5 +222,15 @@ describe("replay frame reconstruction", () => {
         { kind: "player", slotId: slotA },
       ),
     ).toEqual({ status: "invalid", code: "PROJECTION_FAILED" });
+    expect(
+      reconstructReplayFrames(
+        replay,
+        () => ({
+          ...definition,
+          projectView: () => ({ leaked: { seed: "secret" } }),
+        }),
+        { kind: "player", slotId: slotA },
+      ),
+    ).toEqual({ status: "invalid", code: "PROJECTION_FAILED" });
   });
 });

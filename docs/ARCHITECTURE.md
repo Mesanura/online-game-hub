@@ -286,7 +286,7 @@ Room 必须串行处理 Action。任何未来多实例方案都必须维持“�
 ### 10.3 当前不做
 
 - 邮箱/OAuth/找回密码、公开历史、公开 replay、观战、分享和下载；
-- durable active room、公开 replay、replay 播放器或通用数据删除产品；
+- durable active room、公开 replay、通用数据删除产品；
 - 并行开发多个新游戏；
 - Redis、Kubernetes、多区域或微服务化；
 - 为实时游戏、复杂卡牌或几十种游戏预先构造统一大接口。

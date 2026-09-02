@@ -599,6 +599,33 @@ function serializedFramesExceedLimit(frames: readonly ReplayFrame[]): boolean {
   }
 }
 
+const FORBIDDEN_PROJECTED_KEYS = new Set([
+  "replayId",
+  "seed",
+  "rng",
+  "state",
+  "action",
+  "actorSlotId",
+  "playerSessionId",
+  "userId",
+  "runtimeRoomId",
+  "participantRef",
+]);
+
+function containsForbiddenProjectedKey(value: JsonValue): boolean {
+  if (Array.isArray(value)) {
+    return value.some((entry) => containsForbiddenProjectedKey(entry));
+  }
+  if (value !== null && typeof value === "object") {
+    return Object.entries(value).some(
+      ([key, child]) =>
+        FORBIDDEN_PROJECTED_KEYS.has(key) ||
+        containsForbiddenProjectedKey(child),
+    );
+  }
+  return false;
+}
+
 /**
  * Rebuilds a completed canonical replay for one already-authorized player.
  * The result intentionally contains only projected Views, never replay internals.
@@ -682,7 +709,7 @@ export function reconstructReplayFrames(
     } catch {
       return invalidFrames("PROJECTION_FAILED");
     }
-    if (!isJsonValue(view)) {
+    if (!isJsonValue(view) || containsForbiddenProjectedKey(view)) {
       return invalidFrames("PROJECTION_FAILED");
     }
     frames.push({ revision, view: cloneJson(view) });
