@@ -107,7 +107,7 @@ M7-A 提供用户名+密码账户。用户名规范化为 lowercase ASCII `[a-z0
 
 网站右上角统一使用头像入口。游客资料默认为“游客”，可在当前浏览器修改显示名并保存到固定 `localStorage` key；登录账户资料保存到 PostgreSQL，登录、退出和失效 session 不会认领、迁移或覆盖游客资料。资料只作用于右上角菜单，不进入房间、玩家卡片、Protocol、ticket、Game Server 或 replay。
 
-显示名先执行 NFC 规范化和首尾空白裁剪，必须包含 1–24 个 Unicode grapheme cluster，且不得为空或包含控制字符。头像不接受图片上传，按以下顺序从显示名生成：首个汉字、首个完整 emoji grapheme、前两个 ASCII 字母或数字的大写形式，最后回退到首个有效 grapheme。浏览器使用 `Intl.Segmenter` 保护 ZWJ emoji 和旗帜 emoji 不被拆分。
+显示名先执行 NFC 规范化和首尾空白裁剪，必须包含 1–24 个 Unicode grapheme cluster，且不得为空或包含控制字符。头像不接受图片上传，而是从显示名开头的 grapheme 生成：首位为汉字、完整 emoji 或其他非 ASCII 字母数字时只取首位；首位为 ASCII 字母数字且第二位不是 ASCII 字母数字时只取首位；否则取前两位并转为大写。数字开头的连续 ASCII 字母数字前缀若包含至少两个数字，则取其中前两个数字，例如 `1a2b🐷你好` 显示为 `12`；`1你好2` 显示为 `1`；`🐷a` 显示为 `🐷`。浏览器使用 `Intl.Segmenter` 保护 ZWJ emoji 和旗帜 emoji 不被拆分。
 
 头像菜单支持鼠标悬停、键盘聚焦和点击打开，并支持 Escape、外部点击关闭。游客显示“登录”“注册”；登录后显示“历史对局”“账号设置”“退出登录”。在 live room 中执行这些身份变化操作前，页面保留离开席位确认。
 

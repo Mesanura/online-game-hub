@@ -5,7 +5,7 @@
 
 M7-B 私有历史与回放测试覆盖：UserId + matchId 数据库授权、双账户共享同局、游客永久不可见、abandoned/incomplete 拒绝、损坏数据安全错误和跨连接读取；runtime revision 0..N frame reconstruction、exact historical definition、determinism、RNG/Outcome/sequence/actor/payload 篡改、projection 异常及帧数/响应大小上限；五款游戏 historical client module 独立解析和 replay read-only 不提交 Action；Web/API 的 401、not-found、unavailable、私有 headers、帧控制、slider、播放清理、移动端大棋盘容器和无 WebSocket。
 
-账户资料测试额外覆盖：显示名 NFC、空白/控制字符、1–24 grapheme 边界、Han/普通字母数字/完整 emoji/ZWJ/旗帜头像生成；游客固定 `localStorage` 的刷新持久化与账户资料隔离；`PATCH /api/auth/profile` 的严格 body、同源、JSON、session 授权和失效 cookie 清理；PostgreSQL 旧用户迁移回填、注册默认值、更新持久化和新连接读取；ProfileMenu 的 hover/focus/click、Escape、外部关闭、游客/登录操作切换、跨浏览器资料读取及 room 身份变更确认。
+账户资料测试额外覆盖：显示名 NFC、空白/控制字符、1–24 grapheme 边界、按首位顺序处理 Han/完整 emoji/普通字母数字（含 `1a2b`、`1你好2` 和 `🐷a`）头像生成；游客固定 `localStorage` 的刷新持久化与账户资料隔离；`PATCH /api/auth/profile` 的严格 body、同源、JSON、session 授权和失效 cookie 清理；PostgreSQL 旧用户迁移回填、注册默认值、更新持久化和新连接读取；ProfileMenu 的 hover/focus/click、Escape、外部关闭、游客/登录操作切换、跨浏览器资料读取及 room 身份变更确认。
 
 ## 1. 目标
 

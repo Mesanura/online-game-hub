@@ -35,11 +35,14 @@ describe("display name and avatar profile rules", () => {
 
   it.each([
     ["你好", "你"],
-    ["A你", "你"],
+    ["A你", "A"],
     ["👩‍💻player", "👩‍💻"],
     ["🇭🇰player", "🇭🇰"],
-    ["👩‍💻玩家", "玩"],
+    ["👩‍💻玩家", "👩‍💻"],
     ["a1-player", "A1"],
+    ["1a2b🐷你好", "12"],
+    ["1你好2", "1"],
+    ["🐷a", "🐷"],
     ["___", "_"],
   ])("derives avatar label from %j", (displayName, expected) => {
     expect(getAvatarLabel(displayName)).toBe(expected);
