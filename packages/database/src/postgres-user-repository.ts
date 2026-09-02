@@ -18,7 +18,7 @@ export class PostgresUserRepository {
     try {
       const rows = await this.database
         .insert(users)
-        .values({ id: randomUUID() })
+        .values({ id: randomUUID(), displayName: "游客" })
         .returning({ id: users.id, createdAt: users.createdAt });
       const row = rows[0];
       if (row === undefined)

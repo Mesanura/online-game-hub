@@ -19,6 +19,7 @@ export class AccountRepositoryError extends Error {
 export interface PasswordAccountRecord {
   readonly userId: string;
   readonly username: string;
+  readonly displayName: string;
   readonly passwordHash: string;
 }
 
@@ -26,6 +27,7 @@ export interface AccountSessionRecord {
   readonly sessionId: string;
   readonly userId: string;
   readonly username: string;
+  readonly displayName: string;
   readonly tokenHash: string;
   readonly createdAt: string;
   readonly expiresAt: string;
@@ -53,6 +55,7 @@ function parseSession(row: {
   readonly sessionId: string;
   readonly userId: string;
   readonly username: string;
+  readonly displayName: string;
   readonly tokenHash: string;
   readonly createdAt: Date;
   readonly expiresAt: Date;
@@ -61,6 +64,7 @@ function parseSession(row: {
     !UUID_PATTERN.test(row.sessionId) ||
     !UUID_PATTERN.test(row.userId) ||
     !USERNAME_PATTERN.test(row.username) ||
+    !validDisplayName(row.displayName) ||
     !TOKEN_HASH_PATTERN.test(row.tokenHash) ||
     !validDate(row.createdAt) ||
     !validDate(row.expiresAt) ||
@@ -77,6 +81,18 @@ function parseSession(row: {
 
 function assertCredentialInput(username: string, passwordHash: string): void {
   if (!USERNAME_PATTERN.test(username) || !validPasswordHash(passwordHash)) {
+    throw new DatabaseError("DATABASE_CONFIGURATION_ERROR");
+  }
+}
+
+function validDisplayName(value: string): boolean {
+  return (
+    value.trim().length > 0 && value.length <= 96 && !/\p{Cc}/u.test(value)
+  );
+}
+
+function assertDisplayNameInput(displayName: string): void {
+  if (!validDisplayName(displayName)) {
     throw new DatabaseError("DATABASE_CONFIGURATION_ERROR");
   }
 }
@@ -99,11 +115,15 @@ export class PostgresAccountRepository {
     session: NewAccountSession,
   ): Promise<AccountSessionRecord> {
     assertCredentialInput(username, passwordHash);
+    assertDisplayNameInput(username);
     assertSessionInput(session);
     try {
       return await this.database.transaction(async (transaction) => {
         const userId = randomUUID();
-        await transaction.insert(users).values({ id: userId });
+        await transaction.insert(users).values({
+          id: userId,
+          displayName: username,
+        });
         const credentials = await transaction
           .insert(passwordCredentials)
           .values({ userId, username, passwordHash })
@@ -115,6 +135,7 @@ export class PostgresAccountRepository {
         return await this.#insertSession(
           transaction,
           userId,
+          username,
           username,
           session,
         );
@@ -139,15 +160,18 @@ export class PostgresAccountRepository {
         .select({
           userId: passwordCredentials.userId,
           username: passwordCredentials.username,
+          displayName: users.displayName,
           passwordHash: passwordCredentials.passwordHash,
         })
         .from(passwordCredentials)
+        .innerJoin(users, eq(users.id, passwordCredentials.userId))
         .where(eq(passwordCredentials.username, username))
         .limit(1);
       const row = rows[0];
       if (row === undefined) return null;
       if (
         !UUID_PATTERN.test(row.userId) ||
+        !validDisplayName(row.displayName) ||
         !validPasswordHash(row.passwordHash)
       ) {
         throw new DatabaseError("DATABASE_DATA_INVALID");
@@ -170,8 +194,12 @@ export class PostgresAccountRepository {
     try {
       return await this.database.transaction(async (transaction) => {
         const credentialRows = await transaction
-          .select({ username: passwordCredentials.username })
+          .select({
+            username: passwordCredentials.username,
+            displayName: users.displayName,
+          })
           .from(passwordCredentials)
+          .innerJoin(users, eq(users.id, passwordCredentials.userId))
           .where(eq(passwordCredentials.userId, userId))
           .limit(1);
         const credential = credentialRows[0];
@@ -182,6 +210,7 @@ export class PostgresAccountRepository {
           transaction,
           userId,
           credential.username,
+          credential.displayName,
           session,
         );
       });
@@ -207,6 +236,7 @@ export class PostgresAccountRepository {
           sessionId: accountSessions.id,
           userId: accountSessions.userId,
           username: passwordCredentials.username,
+          displayName: users.displayName,
           tokenHash: accountSessions.tokenHash,
           createdAt: accountSessions.createdAt,
           expiresAt: accountSessions.expiresAt,
@@ -216,6 +246,7 @@ export class PostgresAccountRepository {
           passwordCredentials,
           eq(passwordCredentials.userId, accountSessions.userId),
         )
+        .innerJoin(users, eq(users.id, accountSessions.userId))
         .where(
           and(
             eq(accountSessions.tokenHash, tokenHash),
@@ -237,6 +268,34 @@ export class PostgresAccountRepository {
         .delete(accountSessions)
         .where(eq(accountSessions.tokenHash, tokenHash));
     } catch {
+      throw new DatabaseError("DATABASE_OPERATION_ERROR");
+    }
+  }
+
+  public async updateDisplayName(
+    userId: string,
+    displayName: string,
+  ): Promise<void> {
+    if (!UUID_PATTERN.test(userId)) {
+      throw new DatabaseError("DATABASE_CONFIGURATION_ERROR");
+    }
+    assertDisplayNameInput(displayName);
+    try {
+      const rows = await this.database
+        .update(users)
+        .set({ displayName })
+        .where(eq(users.id, userId))
+        .returning({ id: users.id });
+      if (rows[0] === undefined) {
+        throw new AccountRepositoryError("ACCOUNT_STATE_CONFLICT");
+      }
+    } catch (error) {
+      if (
+        error instanceof AccountRepositoryError ||
+        error instanceof DatabaseError
+      ) {
+        throw error;
+      }
       throw new DatabaseError("DATABASE_OPERATION_ERROR");
     }
   }
@@ -310,6 +369,7 @@ export class PostgresAccountRepository {
     >[0],
     userId: string,
     username: string,
+    displayName: string,
     session: NewAccountSession,
   ): Promise<AccountSessionRecord> {
     const rows = await transaction
@@ -331,6 +391,6 @@ export class PostgresAccountRepository {
     if (row === undefined) {
       throw new AccountRepositoryError("SESSION_TOKEN_CONFLICT");
     }
-    return parseSession({ ...row, userId, username });
+    return parseSession({ ...row, userId, username, displayName });
   }
 }

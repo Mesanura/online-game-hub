@@ -150,3 +150,154 @@ test("guest rounds stay unclaimed while account rounds survive logout and anothe
   await expect(restored.json()).resolves.toEqual(payloadA);
   await Promise.all([contextA.close(), contextB.close(), secondDevice.close()]);
 });
+
+test("profile menu persists guest data and switches to shared account data", async ({
+  browser,
+}) => {
+  const guestContext = await browser.newContext();
+  const accountContext = await browser.newContext();
+  const readerContext = await browser.newContext();
+  try {
+    const guestPage = await guestContext.newPage();
+    await guestPage.goto(`${harness.webUrl}/`);
+    const guestTrigger = guestPage.getByRole("button", {
+      name: "打开个人资料菜单",
+    });
+    await expect(guestTrigger.locator(".profile-avatar")).toHaveText("客");
+    await guestTrigger.hover();
+    const guestPopover = guestPage.getByRole("dialog", { name: "个人资料" });
+    await expect(guestPopover).toBeVisible();
+    await expect(guestPopover.getByText("游客 · 本机资料")).toBeVisible();
+    const guestInput = guestPopover.getByRole("textbox", { name: "显示名" });
+    await guestInput.fill("👩‍💻");
+    await expect(guestPopover.locator(".profile-avatar-large")).toHaveText(
+      "👩‍💻",
+    );
+    await expect(guestTrigger.locator(".profile-avatar")).toHaveText("👩‍💻");
+    await guestPopover.getByRole("button", { name: "保存显示名" }).click();
+    await expect(guestPage.getByRole("status")).toHaveText("显示名已保存。");
+    await guestPage.reload();
+    await expect(guestTrigger.locator(".profile-avatar")).toHaveText("👩‍💻");
+    await guestTrigger.focus();
+    await expect(guestPopover).toBeVisible();
+    await guestPage.keyboard.press("Escape");
+    await expect(guestPopover).toHaveCount(0);
+
+    await registerE2eAccount(
+      accountContext.request,
+      harness.webUrl,
+      "profile_menu_account",
+    );
+    const accountPage = await accountContext.newPage();
+    await accountPage.goto(`${harness.webUrl}/`);
+    const accountTrigger = accountPage.getByRole("button", {
+      name: "打开个人资料菜单",
+    });
+    await accountTrigger.hover();
+    const accountPopover = accountPage.getByRole("dialog", {
+      name: "个人资料",
+    });
+    await expect(
+      accountPopover.getByText("账号：profile_menu_account"),
+    ).toBeVisible();
+    await expect(
+      accountPopover.getByRole("link", { name: "历史对局", exact: true }),
+    ).toBeVisible();
+    await expect(
+      accountPopover.getByRole("link", { name: "账号设置", exact: true }),
+    ).toBeVisible();
+    await expect(
+      accountPopover.getByRole("button", { name: "退出登录", exact: true }),
+    ).toBeVisible();
+    await accountPopover
+      .getByRole("textbox", { name: "显示名" })
+      .fill("玩家甲");
+    await accountPopover.getByRole("button", { name: "保存显示名" }).click();
+    await expect(accountPage.getByRole("status")).toHaveText("显示名已保存。");
+    await expect(accountTrigger.locator(".profile-avatar")).toHaveText("玩");
+
+    await loginE2eAccount(
+      readerContext.request,
+      harness.webUrl,
+      "profile_menu_account",
+    );
+    const readerPage = await readerContext.newPage();
+    await readerPage.goto(`${harness.webUrl}/`);
+    const readerTrigger = readerPage.getByRole("button", {
+      name: "打开个人资料菜单",
+    });
+    await readerTrigger.hover();
+    const readerPopover = readerPage.getByRole("dialog", {
+      name: "个人资料",
+    });
+    await expect(readerPopover.locator(".profile-copy strong")).toHaveText(
+      "玩家甲",
+    );
+    await expect(readerTrigger.locator(".profile-avatar")).toHaveText("玩");
+
+    await readerPopover
+      .getByRole("button", { name: "退出登录", exact: true })
+      .click();
+    await expect(readerPage).toHaveURL(/\/$/u);
+    await readerTrigger.hover();
+    const loggedOutPopover = readerPage.getByRole("dialog", {
+      name: "个人资料",
+    });
+    await expect(loggedOutPopover.locator(".profile-copy strong")).toHaveText(
+      "游客",
+    );
+    await expect(
+      loggedOutPopover.getByRole("link", { name: "登录", exact: true }),
+    ).toBeVisible();
+    await expect(
+      loggedOutPopover.getByRole("link", { name: "注册", exact: true }),
+    ).toBeVisible();
+  } finally {
+    await Promise.all([
+      guestContext.close(),
+      accountContext.close(),
+      readerContext.close(),
+    ]);
+  }
+});
+
+test("room profile actions keep the identity-change confirmation", async ({
+  browser,
+}) => {
+  const context = await browser.newContext();
+  try {
+    await registerE2eAccount(
+      context.request,
+      harness.webUrl,
+      "profile_room_account",
+    );
+    const page = await context.newPage();
+    await page.goto(`${harness.webUrl}/games/tic-tac-toe`);
+    await page.getByTestId("create-room").click();
+    await expect(page.getByTestId("connection-state")).toHaveText("已连接");
+    const roomUrl = page.url();
+    const trigger = page.getByRole("button", {
+      name: "打开个人资料菜单",
+    });
+
+    for (const linkName of ["历史对局", "账号设置"] as const) {
+      await trigger.hover();
+      const dialogPromise = page.waitForEvent("dialog");
+      await page.getByRole("link", { name: linkName, exact: true }).click();
+      const dialog = await dialogPromise;
+      expect(dialog.message()).toContain("离开后将无法恢复本房间席位");
+      await dialog.dismiss();
+      await expect(page).toHaveURL(roomUrl);
+    }
+
+    await trigger.hover();
+    const logoutDialogPromise = page.waitForEvent("dialog");
+    await page.getByRole("button", { name: "退出登录", exact: true }).click();
+    const logoutDialog = await logoutDialogPromise;
+    expect(logoutDialog.message()).toContain("离开后将无法恢复本房间席位");
+    await logoutDialog.dismiss();
+    await expect(page).toHaveURL(roomUrl);
+  } finally {
+    await context.close();
+  }
+});

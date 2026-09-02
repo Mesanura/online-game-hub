@@ -5,6 +5,8 @@
 
 M7-B 私有历史与回放测试覆盖：UserId + matchId 数据库授权、双账户共享同局、游客永久不可见、abandoned/incomplete 拒绝、损坏数据安全错误和跨连接读取；runtime revision 0..N frame reconstruction、exact historical definition、determinism、RNG/Outcome/sequence/actor/payload 篡改、projection 异常及帧数/响应大小上限；五款游戏 historical client module 独立解析和 replay read-only 不提交 Action；Web/API 的 401、not-found、unavailable、私有 headers、帧控制、slider、播放清理、移动端大棋盘容器和无 WebSocket。
 
+账户资料测试额外覆盖：显示名 NFC、空白/控制字符、1–24 grapheme 边界、Han/普通字母数字/完整 emoji/ZWJ/旗帜头像生成；游客固定 `localStorage` 的刷新持久化与账户资料隔离；`PATCH /api/auth/profile` 的严格 body、同源、JSON、session 授权和失效 cookie 清理；PostgreSQL 旧用户迁移回填、注册默认值、更新持久化和新连接读取；ProfileMenu 的 hover/focus/click、Escape、外部关闭、游客/登录操作切换、跨浏览器资料读取及 room 身份变更确认。
+
 ## 1. 目标
 
 测试体系必须让开发者和 Agent 快速回答：
@@ -192,6 +194,7 @@ Multiplayer integration 使用两个独立客户端连接同一真实 room，验
 - participants 集合不随 `playerOrder` 反转；两轮 Replay header 的有序 players 与各自 Core 初始化顺序一致；
 - 匿名 `/api/matches` 返回 401；账户历史只按 UserId 返回最近 50 条安全 metadata，不能查询其他账户，也不泄漏 replay ID/seed/State/session ID；
 - 匿名 Round 的 `match_players.user_id` 永久为 null；注册/登录、归档重试不回填；登录后新 Round 正确记录 UserId；
+- `users.display_name` 迁移从凭证回填用户名、无凭证回填“游客”；注册默认显示名等于用户名，更新只影响目标 UserId，新数据库连接可读取更新结果；
 - adapter/connection shutdown 后无遗留 client；数据库错误经稳定 code 清洗，不泄漏 SQL、DSN、session、ticket、State、seed 或 canonical replay。
 
 ## 10. Playwright E2E
@@ -210,6 +213,8 @@ Multiplayer integration 使用两个独立客户端连接同一真实 room，验
 10. 关闭并重建 database adapter 后，两轮 history metadata 和 completed canonical replays 仍存在；浏览器只看到安全 metadata，不看到数据库或 replay 细节。
 
 Web E2E 同时验证三阶段 App Router：创建/加入和 canonical 邀请进入等待页，旧 `?roomCode=` 兼容入口规范化，双方 ready 后自动进入 `/play`，active 刷新/reconnect 回到 `/play`，completed 保留最终棋盘并通过“下一局设置”返回等待页，closed 返回入口并显示原因。复制邀请覆盖 Clipboard 成功状态与 API 失败后的可操作手动复制后备；五套 E2E 都从对局左侧共用 HUD 取消一次投降并确认一次，验证取消不产生 Action、确认只产生一个 `RESIGN`/revision、双方收敛到 `RESIGNATION` WIN 且 PostgreSQL replay exact verification 通过。HUD 仍直接提供关闭/离开并为 active 房间保留独立确认。
+
+`auth-vertical-slice.spec.ts` 还验证右上角 ProfileMenu：游客显示“游客”并可修改显示名、实时更新头像且刷新后仍保留；登录后下半部切换为历史/设置/退出，账户更新由另一 browser context 读取，退出后恢复为独立游客资料；键盘 Escape、外部点击和 live room 中身份变化确认均有效。
 
 `tooling/e2e/tests/connect-four-vertical-slice.spec.ts` 保留上述真实 Next/PostgreSQL/Colyseus harness，独立验证：
 

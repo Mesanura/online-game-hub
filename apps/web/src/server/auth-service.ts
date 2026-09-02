@@ -18,6 +18,7 @@ import {
   verifyPassword,
 } from "./password-auth";
 import type { WebServerConfig } from "./config";
+import { normalizeDisplayName } from "../lib/profile";
 
 export type AuthServiceErrorCode =
   | "INVALID_INPUT"
@@ -36,11 +37,13 @@ export class AuthServiceError extends Error {
 
 export interface PublicAccount {
   readonly username: string;
+  readonly displayName: string;
 }
 
 export interface AuthenticatedAccount {
   readonly userId: string;
   readonly username: string;
+  readonly displayName: string;
   readonly session: AccountSessionRecord;
   readonly sessionToken: string | null;
 }
@@ -77,6 +80,7 @@ export async function registerAccount(
       return {
         userId: session.userId,
         username,
+        displayName: session.displayName,
         session,
         sessionToken: material.token,
       };
@@ -126,6 +130,7 @@ export async function loginAccount(
     return {
       userId: account.userId,
       username: account.username,
+      displayName: account.displayName,
       session,
       sessionToken: material.token,
     };
@@ -153,6 +158,7 @@ export async function resolveAccountSession(
       : {
           userId: session.userId,
           username: session.username,
+          displayName: session.displayName,
           session,
           sessionToken: null,
         };
@@ -215,6 +221,28 @@ export async function changeAccountPassword(
   }
 }
 
+export async function updateAccountProfile(
+  config: WebServerConfig,
+  account: AuthenticatedAccount,
+  displayNameInput: unknown,
+): Promise<PublicAccount> {
+  const displayName = normalizeDisplayName(displayNameInput);
+  if (displayName === null) throw new AuthServiceError("INVALID_INPUT");
+  const client = requireDatabase(config);
+  try {
+    await new PostgresAccountRepository(client.database).updateDisplayName(
+      account.userId,
+      displayName,
+    );
+    return { username: account.username, displayName };
+  } catch (error) {
+    if (error instanceof AuthServiceError) throw error;
+    throw new AuthServiceError("AUTH_DATABASE_UNAVAILABLE");
+  } finally {
+    await client.close();
+  }
+}
+
 export function publicAccount(account: AuthenticatedAccount): PublicAccount {
-  return { username: account.username };
+  return { username: account.username, displayName: account.displayName };
 }

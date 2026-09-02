@@ -3,22 +3,13 @@
 import { GameController, SquaresFour } from "@phosphor-icons/react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import type { MouseEvent } from "react";
+
+import { ProfileMenu } from "./profile-menu";
 
 export function SiteHeader() {
   const pathname = usePathname();
-  const [username, setUsername] = useState<string | null>(null);
-  useEffect(() => {
-    void fetch("/api/auth/me", { cache: "no-store" })
-      .then((response) => (response.ok ? response.json() : null))
-      .then((payload: { account?: { username?: string } | null } | null) =>
-        setUsername(payload?.account?.username ?? null),
-      )
-      .catch(() => setUsername(null));
-  }, [pathname]);
-  const confirmIdentityChange = (
-    event: React.MouseEvent<HTMLAnchorElement>,
-  ) => {
+  const confirmIdentityChange = (event: MouseEvent<HTMLAnchorElement>) => {
     if (
       pathname.includes("/rooms/") &&
       !window.confirm(
@@ -40,32 +31,7 @@ export function SiteHeader() {
         <Link className="header-nav-link" href="/games">
           <SquaresFour size={18} weight="bold" aria-hidden="true" /> 游戏目录
         </Link>
-        {username === null ? (
-          <>
-            <Link
-              className="header-nav-link"
-              href="/login"
-              onClick={confirmIdentityChange}
-            >
-              登录
-            </Link>
-            <Link
-              className="header-nav-link"
-              href="/register"
-              onClick={confirmIdentityChange}
-            >
-              注册
-            </Link>
-          </>
-        ) : (
-          <Link
-            className="header-nav-link"
-            href="/account"
-            onClick={confirmIdentityChange}
-          >
-            {username}
-          </Link>
-        )}
+        <ProfileMenu confirmIdentityChange={confirmIdentityChange} />
       </nav>
     </header>
   );

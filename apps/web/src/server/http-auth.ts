@@ -10,6 +10,10 @@ export const passwordChangeSchema = z
   .object({ currentPassword: z.unknown(), newPassword: z.unknown() })
   .strict();
 
+export const profileUpdateSchema = z
+  .object({ displayName: z.unknown() })
+  .strict();
+
 const MAX_BODY_BYTES = 4096;
 
 export function isSameOrigin(request: Request): boolean {

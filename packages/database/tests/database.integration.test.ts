@@ -177,6 +177,62 @@ describe.sequential("PostgreSQL + Drizzle persistence", () => {
     ]);
   });
 
+  it("backfills display names when the profile migration upgrades legacy users", async () => {
+    const legacyAccount = await accountRepository.registerPasswordAccount(
+      "legacy_migrated",
+      "$argon2id$v=19$m=19456,t=2,p=1$legacy-hash",
+      {
+        tokenHash: "f".repeat(64),
+        expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      },
+    );
+    const legacyGuest = await userRepository.createUser();
+    const migrationRows = await isolated.client.database.execute(
+      sql<{ readonly createdAt: number }>`
+        select created_at as "createdAt"
+        from "drizzle"."__drizzle_migrations"
+        order by created_at desc
+        limit 1
+      `,
+    );
+    const latestMigration = migrationRows[0];
+    if (latestMigration === undefined) {
+      throw new Error("The profile migration journal entry is missing.");
+    }
+    await isolated.client.database.execute(
+      sql`alter table "users" drop constraint "users_display_name_length_valid"`,
+    );
+    await isolated.client.database.execute(
+      sql`alter table "users" alter column "display_name" drop not null`,
+    );
+    await isolated.client.database.execute(
+      sql`alter table "users" drop column "display_name"`,
+    );
+    await isolated.client.database.execute(
+      sql`delete from "drizzle"."__drizzle_migrations" where created_at = ${latestMigration.createdAt}`,
+    );
+
+    await applyDatabaseMigrations(isolated.client);
+
+    const rows = await isolated.client.database.execute(
+      sql<{
+        readonly id: string;
+        readonly displayName: string;
+      }>`
+        select "id", "display_name" as "displayName"
+        from "users"
+        where "id" in (${legacyAccount.userId}, ${legacyGuest.userId})
+        order by "id"
+      `,
+    );
+    expect(rows).toEqual(
+      expect.arrayContaining([
+        { id: legacyAccount.userId, displayName: "legacy_migrated" },
+        { id: legacyGuest.userId, displayName: "游客" },
+      ]),
+    );
+  });
+
   it("persists unique password accounts and hashed revocable sessions", async () => {
     const token = "raw-session-token-that-must-never-be-stored";
     const tokenHash = "a".repeat(64);
@@ -188,12 +244,43 @@ describe.sequential("PostgreSQL + Drizzle persistence", () => {
     );
     expect(registered).toMatchObject({
       username: "alice_123",
+      displayName: "alice_123",
       tokenHash,
     });
     expect(registered.userId).toMatch(/^[0-9a-f-]{36}$/u);
     await expect(
       accountRepository.resolveAccountSession(tokenHash, new Date()),
-    ).resolves.toMatchObject({ username: "alice_123", tokenHash });
+    ).resolves.toMatchObject({
+      username: "alice_123",
+      displayName: "alice_123",
+      tokenHash,
+    });
+
+    await accountRepository.updateDisplayName(registered.userId, "玩家一");
+    await expect(
+      accountRepository.resolveAccountSession(tokenHash, new Date()),
+    ).resolves.toMatchObject({
+      username: "alice_123",
+      displayName: "玩家一",
+    });
+    await expect(
+      accountRepository.findPasswordAccountByUsername("alice_123"),
+    ).resolves.toMatchObject({ displayName: "玩家一" });
+
+    const rebuiltClient = createPostgresDatabaseClient({
+      url: isolated.url,
+      applicationName: "database-integration-profile-rebuild",
+      maxConnections: 2,
+    });
+    try {
+      await expect(
+        new PostgresAccountRepository(
+          rebuiltClient.database,
+        ).resolveAccountSession(tokenHash, new Date()),
+      ).resolves.toMatchObject({ displayName: "玩家一" });
+    } finally {
+      await rebuiltClient.close();
+    }
 
     const storedSessions = await isolated.client.database
       .select({ tokenHash: accountSessions.tokenHash })

@@ -29,6 +29,13 @@
       "when": 1788294544238,
       "tag": "0003_outgoing_rhodey",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1788336260857,
+      "tag": "0004_kind_prowler",
+      "breakpoints": true
     }
   ]
 }

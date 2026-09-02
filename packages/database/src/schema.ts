@@ -26,6 +26,7 @@ export const users = pgTable(
   "users",
   {
     id: uuid("id").primaryKey(),
+    displayName: text("display_name").notNull(),
     createdAt: timestamp("created_at", {
       mode: "date",
       withTimezone: true,
@@ -34,6 +35,10 @@ export const users = pgTable(
       .notNull(),
   },
   (table) => [
+    check(
+      "users_display_name_length_valid",
+      sql`length(trim(${table.displayName})) between 1 and 96`,
+    ),
     check("users_created_at_valid", sql`${table.createdAt} <= now()`),
   ],
 );

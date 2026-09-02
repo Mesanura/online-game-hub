@@ -1,5 +1,13 @@
 # 六贯棋及多游戏平台视觉与交互 QA
 
+## 账户头像资料菜单
+
+- Source visual truth: `C:\Users\Zohar\AppData\Local\Temp\codex-clipboard-542d7b2d-12ae-4ee4-9cb3-31eea5f95100.png` (emoji avatar/input) and `C:\Users\Zohar\AppData\Local\Temp\codex-clipboard-60882608-f401-4044-85e4-703e798cc00e.png` (Han avatar/input)。两张截图仅用于头像形态参考，未引入图片上传或图片资源。
+- Implementation surface: `apps/web` 右上角 `ProfileMenu`，游客态和登录态共用锚定浮窗；头像由显示名实时计算，资料表单与操作区保持上下分区。
+- Desktop/mobile review: trigger stays inside the header, popover is right-anchored with `min(19rem, calc(100vw - 2rem))`, and the input row uses a fixed save affordance so narrow widths do not cause overflow or layout shift. Focus outlines follow the existing teal token.
+- Interaction review: hover, focus, click, Escape and outside click were verified by component behavior and browser coverage; reduced-motion uses the existing global transition policy. No image upload/select control is present.
+- Findings: no actionable P0, P1, P2 or P3 issues remain for the requested profile menu.
+
 ## 对比目标
 
 - Source visual truth: `C:\Users\Zohar\AppData\Local\Temp\codex-clipboard-d181ff55-a36f-47fd-b6b3-99629a751c1f.png` (胜利路径)、`C:\Users\Zohar\AppData\Local\Temp\codex-clipboard-fb726f45-7d0d-47f4-b9be-c1b6bcf4112d.png` (结果 HUD)、`C:\Users\Zohar\AppData\Local\Temp\codex-clipboard-cc1b32e8-8a8a-414a-9d74-cb7a26a5a4e0.png` (随机先手)、`C:\Users\Zohar\AppData\Local\Temp\codex-clipboard-1b86e505-b3a8-4cce-93dd-2326c5aab466.png` (状态文本)。棋盘布局基线为 `C:\Users\Zohar\AppData\Local\Temp\codex-clipboard-c192c6ab-6237-450a-a595-5d22a5cbfff5.png`。

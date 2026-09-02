@@ -208,6 +208,13 @@ Room 必须串行处理 Action。任何未来多实例方案都必须维持“�
 - Web 的 `GET /api/matches` 只从经 HMAC 验证的 `ogh_guest` 推导 identity，每次请求创建并关闭自己的 server-only database client。结果最多 50 条，按 `createdAt DESC, matchId DESC` 稳定排序，只返回含 `roundNumber` 的平台 metadata；canonical replay、Config、Action、Outcome、seed、State、其他参与者和内部 room ID 都不返回。
 - PostgreSQL 是唯一生产数据库，`DATABASE_MODE=memory` 只允许 development/test 且明确无 durable history。migration 只能通过运维命令显式执行，应用 import/start 不自动迁移；`DATABASE_URL` 不进入浏览器 bundle、结构化日志或错误 response。
 
+### 8.4.1 Account Profile Boundary
+
+- `users.display_name` 是非空账户资料字段。迁移先添加可空列，再从 `password_credentials.username` 回填；无法关联凭证的旧用户回填“游客”，最后设置 `NOT NULL` 和数据库长度检查。
+- `PublicAccount`、登录/注册和 `GET /api/auth/me` 返回 `username` 与 `displayName`。同源 JSON `PATCH /api/auth/profile` 只接受严格的 `{ displayName }`，由当前有效账户 session 授权后更新对应 UserId；伪造 `userId`、额外字段、非 JSON、非同源和失效 session 均拒绝。
+- Web Client 的 `ProfileMenu` 只负责资料展示、输入交互和游客 `localStorage`；服务器负责规范化、账户授权与 PostgreSQL 持久化。登录账户和游客 key 分离，身份轮换不迁移资料。头像规则属于 Web profile utility，不属于 Game Core、Protocol、ticket、room、match 或 replay contract。
+- 资料更新沿用认证 API 的 `no-store, private` 与 `Vary: Cookie` 响应头，并在失效 session 时清理账户/guest cookies。读取 session 时通过账户仓储 join `users` 载入最新 `displayName`，因此新连接和跨设备请求能读取同一资料。
+
 ### 8.5 M6 插件扩展性实证
 
 - 四子棋、五子棋、额外六贯棋与黑白棋都只通过 `game-registry` 显式加入 catalog、lazy client loader、exact/current server resolver；没有运行时目录扫描，游戏之间没有依赖。

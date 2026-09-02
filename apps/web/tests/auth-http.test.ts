@@ -5,6 +5,7 @@ import {
   authRequestSchema,
   isJsonRequest,
   isSameOrigin,
+  profileUpdateSchema,
   readJsonBody,
 } from "../src/server/http-auth.js";
 
@@ -86,6 +87,19 @@ describe("account HTTP security boundary", () => {
       body: JSON.stringify({ password: "x".repeat(5000) }),
     });
     await expect(readJsonBody(oversized)).resolves.toBeNull();
+  });
+
+  it("accepts only a strict profile update body", () => {
+    expect(profileUpdateSchema.safeParse({ displayName: "你" }).success).toBe(
+      true,
+    );
+    expect(
+      profileUpdateSchema.safeParse({
+        displayName: "你",
+        userId: "forged",
+      }).success,
+    ).toBe(false);
+    expect(profileUpdateSchema.safeParse({}).success).toBe(false);
   });
 });
 
