@@ -16,8 +16,12 @@ export default function HomePage() {
       <section className="hero clay-surface">
         <div className="hero-copy">
           <p className="eyebrow">Online Game Hub</p>
-          <h1>和朋友打开链接，就能开始一局。</h1>
-          <p>匿名访客无需注册。创建私人房间，把邀请链接发给另一位玩家。</p>
+          <h1>
+            让快乐，
+            <br />
+            准时开局。
+          </h1>
+          <p>轻松创建私人房间，随时和朋友来一局。</p>
           <Link
             className="clay-button clay-button-primary hero-cta"
             href="/games"
