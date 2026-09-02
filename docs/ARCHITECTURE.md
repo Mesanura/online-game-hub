@@ -1,6 +1,6 @@
 # 系统架构
 
-> 状态：架构基线（Protocol V4，M1–M7-A、逐局先手、三阶段 Web 与窄版 create-game 已完成）
+> 状态：架构基线（Protocol V4，M1–M7-B、逐局先手、三阶段 Web 与窄版 create-game 已完成）
 > 本文是系统职责、目录结构、依赖方向和部署基线的权威来源。产品范围见 [PRODUCT.md](./PRODUCT.md)。
 
 ## 1. 架构目标
@@ -272,7 +272,7 @@ Room 必须串行处理 Action。任何未来多实例方案都必须维持“�
 - Docker Compose 单机部署使用 CI 发布的多架构生产镜像、显式 migration、服务 healthcheck 和 PostgreSQL 宿主数据目录。
 - 用户名+密码账户使用独立 `password_credentials` 与 `account_sessions` 表；session token 只以 SHA-256 hash 存储，Argon2id 负责密码 hash。
 - Protocol V4 ticket 可选携带可信 `userId`。slot 保存 `{ playerSessionId, userId }` 私有快照；Round 开始时写入 `match_players.user_id`，之后不重新查询登录态。
-- 游客可玩但无历史；账户注册/登录不认领旧游客比赛；M7-B 才提供账户私有 replay UI。
+- 游客可玩但无历史；账户注册/登录不认领旧游客比赛。M7-B replay API 仅允许当前账户参赛且 Match/replay 均 completed，并返回服务端逐帧 `projectView`；浏览器不接收 canonical replay、seed、raw State 或 Actions。
 
 ### 10.2 暂缓
 
@@ -285,7 +285,7 @@ Room 必须串行处理 Action。任何未来多实例方案都必须维持“�
 
 ### 10.3 当前不做
 
-- 邮箱/OAuth/找回密码、公开历史、公开 replay、M7-B 之前的 replay 播放器或私有 replay UI；
+- 邮箱/OAuth/找回密码、公开历史、公开 replay、观战、分享和下载；
 - durable active room、公开 replay、replay 播放器或通用数据删除产品；
 - 并行开发多个新游戏；
 - Redis、Kubernetes、多区域或微服务化；

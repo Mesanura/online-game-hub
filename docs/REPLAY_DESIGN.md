@@ -196,7 +196,7 @@ Canonical replay 是服务器内部记录，可能通过 seed、Action 或 Confi
 - `projectView` 不等于 replay 导出策略；公开 replay 需要独立的授权与脱敏设计。
 - 日志、监控和错误响应不得包含完整 replay payload。
 - M5 的 `GET /api/matches` 只用完成标记计算 `replayAvailable`，不返回 replay ID、header、actions、Config、Outcome 或 seed，也不提供下载端点。
-- M7-A 的账户历史按 `UserId` 查询；匿名 Round 的 `match_players.user_id` 永久为 `null`，注册/登录、归档重试和 session 轮换都不会回填。账户私有 replay UI 留待 M7-B。
+- M7-A/M7-B 的账户历史和 replay 读取按 `UserId` 查询；匿名 Round 的 `match_players.user_id` 永久为 `null`，注册/登录、归档重试和 session 轮换都不会回填。M7-B 只返回服务端逐帧 `projectView`，不提供 canonical replay、seed、raw State、Actions、公开分享、下载或观战。
 - 举报审查、玩家下载和公开分享可能拥有不同访问级别，具体策略暂缓。
 - V1 井字棋、四子棋、五子棋、六贯棋与黑白棋都没有隐藏信息，但仍按内部 canonical record 处理。
 

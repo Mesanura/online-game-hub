@@ -1,7 +1,9 @@
 # 测试策略
 
-> 状态：Protocol V4/M7-A 测试策略（账户 session、可信 UserId、Round 身份快照与 V3 拒绝已纳入）
+> 状态：Protocol V4/M7-B 测试策略（账户 session、私有 replay、可信 UserId、Round 身份快照与 V3 拒绝已纳入）
 > 本文是测试层级、职责、最低场景和质量门禁的权威来源。具体业务范围见 [PRODUCT.md](./PRODUCT.md)。
+
+M7-B 私有历史与回放测试覆盖：UserId + matchId 数据库授权、双账户共享同局、游客永久不可见、abandoned/incomplete 拒绝、损坏数据安全错误和跨连接读取；runtime revision 0..N frame reconstruction、exact historical definition、determinism、RNG/Outcome/sequence/actor/payload 篡改、projection 异常及帧数/响应大小上限；五款游戏 historical client module 独立解析和 replay read-only 不提交 Action；Web/API 的 401、not-found、unavailable、私有 headers、帧控制、slider、播放清理、移动端大棋盘容器和无 WebSocket。
 
 ## 1. 目标
 

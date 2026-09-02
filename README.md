@@ -13,7 +13,7 @@ Online Game Hub 是一个面向双人在线棋类游戏的 TypeScript monorepo�
 - 已完成比赛的 PostgreSQL 持久化和可验证的 canonical replay；
 - 显式注册的 Game Plugin，可通过 `pnpm create-game --game-id <id>` 创建开发骨架。
 
-游客可玩但没有历史或 replay 读取入口；注册/登录不会认领此前游客比赛，只有 Round 开始时已登录的玩家才归属账户。M7-B 才开发账户私有 replay UI。邮箱、OAuth、找回密码、公开回放、观战、匹配大厅和多实例协调尚未实现。
+游客可玩但没有历史或 replay 读取入口；注册/登录不会认领此前游客比赛，只有 Round 开始时已登录的玩家才归属账户。M7-B 已提供账户私有 replay UI：只有登录态参赛者可读取，响应只包含服务端逐帧 `projectView`；浏览器不会收到 canonical replay、seed、raw State 或 Actions。邮箱、OAuth、找回密码、公开回放、观战、匹配大厅和多实例协调尚未实现。
 
 ## 2. 运行代码
 

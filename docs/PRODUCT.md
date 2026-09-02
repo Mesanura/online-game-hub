@@ -1,6 +1,6 @@
 # 产品目标与范围
 
-> 状态：产品基线（M1–M7-A 已完成，当前使用 Protocol V4）
+> 状态：产品基线（M1–M7-B 已完成，当前使用 Protocol V4）
 > 本文是产品目标、范围和非目标的权威来源。技术实现边界见 [ARCHITECTURE.md](./ARCHITECTURE.md)。
 
 ## 1. 产品愿景
@@ -99,7 +99,7 @@ Web View 明确提供合法落点、当前行动 slot、BLACK/WHITE 棋子数和
 
 M7-A 提供用户名+密码账户。用户名规范化为 lowercase ASCII `[a-z0-9_]{3,24}` 且唯一；密码长度 12–128，使用 Argon2id。账户 session 为 30 天 opaque HttpOnly cookie，可退出撤销；登录、注册、退出和失效 session 都轮换 guest session。
 
-游客仍可创建、加入、重连和完成全部对局，但没有历史或 replay 读取入口。注册/登录不会认领此前游客比赛；只有登录身份进入房间并在 Round 开始时快照的玩家才写入 `match_players.user_id`。匿名 Round 永久保持 `null`，后续归档重试、登录或退出不会回填。账户历史最多显示最近 50 条安全 metadata；replay 私有 UI、下载和逐步播放属于 M7-B。
+游客仍可创建、加入、重连和完成全部对局，但没有历史或 replay 读取入口。注册/登录不会认领此前游客比赛；只有登录身份进入房间并在 Round 开始时快照的玩家才写入 `match_players.user_id`。匿名 Round 永久保持 `null`，后续归档重试、登录或退出不会回填。账户历史最多显示最近 50 条安全 metadata；M7-B 已提供账户私有 replay UI 和逐步播放，但不提供下载。
 
 账户操作在 live room 中会明确提示离开后失去席位；同房间后续 Round 沿用 stable slot 的快照身份，不允许匿名/账户升级、降级或换号接管。
 
@@ -130,7 +130,7 @@ M6 完成后当前仍不实现：
 - 自动 Matchmaking；
 - 观战功能；
 - Redis、Kubernetes、微服务拆分或多区域部署；
-- 公开 replay、replay 播放器和 M7-B 之前的账户私有 replay UI；
+- 公开 replay、观战、分享链接和下载；M7-B 的账户私有 replay 仅对登录态参赛者开放；
 - 一批并行开发的新游戏；
 - 为尚未验证的未来游戏提前设计通用脚本系统或复杂 ECS。
 

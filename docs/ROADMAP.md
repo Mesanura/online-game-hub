@@ -226,7 +226,17 @@
 - `password_credentials` 与 `account_sessions` 独立于通用 `users`；Argon2id hash、SHA-256 token hash-at-rest、同源 JSON mutation、单实例有界限速和 Secure/HttpOnly/Lax cookie；
 - ticket claims 的可选 `userId` 使 Protocol V4 显式拒绝 V1–V3；Game Server 只信 verifier 结果，slot 私有保存账户身份并在 Round 开始写入 `match_players.user_id`；
 - 游客可完整创建/加入/重连/完成，但匿名历史 API 返回 401；注册、登录、退出或归档重试不会认领/回填旧游客 Round；
-- 账户历史最多 50 条安全 metadata；不提供 replay payload、下载、公开分享或播放器，M7-B 才开发账户私有 replay UI。
+- 账户历史最多 50 条安全 metadata；M7-B 提供账户私有 replay UI 和逐步播放，但不提供下载或公开分享。
+
+## M7-B：账户私有历史与回放中心
+
+> 实施状态：已完成（2026-09-02）。
+
+- 新增 `GET /api/matches/[matchId]/replay`，只接受当前账户参赛的 completed Match 和 completed canonical replay；未登录、未参赛、不存在和非法 UUID 使用安全语义；
+- runtime 以 exact `gameId + gameVersion` definition 和数据库推导的 player Viewer 逐帧重建 `projectView`，设置帧数、响应大小和 fail-closed 校验边界；
+- 五款游戏显式登记 historical client module，回放页面严格只读并支持首帧、前后帧、末帧、播放/暂停和 slider；
+- Protocol V4、Replay Format V1、所有游戏规则与 gameVersion 均保持不变；游客比赛内部保留但永不进入账户历史；
+- 不包含公开 replay、观战、分享链接、下载、排行榜、Matchmaking、隐藏信息权限策略、Redis、多实例或 active room 恢复。
 
 ## M7：按证据扩展平台
 
