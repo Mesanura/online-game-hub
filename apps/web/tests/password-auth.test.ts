@@ -31,7 +31,7 @@ describe("password authentication primitives", () => {
     expect(normalizeUsername(input)).toBeNull();
   });
 
-  it("accepts only the 12-128 character password length range", () => {
+  it("accepts only the 8-128 character password length range", () => {
     expect(isValidPassword("x".repeat(MIN_PASSWORD_LENGTH))).toBe(true);
     expect(isValidPassword("x".repeat(MAX_PASSWORD_LENGTH))).toBe(true);
     expect(isValidPassword("x".repeat(MIN_PASSWORD_LENGTH - 1))).toBe(false);

@@ -65,7 +65,7 @@ export function AuthForm({ mode }: { readonly mode: "login" | "register" }) {
         onChange={(event) => setPassword(event.target.value)}
         autoComplete={mode === "login" ? "current-password" : "new-password"}
         required
-        minLength={12}
+        minLength={8}
         maxLength={128}
       />
       {error !== null && (

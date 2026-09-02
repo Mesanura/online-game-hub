@@ -84,7 +84,7 @@ export default function AccountPage() {
           value={currentPassword}
           onChange={(event) => setCurrentPassword(event.target.value)}
           required
-          minLength={12}
+          minLength={8}
           maxLength={128}
         />
         <label htmlFor="new-password">新密码</label>
@@ -94,7 +94,7 @@ export default function AccountPage() {
           value={newPassword}
           onChange={(event) => setNewPassword(event.target.value)}
           required
-          minLength={12}
+          minLength={8}
           maxLength={128}
         />
         {message !== null && <p role="status">{message}</p>}

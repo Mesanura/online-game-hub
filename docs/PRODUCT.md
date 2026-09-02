@@ -97,7 +97,7 @@ Web View 明确提供合法落点、当前行动 slot、BLACK/WHITE 棋子数和
 
 ## 5. M7-A：密码账户与登录态对局归属
 
-M7-A 提供用户名+密码账户。用户名规范化为 lowercase ASCII `[a-z0-9_]{3,24}` 且唯一；密码长度 12–128，使用 Argon2id。账户 session 为 30 天 opaque HttpOnly cookie，可退出撤销；登录、注册、退出和失效 session 都轮换 guest session。
+M7-A 提供用户名+密码账户。用户名规范化为 lowercase ASCII `[a-z0-9_]{3,24}` 且唯一；密码长度 8–128，使用 Argon2id。账户 session 为 30 天 opaque HttpOnly cookie，可退出撤销；登录、注册、退出和失效 session 都轮换 guest session。
 
 游客仍可创建、加入、重连和完成全部对局，但没有历史或 replay 读取入口。注册/登录不会认领此前游客比赛；只有登录身份进入房间并在 Round 开始时快照的玩家才写入 `match_players.user_id`。匿名 Round 永久保持 `null`，后续归档重试、登录或退出不会回填。账户历史最多显示最近 50 条安全 metadata；M7-B 已提供账户私有 replay UI 和逐步播放，但不提供下载。
 
