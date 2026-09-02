@@ -1,6 +1,6 @@
 # 系统架构
 
-> 状态：架构基线（Protocol V5，M1–M7-B、逐局先手、多人 assignment、三阶段 Web 与窄版 create-game 已完成）
+> 状态：架构基线（Protocol V5，M1–M7-B、逐局先手、多人 assignment、三阶段 Web 与窄版 create-game 已完成；M8 realtime runtime 与 Phaser Pong 已确认范围、尚未实施）
 > 本文是系统职责、目录结构、依赖方向和部署基线的权威来源。产品范围见 [PRODUCT.md](./PRODUCT.md)。
 
 ## 1. 架构目标
@@ -104,6 +104,8 @@ Package export map 提供：
 
 默认不创建游戏专属 Colyseus adapter。只有通用 runtime 无法表达、且经过架构评审确认的需求，才允许增加 server extension；扩展仍不得把 Colyseus 引入 Core。
 
+M8 是已确认的例外：实时游戏不尝试把 tick、持续输入、插值或预测塞入本节的离散 Action runtime，而是引入独立的 realtime runtime family。其边界和尚未实施的公共契约见 [REALTIME_RUNTIME_DESIGN.md](./REALTIME_RUNTIME_DESIGN.md)。
+
 每个游戏目录包含自己的规则说明和简短 `AGENTS.md`。游戏目录的 Agent 文档只补充该游戏特有不变量，不复制根规则。
 
 ## 6. 显式注册
@@ -126,6 +128,9 @@ games/*/client ─────────────> own public types + game-
 
 game-client-sdk ────────────> protocol + Colyseus SDK
 game-server-runtime ────────> game-sdk + protocol + Colyseus
+realtime-game-sdk ──────────> JSON/identity primitives only
+realtime-game-server-runtime ─> realtime-game-sdk + realtime protocol + Colyseus
+realtime-game-client-sdk ───> realtime protocol + Colyseus SDK
 game-server-ticket ─────────> protocol
 game-registry ──────────────> games/* subpath exports
 database ───────────────────> game-sdk + protocol + game-server-runtime ports
@@ -141,13 +146,20 @@ apps/game-server ───────────> game-registry/server
 Hard Rules：
 
 - `game-sdk`、`protocol`、`game-server-runtime` 不得依赖 `games/*`。
+- `realtime-game-sdk`、`realtime-game-server-runtime` 和 `realtime-game-client-sdk` 不得依赖回合制 `GameDefinition`、`GameClientModule`、`game-server-runtime` 或具体游戏；realtime runtime 只能依赖明确声明的身份/ticket/lifecycle ports。
 - 一个游戏不得依赖另一个游戏。
-- Game Core 不得依赖 React、Next.js、DOM、Phaser、Colyseus、WebSocket、ORM、PostgreSQL 或 Redis。
+- 任一 Game Core（包括 realtime simulation）不得依赖 React、Next.js、DOM、Phaser、Colyseus、WebSocket、ORM、PostgreSQL 或 Redis。
 - `ui` 不得依赖房间、网络或游戏业务模块。
 - 只有 application/composition layer 可以同时看到具体实现和抽象端口。
 - 不通过深层相对路径跨 package；只使用声明的 public exports。
 
 具体 Core API 见 [GAME_PLUGIN_SPEC.md](./GAME_PLUGIN_SPEC.md)，网络 envelope 见 [NETWORK_PROTOCOL.md](./NETWORK_PROTOCOL.md)。
+
+### 7.1 M8 realtime 组合边界（计划）
+
+`apps/game-server` 仍是唯一 composition root，但必须按 manifest 的 `runtime` 显式选择 turn-based 或 realtime room adapter；不能在现有 authoritative room 中增加 `if (gameId === "pong")` 分支。`apps/web` 也按同一 manifest 选择离散 Client Host 或 realtime Client Host。两个 runtime 可以共享 ticket、room code、stable slot、lifecycle、reconnect 和 Match/账户归属 ports，但 realtime 包不能反向导入回合制 runtime 的实现。
+
+Realtime simulation 使用固定整数单位和单调 server tick；实际 wall clock 只属于 server scheduler，不得进入 Core。服务端按每个 tick 生成规范化 input frame，再调用 Core 一次；客户端只接收 per-viewer projected View snapshot，并在 Phaser canvas 内做显示插值。预测/回滚、共享 ECS 和多实例 ownership 不属于 M8。
 
 ## 8. Authoritative Action Pipeline
 
@@ -280,6 +292,7 @@ Room 必须串行处理 Action。任何未来多实例方案都必须维持“�
 - 用户名+密码账户使用独立 `password_credentials` 与 `account_sessions` 表；session token 只以 SHA-256 hash 存储，Argon2id 负责密码 hash。
 - Protocol V5 ticket 可选携带可信 `userId`。slot 保存 `{ playerSessionId, userId }` 私有快照；Round 开始时写入 `match_players.user_id`，之后不重新查询登录态。
 - 游客可玩但无历史；账户注册/登录不认领旧游客比赛。M7-B replay API 仅允许当前账户参赛且 Match/replay 均 completed，并返回服务端逐帧 `projectView`；浏览器不接收 canonical replay、seed、raw State 或 Actions。
+- M8 realtime runtime 与 Phaser Pong 是下一轮已确认范围；其 realtime protocol、simulation、replay 和 client host 仍未进入当前生产组合，不能把“计划中的包”当作现有 public API。
 
 ### 10.2 暂缓
 
@@ -287,8 +300,8 @@ Room 必须串行处理 Action。任何未来多实例方案都必须维持“�
 - 邮箱/OAuth、找回密码和账户删除策略；
 - Redis driver/presence 的选择与部署；
 - Matchmaking、观战延迟、公开 replay 权限；
-- realtime runtime contract；
-- game generator 的具体 CLI 和模板格式。
+- M8 之外的 durable active room、Redis presence/driver 与多实例 ownership；
+- realtime runtime 以外的通用预测/回滚、ECS 或第二个实时游戏。
 
 ### 10.3 当前不做
 
@@ -296,7 +309,7 @@ Room 必须串行处理 Action。任何未来多实例方案都必须维持“�
 - durable active room、公开 replay、通用数据删除产品；
 - 并行开发多个新游戏；
 - Redis、Kubernetes、多区域或微服务化；
-- 为实时游戏、复杂卡牌或几十种游戏预先构造统一大接口。
+- 为第二个实时游戏、复杂卡牌或几十种游戏预先构造统一大接口；M8 只实现 Pong 所需的最小 realtime contract。
 
 ## 11. 主要架构风险
 
@@ -308,6 +321,8 @@ Room 必须串行处理 Action。任何未来多实例方案都必须维持“�
 | Web/Game Server 密钥误配    | ticket 无法验证或错误环境共享身份信任域                  | 独立 32-byte secrets、严格 issuer/audience/config validation；后续再设计轮换基础设施                    |
 | Live room 不持久化          | Game Server 重启会终止待开局设置或 active 对局           | 只对已存在的 active/旧 waiting archive 标记 abandoned；不宣称恢复 State，durable RoomStore 留待真实需求 |
 | 单实例启动协调              | 多实例同时启动会误标其他实例的 active archive            | M5 明确只支持单实例；引入多实例前必须设计 ownership/presence，不能复用当前全局协调                      |
+| Tick 输入与网络时序耦合     | 不同延迟可能重建出不同实时结果                           | Core 只接收按 server tick 归档的规范化 input frame；wall clock 只驱动 scheduler，replay 逐 tick 重建    |
+| Phaser 进入权威层           | 浏览器渲染或帧率差异改变比赛结果                         | Phaser 仅属于 `games/pong` client；simulation/runtime 不依赖 DOM、Phaser 或浏览器时钟                   |
 
 ## 12. 共享 API 变更政策
 
@@ -319,4 +334,4 @@ Room 必须串行处理 Action。任何未来多实例方案都必须维持“�
 4. 添加或更新 contract/integration tests；
 5. 对影响 replay 的变更明确 `gameVersion` 或 `replayFormatVersion` 策略。
 
-仅为了减少少量重复，不足以成为新增共享抽象或依赖的理由。
+仅为了减少少量重复，不足以成为新增共享抽象或依赖的理由。M8 若要从现有 turn-based room 提取 lifecycle/identity port，必须先用两个 runtime 的真实消费者证明重复边界，再保持提取后的 port 不含游戏规则、tick 或 transport 实现。

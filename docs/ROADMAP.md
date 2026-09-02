@@ -1,6 +1,6 @@
 # 开发路线图
 
-> 状态：M1–M6、Protocol V5 多人中国跳棋、账户身份、密码账户/私有历史、三阶段 Web、窄版 create-game 与通用投降/规则版本增强已完成
+> 状态：M1–M6、Protocol V5 多人中国跳棋、账户身份、密码账户/私有历史、三阶段 Web、窄版 create-game 与通用投降/规则版本增强已完成；M8 realtime runtime 与 Phaser Pong 已确认范围、尚未实施
 > 本文是项目阶段顺序和里程碑退出条件的权威来源。里程碑按依赖排序，不承诺具体日期。
 
 ## 原则
@@ -256,9 +256,33 @@
 - Redis presence/driver、多 Game Server 实例和 room ownership；
 - 长比赛 checkpoint 和服务重启恢复；
 - 隐藏信息卡牌游戏及其 replay 权限；
-- 独立 realtime runtime 与 Phaser 游戏；
 - 多区域读取、容灾或更细服务拆分。
 
-## 下一轮建议
+## M8：独立 realtime runtime 与 Phaser Pong
 
-M6、逐局先手、三阶段 Web、窄版 `tools/create-game` 与通用投降/规则版本增强均已完成，不再向这些已收敛任务追加产品能力。下一轮由产品证据从 M7 候选能力中单独立项；不要把 OAuth、Lobby、Matchmaking、排行榜、观战、公开 replay、durable active room、Redis 或多实例混成同一任务。
+> 实施状态：下一轮已确认，尚未开始。详细运行时契约见 [REALTIME_RUNTIME_DESIGN.md](./REALTIME_RUNTIME_DESIGN.md)。
+
+目标：以一个双人实时 Pong 纵切验证“固定 tick、持续输入、服务器权威物理、快照插值和 Phaser 渲染”可以与现有离散 Action 游戏并列运行，而不污染回合制 Core 或其 wire/runtime 契约。
+
+交付：
+
+- 新增与 `game-sdk`、`game-server-runtime`、`game-client-sdk` 并列的 realtime SDK、server runtime 和 client host；它们不导入或复用回合制 `GameDefinition`、`GameClientModule`、`game.action`、`match.snapshot` 或 revision pipeline；
+- 将 catalog manifest 收敛为按 `runtime: "turn-based" | "realtime"` 判别的公共契约，保留所有既有游戏和 V5 行为；registry、Web 与 Game Server 根据 manifest 显式选择对应的 client/server runtime，不做目录扫描或单一 room 内的 gameId 特例；
+- 一个 `games/pong` package：纯 TypeScript、固定整数单位的 60 Hz 服务端模拟；双人 paddle 输入、球拍/边界碰撞、得分、确定性发球、获胜、投降和公开投影均由服务器裁定；Phaser 仅位于游戏 client；
+- 独立 `Realtime Protocol V1`：客户端只提交有界、单调 input sequence 的方向 intent；服务器决定接受顺序和生效 tick，并发送带 `roundNumber`、server tick 和 input acknowledgement 的完整 realtime view snapshot。Protocol V5 的 turn-based envelope、ticket 语义和所有既有客户端保持原样；
+- 复用平台的身份、ticket、room code、stable slots、ready/reconnect、Round/Match、账户归属和单实例 active-room 语义。实时 Round 同样必须 archive；其 canonical replay 记录按 server tick 规范化且 accepted 的 input changes，并有 exact verifier、golden fixture、PostgreSQL 持久化和账户私有的只读回放路径；
+- Web 目录、创建/加入/等待页面继续复用现有工作流；Pong 对局和只读 replay 使用 Phaser canvas，提供键盘可操作输入、连接/重连/终局状态和必要的 reduced-motion 降级。
+
+退出条件：
+
+- 两个真实浏览器可创建、加入、ready、实时完成一局 Pong、短暂断线后恢复，并在相同服务器快照下收敛；
+- 伪造位置、速度、碰撞、分数、Outcome、actor、slot、tick 或过期/重复 input sequence 均不会推进 authoritative simulation、tick replay 或 Match；
+- 固定 seed 与 accepted input log 可逐 tick 重建相同 State、score、Outcome 和最终 tick；既有 Replay Format V1 golden fixtures 继续通过；
+- 实时协议、runtime、registry、PostgreSQL archive、私有 replay、Phaser client、两浏览器 E2E 和全仓质量门禁按 [TESTING.md](./TESTING.md) 完成；
+- 不引入 Matchmaking、Lobby、观战、公开 replay、Redis、多实例、durable active-room recovery、客户端预测/回滚、通用 ECS 或第二个 realtime 游戏。
+
+## 下一轮开发提示
+
+M8 开发应以 [REALTIME_RUNTIME_DESIGN.md](./REALTIME_RUNTIME_DESIGN.md) 为权威起点。实现前必须先阅读 realtime 设计基线，并在任何 shared public API、Protocol、Replay Format 或数据库 schema 修改前完成其中要求的兼容性评估。
+
+M8 结束后再由产品证据选择下一个 M7 候选能力；不要把 OAuth、Lobby、Matchmaking、排行榜、观战、公开 replay、durable active room、Redis 或多实例混入本轮。

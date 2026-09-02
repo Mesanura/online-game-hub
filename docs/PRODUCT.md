@@ -1,6 +1,6 @@
 # 产品目标与范围
 
-> 状态：产品基线（M1–M7-B 已完成，当前使用 Protocol V5；支持中国跳棋 2–6 人营地分配）
+> 状态：产品基线（M1–M7-B 已完成，当前使用 Protocol V5；M8“独立 realtime runtime 与 Phaser Pong”已确认范围、尚未实施）
 > 本文是产品目标、范围和非目标的权威来源。技术实现边界见 [ARCHITECTURE.md](./ARCHITECTURE.md)。
 
 ## 1. 产品愿景
@@ -130,7 +130,7 @@ M7-A 提供用户名+密码账户。用户名规范化为 lowercase ASCII `[a-z0
 - 卡牌、骰子、隐藏信息和更多玩家数量的游戏；
 - 使用 Phaser 的实时 2D 游戏。
 
-实时 2D 游戏将使用与离散 Action 游戏不同的 runtime contract，但继续复用平台身份、房间、目录和比赛生命周期等能力。
+下一轮 M8 已选择双人 Pong 作为实时 2D 验证游戏。它使用固定 tick 的服务端权威模拟、服务器决定的输入生效 tick 和仅含公开视图的快照；Phaser 只负责采集输入、插值和渲染。Realtime runtime 与离散 Action runtime 并列，继续复用目录、身份、ticket、房间码、stable slots、ready/reconnect、Round/Match 生命周期、账户归属和私有 replay 授权边界，但不复用回合制 `GameDefinition`、`game.action`、revision 或客户端 Host。完整范围和不变量以 [REALTIME_RUNTIME_DESIGN.md](./REALTIME_RUNTIME_DESIGN.md) 为准。
 
 ## 7. 当前明确非目标
 
@@ -144,7 +144,7 @@ M6 完成后当前仍不实现：
 - Redis、Kubernetes、微服务拆分或多区域部署；
 - 公开 replay、观战、分享链接和下载；M7-B 的账户私有 replay 仅对登录态参赛者开放；
 - 一批并行开发的新游戏；
-- 为尚未验证的未来游戏提前设计通用脚本系统或复杂 ECS。
+- 为尚未验证的未来游戏提前设计通用脚本系统或复杂 ECS；M8 只验证一个 realtime runtime 和一个 Pong 游戏，不建立通用 ECS、预测/回滚框架或物理游戏模板。
 
 ## 8. 成功标准
 
@@ -157,5 +157,7 @@ M6 完成后当前仍不实现：
 - 相同 `gameVersion`、配置、seed、玩家席位和 actions 可重建相同结果；
 - 创建房间但尚未开始一局时不产生 Match/history；每轮 Replay header 与 Core 初始化使用完全相同的 `playerOrder`；
 - 模块职责、公开 API 和依赖方向在文档与自动化检查中保持一致。
+
+M8 完成后还必须满足：相同 realtime game version、Config、seed、玩家顺序及按 server tick 归档的 accepted input 能重建相同结果；浏览器不能提交位置、速度、碰撞、分数、Outcome 或生效 tick；网络抖动下 Phaser 只能用服务端快照插值，不能以本地预测状态覆盖权威结果。
 
 测试职责与验收矩阵见 [TESTING.md](./TESTING.md)，开发顺序见 [ROADMAP.md](./ROADMAP.md)。

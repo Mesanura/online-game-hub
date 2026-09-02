@@ -109,6 +109,8 @@ tools/create-game/     新游戏机械骨架生成器
 
 架构、协议和版本兼容性以 [系统架构](./docs/ARCHITECTURE.md)、[网络协议](./docs/NETWORK_PROTOCOL.md) 与 [Replay 设计](./docs/REPLAY_DESIGN.md) 为准。
 
+下一轮已确认的开发目标是独立 realtime runtime 与 Phaser Pong；它尚未进入当前可运行组合。范围、依赖边界、Realtime Protocol/Replay 设计和验收标准见 [Realtime Runtime 设计基线](./docs/REALTIME_RUNTIME_DESIGN.md)。
+
 ## 5. 常见问题
 
 **安装时 pnpm 或 Node.js 版本不匹配**

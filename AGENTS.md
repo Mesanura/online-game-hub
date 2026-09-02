@@ -11,6 +11,7 @@
 - Replay：[docs/REPLAY_DESIGN.md](./docs/REPLAY_DESIGN.md)
 - 测试策略：[docs/TESTING.md](./docs/TESTING.md)
 - 当前阶段：[docs/ROADMAP.md](./docs/ROADMAP.md)
+- 涉及 realtime runtime 或 Phaser 时：[docs/REALTIME_RUNTIME_DESIGN.md](./docs/REALTIME_RUNTIME_DESIGN.md)
 
 ## Hard Rules
 

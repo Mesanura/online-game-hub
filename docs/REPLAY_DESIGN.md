@@ -1,6 +1,6 @@
 # Replay 设计
 
-> 状态：Replay Format V1（Protocol V5 的账户归属和可选营地 assignment 不改变 replay envelope）
+> 状态：Replay Format V1（Protocol V5 的账户归属和可选营地 assignment 不改变 replay envelope）；M8 realtime replay 需新增独立格式，尚未实施
 > 本文是 canonical replay 内容、确定性重建、版本兼容和存储端口的权威来源。Core 随机性规则见 [GAME_PLUGIN_SPEC.md](./GAME_PLUGIN_SPEC.md)。
 
 ## 1. 目标
@@ -14,6 +14,8 @@ Canonical replay 是服务器记录的、可确定性重建一轮比赛的最小
 - 数据分析和历史记录。
 
 V1 已要求生成、持久化到 PostgreSQL、跨新连接读取并验证 replay。公开 replay API、下载和回放 UI 不在范围内。
+
+本格式只描述离散 Action runtime。M8 的固定 tick realtime runtime 不能把客户端到达时间或每个网络包当作 Action replay；它将定义独立的 realtime replay format，归档由服务端决定生效 tick 的规范化 input changes，并以 exact realtime definition 逐 tick 重建。旧 Replay Format V1、所有现有 golden fixture 和它们的 verifier 必须保持不变；详细设计见 [REALTIME_RUNTIME_DESIGN.md](./REALTIME_RUNTIME_DESIGN.md)。
 
 ## 2. Canonical Record
 

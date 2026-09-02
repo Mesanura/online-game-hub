@@ -1,13 +1,13 @@
 # Game Plugin 规范
 
-> 状态：V1 规范  
+> 状态：V1 回合制规范；M8 realtime/Pong 使用独立契约，尚未实施
 > 本文是离散 Action 游戏的 Core、Client Module、序列化、版本与随机性契约的权威来源。平台依赖边界见 [ARCHITECTURE.md](./ARCHITECTURE.md)。
 
 ## 1. 适用范围
 
 V1 Game Plugin 面向棋盘、卡牌和骰子等“客户端提交离散 Action、服务器产生下一个 State”的游戏。井字棋是首个规范验证实现。
 
-Phaser 实时 2D 游戏通常需要 tick、输入缓冲、插值、预测或回滚，不强行复用本规范。未来 realtime game 可以成为另一种 `runtime`，同时复用平台目录、身份、房间和比赛生命周期。
+Phaser 实时 2D 游戏通常需要 tick、输入缓冲、插值、预测或回滚，不强行复用本规范。M8 已确认使用独立 realtime runtime，具体 API、输入、快照、replay 与 Phaser 边界以 [REALTIME_RUNTIME_DESIGN.md](./REALTIME_RUNTIME_DESIGN.md) 为准。它仍复用平台目录、身份、房间和比赛生命周期，但不得把 realtime input、tick 或 snapshot 字段加入本规范的 `GameDefinition`、`GameClientModule` 或 turn-based Action envelope。
 
 ## 2. 设计原则
 

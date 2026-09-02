@@ -1,6 +1,6 @@
 # 网络协议
 
-> 状态：Protocol V5（账户身份、多人营地分配、随机先手、即时重开与统一 Round 准备）
+> 状态：Protocol V5（账户身份、多人营地分配、随机先手、即时重开与统一 Round 准备）；M8 将新增独立 Realtime Protocol V1，尚未实施
 > 本文是 Web、Game Server 与浏览器之间身份、房间、消息、revision 和重连语义的权威来源。游戏规则 payload 见 [GAME_PLUGIN_SPEC.md](./GAME_PLUGIN_SPEC.md)。
 
 ## 1. 协议目标
@@ -32,6 +32,12 @@
 - 版本表示 wire envelope 兼容性，不等同于 `gameVersion` 或 `replayFormatVersion`。
 - Game Server 在连接或首条消息阶段拒绝不支持的版本。
 - 向后兼容的字段只能以可选字段增加；删除、改名或改变语义需要新 protocol version。
+
+### 3.1 M8 realtime 协议边界（已确认，尚未实施）
+
+M8 不修改或宽松解析 V5 的 `game.action`、`match.snapshot`、revision 或 room-control envelope。它将以单独的 `Realtime Protocol V1` 在 realtime room 中传输 input 和 snapshot；共享 ticket、matchmaking、room code、stable slot、lifecycle 和 reconnect 继续使用现行 V5 平台语义。Realtime client 只可发送严格 schema 的方向 intent、`commandId` 和单调 `inputSequence`，不得发送 actor、slot、State、位置、速度、碰撞、分数、Outcome、客户端时间或目标 tick。服务端是唯一确定 input 的 accepted order 和生效 tick 的一方，并发送含 `roundNumber`、server tick、viewer-specific View 与该 viewer input acknowledgement 的完整 snapshot。
+
+Realtime Protocol V1 与其版本策略、拒绝模型及反序列化边界的权威说明在 [REALTIME_RUNTIME_DESIGN.md](./REALTIME_RUNTIME_DESIGN.md)。任何需要改变共享 ticket 或 V5 lifecycle 的需求都必须另行评估新的 Protocol V6，而不是把 realtime 字段塞进 V5。
 
 ## 4. 匿名身份与连接票据
 
