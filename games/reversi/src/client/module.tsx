@@ -5,6 +5,7 @@ import type {
   GameClientModule,
   GameClientProps,
 } from "@online-game-hub/game-client-sdk";
+import { defineGameVersion } from "@online-game-hub/game-sdk";
 
 import { REVERSI_BOARD_SIZE, REVERSI_CELL_COUNT } from "../constants.js";
 import { reversiManifest } from "../manifest.js";
@@ -314,6 +315,7 @@ export function ReversiClient(
                 data-disc={disc ?? "EMPTY"}
                 data-legal-move={legalMove ? "true" : "false"}
                 disabled={
+                  props.readOnly === true ||
                   props.connectionState !== "connected" ||
                   submitting ||
                   !isYourTurn ||
@@ -351,5 +353,20 @@ export const reversiClientModule = {
   parseView(input) {
     return reversiViewSchema.parse(input) as unknown as ReversiView;
   },
+  Component: ReversiClient,
+} satisfies GameClientModule<ReversiView, ReversiAction>;
+
+function parseReversiHistoricalView(input: unknown): ReversiView {
+  const view = reversiClientModule.parseView(input);
+  if (view.outcome?.type === "WIN" && "reason" in view.outcome) {
+    throw new Error("Historical Reversi View cannot contain resignation.");
+  }
+  return view;
+}
+
+export const reversiClientModuleV1_0_0 = {
+  gameId: reversiManifest.id,
+  gameVersion: defineGameVersion("1.0.0"),
+  parseView: parseReversiHistoricalView,
   Component: ReversiClient,
 } satisfies GameClientModule<ReversiView, ReversiAction>;

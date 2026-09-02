@@ -6,6 +6,7 @@ import type {
   GameClientModule,
   GameClientProps,
 } from "@online-game-hub/game-client-sdk";
+import { defineGameVersion } from "@online-game-hub/game-sdk";
 
 import { GOMOKU_MAX_CELL_COUNT, GOMOKU_WIN_LENGTH } from "../constants.js";
 import { gomokuManifest } from "../manifest.js";
@@ -244,6 +245,7 @@ export function GomokuClient(props: GameClientProps<GomokuView, GomokuAction>) {
                 data-cell-index={cell}
                 data-stone={stone ?? "EMPTY"}
                 disabled={
+                  props.readOnly === true ||
                   props.connectionState !== "connected" ||
                   submitting ||
                   !isYourTurn ||
@@ -277,5 +279,20 @@ export const gomokuClientModule = {
   parseView(input) {
     return gomokuViewSchema.parse(input) as unknown as GomokuView;
   },
+  Component: GomokuClient,
+} satisfies GameClientModule<GomokuView, GomokuAction>;
+
+function parseGomokuHistoricalView(input: unknown): GomokuView {
+  const view = gomokuClientModule.parseView(input);
+  if (view.outcome?.type === "WIN" && "reason" in view.outcome) {
+    throw new Error("Historical Gomoku View cannot contain resignation.");
+  }
+  return view;
+}
+
+export const gomokuClientModuleV1_0_0 = {
+  gameId: gomokuManifest.id,
+  gameVersion: defineGameVersion("1.0.0"),
+  parseView: parseGomokuHistoricalView,
   Component: GomokuClient,
 } satisfies GameClientModule<GomokuView, GomokuAction>;

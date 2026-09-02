@@ -5,6 +5,7 @@ import type {
   GameClientModule,
   GameClientProps,
 } from "@online-game-hub/game-client-sdk";
+import { defineGameVersion } from "@online-game-hub/game-sdk";
 
 import {
   CONNECT_FOUR_CELL_COUNT,
@@ -167,7 +168,10 @@ export function ConnectFourClient(
       ? new Set<number>(props.view.outcome.winningCells)
       : new Set<number>();
   const previewsAllowed =
-    props.connectionState === "connected" && !submitting && isYourTurn;
+    props.readOnly !== true &&
+    props.connectionState === "connected" &&
+    !submitting &&
+    isYourTurn;
   const previewCell =
     previewColumn === null || !previewsAllowed
       ? null
@@ -294,5 +298,20 @@ export const connectFourClientModule = {
   parseView(input) {
     return connectFourViewSchema.parse(input) as unknown as ConnectFourView;
   },
+  Component: ConnectFourClient,
+} satisfies GameClientModule<ConnectFourView, ConnectFourAction>;
+
+function parseConnectFourHistoricalView(input: unknown): ConnectFourView {
+  const view = connectFourClientModule.parseView(input);
+  if (view.outcome?.type === "WIN" && "reason" in view.outcome) {
+    throw new Error("Historical Connect Four View cannot contain resignation.");
+  }
+  return view;
+}
+
+export const connectFourClientModuleV1_0_0 = {
+  gameId: connectFourManifest.id,
+  gameVersion: defineGameVersion("1.0.0"),
+  parseView: parseConnectFourHistoricalView,
   Component: ConnectFourClient,
 } satisfies GameClientModule<ConnectFourView, ConnectFourAction>;

@@ -97,6 +97,32 @@ describe("explicit game registry", () => {
     }
   });
 
+  it("resolves every supported exact historical client module independently", async () => {
+    const historicalVersions = [
+      ["tic-tac-toe", "1.0.0"],
+      ["connect-four", "1.0.0"],
+      ["gomoku", "1.0.0"],
+      ["reversi", "1.0.0"],
+    ] as const;
+    for (const [gameId, gameVersion] of historicalVersions) {
+      const historical = await loadGameClientModule(gameId, gameVersion);
+      const current = await loadGameClientModule(
+        gameId,
+        gameCatalog.find((manifest) => manifest.id === gameId)?.gameVersion ??
+          "",
+      );
+      expect(historical).toBeDefined();
+      expect(current).toBeDefined();
+      expect(historical).not.toBe(current);
+      expect(historical).toMatchObject({ gameId, gameVersion });
+      expect(historical?.parseView).toEqual(expect.any(Function));
+    }
+    await expect(loadGameClientModule("hex", "1.0.0")).resolves.toMatchObject({
+      gameId: "hex",
+      gameVersion: "1.0.0",
+    });
+  });
+
   it("keeps every client entry lazy, isolated, and free of UI business", async () => {
     for (const manifest of gameCatalog) {
       const entrypoint = await loadGameClientEntrypoint(

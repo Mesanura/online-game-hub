@@ -360,6 +360,7 @@ export function HexClient(props: GameClientProps<HexView, HexAction>) {
                 data-layout-x={layout.x}
                 data-layout-y={layout.y}
                 disabled={
+                  props.readOnly === true ||
                   props.connectionState !== "connected" ||
                   submitting ||
                   !isYourTurn ||

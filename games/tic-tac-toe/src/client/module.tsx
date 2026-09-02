@@ -5,6 +5,7 @@ import type {
   GameClientModule,
   GameClientProps,
 } from "@online-game-hub/game-client-sdk";
+import { defineGameVersion } from "@online-game-hub/game-sdk";
 
 import type {
   TicTacToeAction,
@@ -173,6 +174,7 @@ export function TicTacToeClient(
               }
               data-cell-index={cell}
               disabled={
+                props.readOnly === true ||
                 props.connectionState !== "connected" ||
                 submitting ||
                 !isYourTurn ||
@@ -199,5 +201,20 @@ export const ticTacToeClientModule = {
   parseView(input) {
     return ticTacToeViewSchema.parse(input) as unknown as TicTacToeView;
   },
+  Component: TicTacToeClient,
+} satisfies GameClientModule<TicTacToeView, TicTacToeAction>;
+
+function parseTicTacToeHistoricalView(input: unknown): TicTacToeView {
+  const view = ticTacToeClientModule.parseView(input);
+  if (view.outcome?.type === "WIN" && "reason" in view.outcome) {
+    throw new Error("Historical Tic-Tac-Toe View cannot contain resignation.");
+  }
+  return view;
+}
+
+export const ticTacToeClientModuleV1_0_0 = {
+  gameId: ticTacToeManifest.id,
+  gameVersion: defineGameVersion("1.0.0"),
+  parseView: parseTicTacToeHistoricalView,
   Component: TicTacToeClient,
 } satisfies GameClientModule<TicTacToeView, TicTacToeAction>;

@@ -9,10 +9,18 @@ import { ticTacToeManifest } from "@online-game-hub/tic-tac-toe/manifest";
 
 const loadConnectFourEntrypoint = () =>
   import("@online-game-hub/connect-four/client");
+const loadConnectFourHistoricalEntrypoint = () =>
+  import("@online-game-hub/connect-four/client");
 const loadGomokuEntrypoint = () => import("@online-game-hub/gomoku/client");
+const loadGomokuHistoricalEntrypoint = () =>
+  import("@online-game-hub/gomoku/client");
 const loadHexEntrypoint = () => import("@online-game-hub/hex/client");
 const loadReversiEntrypoint = () => import("@online-game-hub/reversi/client");
+const loadReversiHistoricalEntrypoint = () =>
+  import("@online-game-hub/reversi/client");
 const loadTicTacToeEntrypoint = () =>
+  import("@online-game-hub/tic-tac-toe/client");
+const loadTicTacToeHistoricalEntrypoint = () =>
   import("@online-game-hub/tic-tac-toe/client");
 // create-game:client-loader
 
@@ -26,11 +34,30 @@ interface ClientRegistration {
 const clientRegistrations = Object.freeze([
   {
     gameId: ticTacToeManifest.id,
+    gameVersion: "1.0.0",
+    loadEntrypoint: loadTicTacToeHistoricalEntrypoint,
+    loadModule: async (): Promise<UnknownGameClientModule> =>
+      eraseGameClientModule(
+        (await loadTicTacToeHistoricalEntrypoint()).ticTacToeClientModuleV1_0_0,
+      ),
+  },
+  {
+    gameId: ticTacToeManifest.id,
     gameVersion: ticTacToeManifest.gameVersion,
     loadEntrypoint: loadTicTacToeEntrypoint,
     loadModule: async (): Promise<UnknownGameClientModule> =>
       eraseGameClientModule(
         (await loadTicTacToeEntrypoint()).ticTacToeClientModule,
+      ),
+  },
+  {
+    gameId: connectFourManifest.id,
+    gameVersion: "1.0.0",
+    loadEntrypoint: loadConnectFourHistoricalEntrypoint,
+    loadModule: async (): Promise<UnknownGameClientModule> =>
+      eraseGameClientModule(
+        (await loadConnectFourHistoricalEntrypoint())
+          .connectFourClientModuleV1_0_0,
       ),
   },
   {
@@ -44,10 +71,28 @@ const clientRegistrations = Object.freeze([
   },
   {
     gameId: gomokuManifest.id,
+    gameVersion: "1.0.0",
+    loadEntrypoint: loadGomokuHistoricalEntrypoint,
+    loadModule: async (): Promise<UnknownGameClientModule> =>
+      eraseGameClientModule(
+        (await loadGomokuHistoricalEntrypoint()).gomokuClientModuleV1_0_0,
+      ),
+  },
+  {
+    gameId: gomokuManifest.id,
     gameVersion: gomokuManifest.gameVersion,
     loadEntrypoint: loadGomokuEntrypoint,
     loadModule: async (): Promise<UnknownGameClientModule> =>
       eraseGameClientModule((await loadGomokuEntrypoint()).gomokuClientModule),
+  },
+  {
+    gameId: reversiManifest.id,
+    gameVersion: "1.0.0",
+    loadEntrypoint: loadReversiHistoricalEntrypoint,
+    loadModule: async (): Promise<UnknownGameClientModule> =>
+      eraseGameClientModule(
+        (await loadReversiHistoricalEntrypoint()).reversiClientModuleV1_0_0,
+      ),
   },
   {
     gameId: hexManifest.id,

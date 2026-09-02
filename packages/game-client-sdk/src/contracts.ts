@@ -7,6 +7,8 @@ export interface GameClientProps<View, Action> {
   readonly view: Readonly<View>;
   readonly revision: number;
   readonly connectionState: ClientConnectionState;
+  /** Prevents all game controls from submitting actions in replay mode. */
+  readonly readOnly?: boolean;
   submitAction(action: Action): Promise<void>;
 }
 
