@@ -9,6 +9,7 @@ import {
   isJsonValue,
 } from "@online-game-hub/game-sdk";
 import type {
+  CanonicalReplay,
   MatchArchive,
   StoredGameRoom,
 } from "@online-game-hub/game-server-runtime";
@@ -17,6 +18,7 @@ import type { MatchStatus } from "@online-game-hub/protocol";
 
 import type { OnlineGameHubDatabase } from "./client.js";
 import { DatabaseError } from "./errors.js";
+import { PostgresReplayStore } from "./postgres-replay-store.js";
 import { matchPlayers, matches, replays } from "./schema.js";
 
 export const MAX_MATCH_HISTORY_RESULTS = 50;
@@ -38,6 +40,27 @@ export interface MatchHistoryItem {
   readonly finishedAt: string | null;
   readonly replayAvailable: boolean;
 }
+
+export interface AuthorizedReplayMatch {
+  readonly roundNumber: number;
+  readonly gameId: string;
+  readonly gameVersion: string;
+  readonly status: "completed";
+  readonly finalRevision: number;
+  readonly createdAt: string;
+  readonly startedAt: string;
+  readonly finishedAt: string;
+}
+
+export type UserMatchReplayRead =
+  | { readonly status: "not-found" }
+  | { readonly status: "unavailable" }
+  | {
+      readonly status: "available";
+      readonly playerSlotId: string;
+      readonly match: AuthorizedReplayMatch;
+      readonly replay: CanonicalReplay;
+    };
 
 function validUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(
@@ -241,6 +264,65 @@ function validateLimit(limit: number): void {
   ) {
     throw new DatabaseError("DATABASE_CONFIGURATION_ERROR");
   }
+}
+
+function parseAuthorizedReplayMatch(row: {
+  readonly roundNumber: number;
+  readonly gameId: string;
+  readonly gameVersion: string;
+  readonly status: string;
+  readonly finalRevision: number;
+  readonly playerSlotId: string;
+  readonly createdAt: Date;
+  readonly startedAt: Date | null;
+  readonly completedAt: Date | null;
+  readonly replayCompletedAt: Date | null;
+}):
+  | { readonly status: "unavailable" }
+  | {
+      readonly status: "available";
+      readonly playerSlotId: string;
+      readonly match: AuthorizedReplayMatch;
+    } {
+  const parsedStatus = matchStatusSchema.safeParse(row.status);
+  if (
+    !Number.isSafeInteger(row.roundNumber) ||
+    row.roundNumber <= 0 ||
+    !isGameId(row.gameId) ||
+    !isGameVersion(row.gameVersion) ||
+    !parsedStatus.success ||
+    !Number.isSafeInteger(row.finalRevision) ||
+    row.finalRevision < 0 ||
+    row.playerSlotId.length === 0 ||
+    !validDate(row.createdAt) ||
+    (row.startedAt !== null && !validDate(row.startedAt)) ||
+    (row.completedAt !== null && !validDate(row.completedAt)) ||
+    (row.replayCompletedAt !== null && !validDate(row.replayCompletedAt))
+  ) {
+    throw new DatabaseError("DATABASE_DATA_INVALID");
+  }
+  if (
+    parsedStatus.data !== "completed" ||
+    row.startedAt === null ||
+    row.completedAt === null ||
+    row.replayCompletedAt === null
+  ) {
+    return { status: "unavailable" };
+  }
+  return {
+    status: "available",
+    playerSlotId: row.playerSlotId,
+    match: {
+      roundNumber: row.roundNumber,
+      gameId: row.gameId,
+      gameVersion: row.gameVersion,
+      status: "completed",
+      finalRevision: row.finalRevision,
+      createdAt: row.createdAt.toISOString(),
+      startedAt: row.startedAt.toISOString(),
+      finishedAt: row.completedAt.toISOString(),
+    },
+  };
 }
 
 export class PostgresMatchRepository {
@@ -450,6 +532,54 @@ export class PostgresMatchRepository {
       throw new DatabaseError("DATABASE_CONFIGURATION_ERROR");
     }
     return this.#list(eq(matchPlayers.userId, userId), limit);
+  }
+
+  /**
+   * Returns a completed replay only when this exact account occupied one
+   * unambiguous archived player slot. Replay internals stay server-side.
+   */
+  public async getCompletedReplayForUser(
+    userId: string,
+    matchId: string,
+  ): Promise<UserMatchReplayRead> {
+    if (!validUuid(userId)) {
+      throw new DatabaseError("DATABASE_CONFIGURATION_ERROR");
+    }
+    if (!validUuid(matchId)) return { status: "not-found" };
+    try {
+      const rows = await this.database
+        .select({
+          replayId: matches.replayId,
+          roundNumber: matches.roundNumber,
+          gameId: matches.gameId,
+          gameVersion: matches.gameVersion,
+          status: matches.status,
+          finalRevision: matches.finalRevision,
+          playerSlotId: matchPlayers.playerSlotId,
+          createdAt: matches.createdAt,
+          startedAt: matches.startedAt,
+          completedAt: matches.completedAt,
+          replayCompletedAt: replays.completedAt,
+        })
+        .from(matchPlayers)
+        .innerJoin(matches, eq(matches.id, matchPlayers.matchId))
+        .innerJoin(replays, eq(replays.id, matches.replayId))
+        .where(and(eq(matchPlayers.userId, userId), eq(matches.id, matchId)))
+        .limit(2);
+      if (rows.length !== 1) return { status: "not-found" };
+      const row = rows[0];
+      if (row === undefined) return { status: "not-found" };
+      const parsed = parseAuthorizedReplayMatch(row);
+      if (parsed.status === "unavailable") return parsed;
+      const replay = await new PostgresReplayStore(this.database).get(
+        row.replayId,
+      );
+      if (replay === null) throw new DatabaseError("DATABASE_DATA_INVALID");
+      return { ...parsed, replay };
+    } catch (error) {
+      if (error instanceof DatabaseError) throw error;
+      throw new DatabaseError("DATABASE_OPERATION_ERROR");
+    }
   }
 
   async #list(

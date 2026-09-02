@@ -440,6 +440,36 @@ describe.sequential("PostgreSQL + Drizzle persistence", () => {
       matchId: historyA[0]?.matchId,
       playerSlotId: "slot-2",
     });
+    const completedMatchId = historyA[0]?.matchId;
+    if (completedMatchId === undefined) {
+      throw new Error("Expected completed match id.");
+    }
+    await expect(
+      matchRepository.getCompletedReplayForUser(userA.userId, completedMatchId),
+    ).resolves.toMatchObject({
+      status: "available",
+      playerSlotId: "slot-1",
+      match: {
+        status: "completed",
+        finalRevision: 5,
+      },
+      replay: { header, actions: winningActions },
+    });
+    await expect(
+      matchRepository.getCompletedReplayForUser(userB.userId, completedMatchId),
+    ).resolves.toMatchObject({ status: "available", playerSlotId: "slot-2" });
+    await expect(
+      matchRepository.getCompletedReplayForUser(
+        (await userRepository.createUser()).userId,
+        completedMatchId,
+      ),
+    ).resolves.toEqual({ status: "not-found" });
+    await expect(
+      matchRepository.getCompletedReplayForUser(
+        userA.userId,
+        "00000000-0000-4000-8000-000000000000",
+      ),
+    ).resolves.toEqual({ status: "not-found" });
     await replayStore.create("replay-abandoned-match", header);
     const abandonedWaiting = roomRecord(
       "runtime-abandoned",
@@ -471,6 +501,18 @@ describe.sequential("PostgreSQL + Drizzle persistence", () => {
         }),
       ]),
     );
+    const abandonedMatch = historyAfterAbandon.find(
+      (item) => item.status === "abandoned",
+    );
+    if (abandonedMatch === undefined) {
+      throw new Error("Expected abandoned match history item.");
+    }
+    await expect(
+      matchRepository.getCompletedReplayForUser(
+        userA.userId,
+        abandonedMatch.matchId,
+      ),
+    ).resolves.toEqual({ status: "unavailable" });
   });
 
   it("archives consecutive rounds in one runtime room with independent replay and history", async () => {
