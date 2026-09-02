@@ -6,6 +6,7 @@ import type {
   GameClientModule,
   GameClientProps,
 } from "@online-game-hub/game-client-sdk";
+import { defineGameVersion } from "@online-game-hub/game-sdk";
 
 import { HEX_BOARD_SIZE, HEX_CELL_COUNT } from "../constants.js";
 import { hexManifest } from "../manifest.js";
@@ -432,5 +433,15 @@ export const hexClientModule = {
     return hexViewSchema.parse(input) as unknown as HexView;
   },
   createResignAction: createResignIntent,
+  Component: HexClient,
+} satisfies GameClientModule<HexView, HexAction>;
+
+export const hexClientModuleV1_0_0 = {
+  gameId: hexManifest.id,
+  gameVersion: defineGameVersion("1.0.0"),
+  createResignAction: createResignIntent,
+  parseView(input) {
+    return hexViewSchema.parse(input) as unknown as HexView;
+  },
   Component: HexClient,
 } satisfies GameClientModule<HexView, HexAction>;

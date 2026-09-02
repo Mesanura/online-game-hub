@@ -86,6 +86,13 @@ const clientRegistrations = Object.freeze([
       eraseGameClientModule((await loadGomokuEntrypoint()).gomokuClientModule),
   },
   {
+    gameId: hexManifest.id,
+    gameVersion: "1.0.0",
+    loadEntrypoint: loadHexEntrypoint,
+    loadModule: async (): Promise<UnknownGameClientModule> =>
+      eraseGameClientModule((await loadHexEntrypoint()).hexClientModuleV1_0_0),
+  },
+  {
     gameId: reversiManifest.id,
     gameVersion: "1.0.0",
     loadEntrypoint: loadReversiHistoricalEntrypoint,
