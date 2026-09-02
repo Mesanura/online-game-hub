@@ -178,7 +178,71 @@ Multiplayer integration 使用两个独立客户端连接同一真实 room，验
 
 ## 9. PostgreSQL Integration Tests
 
-`packages/database/tests/database.integration.test.ts` 和 `apps/game-server/tests/database.integration.test.ts` 连接真实 PostgreSQL，不使用 SQLite，也不 mock Drizzle driver。根 `pnpm test:database` 会先构建依赖 package，再执行这两组 tests；缺少显式的测试 DSN 时 fail closed，不会回退或连接默认开发数据库。
+`packages/database/tests/database.integration.test.ts` 和 `apps/game-server/tests/database.integration.test.ts` 连接真实 PostgreSQL，不使用 SQLite，也不 mock Drizzle driver。根 `pnpm test:database` 会先构建依赖 package，再执行这两组 tests；缺少显式的测试 DSN 时 fail closed，不会回退或连接默认开发数据库。这个 fail-closed 行为用于防止误连，不是跳过数据库测试的理由。
+
+### 9.1 本地 Agent 的临时 PostgreSQL
+
+本地不要求预先配置 `TEST_DATABASE_URL`，也不要把它写入 `.env`。当环境没有该变量时，Agent 必须在完成开发后用 Docker 启动一次性的 `postgres:17.6-alpine3.22` 容器：只发布 loopback 随机端口、不挂载数据目录，等待 `pg_isready` 成功后，把临时 DSN 注入需要运行的测试命令。按 change-to-test matrix 运行所有受影响的 `pnpm test:database`、PostgreSQL-backed `pnpm test:e2e` 或其他真实数据库检查；同一个容器可供同一轮检查复用。
+
+Bash 示例：
+
+```bash
+set -eu
+container="ogh-test-postgres-$RANDOM-$$"
+docker run --detach --rm --name "$container" \
+  --env POSTGRES_DB=postgres \
+  --env POSTGRES_USER=postgres \
+  --env POSTGRES_PASSWORD=postgres \
+  --publish 127.0.0.1::5432 \
+  postgres:17.6-alpine3.22
+cleanup() { docker rm --force "$container" >/dev/null 2>&1 || true; }
+trap cleanup EXIT INT TERM
+host_port="$(docker port "$container" 5432/tcp | sed -E 's/.*:([0-9]+)$/\1/')"
+ready=false
+for attempt in $(seq 1 60); do
+  if docker exec "$container" pg_isready -U postgres -d postgres >/dev/null 2>&1; then
+    ready=true
+    break
+  fi
+  sleep 1
+done
+test "$ready" = true
+export TEST_DATABASE_URL="postgresql://postgres:postgres@127.0.0.1:${host_port}/postgres"
+pnpm test:database
+# 按改动矩阵需要时，在同一临时容器中继续运行：
+# pnpm test:e2e
+```
+
+PowerShell 等价流程：
+
+```powershell
+$container = "ogh-test-postgres-$([guid]::NewGuid().ToString('N').Substring(0, 12))"
+docker run --detach --rm --name $container `
+  --env POSTGRES_DB=postgres `
+  --env POSTGRES_USER=postgres `
+  --env POSTGRES_PASSWORD=postgres `
+  --publish 127.0.0.1::5432 `
+  postgres:17.6-alpine3.22
+try {
+  $published = docker port $container 5432/tcp
+  $hostPort = [int](($published -split ':')[-1])
+  $ready = $false
+  1..60 | ForEach-Object {
+    if ($ready) { return }
+    docker exec $container pg_isready -U postgres -d postgres *> $null
+    if ($LASTEXITCODE -eq 0) { $ready = $true } else { Start-Sleep -Seconds 1 }
+  }
+  if (-not $ready) { throw "Temporary PostgreSQL did not become ready." }
+  $env:TEST_DATABASE_URL = "postgresql://postgres:postgres@127.0.0.1:$hostPort/postgres"
+  pnpm test:database
+  # 按改动矩阵需要时，在同一临时容器中继续运行：pnpm test:e2e
+} finally {
+  Remove-Item Env:TEST_DATABASE_URL -ErrorAction SilentlyContinue
+  docker rm --force $container *> $null
+}
+```
+
+测试结束必须执行 cleanup，即使测试失败也不能留下容器或复用临时数据库。若 Docker daemon 不可用，数据库检查应报告为 blocked；不得以未配置 `TEST_DATABASE_URL` 为理由跳过或标记通过。测试输出、日志和制品仍不得包含完整 DSN。
 
 测试 owner 必须创建带随机名称的独立 database，并在连接前验证名称前缀；cleanup 只删除该测试自己创建的 database，且先终止属于该 database 的测试连接。Windows 本地开发可用 WSL/Docker 中的精确 PostgreSQL 版本，但测试不得依赖公共固定端口或外部托管服务。CI 使用 `postgres:17.6-alpine3.22` service container，并只把 workflow 创建的测试 credential 注入相关 steps；应用日志、错误和测试制品不得包含 DSN。
 

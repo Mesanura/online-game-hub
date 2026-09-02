@@ -44,6 +44,11 @@
 - 未经用户明确要求，不 amend、rebase、squash、reset、强推或以其他方式改写已有提交历史。
 - 最终汇报列出本轮创建的 commit hash 与提交信息；若未提交，说明原因。
 
+## Database Test Rule
+
+- 本地不要求预先配置 `TEST_DATABASE_URL`。Agent 完成涉及数据库的开发后，凡是测试矩阵要求 `pnpm test:database`、PostgreSQL-backed E2E 或其他真实 PostgreSQL 检查，必须按照 [docs/TESTING.md](./docs/TESTING.md) 使用 Docker 启动 `postgres:17.6-alpine3.22` 临时实例，在测试进程中临时注入 `TEST_DATABASE_URL`，并在结束时停止/删除容器。
+- 不得因为 `TEST_DATABASE_URL` 未配置而跳过、降级或声称通过数据库测试；不得改用开发环境 `DATABASE_URL`、固定共享测试库、SQLite 或外部托管数据库。Docker daemon 不可用时必须明确报告数据库检查被阻塞，而不是省略检查。
+
 ## Required Checks
 
 - 根据 [docs/TESTING.md](./docs/TESTING.md) 运行所有受影响层级，而不只运行改动文件的 happy path。
