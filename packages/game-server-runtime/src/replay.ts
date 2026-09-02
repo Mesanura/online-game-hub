@@ -10,6 +10,7 @@ import type {
   JsonValue,
   RngState,
   UnknownGameDefinition,
+  Viewer,
 } from "@online-game-hub/game-sdk";
 
 export const REPLAY_FORMAT_VERSION = 1 as const;
@@ -549,6 +550,216 @@ function validReturnedRng(
     Number.isSafeInteger(rng.cursor) &&
     rng.cursor >= minimumCursor
   );
+}
+
+const MAX_REPLAY_FRAME_COUNT = 512;
+const MAX_REPLAY_FRAME_RESPONSE_BYTES = 8 * 1024 * 1024;
+
+export interface ReplayFrame {
+  readonly revision: number;
+  readonly view: JsonValue;
+}
+
+export type ReplayFrameReconstructionErrorCode =
+  | ReplayVerificationErrorCode
+  | "REPLAY_INCOMPLETE"
+  | "VIEWER_NOT_PLAYER"
+  | "FRAME_LIMIT_EXCEEDED"
+  | "RESPONSE_SIZE_EXCEEDED"
+  | "PROJECTION_FAILED";
+
+export type ReplayFrameReconstructionResult =
+  | {
+      readonly status: "rebuilt";
+      readonly frames: readonly ReplayFrame[];
+    }
+  | {
+      readonly status: "invalid";
+      readonly code: ReplayFrameReconstructionErrorCode;
+      readonly actionSequence?: number;
+    };
+
+function invalidFrames(
+  code: ReplayFrameReconstructionErrorCode,
+  actionSequence?: number,
+): ReplayFrameReconstructionResult {
+  return actionSequence === undefined
+    ? { status: "invalid", code }
+    : { status: "invalid", code, actionSequence };
+}
+
+function serializedFramesExceedLimit(frames: readonly ReplayFrame[]): boolean {
+  try {
+    return (
+      new TextEncoder().encode(JSON.stringify(frames)).byteLength >
+      MAX_REPLAY_FRAME_RESPONSE_BYTES
+    );
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * Rebuilds a completed canonical replay for one already-authorized player.
+ * The result intentionally contains only projected Views, never replay internals.
+ */
+export function reconstructReplayFrames(
+  replayInput: unknown,
+  resolveDefinition: GameDefinitionResolver,
+  viewer: Viewer,
+): ReplayFrameReconstructionResult {
+  const parsedReplay = parseReplay(replayInput);
+  if (parsedReplay.success === false) {
+    const result = parsedReplay.result;
+    return result.status === "invalid"
+      ? invalidFrames(result.code)
+      : invalidFrames("INVALID_REPLAY");
+  }
+  const replay = parsedReplay.replay;
+  if (replay.recordedRngCursor === null || replay.recordedOutcome === null) {
+    return invalidFrames("REPLAY_INCOMPLETE");
+  }
+  if (
+    !validHeader(replay.header) ||
+    replay.header.rng.algorithm !== RNG_ALGORITHM_V1
+  ) {
+    return invalidFrames("INVALID_REPLAY");
+  }
+  if (replay.actions.length + 1 > MAX_REPLAY_FRAME_COUNT) {
+    return invalidFrames("FRAME_LIMIT_EXCEEDED");
+  }
+
+  const definition = resolveDefinition(
+    replay.header.gameId,
+    replay.header.gameVersion,
+  );
+  if (definition === undefined) {
+    return invalidFrames("UNKNOWN_GAME_OR_VERSION");
+  }
+  if (
+    definition.manifest.id !== replay.header.gameId ||
+    definition.manifest.gameVersion !== replay.header.gameVersion
+  ) {
+    return invalidFrames("DEFINITION_MISMATCH");
+  }
+  if (
+    replay.header.players.length < definition.manifest.minPlayers ||
+    replay.header.players.length > definition.manifest.maxPlayers
+  ) {
+    return invalidFrames("INVALID_REPLAY");
+  }
+
+  const configResult = definition.configSchema.safeParse(
+    replay.header.initialConfig,
+  );
+  if (!configResult.success || !isJsonValue(configResult.data)) {
+    return invalidFrames("INVALID_CONFIG");
+  }
+  if (!jsonEqual(configResult.data, replay.header.initialConfig)) {
+    return invalidFrames("NON_CANONICAL_CONFIG");
+  }
+
+  const slotIds = replay.header.players.map((player) => player.slotId);
+  if (new Set(slotIds).size !== slotIds.length) {
+    return invalidFrames("INVALID_REPLAY");
+  }
+  const players = slotIds.map((slotId) => definePlayerSlotId(slotId));
+  if (
+    viewer.kind !== "player" ||
+    !players.some((slotId) => slotId === viewer.slotId)
+  ) {
+    return invalidFrames("VIEWER_NOT_PLAYER");
+  }
+
+  const frames: ReplayFrame[] = [];
+  const appendFrame = (
+    revision: number,
+    state: JsonValue,
+  ): ReplayFrameReconstructionResult | null => {
+    let view: JsonValue;
+    try {
+      view = definition.projectView({ state, viewer });
+    } catch {
+      return invalidFrames("PROJECTION_FAILED");
+    }
+    if (!isJsonValue(view)) {
+      return invalidFrames("PROJECTION_FAILED");
+    }
+    frames.push({ revision, view: cloneJson(view) });
+    return serializedFramesExceedLimit(frames)
+      ? invalidFrames("RESPONSE_SIZE_EXCEEDED")
+      : null;
+  };
+
+  let rng = createRng(replay.header.rng.seed);
+  let state: JsonValue;
+  try {
+    const initialized = definition.createInitialState({
+      config: configResult.data,
+      players,
+      rng,
+    });
+    if (
+      !isJsonValue(initialized.state) ||
+      !validReturnedRng(initialized.rng, rng.seed, rng.cursor)
+    ) {
+      return invalidFrames("INVALID_RNG_STATE");
+    }
+    state = initialized.state;
+    rng = initialized.rng;
+    const initialFrameResult = appendFrame(0, state);
+    if (initialFrameResult !== null) return initialFrameResult;
+
+    for (const [index, event] of replay.actions.entries()) {
+      const expectedSequence = index + 1;
+      if (event.sequence !== expectedSequence) {
+        return invalidFrames("SEQUENCE_MISMATCH", event.sequence);
+      }
+      const actorSlotId = players.find(
+        (slotId) => slotId === event.actorSlotId,
+      );
+      if (actorSlotId === undefined) {
+        return invalidFrames("INVALID_ACTOR", event.sequence);
+      }
+      const actionResult = definition.actionSchema.safeParse(event.action);
+      if (!actionResult.success || !isJsonValue(actionResult.data)) {
+        return invalidFrames("INVALID_ACTION", event.sequence);
+      }
+      if (!jsonEqual(actionResult.data, event.action)) {
+        return invalidFrames("NON_CANONICAL_ACTION", event.sequence);
+      }
+      const transitioned = definition.transition({
+        state,
+        actorSlotId,
+        action: actionResult.data,
+        rng,
+      });
+      if (transitioned.status === "rejected") {
+        return invalidFrames("ACTION_REJECTED", event.sequence);
+      }
+      if (
+        !isJsonValue(transitioned.state) ||
+        !validReturnedRng(transitioned.rng, rng.seed, rng.cursor)
+      ) {
+        return invalidFrames("INVALID_RNG_STATE", event.sequence);
+      }
+      state = transitioned.state;
+      rng = transitioned.rng;
+      const frameResult = appendFrame(event.sequence, state);
+      if (frameResult !== null) return frameResult;
+    }
+
+    if (replay.recordedRngCursor !== rng.cursor) {
+      return invalidFrames("RNG_CURSOR_MISMATCH");
+    }
+    const outcome = definition.getOutcome(state);
+    if (!isJsonValue(outcome) || !jsonEqual(outcome, replay.recordedOutcome)) {
+      return invalidFrames("OUTCOME_MISMATCH");
+    }
+    return { status: "rebuilt", frames };
+  } catch {
+    return invalidFrames("CORE_ERROR");
+  }
 }
 
 export function verifyReplay(
