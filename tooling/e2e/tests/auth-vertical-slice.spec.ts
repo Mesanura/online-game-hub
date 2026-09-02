@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import type { Page } from "@playwright/test";
+import type { Dialog, Page } from "@playwright/test";
 
 import { loginE2eAccount, registerE2eAccount } from "../src/account.js";
 import { startE2eHarness } from "../src/harness.js";
@@ -163,7 +163,7 @@ test("profile menu persists guest data and switches to shared account data", asy
     const guestTrigger = guestPage.getByRole("button", {
       name: "打开个人资料菜单",
     });
-    await expect(guestTrigger.locator(".profile-avatar")).toHaveText("客");
+    await expect(guestTrigger.locator(".profile-avatar")).toHaveText("游");
     await guestTrigger.hover();
     const guestPopover = guestPage.getByRole("dialog", { name: "个人资料" });
     await expect(guestPopover).toBeVisible();
@@ -282,20 +282,24 @@ test("room profile actions keep the identity-change confirmation", async ({
 
     for (const linkName of ["历史对局", "账号设置"] as const) {
       await trigger.hover();
-      const dialogPromise = page.waitForEvent("dialog");
+      let dialogMessage: string | undefined;
+      page.once("dialog", async (dialog: Dialog) => {
+        dialogMessage = dialog.message();
+        await dialog.dismiss();
+      });
       await page.getByRole("link", { name: linkName, exact: true }).click();
-      const dialog = await dialogPromise;
-      expect(dialog.message()).toContain("离开后将无法恢复本房间席位");
-      await dialog.dismiss();
+      expect(dialogMessage).toContain("离开后将无法恢复本房间席位");
       await expect(page).toHaveURL(roomUrl);
     }
 
     await trigger.hover();
-    const logoutDialogPromise = page.waitForEvent("dialog");
+    let logoutDialogMessage: string | undefined;
+    page.once("dialog", async (dialog: Dialog) => {
+      logoutDialogMessage = dialog.message();
+      await dialog.dismiss();
+    });
     await page.getByRole("button", { name: "退出登录", exact: true }).click();
-    const logoutDialog = await logoutDialogPromise;
-    expect(logoutDialog.message()).toContain("离开后将无法恢复本房间席位");
-    await logoutDialog.dismiss();
+    expect(logoutDialogMessage).toContain("离开后将无法恢复本房间席位");
     await expect(page).toHaveURL(roomUrl);
   } finally {
     await context.close();
