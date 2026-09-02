@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { and, eq, gt, ne } from "drizzle-orm";
+import { and, eq, gt, ne, sql } from "drizzle-orm";
 
 import type { OnlineGameHubDatabase } from "./client.js";
 import { DatabaseError } from "./errors.js";
@@ -282,7 +282,7 @@ export class PostgresAccountRepository {
         }
         await transaction
           .update(passwordCredentials)
-          .set({ passwordHash: newPasswordHash, updatedAt: new Date() })
+          .set({ passwordHash: newPasswordHash, updatedAt: sql`now()` })
           .where(eq(passwordCredentials.userId, userId));
         await transaction
           .delete(accountSessions)
