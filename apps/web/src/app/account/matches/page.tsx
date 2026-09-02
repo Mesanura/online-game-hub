@@ -37,6 +37,11 @@ export default function AccountMatchesPage() {
           router.replace("/login?next=%2Faccount%2Fmatches");
           return;
         }
+        if (!response.ok) {
+          setLoadError(true);
+          setMatches([]);
+          return;
+        }
         const payload = (await response.json()) as { matches?: Match[] };
         setMatches(payload.matches ?? []);
       })
