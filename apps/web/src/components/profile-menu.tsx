@@ -110,7 +110,7 @@ export function ProfileMenu({ confirmIdentityChange }: ProfileMenuProps) {
   }, []);
 
   const displayName = account?.displayName ?? guestDisplayName;
-  const avatarLabel = getAvatarLabel(displayName);
+  const avatarLabel = getAvatarLabel(draftDisplayName);
 
   function openMenu() {
     if (closeTimerRef.current !== null) {
