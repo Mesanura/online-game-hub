@@ -75,26 +75,34 @@ export function parseReplayPlayers(
   input: unknown,
 ): ReplayHeader["players"] | null {
   if (!Array.isArray(input) || input.length === 0) return null;
-  const players: { slotId: string; participantRef?: string }[] = [];
+  const players: {
+    slotId: string;
+    participantRef?: string;
+    assignment?: string;
+  }[] = [];
   for (const entry of input) {
     const participantRef = isRecord(entry) ? entry.participantRef : undefined;
+    const assignment = isRecord(entry) ? entry.assignment : undefined;
     if (
       !isRecord(entry) ||
       Object.keys(entry).some(
-        (key) => key !== "slotId" && key !== "participantRef",
+        (key) =>
+          key !== "slotId" && key !== "participantRef" && key !== "assignment",
       ) ||
       typeof entry.slotId !== "string" ||
       entry.slotId.length === 0 ||
       (participantRef !== undefined &&
-        (typeof participantRef !== "string" || participantRef.length === 0))
+        (typeof participantRef !== "string" || participantRef.length === 0)) ||
+      (assignment !== undefined &&
+        (typeof assignment !== "string" || assignment.length === 0))
     ) {
       return null;
     }
-    players.push(
-      participantRef === undefined
-        ? { slotId: entry.slotId }
-        : { slotId: entry.slotId, participantRef },
-    );
+    players.push({
+      slotId: entry.slotId,
+      ...(participantRef === undefined ? {} : { participantRef }),
+      ...(assignment === undefined ? {} : { assignment }),
+    });
   }
   if (new Set(players.map((player) => player.slotId)).size !== players.length) {
     return null;
@@ -131,7 +139,8 @@ export function replayHeadersEqual(
       return (
         other !== undefined &&
         player.slotId === other.slotId &&
-        player.participantRef === other.participantRef
+        player.participantRef === other.participantRef &&
+        player.assignment === other.assignment
       );
     })
   );

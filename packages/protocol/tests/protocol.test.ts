@@ -49,8 +49,8 @@ const snapshot = {
 } as const;
 
 describe("transport conventions", () => {
-  it("keeps Protocol V4 room and custom message names stable", () => {
-    expect(PROTOCOL_VERSION).toBe(4);
+  it("keeps Protocol V5 room and custom message names stable", () => {
+    expect(PROTOCOL_VERSION).toBe(5);
     expect(GAME_ROOM_NAME).toBe("game");
     expect(GAME_ACTION_MESSAGE).toBe("game.action");
     expect(ROOM_CONTROL_MESSAGE).toBe("room.control");
@@ -186,7 +186,7 @@ describe("room control", () => {
 });
 
 describe("GameActionCommand", () => {
-  it("parses a strict V4 envelope and keeps action unknown", () => {
+  it("parses a strict V5 envelope and keeps action unknown", () => {
     const parsed = gameActionCommandSchema.parse(actionCommand);
     expect(parsed).toEqual(actionCommand);
     expectTypeOf<GameActionCommand["action"]>().toBeUnknown();

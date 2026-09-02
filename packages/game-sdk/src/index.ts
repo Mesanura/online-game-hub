@@ -130,6 +130,10 @@ export interface GameManifest {
   readonly capabilities: {
     readonly hiddenInformation: boolean;
     readonly deterministicRandomness: boolean;
+    readonly playerAssignment?: {
+      readonly kind: "camp" | "seat";
+      readonly options: readonly string[];
+    };
   };
 }
 
@@ -225,6 +229,8 @@ export function nextInt(
 export interface InitialContext<Config extends JsonValue> {
   readonly config: DeepReadonly<Config>;
   readonly players: readonly PlayerSlotId[];
+  /** Optional per-player metadata aligned with `players`, such as a camp. */
+  readonly playerAssignments?: readonly string[];
   readonly rng: Readonly<RngState>;
 }
 
@@ -279,6 +285,7 @@ export interface UnknownGameDefinition {
   createInitialState(context: {
     readonly config: JsonValue;
     readonly players: readonly PlayerSlotId[];
+    readonly playerAssignments?: readonly string[];
     readonly rng: Readonly<RngState>;
   }): Initialized<JsonValue>;
   transition(context: {

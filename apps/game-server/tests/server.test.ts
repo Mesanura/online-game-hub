@@ -53,7 +53,7 @@ describe("game-server composition helpers", () => {
       status: "verified",
       playerSessionId: "session-a",
       userId: null,
-      claims: { issuer: "web-production", protocolVersion: 4 },
+      claims: { issuer: "web-production", protocolVersion: 5 },
     });
     await expect(verifier.verify("tampered-ticket")).resolves.toEqual({
       status: "rejected",

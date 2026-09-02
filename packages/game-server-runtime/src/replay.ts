@@ -27,6 +27,7 @@ export interface ReplayHeader {
   readonly players: readonly {
     readonly slotId: string;
     readonly participantRef?: string;
+    readonly assignment?: string;
   }[];
 }
 
@@ -108,11 +109,16 @@ function cloneHeader(header: ReplayHeader): ReplayHeader {
     rng: { algorithm: header.rng.algorithm, seed: header.rng.seed },
     initialConfig: cloneJson(header.initialConfig),
     players: header.players.map((player) =>
-      player.participantRef === undefined
+      player.participantRef === undefined && player.assignment === undefined
         ? { slotId: player.slotId }
         : {
             slotId: player.slotId,
-            participantRef: player.participantRef,
+            ...(player.participantRef === undefined
+              ? {}
+              : { participantRef: player.participantRef }),
+            ...(player.assignment === undefined
+              ? {}
+              : { assignment: player.assignment }),
           },
     ),
   };
@@ -199,7 +205,8 @@ function headerEqual(left: ReplayHeader, right: ReplayHeader): boolean {
       return (
         other !== undefined &&
         player.slotId === other.slotId &&
-        player.participantRef === other.participantRef
+        player.participantRef === other.participantRef &&
+        player.assignment === other.assignment
       );
     })
   );
@@ -227,7 +234,9 @@ function validHeader(header: ReplayHeader): boolean {
     new Set(slotIds).size === slotIds.length &&
     header.players.every(
       (player) =>
-        player.participantRef === undefined || player.participantRef.length > 0,
+        (player.participantRef === undefined ||
+          player.participantRef.length > 0) &&
+        (player.assignment === undefined || player.assignment.length > 0),
     )
   );
 }
@@ -501,12 +510,15 @@ function parseReplay(
   for (const player of input.header.players) {
     if (
       !isRecord(player) ||
-      !hasOnlyKeys(player, ["slotId", "participantRef"]) ||
+      !hasOnlyKeys(player, ["slotId", "participantRef", "assignment"]) ||
       typeof player.slotId !== "string" ||
       player.slotId.length === 0 ||
       ("participantRef" in player &&
         (typeof player.participantRef !== "string" ||
-          player.participantRef.length === 0))
+          player.participantRef.length === 0)) ||
+      ("assignment" in player &&
+        (typeof player.assignment !== "string" ||
+          player.assignment.length === 0))
     ) {
       return {
         success: false,
@@ -724,6 +736,15 @@ export function reconstructReplayFrames(
     const initialized = definition.createInitialState({
       config: configResult.data,
       players,
+      ...(replay.header.players.every(
+        (player) => player.assignment !== undefined,
+      )
+        ? {
+            playerAssignments: replay.header.players.map(
+              (player) => player.assignment as string,
+            ),
+          }
+        : {}),
       rng,
     });
     if (
@@ -860,6 +881,15 @@ export function verifyReplay(
     const initialized = definition.createInitialState({
       config: configResult.data,
       players,
+      ...(replay.header.players.every(
+        (player) => player.assignment !== undefined,
+      )
+        ? {
+            playerAssignments: replay.header.players.map(
+              (player) => player.assignment as string,
+            ),
+          }
+        : {}),
       rng,
     });
     if (

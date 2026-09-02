@@ -19,7 +19,6 @@ import type {
   GameActionCommand,
   MatchSnapshot,
   RoomControlCommand,
-  RoomControlOperation,
   RoomConnected,
   RoomLifecycleState,
   StarterChoice,
@@ -110,7 +109,20 @@ type RoomControlInput =
       readonly starter: StarterChoice;
     }
   | {
-      readonly operation: Exclude<RoomControlOperation, "SELECT_STARTER">;
+      readonly operation: "SELECT_PLAYER_COUNT";
+      readonly playerCount: number;
+    }
+  | {
+      readonly operation: "SELECT_PLAYER_ASSIGNMENT";
+      readonly assignment: string;
+    }
+  | {
+      readonly operation:
+        | "CLEAR_PLAYER_ASSIGNMENT"
+        | "READY_FOR_ROUND"
+        | "CANCEL_ROUND_READY"
+        | "START_REMATCH"
+        | "CLOSE_ROOM";
     };
 
 export class CommandRejectedError extends Error {
@@ -272,6 +284,21 @@ export class GameClientHost<View = unknown, Outcome = unknown> {
 
   public selectStarter(starter: StarterChoice): Promise<void> {
     return this.#sendControl({ operation: "SELECT_STARTER", starter });
+  }
+
+  public selectPlayerCount(playerCount: number): Promise<void> {
+    return this.#sendControl({ operation: "SELECT_PLAYER_COUNT", playerCount });
+  }
+
+  public selectPlayerAssignment(assignment: string): Promise<void> {
+    return this.#sendControl({
+      operation: "SELECT_PLAYER_ASSIGNMENT",
+      assignment,
+    });
+  }
+
+  public clearPlayerAssignment(): Promise<void> {
+    return this.#sendControl({ operation: "CLEAR_PLAYER_ASSIGNMENT" });
   }
 
   public readyForRound(): Promise<void> {

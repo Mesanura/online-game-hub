@@ -92,7 +92,7 @@ function validStoredRoom(room: StoredGameRoom): boolean {
     isJsonValue(round.state) &&
     isJsonValue(round.outcome) &&
     room.players.length > 0 &&
-    assignedSessions.length === room.players.length &&
+    assignedSessions.length === round.playerOrder.length &&
     room.players.every(
       (player) =>
         player.slotId.length > 0 &&
@@ -104,7 +104,7 @@ function validStoredRoom(room: StoredGameRoom): boolean {
     ) &&
     new Set(room.players.map((player) => player.slotId)).size ===
       room.players.length &&
-    round.playerOrder.length === room.players.length &&
+    round.playerOrder.length === assignedSessions.length &&
     new Set(round.playerOrder).size === round.playerOrder.length &&
     round.playerOrder.every((slotId) =>
       room.players.some((player) => player.slotId === slotId),

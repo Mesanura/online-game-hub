@@ -685,7 +685,7 @@ test("the shared HUD cancels and confirms a Tic-Tac-Toe resignation once", async
 
   const canceledDialog = handleResignDialog(pageB, "dismiss");
   await resignButton.click();
-  expect(await canceledDialog).toContain("投降后对手将立即获胜");
+  expect(await canceledDialog).toContain("排在未投降玩家之后");
   await expectRevision([pageA, pageB], 0);
   await Promise.all(
     [pageA, pageB].map((page) =>
@@ -695,7 +695,7 @@ test("the shared HUD cancels and confirms a Tic-Tac-Toe resignation once", async
 
   const acceptedDialog = handleResignDialog(pageB, "accept");
   await resignButton.click();
-  expect(await acceptedDialog).toContain("投降后对手将立即获胜");
+  expect(await acceptedDialog).toContain("排在未投降玩家之后");
   await expectRevision([pageA, pageB], 1);
   await Promise.all(
     [pageA, pageB].map((page) =>

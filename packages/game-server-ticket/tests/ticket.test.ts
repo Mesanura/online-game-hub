@@ -21,7 +21,7 @@ function encodeUnsafeClaims(claims: unknown): string {
 }
 
 describe("HMAC Game Server ticket authority", () => {
-  it("issues short-lived Protocol V4 guest and account claims controlled by the server", () => {
+  it("issues short-lived Protocol V5 guest and account claims controlled by the server", () => {
     const authority = createHmacGameServerTicketAuthority({
       issuer: "web-test",
       secret: SECRET,

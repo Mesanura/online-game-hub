@@ -7,8 +7,9 @@
 - `games/gomoku`：展示名“五子棋”，current exact `gameVersion 1.1.0`（15×15/19×19 Config 与投降），并保留 frozen `1.0.0` Core 与原 golden replay；
 - `games/hex`：展示名“六贯棋”，exact `gameVersion 1.0.0`，11×11 连接规则、投降、canonical path、Client Module 与 golden replay；
 - `games/reversi`：展示名“黑白棋”，current exact `gameVersion 1.1.0`（8×8 翻转/跳过与投降），并保留 frozen `1.0.0` Core 与原 golden replay。
+- `games/chinese-checkers`：展示名“中国跳棋”，exact `gameVersion 1.0.0`，73 位六芒星棋盘、2–6 人六子营地分配、排名、投降与 golden replay；
 
-五款 current Client Module 都向共用 HUD 暴露可选 `createResignAction`；投降确认属于平台 UX，off-turn 合法性、`resignedSlotId`、`RESIGNATION` Outcome 与 canonical replay 仍由 exact Game Core 裁定。
+五款双人 current Client Module 与中国跳棋 Client Module 都向共用 HUD 暴露可选 `createResignAction`；投降确认属于平台 UX，off-turn 合法性、胜负/排名 Outcome 与 canonical replay 仍由 exact Game Core 裁定。
 
 游戏 package 的结构与公开子路径以 [Game Plugin 规范](../docs/GAME_PLUGIN_SPEC.md) 为准。
 

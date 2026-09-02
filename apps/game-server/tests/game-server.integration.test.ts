@@ -253,7 +253,7 @@ function controlCommand(
     protocolVersion: PROTOCOL_VERSION,
     commandId,
     operation,
-  };
+  } as RoomControlCommand;
 }
 
 function startRound(
@@ -333,6 +333,7 @@ describe.sequential("authoritative Colyseus Game Server", () => {
         "RSGAMEDD",
         "RAND2345",
         "ACCT2345",
+        "CCPLAY45",
       ]),
       logger: { write: (event) => logs.push(event) },
     });
@@ -3171,5 +3172,218 @@ describe.sequential("authoritative Colyseus Game Server", () => {
     expect(storedRound?.players[1]?.userId).toBeNull();
 
     await Promise.all([ownerRoom.leave(true), guestRoom.leave(true)]);
+  });
+
+  it("runs a three-player Chinese Checkers assignment round and ranks resignation order", async () => {
+    const ownerRoom = await new ColyseusClient(address.httpUrl).create(
+      GAME_ROOM_NAME,
+      {
+        type: "room.create",
+        protocolVersion: PROTOCOL_VERSION,
+        ticket: authority.issue("cc-owner"),
+        gameId: "chinese-checkers",
+        initialConfig: null,
+      },
+    );
+    const ownerInbox = new MessageInbox(ownerRoom);
+    const ownerConnected = await ownerInbox.next(
+      (message) => message.type === "room.connected",
+    );
+    if (ownerConnected.type !== "room.connected")
+      throw new Error("Chinese Checkers owner did not connect.");
+    const join = async (session: string) => {
+      const room = await new ColyseusClient(address.httpUrl).join(
+        GAME_ROOM_NAME,
+        {
+          type: "room.join",
+          protocolVersion: PROTOCOL_VERSION,
+          ticket: authority.issue(session),
+          roomCode: ownerConnected.roomCode,
+        },
+      );
+      return { room, inbox: new MessageInbox(room) };
+    };
+    const { room: secondRoom, inbox: secondInbox } = await join("cc-second");
+    const { room: thirdRoom, inbox: thirdInbox } = await join("cc-third");
+    await Promise.all([
+      secondInbox.next((message) => message.type === "room.connected"),
+      thirdInbox.next((message) => message.type === "room.connected"),
+    ]);
+    const ownerLifecycle = new LifecycleInbox(ownerRoom);
+    const secondLifecycle = new LifecycleInbox(secondRoom);
+    const thirdLifecycle = new LifecycleInbox(thirdRoom);
+
+    ownerRoom.send(ROOM_CONTROL_MESSAGE, {
+      type: "room.control",
+      protocolVersion: PROTOCOL_VERSION,
+      commandId: "cc-count-3",
+      operation: "SELECT_PLAYER_COUNT",
+      playerCount: 3,
+    });
+    await expect(
+      ownerLifecycle.next(
+        (message) => message.causedByCommandId === "cc-count-3",
+      ),
+    ).resolves.toMatchObject({ nextRound: { requiredPlayerCount: 3 } });
+    ownerRoom.send(ROOM_CONTROL_MESSAGE, {
+      type: "room.control",
+      protocolVersion: PROTOCOL_VERSION,
+      commandId: "cc-owner-camp",
+      operation: "SELECT_PLAYER_ASSIGNMENT",
+      assignment: "N",
+    });
+    await ownerLifecycle.next(
+      (message) => message.causedByCommandId === "cc-owner-camp",
+    );
+    secondRoom.send(ROOM_CONTROL_MESSAGE, {
+      type: "room.control",
+      protocolVersion: PROTOCOL_VERSION,
+      commandId: "cc-conflict-camp",
+      operation: "SELECT_PLAYER_ASSIGNMENT",
+      assignment: "N",
+    });
+    await expect(
+      secondInbox.next(
+        (message) =>
+          message.type === "command.rejected" &&
+          message.commandId === "cc-conflict-camp",
+      ),
+    ).resolves.toMatchObject({ code: "ROOM_CONTROL_NOT_ALLOWED" });
+    secondRoom.send(ROOM_CONTROL_MESSAGE, {
+      type: "room.control",
+      protocolVersion: PROTOCOL_VERSION,
+      commandId: "cc-second-camp",
+      operation: "SELECT_PLAYER_ASSIGNMENT",
+      assignment: "S",
+    });
+    await secondLifecycle.next(
+      (message) => message.causedByCommandId === "cc-second-camp",
+    );
+    thirdRoom.send(ROOM_CONTROL_MESSAGE, {
+      type: "room.control",
+      protocolVersion: PROTOCOL_VERSION,
+      commandId: "cc-third-camp",
+      operation: "SELECT_PLAYER_ASSIGNMENT",
+      assignment: "NE",
+    });
+    await thirdLifecycle.next(
+      (message) => message.causedByCommandId === "cc-third-camp",
+    );
+    ownerRoom.send(
+      ROOM_CONTROL_MESSAGE,
+      controlCommand("cc-starter", "SELECT_STARTER", "OWNER"),
+    );
+    const activeSnapshots = [
+      ownerInbox.next(
+        (message) => isSnapshot(message) && message.status === "active",
+      ),
+      secondInbox.next(
+        (message) => isSnapshot(message) && message.status === "active",
+      ),
+      thirdInbox.next(
+        (message) => isSnapshot(message) && message.status === "active",
+      ),
+    ];
+    for (const [room, id] of [
+      [ownerRoom, "cc-owner-ready"],
+      [secondRoom, "cc-second-ready"],
+      [thirdRoom, "cc-third-ready"],
+    ] as const) {
+      room.send(ROOM_CONTROL_MESSAGE, controlCommand(id, "READY_FOR_ROUND"));
+    }
+    const [ownerActive, secondActive, thirdActive] =
+      await Promise.all(activeSnapshots);
+    expect(ownerActive).toMatchObject({
+      view: {
+        players: [
+          { slotId: "slot-1", camp: "N" },
+          { slotId: "slot-2", camp: "S" },
+          { slotId: "slot-3", camp: "NE" },
+        ],
+        nextTurnSlotId: "slot-1",
+      },
+    });
+    expect(secondActive).toMatchObject({ view: { yourCamp: "S" } });
+    expect(thirdActive).toMatchObject({ view: { yourCamp: "NE" } });
+
+    secondRoom.send(
+      GAME_ACTION_MESSAGE,
+      command("cc-resign-second", 0, { type: "RESIGN" }),
+    );
+    await expect(
+      secondInbox.next(
+        (message) =>
+          isSnapshot(message) &&
+          message.causedByCommandId === "cc-resign-second",
+      ),
+    ).resolves.toMatchObject({ revision: 1, status: "active" });
+    const completed = thirdInbox.next(
+      (message) =>
+        isSnapshot(message) && message.causedByCommandId === "cc-resign-third",
+    );
+    thirdRoom.send(
+      GAME_ACTION_MESSAGE,
+      command("cc-resign-third", 1, { type: "RESIGN" }),
+    );
+    await expect(completed).resolves.toMatchObject({
+      revision: 2,
+      status: "completed",
+      outcome: {
+        type: "RANKING",
+        rankings: [
+          { slotId: "slot-1", rank: 1, reason: "LAST_REMAINING" },
+          { slotId: "slot-2", rank: 2, reason: "RESIGNATION" },
+          { slotId: "slot-3", rank: 3, reason: "RESIGNATION" },
+        ],
+      },
+    });
+    const stored = await roomStore.getByRoomCode(ownerConnected.roomCode);
+    const replay = await replayStore.get(stored?.currentRound?.replayId ?? "");
+    expect(replay?.header.players).toEqual([
+      { slotId: "slot-1", assignment: "N" },
+      { slotId: "slot-2", assignment: "S" },
+      { slotId: "slot-3", assignment: "NE" },
+    ]);
+    expect(verifyReplay(replay, resolveGameDefinition)).toMatchObject({
+      status: "verified",
+      outcome: { type: "RANKING" },
+    });
+    ownerRoom.send(ROOM_CONTROL_MESSAGE, {
+      type: "room.control",
+      protocolVersion: PROTOCOL_VERSION,
+      commandId: "cc-clear-owner-camp",
+      operation: "CLEAR_PLAYER_ASSIGNMENT",
+    });
+    const clearedLifecycle = await ownerLifecycle.next(
+      (message) => message.causedByCommandId === "cc-clear-owner-camp",
+    );
+    expect(clearedLifecycle.players?.slice(0, 3)).toEqual([
+      {
+        slotId: "slot-1",
+        occupied: true,
+        online: true,
+        ready: false,
+        assignment: null,
+      },
+      {
+        slotId: "slot-2",
+        occupied: true,
+        online: true,
+        ready: false,
+        assignment: "S",
+      },
+      {
+        slotId: "slot-3",
+        occupied: true,
+        online: true,
+        ready: false,
+        assignment: "NE",
+      },
+    ]);
+    await Promise.all([
+      ownerRoom.leave(true),
+      secondRoom.leave(true),
+      thirdRoom.leave(true),
+    ]);
   });
 });

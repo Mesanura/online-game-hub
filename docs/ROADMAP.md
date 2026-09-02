@@ -1,6 +1,6 @@
 # 开发路线图
 
-> 状态：M1–M6、Protocol V4 账户身份、密码账户/私有历史、三阶段 Web、窄版 create-game 与通用投降/规则版本增强已完成
+> 状态：M1–M6、Protocol V5 多人中国跳棋、账户身份、密码账户/私有历史、三阶段 Web、窄版 create-game 与通用投降/规则版本增强已完成
 > 本文是项目阶段顺序和里程碑退出条件的权威来源。里程碑按依赖排序，不承诺具体日期。
 
 ## 原则
@@ -173,7 +173,7 @@
 - Protocol V2 使 Action/Snapshot 的 `roundNumber` 必填，并以严格 discriminated union 提供 `SELECT_STARTER`、`READY_FOR_ROUND`、`CANCEL_ROUND_READY`、`CLOSE_ROOM`；Host 可在首局没有 snapshot 时只根据 lifecycle 工作；
 - 通用 Web 在无 snapshot 时展示邀请与下一局设置，completed 时保留终局棋盘并并列展示设置；五套 E2E 使用稳定 test id 覆盖相同流程，井字棋第二局明确反转先手。
 
-该增强只面向当前所有已注册的双人游戏，当时不预先加入多人 starter policy、随机先手、观战、房主迁移或 active room 跨进程恢复。M2–M6 小节中的 “Protocol V1” 描述保留为各里程碑完成当时的历史事实；当前部署契约以 [NETWORK_PROTOCOL.md](./NETWORK_PROTOCOL.md) 的 Protocol V4 为准。
+该增强只面向当前所有已注册的双人游戏，当时不预先加入多人 starter policy、随机先手、观战、房主迁移或 active room 跨进程恢复。M2–M6 小节中的 “Protocol V1” 描述保留为各里程碑完成当时的历史事实；当前部署契约以 [NETWORK_PROTOCOL.md](./NETWORK_PROTOCOL.md) 的 Protocol V5 为准。
 
 ## 已完成平台增强：三阶段 Claymorphism Web 体验
 
@@ -221,7 +221,7 @@
 
 ## M7-A：密码账户与登录态对局归属
 
-> 实施状态：已完成（2026-09-02）。Protocol V4、用户名+密码账户、可撤销 30 天 session、账户/游客混合对局、Round 开始身份快照、账户私有历史和 Web 认证页面已实现。
+> 实施状态：已完成（2026-09-02）。Protocol V4、用户名+密码账户、可撤销 30 天 session、账户/游客混合对局、Round 开始身份快照、账户私有历史和 Web 认证页面已实现；多人扩展后的现行 wire 为 Protocol V5。
 
 - `password_credentials` 与 `account_sessions` 独立于通用 `users`；Argon2id hash、SHA-256 token hash-at-rest、同源 JSON mutation、单实例有界限速和 Secure/HttpOnly/Lax cookie；
 - ticket claims 的可选 `userId` 使 Protocol V4 显式拒绝 V1–V3；Game Server 只信 verifier 结果，slot 私有保存账户身份并在 Round 开始写入 `match_players.user_id`；
@@ -235,8 +235,17 @@
 - 新增 `GET /api/matches/[matchId]/replay`，只接受当前账户参赛的 completed Match 和 completed canonical replay；未登录、未参赛、不存在和非法 UUID 使用安全语义；
 - runtime 以 exact `gameId + gameVersion` definition 和数据库推导的 player Viewer 逐帧重建 `projectView`，设置帧数、响应大小和 fail-closed 校验边界；
 - 五款游戏显式登记 historical client module，回放页面严格只读并支持首帧、前后帧、末帧、播放/暂停和 slider；
-- Protocol V4、Replay Format V1、所有游戏规则与 gameVersion 均保持不变；游客比赛内部保留但永不进入账户历史；
+- Protocol V5、Replay Format V1、所有游戏规则与 gameVersion 均保持不变；游客比赛内部保留但永不进入账户历史；
 - 不包含公开 replay、观战、分享链接、下载、排行榜、Matchmaking、隐藏信息权限策略、Redis、多实例或 active room 恢复。
+
+## 已完成平台增强：Protocol V5 多人中国跳棋
+
+> 实施状态：已完成（2026-09-02）。中国跳棋 1.0.0、多人 room lifecycle、assignment 控制、Replay V1 元数据、Web 六芒星棋盘与全仓质量门禁已完成。
+
+- `GameManifest` 和 `InitialContext` 增加可选 assignment capability/metadata；runtime 按 manifest 校验 2–6 人、精确人数和唯一营地，不把具体游戏规则写入平台；
+- Protocol V5 增加 `SELECT_PLAYER_COUNT`、`SELECT_PLAYER_ASSIGNMENT`、`CLEAR_PLAYER_ASSIGNMENT` 与动态最多六个 slot 的 lifecycle；首手策略只决定首位，其余玩家按 assignment 固定顺序排列；
+- 中国跳棋 package 提供 73 位确定性轴坐标 Core、相邻/连续跳跃、完成/阻塞/投降排名、projection、Claymorphism Client Module、规则文档和 golden replay；
+- Replay Format V1 在既有 `players` 条目中兼容可选 assignment，旧 replay 继续可读；registry、Web、PostgreSQL-backed checks、Colyseus integration 和 Playwright E2E 均覆盖新契约。
 
 ## M7：按证据扩展平台
 

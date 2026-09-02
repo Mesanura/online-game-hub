@@ -1,6 +1,6 @@
 # 测试策略
 
-> 状态：Protocol V4/M7-B 测试策略（账户 session、私有 replay、可信 UserId、Round 身份快照与 V3 拒绝已纳入）
+> 状态：Protocol V5/M7-B 测试策略（多人 assignment、账户 session、私有 replay、可信 UserId、Round 身份快照与 V4 拒绝已纳入）
 > 本文是测试层级、职责、最低场景和质量门禁的权威来源。具体业务范围见 [PRODUCT.md](./PRODUCT.md)。
 
 M7-B 私有历史与回放测试覆盖：UserId + matchId 数据库授权、双账户共享同局、游客永久不可见、abandoned/incomplete 拒绝、损坏数据安全错误和跨连接读取；runtime revision 0..N frame reconstruction、exact historical definition、determinism、RNG/Outcome/sequence/actor/payload 篡改、projection 异常及帧数/响应大小上限；五款游戏 historical client module 独立解析和 replay read-only 不提交 Action；Web/API 的 401、not-found、unavailable、私有 headers、帧控制、slider、播放清理、移动端大棋盘容器和无 WebSocket。
@@ -89,6 +89,8 @@ M7-B 私有历史与回放测试覆盖：UserId + matchId 数据库授权、双�
 
 黑白棋至少覆盖 null Config、标准 8×8 初始四子与 BLACK/WHITE slot 映射、八方向单线/多线同时翻转、边界/角落/禁止 row wrap、错误 slot/回合/越界/占用/无翻转落子、对方无行动时同 slot 续行、双方无行动的非满盘终局、满盘 BLACK/WHITE 胜局与平局、strict/off-turn `RESIGN`、resignation projection、终局拒绝、Config/State/Action/RNG immutability、serialization、player/spectator projection、服务器 View 的合法落点/棋子数/Outcome 和零 RNG cursor seeded determinism；frozen `1.0.0` fixture 保持 exact。
 
+中国跳棋至少覆盖 2/3/6 人初始化、73 位坐标和六子营地、唯一 assignment、相邻移动、连续跳跃、越界/占用/错回合、完成/投降/阻塞排名、自动跳过、State/View/Action/Outcome immutability、JSON serialization、projection 和零 RNG cursor determinism；golden replay 必须验证 header assignment 可重建。
+
 ### 4.2 Property 与 Table-driven Tests
 
 - 对有限规则优先使用 table-driven cases 表达规则矩阵。
@@ -120,7 +122,7 @@ Golden fixture 只在确认规则或版本策略变化后更新。不能通过�
 - 确认 `action` 在通用层保持 `unknown`，并由选中的 game schema 再解析；
 - server response 不包含 stack、ticket、cookie、完整 State 或 RNG seed；
 - encode/decode round trip 保持稳定字段；
-- Protocol V4 exact schemas 拒绝 V1–V3、缺字段和 extra fields；ticket 覆盖账户/游客 claim、伪造 UserId 与 extra fields；`room.control` 严格区分 starter 选择/ready/cancel/immediate rematch/close，拒绝非法 starter 与 identity 字段；`room.lifecycle` 拒绝不一致 current/next Round、ready/closed 状态；Action/snapshot 的 `roundNumber` 必填并拒绝非法值；
+- Protocol V5 exact schemas 拒绝 V1–V4、缺字段和 extra fields；ticket 覆盖账户/游客 claim、伪造 UserId 与 extra fields；`room.control` 严格区分 starter/人数/assignment/ready/cancel/immediate rematch/close，拒绝非法 starter、人数、assignment 与 identity 字段；`room.lifecycle` 拒绝不一致 current/next Round、ready/closed 状态；Action/snapshot 的 `roundNumber` 必填并拒绝非法值；
 - platform error 与 `gameRuleCode` 的映射不混淆。
 
 ## 7. Game Server Integration Tests
@@ -170,7 +172,7 @@ Multiplayer integration 使用两个独立客户端连接同一真实 room，验
 
 这些测试覆盖网络时序，不承担穷举游戏规则的职责。
 
-真实 integration cases 覆盖：health/metrics 与 Protocol V3 ticket trust boundary；井字棋、四子棋、五子棋、六贯棋和黑白棋双客户端 stable slots、无 snapshot setup、active/completed、invalid/rule-rejected commands、per-viewer snapshot 与 verified canonical replay；replay append failure 不确认/不提交；新 ticket + 新 reservation 的 reconnect、connection takeover、错误 session theft 和 fake-clock 60 秒 abandoned；逐局 starter/ready/cancel、随机 starter、复用 playerOrder 的 immediate rematch、跨轮 duplicate/错轮防护、terminal outsider、房主关闭、非房主 active leave 和 terminal TTL。井字棋还覆盖房主预选/提前 ready、权限伪造、选择清 ready、首局/后续轮 archive 失败重试；四子棋继续覆盖满列、横向胜局、42-action 平局、两轮独立 replay 与 abandoned 无伪造 Outcome；五子棋以 19×19 Config 覆盖创建/加入、361-cell View、错误回合、占用 cell、9-action 五连胜与 canonical replay；六贯棋覆盖本轮 BLUE/RED role、schema-invalid、错轮、stale、占用、duplicate、21-action canonical path 胜局、再次选择同一先手的第二轮与 RED off-turn `RESIGN` replay。ticket verifier、ports、composition logger 另有无 transport 的 contract/unit tests。
+真实 integration cases 覆盖：health/metrics 与 Protocol V5 ticket trust boundary；井字棋、四子棋、五子棋、六贯棋、黑白棋和中国跳棋 stable slots、无 snapshot setup、active/completed、invalid/rule-rejected commands、per-viewer snapshot 与 verified canonical replay；replay append failure 不确认/不提交；新 ticket + 新 reservation 的 reconnect、connection takeover、错误 session theft 和 fake-clock 60 秒 abandoned；逐局 starter/ready/cancel、随机 starter、复用 playerOrder 的 immediate rematch、跨轮 duplicate/错轮防护、terminal outsider、房主关闭、非房主 active leave 和 terminal TTL。中国跳棋额外覆盖 2–6 人人数控制、唯一营地权限、多人 playerOrder、排名和 assignment replay metadata。ticket verifier、ports、composition logger 另有无 transport 的 contract/unit tests。
 
 黑白棋 integration 额外覆盖本轮 BLACK/WHITE role、schema-invalid/伪造 actor、错回合与无翻转拒绝不推进 revision/replay、权威翻转、revision 18 后 WHITE 强制连续行动、25-action 非满盘终局、PASS-free canonical replay，以及同房间第二轮 revision 重置、独立 Match/replay 与 11-action 非满盘终局。
 
@@ -276,7 +278,7 @@ try {
 9. 另一 active room 用 fake clock 前进 60,001 ms，验证 `RECONNECT_TIMEOUT` abandoned 并关闭 live room；
 10. 关闭并重建 database adapter 后，两轮 history metadata 和 completed canonical replays 仍存在；浏览器只看到安全 metadata，不看到数据库或 replay 细节。
 
-Web E2E 同时验证三阶段 App Router：创建/加入和 canonical 邀请进入等待页，旧 `?roomCode=` 兼容入口规范化，双方 ready 后自动进入 `/play`，active 刷新/reconnect 回到 `/play`，completed 保留最终棋盘并通过“下一局设置”返回等待页，closed 返回入口并显示原因。复制邀请覆盖 Clipboard 成功状态与 API 失败后的可操作手动复制后备；五套 E2E 都从对局左侧共用 HUD 取消一次投降并确认一次，验证取消不产生 Action、确认只产生一个 `RESIGN`/revision、双方收敛到 `RESIGNATION` WIN 且 PostgreSQL replay exact verification 通过。HUD 仍直接提供关闭/离开并为 active 房间保留独立确认。
+Web E2E 同时验证三阶段 App Router：创建/加入和 canonical 邀请进入等待页，旧 `?roomCode=` 兼容入口规范化，双方 ready 后自动进入 `/play`，active 刷新/reconnect 回到 `/play`，completed 保留最终棋盘并通过“下一局设置”返回等待页，closed 返回入口并显示原因。复制邀请覆盖 Clipboard 成功状态与 API 失败后的可操作手动复制后备；六套 E2E 都从对局左侧共用 HUD 取消一次投降并确认一次，验证取消不产生 Action、确认只产生一个 `RESIGN`/revision、双方收敛到 `RESIGNATION` WIN 且 PostgreSQL replay exact verification 通过；中国跳棋额外覆盖 3 人营地选择、排名和 assignment replay metadata。HUD 仍直接提供关闭/离开并为 active 房间保留独立确认。
 
 `auth-vertical-slice.spec.ts` 还验证右上角 ProfileMenu：游客显示“游客”并可修改显示名、实时更新头像且刷新后仍保留；登录后下半部切换为历史/设置/退出，账户更新由另一 browser context 读取，退出后恢复为独立游客资料；键盘 Escape、外部点击和 live room 中身份变化确认均有效。
 

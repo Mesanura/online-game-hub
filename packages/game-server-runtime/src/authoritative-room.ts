@@ -106,6 +106,7 @@ interface RuntimeSlot {
   playerSessionId: string | null;
   userId: string | null;
   reservedUntilMilliseconds: number | null;
+  assignment: string | null;
   timeout: CancelTimer | null;
 }
 
@@ -114,6 +115,7 @@ interface RuntimeAggregate {
   readonly initialConfig: JsonValue;
   readonly roomCode: string;
   readonly slots: RuntimeSlot[];
+  targetPlayerCount: number;
   currentRound: RuntimeRound | null;
 }
 
@@ -215,6 +217,7 @@ export function createAuthoritativeGameRoomClass(
     #closedReason: RoomCloseReason | null = null;
     #starterChoice: StarterChoice | null = null;
     #pendingRound: PendingRound | null = null;
+    #rematchOrder: readonly PlayerSlotId[] | null = null;
     #disposed = false;
 
     public static override async onAuth(
@@ -282,8 +285,8 @@ export function createAuthoritativeGameRoomClass(
         !Number.isSafeInteger(maxPlayers) ||
         minPlayers <= 0 ||
         maxPlayers < minPlayers ||
-        minPlayers !== 2 ||
-        maxPlayers !== 2
+        minPlayers < 2 ||
+        maxPlayers > 6
       ) {
         throw new ServerError(500, "INTERNAL_ERROR");
       }
@@ -294,6 +297,7 @@ export function createAuthoritativeGameRoomClass(
         playerSessionId: index === 0 ? verification.playerSessionId : null,
         userId: index === 0 ? verification.userId : null,
         reservedUntilMilliseconds: null,
+        assignment: null,
         timeout: null,
       }));
       if (new Set(slots.map((slot) => slot.slotId)).size !== slots.length) {
@@ -310,6 +314,7 @@ export function createAuthoritativeGameRoomClass(
         initialConfig: configResult.data,
         roomCode,
         slots,
+        targetPlayerCount: minPlayers,
         currentRound: null,
       };
 
@@ -716,6 +721,7 @@ export function createAuthoritativeGameRoomClass(
       if (outcome !== null) {
         round.status = "completed";
         this.#starterChoice = null;
+        this.#rematchOrder = null;
         this.#readySessions.clear();
         this.#scheduleTerminalExpiry();
       }
@@ -807,6 +813,109 @@ export function createAuthoritativeGameRoomClass(
         return;
       }
 
+      if (command.operation === "SELECT_PLAYER_COUNT") {
+        if (clientData.playerSessionId !== this.#creatorSessionId) {
+          this.#rejectControlAndCache(
+            client,
+            commandKey,
+            "ROOM_CONTROL_NOT_ALLOWED",
+            command.commandId,
+          );
+          return;
+        }
+        const { minPlayers, maxPlayers } = aggregate.definition.manifest;
+        const occupied = aggregate.slots.filter(
+          (slot) => slot.playerSessionId !== null,
+        ).length;
+        if (
+          command.playerCount < minPlayers ||
+          command.playerCount > maxPlayers ||
+          occupied > command.playerCount
+        ) {
+          this.#rejectControlAndCache(
+            client,
+            commandKey,
+            "ROOM_CONTROL_NOT_ALLOWED",
+            command.commandId,
+          );
+          return;
+        }
+        if (aggregate.targetPlayerCount !== command.playerCount) {
+          aggregate.targetPlayerCount = command.playerCount;
+          this.#readySessions.clear();
+          this.#pendingRound = null;
+          this.#rematchOrder = null;
+        }
+      } else if (
+        command.operation === "SELECT_PLAYER_ASSIGNMENT" ||
+        command.operation === "CLEAR_PLAYER_ASSIGNMENT"
+      ) {
+        if (
+          aggregate.definition.manifest.capabilities.playerAssignment ===
+          undefined
+        ) {
+          this.#rejectControlAndCache(
+            client,
+            commandKey,
+            "ROOM_CONTROL_NOT_ALLOWED",
+            command.commandId,
+          );
+          return;
+        }
+        const slot = aggregate.slots.find(
+          (candidate) =>
+            candidate.playerSessionId === clientData.playerSessionId,
+        );
+        if (slot === undefined) {
+          this.#rejectControlAndCache(
+            client,
+            commandKey,
+            "NOT_A_PLAYER",
+            command.commandId,
+          );
+          return;
+        }
+        const assignment =
+          command.operation === "CLEAR_PLAYER_ASSIGNMENT"
+            ? null
+            : command.assignment;
+        if (
+          assignment !== null &&
+          !aggregate.definition.manifest.capabilities.playerAssignment.options.includes(
+            assignment,
+          )
+        ) {
+          this.#rejectControlAndCache(
+            client,
+            commandKey,
+            "ROOM_CONTROL_NOT_ALLOWED",
+            command.commandId,
+          );
+          return;
+        }
+        const conflict =
+          assignment !== null &&
+          aggregate.slots.some(
+            (candidate) =>
+              candidate !== slot &&
+              candidate.playerSessionId !== null &&
+              candidate.assignment === assignment,
+          );
+        if (conflict) {
+          this.#rejectControlAndCache(
+            client,
+            commandKey,
+            "ROOM_CONTROL_NOT_ALLOWED",
+            command.commandId,
+          );
+          return;
+        }
+        slot.assignment = assignment;
+        this.#readySessions.clear();
+        this.#pendingRound = null;
+        this.#rematchOrder = null;
+      }
+
       let startedRound = false;
       if (command.operation === "SELECT_STARTER") {
         if (clientData.playerSessionId !== this.#creatorSessionId) {
@@ -822,6 +931,7 @@ export function createAuthoritativeGameRoomClass(
           this.#starterChoice = command.starter;
           this.#readySessions.clear();
           this.#pendingRound = null;
+          this.#rematchOrder = null;
         }
       } else if (command.operation === "START_REMATCH") {
         if (!this.#allParticipantsConnected()) {
@@ -854,6 +964,7 @@ export function createAuthoritativeGameRoomClass(
           completedRound.playerOrder[0] === ownerSlot.slotId
             ? "OWNER"
             : "NON_OWNER";
+        this.#rematchOrder = [...completedRound.playerOrder];
         this.#readySessions.clear();
         for (const slot of aggregate.slots) {
           if (slot.playerSessionId !== null) {
@@ -863,7 +974,7 @@ export function createAuthoritativeGameRoomClass(
         this.#pendingRound = null;
       } else if (command.operation === "CANCEL_ROUND_READY") {
         this.#readySessions.delete(clientData.playerSessionId);
-      } else {
+      } else if (command.operation === "READY_FOR_ROUND") {
         if (this.#starterChoice === null) {
           this.#rejectControlAndCache(
             client,
@@ -919,23 +1030,63 @@ export function createAuthoritativeGameRoomClass(
       const ownerSlot = aggregate.slots.find(
         (slot) => slot.playerSessionId === this.#creatorSessionId,
       );
-      const nonOwnerSlot = aggregate.slots.find(
-        (slot) =>
-          slot.playerSessionId !== null &&
-          slot.playerSessionId !== this.#creatorSessionId,
+      const participantSlots = aggregate.slots.filter(
+        (slot) => slot.playerSessionId !== null,
       );
-      if (ownerSlot === undefined || nonOwnerSlot === undefined) {
-        throw new Error("A round requires both assigned players.");
+      if (
+        ownerSlot === undefined ||
+        participantSlots.length !== aggregate.targetPlayerCount
+      ) {
+        throw new Error("A round requires the selected number of players.");
       }
       let pending = this.#pendingRound;
       if (pending === null) {
         const initialRng = createRng(ids.createRngSeed());
         const randomStartsWithOwner = nextInt(initialRng, 2).value === 0;
-        const playerOrder =
-          this.#starterChoice === "OWNER" ||
-          (this.#starterChoice === "RANDOM" && randomStartsWithOwner)
-            ? [ownerSlot.slotId, nonOwnerSlot.slotId]
-            : [nonOwnerSlot.slotId, ownerSlot.slotId];
+        const assignmentCapability =
+          aggregate.definition.manifest.capabilities.playerAssignment;
+        let orderedSlots = participantSlots.map((slot) => slot.slotId);
+        if (assignmentCapability !== undefined) {
+          const order = assignmentCapability.options;
+          if (participantSlots.some((slot) => slot.assignment === null)) {
+            throw new Error("Every player must select an assignment.");
+          }
+          orderedSlots = participantSlots
+            .slice()
+            .sort(
+              (left, right) =>
+                order.indexOf(left.assignment as string) -
+                order.indexOf(right.assignment as string),
+            )
+            .map((slot) => slot.slotId);
+        }
+        if (this.#rematchOrder !== null) {
+          orderedSlots = [...this.#rematchOrder];
+        }
+        const firstSlot =
+          this.#starterChoice === "OWNER"
+            ? ownerSlot.slotId
+            : this.#starterChoice === "NON_OWNER"
+              ? (orderedSlots.find((slotId) => slotId !== ownerSlot.slotId) ??
+                ownerSlot.slotId)
+              : randomStartsWithOwner
+                ? ownerSlot.slotId
+                : (orderedSlots.find((slotId) => slotId !== ownerSlot.slotId) ??
+                  ownerSlot.slotId);
+        const firstIndex = orderedSlots.indexOf(firstSlot);
+        const playerOrder: PlayerSlotId[] = [];
+        if (firstIndex === -1) {
+          playerOrder.push(firstSlot, ...orderedSlots);
+        } else {
+          for (let offset = 0; offset < orderedSlots.length; offset += 1) {
+            const slotId =
+              orderedSlots[(firstIndex + offset) % orderedSlots.length];
+            if (slotId === undefined) {
+              throw new Error("The starter slot is not in player order.");
+            }
+            playerOrder.push(slotId);
+          }
+        }
         pending = {
           replayId: ids.createReplayId(),
           roundNumber,
@@ -954,6 +1105,25 @@ export function createAuthoritativeGameRoomClass(
           initialized = aggregate.definition.createInitialState({
             config: aggregate.initialConfig,
             players: pending.playerOrder,
+            ...(aggregate.definition.manifest.capabilities.playerAssignment ===
+            undefined
+              ? {}
+              : {
+                  playerAssignments: pending.playerOrder.map((slotId) => {
+                    const slot = aggregate.slots.find(
+                      (candidate) => candidate.slotId === slotId,
+                    );
+                    if (
+                      slot?.assignment === null ||
+                      slot?.assignment === undefined
+                    ) {
+                      throw new Error(
+                        "Every player must select an assignment.",
+                      );
+                    }
+                    return slot.assignment;
+                  }),
+                }),
             rng: pending.initialRng,
           });
         } catch {
@@ -989,7 +1159,14 @@ export function createAuthoritativeGameRoomClass(
           seed: pending.initialRng.seed,
         },
         initialConfig: aggregate.initialConfig,
-        players: pending.playerOrder.map((slotId) => ({ slotId })),
+        players: pending.playerOrder.map((slotId) => {
+          const slot = aggregate.slots.find(
+            (candidate) => candidate.slotId === slotId,
+          );
+          return slot?.assignment === null || slot?.assignment === undefined
+            ? { slotId }
+            : { slotId, assignment: slot.assignment };
+        }),
       });
       const storedRoom = this.#storedRoom({
         replayId: pending.replayId,
@@ -1133,13 +1310,23 @@ export function createAuthoritativeGameRoomClass(
       const participants = aggregate.slots
         .map((slot) => slot.playerSessionId)
         .filter((session): session is string => session !== null);
+      const assignmentCapability =
+        aggregate.definition.manifest.capabilities.playerAssignment;
+      const occupiedSlots = aggregate.slots.filter(
+        (slot) => slot.playerSessionId !== null,
+      );
       return (
-        participants.length >= aggregate.definition.manifest.minPlayers &&
+        participants.length === aggregate.targetPlayerCount &&
         participants.every(
           (session) =>
             this.#activeClientBySession.has(session) &&
             this.#readySessions.has(session),
-        )
+        ) &&
+        (assignmentCapability === undefined ||
+          (occupiedSlots.length === aggregate.targetPlayerCount &&
+            occupiedSlots.every((slot) => slot.assignment !== null) &&
+            new Set(occupiedSlots.map((slot) => slot.assignment)).size ===
+              occupiedSlots.length))
       );
     }
 
@@ -1149,7 +1336,7 @@ export function createAuthoritativeGameRoomClass(
         .map((slot) => slot.playerSessionId)
         .filter((session): session is string => session !== null);
       return (
-        participants.length >= aggregate.definition.manifest.minPlayers &&
+        participants.length === aggregate.targetPlayerCount &&
         participants.every((session) =>
           this.#activeClientBySession.has(session),
         )
@@ -1396,9 +1583,29 @@ export function createAuthoritativeGameRoomClass(
               starter: this.#starterChoice,
               selfReady: this.#readySessions.has(clientData.playerSessionId),
               readyPlayerCount: this.#readySessions.size,
-              requiredPlayerCount: aggregate.definition.manifest.minPlayers,
+              requiredPlayerCount: aggregate.targetPlayerCount,
+              ...(aggregate.definition.manifest.capabilities
+                .playerAssignment === undefined
+                ? {}
+                : {
+                    assignmentOptions: [
+                      ...aggregate.definition.manifest.capabilities
+                        .playerAssignment.options,
+                    ],
+                  }),
             }
           : null,
+        players: aggregate.slots.map((slot) => ({
+          slotId: slot.slotId,
+          occupied: slot.playerSessionId !== null,
+          online:
+            slot.playerSessionId !== null &&
+            this.#activeClientBySession.has(slot.playerSessionId),
+          ready:
+            slot.playerSessionId !== null &&
+            this.#readySessions.has(slot.playerSessionId),
+          assignment: slot.assignment,
+        })),
         closed: this.#closedReason !== null,
         closeReason: this.#closedReason,
         ...(causedByCommandId === undefined ? {} : { causedByCommandId }),
@@ -1496,6 +1703,7 @@ export function createAuthoritativeGameRoomClass(
         playerSessionId: slot.playerSessionId,
         userId: slot.userId ?? null,
         reservedUntilMilliseconds: slot.reservedUntilMilliseconds,
+        ...(slot.assignment === null ? {} : { assignment: slot.assignment }),
       }));
       const round = aggregate.currentRound;
       const replayId = candidate.replayId ?? round?.replayId;

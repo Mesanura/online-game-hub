@@ -37,7 +37,7 @@ import {
 export type GameRoomPageMode = "entry" | "room" | "play";
 
 export const RESIGN_CONFIRMATION_MESSAGE =
-  "确定要投降吗？投降后对手将立即获胜，且本局无法继续。";
+  "确定要投降吗？你将退出本局并在结果中排在未投降玩家之后。";
 
 interface GameRoomPageProps {
   readonly gameId: string;
@@ -342,6 +342,7 @@ function PlayerPod({
   ready,
   online,
   slotLabel,
+  assignment,
 }: {
   readonly index: number;
   readonly owner: boolean;
@@ -349,6 +350,7 @@ function PlayerPod({
   readonly ready: boolean;
   readonly online: boolean;
   readonly slotLabel: string;
+  readonly assignment?: string | null;
 }) {
   return (
     <article className={`player-pod ${self ? "player-pod-self" : ""}`}>
@@ -379,6 +381,11 @@ function PlayerPod({
           {ready ? "已准备" : "未准备"}
         </span>
         <span className="player-slot-label">稳定席位：{slotLabel}</span>
+        {assignment === undefined ? null : (
+          <span className="player-slot-label">
+            营地：{assignment ?? "未选择"}
+          </span>
+        )}
       </div>
     </article>
   );
@@ -394,6 +401,9 @@ function RoomView({ title }: Pick<GameRoomPageProps, "title">) {
     leaveRoom,
     selectInviteFallback,
     selectStarter,
+    selectPlayerCount,
+    selectPlayerAssignment,
+    clearPlayerAssignment,
     state,
     toggleRoundReady,
   } = useGameRoomHost();
@@ -409,6 +419,22 @@ function RoomView({ title }: Pick<GameRoomPageProps, "title">) {
   const required = nextRound?.requiredPlayerCount ?? 2;
   const readyCount = nextRound?.readyPlayerCount ?? 0;
   const otherReady = readyCount === required || (readyCount > 0 && !selfReady);
+  const lifecyclePlayers = lifecycle.players ?? [
+    {
+      slotId: room.playerSlotId,
+      occupied: true,
+      online: state.connectionState === "connected",
+      ready: selfReady,
+      assignment: null,
+    },
+    {
+      slotId: "slot-2",
+      occupied: otherReady,
+      online: otherReady,
+      ready: otherReady,
+      assignment: null,
+    },
+  ];
   return (
     <div className="page-shell console-page room-page">
       <aside className="game-rail clay-surface">
@@ -442,7 +468,7 @@ function RoomView({ title }: Pick<GameRoomPageProps, "title">) {
         <header className="stage-heading">
           <p className="eyebrow">房间设置</p>
           <h1>准备下一局</h1>
-          <p>确认先手与双方准备状态，全部就绪后自动进入对局。</p>
+          <p>确认先手与玩家准备状态，全部就绪后自动进入对局。</p>
         </header>
         <section aria-labelledby="players-heading" className="player-bays">
           <div className="section-heading">
@@ -453,24 +479,83 @@ function RoomView({ title }: Pick<GameRoomPageProps, "title">) {
             <ConnectionBadge state={state} />
           </div>
           <div className="player-pod-grid">
-            <PlayerPod
-              index={lifecycle.isOwner ? 1 : 2}
-              owner={lifecycle.isOwner}
-              ready={selfReady}
-              self
-              online={state.connectionState === "connected"}
-              slotLabel={room.playerSlotId}
-            />
-            <PlayerPod
-              index={lifecycle.isOwner ? 2 : 1}
-              owner={!lifecycle.isOwner}
-              ready={otherReady}
-              self={false}
-              online={otherReady}
-              slotLabel={otherReady ? "已连接" : "等待分配"}
-            />
+            {lifecyclePlayers.map((player, index) => (
+              <PlayerPod
+                assignment={player.assignment}
+                index={index + 1}
+                key={player.slotId}
+                owner={index === 0}
+                ready={player.ready}
+                self={player.slotId === room.playerSlotId}
+                online={player.online}
+                slotLabel={player.slotId}
+              />
+            ))}
           </div>
         </section>
+        {nextRound?.assignmentOptions === undefined ? null : (
+          <section
+            aria-labelledby="assignment-heading"
+            className="round-dock clay-surface assignment-dock"
+          >
+            <div className="round-dock-header">
+              <div>
+                <p className="eyebrow">营地选择</p>
+                <h2 id="assignment-heading">选择你的六角营地</h2>
+              </div>
+              {lifecycle.isOwner ? (
+                <label className="player-count-control">
+                  <span>本轮人数</span>
+                  <select
+                    aria-label="本轮人数"
+                    data-testid="player-count"
+                    disabled={busy}
+                    onChange={(event) =>
+                      void selectPlayerCount(Number(event.target.value))
+                    }
+                    value={required}
+                  >
+                    {[2, 3, 4, 5, 6].map((count) => (
+                      <option key={count} value={count}>
+                        {count} 人
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
+            </div>
+            <div aria-label="营地选项" className="assignment-options">
+              {nextRound.assignmentOptions.map((assignment) => {
+                const selected =
+                  lifecyclePlayers.find(
+                    (player) => player.slotId === room.playerSlotId,
+                  )?.assignment === assignment;
+                const occupied = lifecyclePlayers.some(
+                  (player) =>
+                    player.slotId !== room.playerSlotId &&
+                    player.assignment === assignment,
+                );
+                return (
+                  <button
+                    aria-pressed={selected}
+                    className="assignment-choice"
+                    data-assignment={assignment}
+                    disabled={busy || occupied}
+                    key={assignment}
+                    onClick={() =>
+                      void (selected
+                        ? clearPlayerAssignment()
+                        : selectPlayerAssignment(assignment))
+                    }
+                    type="button"
+                  >
+                    {assignment}
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+        )}
         <section
           aria-labelledby="round-settings-heading"
           className="round-dock clay-surface"
@@ -585,7 +670,7 @@ function RoomView({ title }: Pick<GameRoomPageProps, "title">) {
               ? "准备开始前，需要由房主选定先手。"
               : readyCount === required
                 ? "玩家已到齐，正在进入对局…"
-                : "等待另一位玩家完成准备。"}
+                : `等待其余玩家完成准备（${readyCount}/${required}）。`}
           </p>
         </div>
       </main>
@@ -609,8 +694,22 @@ function scalarLabel(value: unknown): string {
     RED: "红方",
     YELLOW: "黄方",
     BLUE: "蓝方",
+    N: "北营地",
+    NE: "东北营地",
+    SE: "东南营地",
+    S: "南营地",
+    SW: "西南营地",
+    NW: "西北营地",
   };
   return labels[value] ?? value;
+}
+
+function markerClass(value: unknown, index: number): string {
+  if (typeof value === "string") {
+    const normalized = value.toLowerCase().replace(/[^a-z0-9-]/gu, "");
+    if (normalized.length > 0) return `stone-${normalized}`;
+  }
+  return index === 1 ? "stone-black" : "stone-white";
 }
 
 function viewSummary(view: unknown) {
@@ -621,11 +720,13 @@ function viewSummary(view: unknown) {
   const players = Array.isArray(record.players)
     ? record.players.map((player, index) => {
         const item = player as Record<string, unknown>;
-        const marker = item.stone ?? item.disc ?? item.color ?? item.mark;
+        const marker =
+          item.stone ?? item.disc ?? item.color ?? item.mark ?? item.camp;
         return {
           index: index + 1,
           slotId: item.slotId,
           marker: scalarLabel(marker),
+          markerKey: typeof marker === "string" ? marker : null,
         };
       })
     : [];
@@ -647,6 +748,21 @@ function viewSummary(view: unknown) {
         (player) => player.slotId === outcomeRecord.winnerSlotId,
       );
       result = winner === undefined ? "对局完成" : `玩家 ${winner.index} 胜利`;
+    }
+    if (
+      outcomeRecord.type === "RANKING" &&
+      Array.isArray(outcomeRecord.rankings)
+    ) {
+      const first = outcomeRecord.rankings[0];
+      const winner =
+        first !== null && typeof first === "object"
+          ? players.find(
+              (player) =>
+                player.slotId === (first as Record<string, unknown>).slotId,
+            )
+          : undefined;
+      result =
+        winner === undefined ? "排名已确定" : `第 1 名：玩家 ${winner.index}`;
     }
   }
   return { players, current, counts, result };
@@ -734,7 +850,7 @@ function PlayView({ title }: Pick<GameRoomPageProps, "title">) {
           {summary.players.map((player) => (
             <div className="hud-player" key={player.index}>
               <span
-                className={`stone stone-${player.index === 1 ? "black" : "white"}`}
+                className={`stone ${markerClass(player.markerKey, player.index)}`}
                 aria-hidden="true"
               />
               <span>玩家 {player.index}</span>
@@ -843,7 +959,7 @@ function PlayView({ title }: Pick<GameRoomPageProps, "title">) {
               <button
                 className="clay-button clay-button-secondary"
                 data-testid="next-round-settings"
-                onClick={openNextRoundSetup}
+                onClick={() => void openNextRoundSetup()}
                 type="button"
               >
                 设置规则

@@ -1,6 +1,6 @@
 # 系统架构
 
-> 状态：架构基线（Protocol V4，M1–M7-B、逐局先手、三阶段 Web 与窄版 create-game 已完成）
+> 状态：架构基线（Protocol V5，M1–M7-B、逐局先手、多人 assignment、三阶段 Web 与窄版 create-game 已完成）
 > 本文是系统职责、目录结构、依赖方向和部署基线的权威来源。产品范围见 [PRODUCT.md](./PRODUCT.md)。
 
 ## 1. 架构目标
@@ -72,7 +72,7 @@ Browser
 | `game-sdk`            | 离散 Action 游戏的纯类型契约、deterministic RNG、通用 slot/viewer/outcome 类型                                   | React、Next.js、DOM、Colyseus、WebSocket、数据库、具体游戏   |
 | `game-client-sdk`     | Client Module contract、ticket provider、Colyseus client/room lifecycle、snapshot/command/control/reconnect host | authoritative 规则、服务端 State、具体游戏类型、数据库       |
 | `game-server-runtime` | ticket/clock/store/observability ports、通用 Colyseus room、Action pipeline、多轮/关闭、比赛 lifecycle/reconnect | 具体游戏规则或对 `games/*` 的直接依赖                        |
-| `game-server-ticket`  | Web issuer 与 Game Server verifier 共用的短期 HMAC-SHA256 ticket authority，实现 Protocol V4 ticket claims       | 浏览器 API、session cookie、房间/游戏规则、testing authority |
+| `game-server-ticket`  | Web issuer 与 Game Server verifier 共用的短期 HMAC-SHA256 ticket authority，实现 Protocol V5 ticket claims       | 浏览器 API、session cookie、房间/游戏规则、testing authority |
 | `game-registry`       | 显式组合游戏 manifest、client loader 和 server definition                                                        | 游戏规则实现、运行时目录扫描                                 |
 | `protocol`            | 跨 Web/Game Server 的 envelope、错误码、票据 claims 和 Zod schema                                                | 具体游戏 Action/State/View 联合类型                          |
 | `database`            | PostgreSQL/Drizzle client、checked-in migrations、durable replay、Match archive/history 与 User association      | 具体游戏、规则执行、UI、active authoritative State           |
@@ -169,12 +169,12 @@ Room 必须串行处理 Action。任何未来多实例方案都必须维持“�
 ### 8.1 M3 实现不变量
 
 - Room 创建时通过 registry 的 current resolver 先读取 catalog manifest，再按其 exact `gameId + gameVersion` 选择 definition，校验并保存规范化 Config；加入和 replay 继续使用 exact resolver。井字棋、四子棋、五子棋与黑白棋的 frozen `1.0.0` 和 current `1.1.0` definitions 同时注册，数组顺序不参与 current 选择；六贯棋只注册 `1.0.0`。创建只生成 room code 与 `maxPlayers` 个 stable slots，`currentRound = null`，不初始化 Core，不创建 Replay 或 Match。
-- 当前五个游戏都是 `minPlayers = maxPlayers = 2`。stable slot 与 `PlayerSessionId` 映射在 live room 内保持不变；每轮有独立有序 `playerOrder`，由房主的 OWNER/NON_OWNER/RANDOM 选择决定。RANDOM 通过本轮 seed 决定顺序但不推进交给 Core 的 RNG cursor；Core 初始化与 Replay header 必须使用完全相同的最终顺序。
+- 井字棋、四子棋、五子棋、六贯棋和黑白棋都是 `minPlayers = maxPlayers = 2`；中国跳棋为 `minPlayers = 2`、`maxPlayers = 6`，并按本轮 `targetPlayerCount` 精确开局。stable slot 与 `PlayerSessionId` 映射在 live room 内保持不变；每轮有独立有序 `playerOrder`，由房主的 OWNER/NON_OWNER/RANDOM 选择和可选 assignment 顺序共同决定。RANDOM 通过本轮 seed 决定顺序但不推进交给 Core 的 RNG cursor；Core 初始化与 Replay header 必须使用完全相同的最终顺序。
 - Colyseus join/leave/Action 共用每 room Promise queue；连接 session、active connection generation 和 slot ownership 都在进入 Core 前验证。
 - accepted candidate 先以 `expectedSequence = current revision` append replay；终局再 complete replay；随后保存 candidate room record；三个 port 调用全部成功后才提交内存 aggregate、缓存结果和发送 snapshot。任一步失败都返回 `INTERNAL_ERROR`，不提前推进内存 State/RNG/revision。
 - PostgreSQL replay append 在单事务中写 action 并推进 Match final revision；terminal complete 在单事务中写 RNG/Outcome 并把 Match 标记 completed。相同 header/action/completion 重试幂等，不同内容冲突失败；replay row lock 与 `(replay_id, sequence)` 主键串行化 concurrent append。
 - live RoomStore 仍是进程内存；`MatchArchive` 与 `ReplayStore` 是独立 ports，生产 PostgreSQL implementations 虽共享数据库，但与内存 RoomStore 之间没有跨存储原子事务。Round 启动按 pending candidate → Core 初始化 → replay header → Match archive → RoomStore save → 内存 aggregate commit 排序；失败保留 candidate，依靠单 writer、数据库事务、唯一约束与幂等重试收敛。没有证据要求 outbox。
-- command outcome cache 以 `PlayerSessionId + commandId` 为 key，Protocol V4 保留整个 live room lifetime，包括同房间后续轮次。旧轮重复命令返回带旧 `roundNumber` 的原结果，但不会再次进入 Core 或覆盖新轮 snapshot；后续长房间可在不小于重试窗口的前提下加入有界淘汰。
+- command outcome cache 以 `PlayerSessionId + commandId` 为 key，Protocol V5 保留整个 live room lifetime，包括同房间后续轮次。旧轮重复命令返回带旧 `roundNumber` 的原结果，但不会再次进入 Core 或覆盖新轮 snapshot；后续长房间可在不小于重试窗口的前提下加入有界淘汰。
 - 初连、lifecycle 激活、accepted Action、stale recovery、takeover reconnect 和 timeout abandonment 都只发送按当前连接单独调用 `projectView` 得到的完整 snapshot。
 
 ### 8.2 M4 Web 与 Client Host
@@ -186,17 +186,17 @@ Room 必须串行处理 Action。任何未来多实例方案都必须维持“�
 - Web 只从当前非敏感 gameId/roomCode 构造 canonical invite URL，并通过 Clipboard API 提供 copying/copied/failed 和手动选择后备。lifecycle 的 waiting/next-round setup 映射到房间页，active 映射到 play，completed 保留在 play；closed 原因返回入口。刷新与 reconnect 都先由 host 收敛服务器 lifecycle，再决定规范路由。
 - 对局页不复用等待页的邀请控件或额外连接详情；左侧共用 HUD 底部从 `room.roomCode` 显示房间码，在 active player 的 Client Module 暴露 `createResignAction` 时显示二次确认投降，并依据 server lifecycle 的 `isOwner` 选择 `closeRoom()` 或 `leaveRoom()`。投降确认后只调用 host `submitAction`；关闭/离开在 active Round 仍独立确认，UI 不自行裁定 resignation、关闭或 abandoned 结果。
 - host 只保存当前 per-viewer View snapshot、`roomLifecycle`、round/revision、连接/拒绝状态。`submitAction` 生成 `commandId` 并从最新 lifecycle/snapshot 填充 `roundNumber` 和 `expectedRevision`；它不持有或重演 authoritative State。
-- 所有 server payload 都先通过 Protocol V4 exact schema。duplicate、stale、schema-invalid 和 game-rule rejection 不在浏览器模拟；host 接受服务器附带或随后发送的完整 snapshot 收敛。
+- 所有 server payload 都先通过 Protocol V5 exact schema。duplicate、stale、schema-invalid 和 game-rule rejection 不在浏览器模拟；host 接受服务器附带或随后发送的完整 snapshot 收敛。
 - transport 非主动关闭时，host 在 60 秒窗口内以指数退避获取新 ticket 并重新执行 room-code join，生成新的 seat reservation；不使用 SDK reconnection token 证明席位所有权。
-- 井字棋 Client Module 只解析 View 并渲染 3×3 棋盘；四子棋 Client Module 不导入 Core，只解析 View 并渲染 7×6 棋盘；五子棋 Client Module 按 View 的 `boardSize` 渲染 15×15/19×19 棋盘；六贯棋 Client Module 渲染固定 11×11 菱形六边格；黑白棋 Client Module 渲染固定 8×8 View，只使用服务器给出的合法落点、回合、棋子数和 Outcome。各组件只提交自身普通落子 intent，五个 current modules 另以可选 `createResignAction` 向共用 HUD 提供 strict `RESIGN`，不各自实现投降按钮或确认。五者都不计算 authoritative State/Outcome/revision；按钮禁用与确认仅是 UX，不能代替 authoritative rejection。
+- 井字棋 Client Module 只解析 View 并渲染 3×3 棋盘；四子棋 Client Module 不导入 Core，只解析 View 并渲染 7×6 棋盘；五子棋 Client Module 按 View 的 `boardSize` 渲染 15×15/19×19 棋盘；六贯棋 Client Module 渲染固定 11×11 菱形六边格；黑白棋 Client Module 渲染固定 8×8 View；中国跳棋 Client Module 渲染 73 位六芒星 View、合法跳跃目标和排名。各组件只提交自身普通落子或移动 intent，支持投降的 current modules 另以可选 `createResignAction` 向共用 HUD 提供 strict `RESIGN`，不各自实现投降按钮或确认；按钮禁用与确认仅是 UX，不能代替 authoritative rejection。
 
 ### 8.3 Live Room、Round 设置与关闭
 
 - live room 属于 Platform，`Match`/canonical replay 属于 Round。房间级 record 只保存 room code、exact game/version、Config、stable slots、`currentRound | null` 和关闭状态；Round 独立保存 `roundNumber`、`playerOrder`、replay ID、State、RNG、revision、status 与 Outcome。
-- 首局和 completed 后续局都进入相同 next-Round setup。房主可在对方加入前用 `SELECT_STARTER` 选择 OWNER/NON_OWNER/RANDOM；双方用 `READY_FOR_ROUND`/`CANCEL_ROUND_READY`。不同选择清空全部 ready，重复同值不清；断线和 connection takeover 只清对应 session ready，保留 starter。只有 slots 全部分配、双方在线、starter 已选且全部 ready 时才启动。completed 后任一原玩家也可发送 `START_REMATCH`，在双方仍在线时复用上一轮实际 playerOrder 立即创建独立新 Round。
+- 首局和 completed 后续局都进入相同 next-Round setup。房主可在参与者加入前用 `SELECT_STARTER` 选择 OWNER/NON_OWNER/RANDOM；参与者用 `READY_FOR_ROUND`/`CANCEL_ROUND_READY`。支持 assignment 的游戏还要求房主选择精确人数、每个参与者选择唯一 assignment。不同选择清空全部 ready，重复同值不清；断线和 connection takeover 只清对应 session ready，保留 starter/assignment。只有规定 slots 全部分配、参与者在线、starter 已选且全部 ready 时才启动。completed 后任一原玩家也可发送 `START_REMATCH`，在参与者仍在线时复用上一轮实际 playerOrder 立即创建独立新 Round。
 - 成功启动后清除 starter/ready 并取消 completed TTL；Round 完成后立刻为下一轮把 starter 重置为 null。选择或 ready 不延长 5 分钟 completed TTL。completed room 拒绝任何未占原 slot 的新 session，返回 `ROOM_NOT_JOINABLE`。
 - `GameClientHost.selectStarter()`、`readyForRound()`、`cancelRoundReady()`、`startRematch()` 和 `closeRoom()` 只发送 intent。房主权限始终绑定 creator session，不随本轮先后手改变。非房主使用 `leaveRoom()` 执行 consented leave；active 状态下 Web 先确认并把当前 Match 保存为 `abandoned`。首局未开始时关闭/离开不创建 abandoned Match，completed 保留原 Outcome。
-- 关闭先广播带 `OWNER_CLOSED`、`PLAYER_LEFT`、`RECONNECT_TIMEOUT` 或兼容名称 `REMATCH_TIMEOUT` 的 per-viewer lifecycle，再用 25 ms 有界 drain 发送并断开 clients。`GameActionCommand.roundNumber` 与 `MatchSnapshot.roundNumber` 在 Protocol V4 中必填；Host 进入更高 Round 时清除旧 snapshot，completed 等待设置时保留终局 snapshot，并对任何 snapshot/lifecycle 非法顺序 fail closed。Protocol V4 wire 本身不决定 game version；当前四个 `1.1.0` 规则版本仍使用同一 envelope 和 Replay Format V1。
+- 关闭先广播带 `OWNER_CLOSED`、`PLAYER_LEFT`、`RECONNECT_TIMEOUT` 或兼容名称 `REMATCH_TIMEOUT` 的 per-viewer lifecycle，再用 25 ms 有界 drain 发送并断开 clients。`GameActionCommand.roundNumber` 与 `MatchSnapshot.roundNumber` 在 Protocol V5 中必填；Host 进入更高 Round 时清除旧 snapshot，completed 等待设置时保留终局 snapshot，并对任何 snapshot/lifecycle 非法顺序 fail closed。Protocol V5 wire 本身不决定 game version；当前规则版本仍使用同一 envelope 和 Replay Format V1。
 
 ### 8.4 M5/M7-A 持久化、Identity 与 History
 
@@ -221,7 +221,7 @@ Room 必须串行处理 Action。任何未来多实例方案都必须维持“�
 - 五子棋 package 自身为 16 个文件，拥有 15×15/19×19 Config、manifest、Core、Client Module、局部文档、unit/client/golden tests；规则 Core 只依赖 `game-sdk` 与 Zod。
 - 六贯棋 package 同样为 16 个文件，拥有固定 11×11 六边邻接、连接/投降 Outcome、canonical BFS path、manifest、Core、Client Module、局部文档和 unit/client/golden tests；Core 仍只依赖 `game-sdk` 与 Zod。
 - 黑白棋 package 同样为 16 个文件，拥有固定 8×8、八方向翻转、强制跳过、非满盘终局、manifest、Core、Client Module、局部文档和 unit/client/golden tests；Core 仍只依赖 `game-sdk` 与 Zod。
-- M6 当时的 Protocol V1 `initialConfig: unknown`、definition `configSchema`、room/replay canonical Config 和 exact resolver 无需变化即可处理 `{ boardSize: 15 | 19, winLength: 5 }`。通用 Web 原先固定传 `null`，无法发现每游戏默认值，因此 `GameManifest` 新增必填 JSON-safe `defaultConfig`；该 shared API 迁移同步更新全部 manifest、消费者、contract tests 与文档。当前 Protocol V4 保留相同 Config envelope。
+- M6 当时的 Protocol V1 `initialConfig: unknown`、definition `configSchema`、room/replay canonical Config 和 exact resolver 无需变化即可处理 `{ boardSize: 15 | 19, winLength: 5 }`。通用 Web 原先固定传 `null`，无法发现每游戏默认值，因此 `GameManifest` 新增必填 JSON-safe `defaultConfig`；该 shared API 迁移同步更新全部 manifest、消费者、contract tests 与文档。当前 Protocol V5 保留相同 Config envelope。
 - 六贯棋直接使用 `defaultConfig: null` 和现有 opaque Action envelope；其上线阶段对 `game-sdk`、当时的 Protocol V1、Replay Format V1、`game-client-sdk`、`game-server-runtime`、`game-server-ticket`、database source/schema/migration 均零修改。后续 Protocol V2 只改变平台逐局设置，Replay Format V1 与全部既有游戏版本保持兼容。
 - 黑白棋同样直接使用 `defaultConfig: null` 和现有 opaque Action envelope。一次 accepted placement 内完成全部翻转和跳过判断；只有该 placement 递增一次 revision 并进入 replay，平台不理解 PASS 或翻转列表。`game-sdk`、`protocol`、`game-client-sdk`、`game-server-runtime`、`game-server-ticket`、database source/schema/migration 继续零修改。
 - 通用 Action pipeline、`projectView`、replay verifier、PostgreSQL adapters、多轮/关闭/reconnect 行为没有 `connect-four`、`gomoku`、`hex` 或其他 gameId 规则分支。真实 Colyseus integration 直接验证六贯棋 21-action 第三轴连接胜局、同房间第二轮再次选择相同先手时的角色一致性与 off-turn `RESIGN`；另以四游戏 table 验证 current `1.1.0` 的正常 Action 后同 actor off-turn `RESIGN`、单次 revision、completed、对手 WIN 和 exact replay verification。
@@ -278,7 +278,7 @@ Room 必须串行处理 Action。任何未来多实例方案都必须维持“�
 - V1 单实例单区域；active RoomStore 为内存，完成 archive/replay 为 PostgreSQL；
 - Docker Compose 单机部署使用 CI 发布的多架构生产镜像、显式 migration、服务 healthcheck 和 PostgreSQL 宿主数据目录。
 - 用户名+密码账户使用独立 `password_credentials` 与 `account_sessions` 表；session token 只以 SHA-256 hash 存储，Argon2id 负责密码 hash。
-- Protocol V4 ticket 可选携带可信 `userId`。slot 保存 `{ playerSessionId, userId }` 私有快照；Round 开始时写入 `match_players.user_id`，之后不重新查询登录态。
+- Protocol V5 ticket 可选携带可信 `userId`。slot 保存 `{ playerSessionId, userId }` 私有快照；Round 开始时写入 `match_players.user_id`，之后不重新查询登录态。
 - 游客可玩但无历史；账户注册/登录不认领旧游客比赛。M7-B replay API 仅允许当前账户参赛且 Match/replay 均 completed，并返回服务端逐帧 `projectView`；浏览器不接收 canonical replay、seed、raw State 或 Actions。
 
 ### 10.2 暂缓

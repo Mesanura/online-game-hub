@@ -1,6 +1,6 @@
 # Replay 设计
 
-> 状态：Replay Format V1（Protocol V4 的账户归属不改变 replay envelope）
+> 状态：Replay Format V1（Protocol V5 的账户归属和可选营地 assignment 不改变 replay envelope）
 > 本文是 canonical replay 内容、确定性重建、版本兼容和存储端口的权威来源。Core 随机性规则见 [GAME_PLUGIN_SPEC.md](./GAME_PLUGIN_SPEC.md)。
 
 ## 1. 目标
@@ -30,6 +30,7 @@ interface ReplayHeader {
   players: readonly {
     slotId: string;
     participantRef?: string;
+    assignment?: string;
   }[];
 }
 
@@ -66,8 +67,9 @@ interface CanonicalReplay {
 
 ### 3.3 Players
 
-- 重建只依赖 `PlayerSlotId` 和该轮固定的 `playerOrder`。stable slots 在 live room 内不变，但不同轮的 header 顺序可以因房主选择的先手方而反转。
+- 重建只依赖 `PlayerSlotId`、该轮固定的 `playerOrder` 和可选 assignment 元数据。stable slots 在 live room 内不变，但不同轮的 header 顺序可以因首手策略或营地顺序变化。
 - `participantRef` 是可选、可脱敏的平台引用，不得成为规则输入。
+- `assignment` 是游戏定义的可选位置/营地元数据；中国跳棋 replay 必须为每个 slot 保存唯一营地，reader 会按 header 顺序传给 `createInitialState`。
 - 显示名称、头像和账号资料属于 match metadata，不进入 canonical input。
 
 ### 3.4 Actions
@@ -187,6 +189,8 @@ Bug fix 是否提升版本以“相同 replay 是否可能得到不同 State、R
 六贯棋 golden replay 使用 `initialConfig: null`，记录 21 个 accepted `PLACE_STONE(cell)` 并重建 BLUE 的 canonical `winningPath`、WIN Outcome 与零 RNG cursor。`RESIGN` 也是规范化且 accepted 的游戏 Action，按实际 actor slot 进入 replay；客户端取消确认、错轮/占用/越界、stale、duplicate 和 schema-invalid command 都不记录。BFS source/neighbor/tie-break 顺序属于 `hex@1.0.0` replay 兼容契约；改变它必须评估新 `gameVersion`，但无需改变 Replay Format V1。
 
 黑白棋 frozen `1.0.0` golden replay 使用 `initialConfig: null`，记录 60 个 accepted `PLACE_DISC(cell)` 并重建相同 64-cell State、WHITE 45–19 WIN Outcome 与零 RNG cursor。fixture 在 sequence 18 后出现 BLACK 无合法行动，因此 sequence 19 仍由 WHITE 行动；没有 `PASS` Action、sequence gap 或额外 revision。current `1.1.0` 的 normal/resignation fixtures 分别保留翻转/跳过结果并加入规范化 `RESIGN`。翻转、跳过和终局规则继续受 exact version 约束；Replay Format V1 不变。
+
+中国跳棋 `1.0.0` golden replay 使用 Replay Format V1，在 header 的 `players` 条目中保存唯一营地 assignment；`MOVE_PIECE` 只记录规范化起点/终点，`RESIGN` 与完成、阻塞和末位排名由 exact Core 重建。
 
 ## 8. Hidden Information 与访问控制
 

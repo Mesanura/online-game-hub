@@ -184,7 +184,7 @@ function controlCommand(
     protocolVersion: PROTOCOL_VERSION,
     commandId,
     operation,
-  };
+  } as RoomControlCommand;
 }
 
 function startRound(

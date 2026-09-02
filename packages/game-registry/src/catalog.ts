@@ -1,4 +1,5 @@
 import { connectFourManifest } from "@online-game-hub/connect-four/manifest";
+import { chineseCheckersManifest } from "@online-game-hub/chinese-checkers/manifest";
 import { gomokuManifest } from "@online-game-hub/gomoku/manifest";
 import { hexManifest } from "@online-game-hub/hex/manifest";
 import { reversiManifest } from "@online-game-hub/reversi/manifest";
@@ -12,6 +13,7 @@ export const gameCatalog = Object.freeze([
   gomokuManifest,
   hexManifest,
   reversiManifest,
+  chineseCheckersManifest,
   // create-game:catalog-entry
 ]) satisfies readonly GameManifest[];
 

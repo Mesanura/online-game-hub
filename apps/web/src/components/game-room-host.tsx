@@ -59,13 +59,16 @@ interface GameRoomHostContextValue {
   readonly createRoom: () => Promise<void>;
   readonly joinRoom: () => Promise<void>;
   readonly selectStarter: (starter: StarterChoice) => Promise<void>;
+  readonly selectPlayerCount: (playerCount: number) => Promise<void>;
+  readonly selectPlayerAssignment: (assignment: string) => Promise<void>;
+  readonly clearPlayerAssignment: () => Promise<void>;
   readonly toggleRoundReady: () => Promise<void>;
   readonly startRematch: () => Promise<void>;
   readonly copyInviteLink: () => Promise<void>;
   readonly selectInviteFallback: () => void;
   readonly closeRoom: () => Promise<void>;
   readonly leaveRoom: () => Promise<void>;
-  readonly openNextRoundSetup: () => void;
+  readonly openNextRoundSetup: () => Promise<void>;
   readonly clearLocalError: () => void;
 }
 
@@ -314,6 +317,48 @@ export function GameRoomHostProvider({
     [host],
   );
 
+  const selectPlayerCount = useCallback(
+    async (playerCount: number): Promise<void> => {
+      setBusy(true);
+      setLocalError(null);
+      try {
+        await host.selectPlayerCount(playerCount);
+      } catch {
+        setLocalError("无法更新本轮人数。");
+      } finally {
+        setBusy(false);
+      }
+    },
+    [host],
+  );
+
+  const selectPlayerAssignment = useCallback(
+    async (assignment: string): Promise<void> => {
+      setBusy(true);
+      setLocalError(null);
+      try {
+        await host.selectPlayerAssignment(assignment);
+      } catch {
+        setLocalError("该营地不可用，请选择其他营地。");
+      } finally {
+        setBusy(false);
+      }
+    },
+    [host],
+  );
+
+  const clearPlayerAssignment = useCallback(async (): Promise<void> => {
+    setBusy(true);
+    setLocalError(null);
+    try {
+      await host.clearPlayerAssignment();
+    } catch {
+      setLocalError("无法取消营地选择。");
+    } finally {
+      setBusy(false);
+    }
+  }, [host]);
+
   const startRematch = useCallback(async (): Promise<void> => {
     setBusy(true);
     setLocalError(null);
@@ -404,15 +449,28 @@ export function GameRoomHostProvider({
     }
   }, [gameId, host, router, state.snapshot?.status]);
 
-  const openNextRoundSetup = useCallback((): void => {
+  const openNextRoundSetup = useCallback(async (): Promise<void> => {
     const currentRoom = state.room;
     if (currentRoom === null) return;
+    if (state.roomLifecycle?.nextRound?.assignmentOptions !== undefined) {
+      try {
+        await host.clearPlayerAssignment();
+      } catch {
+        setLocalError("无法清空本轮营地选择。");
+        return;
+      }
+    }
     allowCompletedSetup.current = true;
     router.push(
       `/games/${encodeURIComponent(currentRoom.gameId)}/rooms/${encodeURIComponent(currentRoom.roomCode)}`,
       { scroll: false },
     );
-  }, [router, state.room]);
+  }, [
+    host,
+    router,
+    state.room,
+    state.roomLifecycle?.nextRound?.assignmentOptions,
+  ]);
 
   const value = useMemo<GameRoomHostContextValue>(
     () => ({
@@ -430,6 +488,9 @@ export function GameRoomHostProvider({
       createRoom,
       joinRoom,
       selectStarter,
+      selectPlayerCount,
+      selectPlayerAssignment,
+      clearPlayerAssignment,
       toggleRoundReady,
       startRematch,
       copyInviteLink,
@@ -458,6 +519,9 @@ export function GameRoomHostProvider({
       selectInviteFallback,
       selectStarter,
       startRematch,
+      selectPlayerCount,
+      selectPlayerAssignment,
+      clearPlayerAssignment,
       state,
       toggleRoundReady,
     ],

@@ -1,0 +1,31 @@
+{
+  "header": {
+    "replayFormatVersion": 1,
+    "gameId": "chinese-checkers",
+    "gameVersion": "1.0.0",
+    "rng": {
+      "algorithm": "fnv1a32-counter-v1",
+      "seed": "golden-chinese-checkers"
+    },
+    "initialConfig": null,
+    "players": [
+      { "slotId": "player-one", "assignment": "N" },
+      { "slotId": "player-two", "assignment": "S" }
+    ]
+  },
+  "actions": [
+    {
+      "sequence": 1,
+      "actorSlotId": "player-one",
+      "action": { "type": "RESIGN" }
+    }
+  ],
+  "recordedRngCursor": 0,
+  "recordedOutcome": {
+    "type": "RANKING",
+    "rankings": [
+      { "slotId": "player-two", "rank": 1, "reason": "LAST_REMAINING" },
+      { "slotId": "player-one", "rank": 2, "reason": "RESIGNATION" }
+    ]
+  }
+}

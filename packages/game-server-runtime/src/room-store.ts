@@ -7,6 +7,7 @@ export interface StoredPlayerSlot {
   readonly playerSessionId: string | null;
   readonly userId?: string | null;
   readonly reservedUntilMilliseconds: number | null;
+  readonly assignment?: string | null;
 }
 
 export interface StoredGameRound {
@@ -96,7 +97,8 @@ function validRoom(room: StoredGameRoom): boolean {
     (Number.isSafeInteger(round.roundNumber) &&
       round.roundNumber > 0 &&
       round.replayId.length > 0 &&
-      round.playerOrder.length === room.players.length &&
+      round.playerOrder.length > 0 &&
+      round.playerOrder.length <= room.players.length &&
       new Set(round.playerOrder).size === round.playerOrder.length &&
       round.playerOrder.every((slotId) => slots.includes(slotId)) &&
       Number.isSafeInteger(round.revision) &&
@@ -111,11 +113,15 @@ function validRoom(room: StoredGameRoom): boolean {
     room.players.length > 0 &&
     room.players.every(
       (player) =>
-        player.userId === undefined ||
-        player.userId === null ||
-        /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(
-          player.userId,
-        ),
+        (player.assignment === undefined ||
+          player.assignment === null ||
+          player.assignment.length > 0) &&
+        (player.userId === undefined ||
+          player.userId === null ||
+          (typeof player.userId === "string" &&
+            /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(
+              player.userId,
+            ))),
     ) &&
     slots.every((slot) => slot.length > 0) &&
     new Set(slots).size === slots.length &&

@@ -2,6 +2,7 @@ import {
   connectFourDefinition,
   connectFourDefinitionV1_0_0,
 } from "@online-game-hub/connect-four/core";
+import { chineseCheckersDefinition } from "@online-game-hub/chinese-checkers/core";
 import {
   gomokuDefinition,
   gomokuDefinitionV1_0_0,
@@ -31,6 +32,7 @@ const serverDefinitions = Object.freeze([
   eraseGameDefinition(hexDefinition),
   eraseGameDefinition(reversiDefinitionV1_0_0),
   eraseGameDefinition(reversiDefinition),
+  eraseGameDefinition(chineseCheckersDefinition),
   // create-game:server-definition
 ]) as readonly UnknownGameDefinition[];
 

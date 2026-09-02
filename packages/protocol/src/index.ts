@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const PROTOCOL_VERSION = 4 as const;
+export const PROTOCOL_VERSION = 5 as const;
 export const MAX_GAME_ACTION_BYTES = 16_384;
 export const GAME_ROOM_NAME = "game" as const;
 export const GAME_ACTION_MESSAGE = "game.action" as const;
@@ -153,6 +153,8 @@ export type GameActionCommand = z.infer<typeof gameActionCommandSchema>;
 
 export const starterChoiceSchema = z.enum(["OWNER", "NON_OWNER", "RANDOM"]);
 export type StarterChoice = z.infer<typeof starterChoiceSchema>;
+export const playerCountSchema = z.number().int().min(2).max(6);
+export const assignmentSchema = z.string().min(1).max(64);
 
 const roomControlBaseSchema = z.object({
   type: z.literal("room.control"),
@@ -177,6 +179,21 @@ export const roomControlCommandSchema = z.discriminatedUnion("operation", [
     .extend({ operation: z.literal("START_REMATCH") })
     .strict(),
   roomControlBaseSchema.extend({ operation: z.literal("CLOSE_ROOM") }).strict(),
+  roomControlBaseSchema
+    .extend({
+      operation: z.literal("SELECT_PLAYER_COUNT"),
+      playerCount: playerCountSchema,
+    })
+    .strict(),
+  roomControlBaseSchema
+    .extend({
+      operation: z.literal("SELECT_PLAYER_ASSIGNMENT"),
+      assignment: assignmentSchema,
+    })
+    .strict(),
+  roomControlBaseSchema
+    .extend({ operation: z.literal("CLEAR_PLAYER_ASSIGNMENT") })
+    .strict(),
 ]);
 export type RoomControlCommand = z.infer<typeof roomControlCommandSchema>;
 export type RoomControlOperation = RoomControlCommand["operation"];
@@ -194,7 +211,18 @@ const nextRoundLifecycleSchema = z
     starter: starterChoiceSchema.nullable(),
     selfReady: z.boolean(),
     readyPlayerCount: z.number().int().nonnegative(),
-    requiredPlayerCount: z.number().int().positive(),
+    requiredPlayerCount: z.number().int().min(2).max(6),
+    assignmentOptions: z.array(assignmentSchema).optional(),
+  })
+  .strict();
+
+const lifecyclePlayerSchema = z
+  .object({
+    slotId: z.string().min(1),
+    occupied: z.boolean(),
+    online: z.boolean(),
+    ready: z.boolean(),
+    assignment: assignmentSchema.nullable(),
   })
   .strict();
 
@@ -215,6 +243,7 @@ export const roomLifecycleStateSchema = z
     nextRound: nextRoundLifecycleSchema.nullable(),
     closed: z.boolean(),
     closeReason: roomCloseReasonSchema.nullable(),
+    players: z.array(lifecyclePlayerSchema).min(1).max(6).optional(),
     causedByCommandId: commandIdSchema.optional(),
   })
   .strict()

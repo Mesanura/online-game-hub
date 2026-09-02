@@ -1,6 +1,7 @@
 import { eraseGameClientModule } from "@online-game-hub/game-client-sdk";
 import type { UnknownGameClientModule } from "@online-game-hub/game-client-sdk";
 import { connectFourManifest } from "@online-game-hub/connect-four/manifest";
+import { chineseCheckersManifest } from "@online-game-hub/chinese-checkers/manifest";
 import { gomokuManifest } from "@online-game-hub/gomoku/manifest";
 import { hexManifest } from "@online-game-hub/hex/manifest";
 import { reversiManifest } from "@online-game-hub/reversi/manifest";
@@ -9,6 +10,8 @@ import { ticTacToeManifest } from "@online-game-hub/tic-tac-toe/manifest";
 
 const loadConnectFourEntrypoint = () =>
   import("@online-game-hub/connect-four/client");
+const loadChineseCheckersEntrypoint = () =>
+  import("@online-game-hub/chinese-checkers/client");
 const loadConnectFourHistoricalEntrypoint = () =>
   import("@online-game-hub/connect-four/client");
 const loadGomokuEntrypoint = () => import("@online-game-hub/gomoku/client");
@@ -99,6 +102,15 @@ const clientRegistrations = Object.freeze([
     loadModule: async (): Promise<UnknownGameClientModule> =>
       eraseGameClientModule(
         (await loadReversiHistoricalEntrypoint()).reversiClientModuleV1_0_0,
+      ),
+  },
+  {
+    gameId: chineseCheckersManifest.id,
+    gameVersion: chineseCheckersManifest.gameVersion,
+    loadEntrypoint: loadChineseCheckersEntrypoint,
+    loadModule: async (): Promise<UnknownGameClientModule> =>
+      eraseGameClientModule(
+        (await loadChineseCheckersEntrypoint()).chineseCheckersClientModule,
       ),
   },
   {
