@@ -31,6 +31,9 @@ const IGNORED_DIRECTORIES = new Set([
 const PLATFORM_PACKAGES_WITHOUT_GAME_DEPENDENCIES = new Set([
   "packages/game-sdk",
   "packages/game-server-runtime",
+  "packages/realtime-game-client-sdk",
+  "packages/realtime-game-sdk",
+  "packages/realtime-game-server-runtime",
   "packages/protocol",
 ]);
 const UI_FORBIDDEN_PACKAGE_PATHS = new Set([
@@ -38,6 +41,8 @@ const UI_FORBIDDEN_PACKAGE_PATHS = new Set([
   "packages/game-client-sdk",
   "packages/game-registry",
   "packages/game-server-runtime",
+  "packages/realtime-game-client-sdk",
+  "packages/realtime-game-server-runtime",
   "packages/protocol",
 ]);
 const CORE_ALLOWED_EXTERNAL_PACKAGES = new Set(["zod"]);
@@ -284,7 +289,7 @@ function packageNameFromSpecifier(specifier: string): string {
 
 function isForbiddenCoreImport(
   specifier: string,
-  gameSdkPackageName: string | undefined,
+  allowedCoreSdkPackages: ReadonlySet<string>,
 ): boolean {
   if (specifier.startsWith(".") || path.isAbsolute(specifier)) {
     return false;
@@ -296,7 +301,7 @@ function isForbiddenCoreImport(
 
   const importedPackageName = packageNameFromSpecifier(specifier);
   return (
-    importedPackageName !== gameSdkPackageName &&
+    !allowedCoreSdkPackages.has(importedPackageName) &&
     !CORE_ALLOWED_EXTERNAL_PACKAGES.has(importedPackageName)
   );
 }
@@ -311,7 +316,7 @@ function inspectSourceFile(
   rootDir: string,
   workspacePackage: WorkspacePackage,
   filePath: string,
-  gameSdkPackageName: string | undefined,
+  allowedCoreSdkPackages: ReadonlySet<string>,
 ): SourceInspection {
   const sourceText = ts.sys.readFile(filePath);
   if (sourceText === undefined) {
@@ -411,7 +416,7 @@ function inspectSourceFile(
 
   if (coreFile) {
     for (const specifier of imports) {
-      if (isForbiddenCoreImport(specifier, gameSdkPackageName)) {
+      if (isForbiddenCoreImport(specifier, allowedCoreSdkPackages)) {
         violations.push({
           code: "CORE_FORBIDDEN_IMPORT",
           file: displayPath,
@@ -591,9 +596,15 @@ export async function checkDependencies(
   const packagesByLongestName = [...workspacePackages].sort(
     (left, right) => right.name.length - left.name.length,
   );
-  const gameSdkPackageName = workspacePackages.find(
-    (workspacePackage) => workspacePackage.relativeDir === "packages/game-sdk",
-  )?.name;
+  const allowedCoreSdkPackages = new Set(
+    workspacePackages
+      .filter((workspacePackage) =>
+        ["packages/game-sdk", "packages/realtime-game-sdk"].includes(
+          workspacePackage.relativeDir,
+        ),
+      )
+      .map((workspacePackage) => workspacePackage.name),
+  );
   const violations: DependencyViolation[] = [];
   const packageGraph = new Map<string, Set<string>>();
   const moduleGraph = new Map<string, Set<string>>();
@@ -652,7 +663,7 @@ export async function checkDependencies(
         rootDir,
         workspacePackage,
         sourceFile,
-        gameSdkPackageName,
+        allowedCoreSdkPackages,
       );
       violations.push(...inspection.violations);
 
