@@ -33,6 +33,9 @@
     "@online-game-hub/game-sdk": "workspace:*",
     "@online-game-hub/gomoku": "workspace:*",
     "@online-game-hub/hex": "workspace:*",
+    "@online-game-hub/pong": "workspace:*",
+    "@online-game-hub/realtime-game-client-sdk": "workspace:*",
+    "@online-game-hub/realtime-game-sdk": "workspace:*",
     "@online-game-hub/reversi": "workspace:*",
     "@online-game-hub/tic-tac-toe": "workspace:*"
   }

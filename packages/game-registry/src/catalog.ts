@@ -4,8 +4,12 @@ import { gomokuManifest } from "@online-game-hub/gomoku/manifest";
 import { hexManifest } from "@online-game-hub/hex/manifest";
 import { reversiManifest } from "@online-game-hub/reversi/manifest";
 import { ticTacToeManifest } from "@online-game-hub/tic-tac-toe/manifest";
+import { pongManifest } from "@online-game-hub/pong/manifest";
 // create-game:catalog-import
 import type { GameManifest } from "@online-game-hub/game-sdk";
+import type { RealtimeGameManifest } from "@online-game-hub/realtime-game-sdk";
+
+export type CatalogGameManifest = GameManifest | RealtimeGameManifest;
 
 export const gameCatalog = Object.freeze([
   ticTacToeManifest,
@@ -14,13 +18,14 @@ export const gameCatalog = Object.freeze([
   hexManifest,
   reversiManifest,
   chineseCheckersManifest,
+  pongManifest,
   // create-game:catalog-entry
-]) satisfies readonly GameManifest[];
+]) satisfies readonly CatalogGameManifest[];
 
 export function resolveGameManifest(
   gameId: string,
   gameVersion: string,
-): GameManifest | undefined {
+): CatalogGameManifest | undefined {
   return gameCatalog.find(
     (manifest) =>
       manifest.id === gameId && manifest.gameVersion === gameVersion,

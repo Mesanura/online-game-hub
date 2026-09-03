@@ -6,6 +6,9 @@ import { gomokuManifest } from "@online-game-hub/gomoku/manifest";
 import { hexManifest } from "@online-game-hub/hex/manifest";
 import { reversiManifest } from "@online-game-hub/reversi/manifest";
 import { ticTacToeManifest } from "@online-game-hub/tic-tac-toe/manifest";
+import { pongManifest } from "@online-game-hub/pong/manifest";
+import { eraseRealtimeGameClientModule } from "@online-game-hub/realtime-game-client-sdk";
+import type { UnknownRealtimeGameClientModule } from "@online-game-hub/realtime-game-client-sdk";
 // create-game:client-manifest-import
 
 const loadConnectFourEntrypoint = () =>
@@ -151,4 +154,46 @@ export async function loadGameClientModule(
   gameVersion: string,
 ): Promise<UnknownGameClientModule | undefined> {
   return findRegistration(gameId, gameVersion)?.loadModule();
+}
+
+interface RealtimeClientRegistration {
+  readonly gameId: string;
+  readonly gameVersion: string;
+  loadEntrypoint(): Promise<unknown>;
+  loadModule(): Promise<UnknownRealtimeGameClientModule>;
+}
+
+const loadPongEntrypoint = () => import("@online-game-hub/pong/client");
+
+const realtimeClientRegistrations = Object.freeze([
+  {
+    gameId: pongManifest.id,
+    gameVersion: pongManifest.gameVersion,
+    loadEntrypoint: loadPongEntrypoint,
+    loadModule: async () =>
+      eraseRealtimeGameClientModule(
+        (await loadPongEntrypoint()).pongClientModule,
+      ),
+  },
+]) satisfies readonly RealtimeClientRegistration[];
+
+function findRealtimeRegistration(gameId: string, gameVersion: string) {
+  return realtimeClientRegistrations.find(
+    (candidate) =>
+      candidate.gameId === gameId && candidate.gameVersion === gameVersion,
+  );
+}
+
+export async function loadRealtimeGameClientEntrypoint(
+  gameId: string,
+  gameVersion: string,
+): Promise<unknown | undefined> {
+  return findRealtimeRegistration(gameId, gameVersion)?.loadEntrypoint();
+}
+
+export async function loadRealtimeGameClientModule(
+  gameId: string,
+  gameVersion: string,
+): Promise<UnknownRealtimeGameClientModule | undefined> {
+  return findRealtimeRegistration(gameId, gameVersion)?.loadModule();
 }

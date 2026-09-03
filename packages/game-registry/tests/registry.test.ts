@@ -4,10 +4,14 @@ import { gameCatalog, resolveGameManifest } from "../src/catalog.js";
 import {
   loadGameClientEntrypoint,
   loadGameClientModule,
+  loadRealtimeGameClientEntrypoint,
+  loadRealtimeGameClientModule,
 } from "../src/client.js";
 import {
   resolveCurrentGameDefinition,
+  resolveCurrentRealtimeGameDefinition,
   resolveGameDefinition,
+  resolveRealtimeGameDefinition,
 } from "../src/server.js";
 
 function clientModuleSymbol(gameId: string): string {
@@ -46,10 +50,10 @@ describe("explicit game registry", () => {
       expect(resolveGameManifest(manifest.id, manifest.gameVersion)).toBe(
         manifest,
       );
-      const definition = resolveGameDefinition(
-        manifest.id,
-        manifest.gameVersion,
-      );
+      const definition =
+        manifest.runtime === "turn-based"
+          ? resolveGameDefinition(manifest.id, manifest.gameVersion)
+          : resolveRealtimeGameDefinition(manifest.id, manifest.gameVersion);
       expect(definition?.manifest).toBe(manifest);
       expect(definition?.configSchema.parse(manifest.defaultConfig)).toEqual(
         manifest.defaultConfig,
@@ -63,7 +67,15 @@ describe("explicit game registry", () => {
 
     for (const manifest of gameCatalog) {
       expect(
-        resolveGameDefinition(manifest.id, `${manifest.gameVersion}-unknown`),
+        manifest.runtime === "turn-based"
+          ? resolveGameDefinition(
+              manifest.id,
+              `${manifest.gameVersion}-unknown`,
+            )
+          : resolveRealtimeGameDefinition(
+              manifest.id,
+              `${manifest.gameVersion}-unknown`,
+            ),
       ).toBeUndefined();
       expect(
         resolveGameManifest(manifest.id, `${manifest.gameVersion}-unknown`),
@@ -73,9 +85,19 @@ describe("explicit game registry", () => {
 
   it("selects each explicitly registered current definition for new rooms", () => {
     for (const manifest of gameCatalog) {
-      expect(resolveCurrentGameDefinition(manifest.id)).toBe(
-        resolveGameDefinition(manifest.id, manifest.gameVersion),
-      );
+      if (manifest.runtime === "turn-based") {
+        expect(resolveCurrentGameDefinition(manifest.id)).toBe(
+          resolveGameDefinition(manifest.id, manifest.gameVersion),
+        );
+        expect(
+          resolveCurrentRealtimeGameDefinition(manifest.id),
+        ).toBeUndefined();
+      } else {
+        expect(resolveCurrentRealtimeGameDefinition(manifest.id)).toBe(
+          resolveRealtimeGameDefinition(manifest.id, manifest.gameVersion),
+        );
+        expect(resolveCurrentGameDefinition(manifest.id)).toBeUndefined();
+      }
     }
     expect(resolveCurrentGameDefinition("unknown")).toBeUndefined();
   });
@@ -122,6 +144,32 @@ describe("explicit game registry", () => {
 
   it("keeps every client entry lazy, isolated, and free of UI business", async () => {
     for (const manifest of gameCatalog) {
+      if (manifest.runtime === "realtime") {
+        const entrypoint = await loadRealtimeGameClientEntrypoint(
+          manifest.id,
+          manifest.gameVersion,
+        );
+        expect(entrypoint).toHaveProperty(clientModuleSymbol(manifest.id));
+        expect(entrypoint).not.toHaveProperty("step");
+        expect(entrypoint).not.toHaveProperty("createInitialState");
+        const clientModule = await loadRealtimeGameClientModule(
+          manifest.id,
+          manifest.gameVersion,
+        );
+        expect(clientModule).toMatchObject({
+          gameId: manifest.id,
+          gameVersion: manifest.gameVersion,
+        });
+        expect(clientModule?.parseView).toEqual(expect.any(Function));
+        expect(clientModule?.createResignInput).toEqual(expect.any(Function));
+        await expect(
+          loadRealtimeGameClientModule(
+            manifest.id,
+            `${manifest.gameVersion}-unknown`,
+          ),
+        ).resolves.toBeUndefined();
+        continue;
+      }
       const entrypoint = await loadGameClientEntrypoint(
         manifest.id,
         manifest.gameVersion,

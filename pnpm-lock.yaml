@@ -240,6 +240,37 @@ importers:
         specifier: 19.2.8
         version: 19.2.8(react@19.2.8)
 
+  games/pong:
+    dependencies:
+      '@online-game-hub/realtime-game-client-sdk':
+        specifier: workspace:*
+        version: link:../../packages/realtime-game-client-sdk
+      '@online-game-hub/realtime-game-sdk':
+        specifier: workspace:*
+        version: link:../../packages/realtime-game-sdk
+      phaser:
+        specifier: 3.90.0
+        version: 3.90.0
+      zod:
+        specifier: 4.4.3
+        version: 4.4.3
+    devDependencies:
+      '@types/node':
+        specifier: 24.13.3
+        version: 24.13.3
+      '@types/react':
+        specifier: 19.2.18
+        version: 19.2.18
+      '@types/react-dom':
+        specifier: 19.2.5
+        version: 19.2.5(@types/react@19.2.18)
+      react:
+        specifier: 19.2.8
+        version: 19.2.8
+      react-dom:
+        specifier: 19.2.8
+        version: 19.2.8(react@19.2.8)
+
   games/reversi:
     dependencies:
       '@online-game-hub/game-client-sdk':
@@ -357,6 +388,15 @@ importers:
       '@online-game-hub/hex':
         specifier: workspace:*
         version: link:../../games/hex
+      '@online-game-hub/pong':
+        specifier: workspace:*
+        version: link:../../games/pong
+      '@online-game-hub/realtime-game-client-sdk':
+        specifier: workspace:*
+        version: link:../realtime-game-client-sdk
+      '@online-game-hub/realtime-game-sdk':
+        specifier: workspace:*
+        version: link:../realtime-game-sdk
       '@online-game-hub/reversi':
         specifier: workspace:*
         version: link:../../games/reversi
@@ -401,6 +441,44 @@ importers:
       zod:
         specifier: 4.4.3
         version: 4.4.3
+
+  packages/realtime-game-client-sdk:
+    dependencies:
+      '@colyseus/sdk':
+        specifier: 0.18.2
+        version: 0.18.2(@colyseus/core@0.18.10)(typescript@6.0.3)(zod@4.4.3)
+      '@online-game-hub/protocol':
+        specifier: workspace:*
+        version: link:../protocol
+    devDependencies:
+      '@types/react':
+        specifier: 19.2.18
+        version: 19.2.18
+      react:
+        specifier: 19.2.8
+        version: 19.2.8
+
+  packages/realtime-game-sdk:
+    dependencies:
+      zod:
+        specifier: 4.4.3
+        version: 4.4.3
+
+  packages/realtime-game-server-runtime:
+    dependencies:
+      '@online-game-hub/protocol':
+        specifier: workspace:*
+        version: link:../protocol
+      '@online-game-hub/realtime-game-sdk':
+        specifier: workspace:*
+        version: link:../realtime-game-sdk
+      zod:
+        specifier: 4.4.3
+        version: 4.4.3
+    devDependencies:
+      '@types/node':
+        specifier: 24.13.3
+        version: 24.13.3
 
   packages/ui: {}
 
@@ -1898,6 +1976,9 @@ packages:
     resolution: {integrity: sha512-aIL5Fx7mawVa300al2BnEE4iNvo1qETxLrPI/o05L7z6go7fCw1J6EQmbK4FmJ2AS7kgVF/KEZWufBfdClMcPg==}
     engines: {node: '>= 0.6'}
 
+  eventemitter3@5.0.4:
+    resolution: {integrity: sha512-mlsTRyGaPBjPedk6Bvw+aqbsXDtoAyAzm5MO7JgU+yVRyMQ5O8bD4Kcci7BS85f93veegeCPkL8R4GLClnjLFw==}
+
   expect-type@1.4.0:
     resolution: {integrity: sha512-KfYbmpRm0VbLjEvVa9yGwCi9GI34xvi7A/HXYWQO65CSD2u3MczUJSuwXKFIxlGsgBQizV9q5J9NHj4VG0n+pA==}
     engines: {node: '>=12.0.0'}
@@ -2256,6 +2337,9 @@ packages:
 
   pathe@2.0.3:
     resolution: {integrity: sha512-WUjGcAqP1gQacoQe+OBJsFA7Ld4DyXuUIjZ5cc75cLHvJ7dtNsTugphxIADwspS+AraAUePCKrSVtPLFj/F88w==}
+
+  phaser@3.90.0:
+    resolution: {integrity: sha512-/cziz/5ZIn02uDkC9RzN8VF9x3Gs3XdFFf9nkiMEQT3p7hQlWuyjy4QWosU802qqno2YSLn2BfqwOKLv/sSVfQ==}
 
   picocolors@1.1.1:
     resolution: {integrity: sha512-xceH2snhtb5M9liqDsmEw56le376mTZkEX/jEb/RxNFyegNul7eNslCXP9FDj/Lcu0X8KEyMceP2ntpaHrDEVA==}
@@ -3722,6 +3806,8 @@ snapshots:
 
   etag@1.8.1: {}
 
+  eventemitter3@5.0.4: {}
+
   expect-type@1.4.0: {}
 
   express@5.2.1:
@@ -4061,6 +4147,10 @@ snapshots:
   path-to-regexp@8.4.2: {}
 
   pathe@2.0.3: {}
+
+  phaser@3.90.0:
+    dependencies:
+      eventemitter3: 5.0.4
 
   picocolors@1.1.1: {}
 

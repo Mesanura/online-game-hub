@@ -4,7 +4,11 @@ import {
   GAME_ACTION_MESSAGE,
   GAME_ROOM_NAME,
   MAX_GAME_ACTION_BYTES,
+  MAX_REALTIME_INPUT_BYTES,
   PROTOCOL_VERSION,
+  REALTIME_INPUT_MESSAGE,
+  REALTIME_PROTOCOL_VERSION,
+  REALTIME_SERVER_MESSAGE,
   ROOM_CONTROL_MESSAGE,
   SERVER_PROTOCOL_MESSAGE,
   commandIdSchema,
@@ -14,6 +18,10 @@ import {
   gameServerTicketClaimsSchema,
   joinGameRoomRequestSchema,
   matchSnapshotSchema,
+  realtimeInputCommandSchema,
+  realtimeRejectedSchema,
+  realtimeServerMessageSchema,
+  realtimeSnapshotSchema,
   roomControlCommandSchema,
   roomLifecycleStateSchema,
   roomConnectedSchema,
@@ -55,6 +63,95 @@ describe("transport conventions", () => {
     expect(GAME_ACTION_MESSAGE).toBe("game.action");
     expect(ROOM_CONTROL_MESSAGE).toBe("room.control");
     expect(SERVER_PROTOCOL_MESSAGE).toBe("protocol");
+  });
+});
+
+describe("Realtime Protocol V1", () => {
+  const realtimeSnapshot = {
+    type: "realtime.snapshot",
+    realtimeProtocolVersion: REALTIME_PROTOCOL_VERSION,
+    gameId: "pong",
+    gameVersion: "1.0.0",
+    roundNumber: 1,
+    tick: 42,
+    viewer: { kind: "player", slotId: "slot-1" },
+    view: { ball: { x: 100, y: 200 } },
+    outcome: null,
+    acknowledgedInputSequence: 3,
+  } as const;
+
+  it("keeps realtime messages separate from Protocol V5 envelopes", () => {
+    expect(REALTIME_PROTOCOL_VERSION).toBe(1);
+    expect(REALTIME_INPUT_MESSAGE).toBe("realtime.input");
+    expect(REALTIME_SERVER_MESSAGE).toBe("realtime");
+    expect(realtimeSnapshotSchema.parse(realtimeSnapshot)).toEqual(
+      realtimeSnapshot,
+    );
+    expect(realtimeServerMessageSchema.parse(realtimeSnapshot)).toEqual(
+      realtimeSnapshot,
+    );
+    expect(serverMessageSchema.safeParse(realtimeSnapshot).success).toBe(false);
+  });
+
+  it("accepts only minimal direction intent metadata", () => {
+    const command = {
+      type: "realtime.input",
+      realtimeProtocolVersion: 1,
+      commandId: "input-1",
+      roundNumber: 1,
+      inputSequence: 1,
+      input: { type: "DIRECTION", direction: -1 },
+    };
+    expect(realtimeInputCommandSchema.parse(command)).toEqual(command);
+    for (const forged of [
+      { actor: "slot-2" },
+      { slotId: "slot-2" },
+      { tick: 100 },
+      { state: {} },
+      { score: [9, 0] },
+      { outcome: { type: "WIN" } },
+      { clientTime: 123 },
+    ]) {
+      expect(
+        realtimeInputCommandSchema.safeParse({ ...command, ...forged }).success,
+      ).toBe(false);
+    }
+    expect(
+      realtimeInputCommandSchema.safeParse({
+        ...command,
+        inputSequence: 0,
+      }).success,
+    ).toBe(false);
+  });
+
+  it("rejects oversized input and strict invalid server payloads", () => {
+    expect(
+      realtimeInputCommandSchema.safeParse({
+        type: "realtime.input",
+        realtimeProtocolVersion: 1,
+        commandId: "large",
+        roundNumber: 1,
+        inputSequence: 1,
+        input: { data: "x".repeat(MAX_REALTIME_INPUT_BYTES + 1) },
+      }).success,
+    ).toBe(false);
+    expect(
+      realtimeSnapshotSchema.safeParse({
+        ...realtimeSnapshot,
+        viewer: { kind: "spectator" },
+      }).success,
+    ).toBe(false);
+    expect(
+      realtimeRejectedSchema.parse({
+        type: "realtime.rejected",
+        realtimeProtocolVersion: 1,
+        commandId: "input-1",
+        code: "STALE_INPUT_SEQUENCE",
+        retryable: false,
+        acknowledgedInputSequence: 3,
+        snapshot: realtimeSnapshot,
+      }),
+    ).toMatchObject({ code: "STALE_INPUT_SEQUENCE" });
   });
 });
 

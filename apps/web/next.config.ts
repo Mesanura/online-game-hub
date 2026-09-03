@@ -11,11 +11,13 @@ const nextConfig: NextConfig = {
     "@online-game-hub/game-client-sdk",
     "@online-game-hub/game-registry",
     "@online-game-hub/protocol",
+    "@online-game-hub/realtime-game-client-sdk",
     "@online-game-hub/connect-four",
     "@online-game-hub/chinese-checkers",
     "@online-game-hub/gomoku",
     "@online-game-hub/hex",
     "@online-game-hub/reversi",
+    "@online-game-hub/pong",
     "@online-game-hub/tic-tac-toe",
     // create-game:transpile-package
   ],

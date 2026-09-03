@@ -1,0 +1,38 @@
+{
+  "header": {
+    "replayFormatVersion": 1,
+    "runtime": "realtime",
+    "gameId": "pong",
+    "gameVersion": "1.0.0",
+    "tickRate": 60,
+    "rng": {
+      "algorithm": "fnv1a32-counter-v1",
+      "seed": "pong-golden-seed"
+    },
+    "initialConfig": { "targetScore": 3 },
+    "players": [{ "slotId": "left-slot" }, { "slotId": "right-slot" }]
+  },
+  "events": [
+    {
+      "sequence": 1,
+      "tick": 0,
+      "actorSlotId": "left-slot",
+      "input": { "type": "DIRECTION", "direction": -1 }
+    },
+    {
+      "sequence": 2,
+      "tick": 2,
+      "actorSlotId": "right-slot",
+      "input": { "type": "RESIGN" }
+    }
+  ],
+  "recordedRngCursor": 2,
+  "recordedOutcome": {
+    "type": "WIN",
+    "reason": "RESIGNATION",
+    "winnerSlotId": "left-slot",
+    "resignedSlotId": "right-slot",
+    "scores": [0, 0]
+  },
+  "finalTick": 3
+}

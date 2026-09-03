@@ -7,6 +7,10 @@ export const GAME_ACTION_MESSAGE = "game.action" as const;
 export const ROOM_CONTROL_MESSAGE = "room.control" as const;
 export const SERVER_PROTOCOL_MESSAGE = "protocol" as const;
 export const GAME_SERVER_TICKET_AUDIENCE = "game-server" as const;
+export const REALTIME_PROTOCOL_VERSION = 1 as const;
+export const REALTIME_INPUT_MESSAGE = "realtime.input" as const;
+export const REALTIME_SERVER_MESSAGE = "realtime" as const;
+export const MAX_REALTIME_INPUT_BYTES = 1_024;
 
 const GAME_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 const EXACT_SEMVER_PATTERN =
@@ -90,6 +94,15 @@ function isActionPayload(value: unknown): boolean {
   const serialized = JSON.stringify(value);
   return (
     serialized !== undefined && utf8Length(serialized) <= MAX_GAME_ACTION_BYTES
+  );
+}
+
+function isRealtimeInputPayload(value: unknown): boolean {
+  if (!isJsonValue(value)) return false;
+  const serialized = JSON.stringify(value);
+  return (
+    serialized !== undefined &&
+    utf8Length(serialized) <= MAX_REALTIME_INPUT_BYTES
   );
 }
 
@@ -453,3 +466,95 @@ export const serverMessageSchema = z.discriminatedUnion("type", [
 ]);
 export type ClientMessage = z.infer<typeof clientMessageSchema>;
 export type ServerMessage = z.infer<typeof serverMessageSchema>;
+
+export const realtimeProtocolVersionSchema = z.literal(
+  REALTIME_PROTOCOL_VERSION,
+);
+export const inputSequenceSchema = z
+  .number()
+  .int()
+  .positive()
+  .max(Number.MAX_SAFE_INTEGER);
+export const acknowledgedInputSequenceSchema = z
+  .number()
+  .int()
+  .nonnegative()
+  .max(Number.MAX_SAFE_INTEGER);
+export const realtimeInputPayloadSchema = z.custom<unknown>(
+  isRealtimeInputPayload,
+  {
+    error:
+      "Realtime input must be JSON-serializable and at most 1024 UTF-8 bytes.",
+  },
+);
+
+export const realtimeInputCommandSchema = z
+  .object({
+    type: z.literal("realtime.input"),
+    realtimeProtocolVersion: realtimeProtocolVersionSchema,
+    commandId: commandIdSchema,
+    roundNumber: roundNumberSchema,
+    inputSequence: inputSequenceSchema,
+    input: realtimeInputPayloadSchema,
+  })
+  .strict();
+export type RealtimeInputCommand = z.infer<typeof realtimeInputCommandSchema>;
+
+export const realtimeSnapshotSchema = z
+  .object({
+    type: z.literal("realtime.snapshot"),
+    realtimeProtocolVersion: realtimeProtocolVersionSchema,
+    gameId: gameIdSchema,
+    gameVersion: gameVersionSchema,
+    roundNumber: roundNumberSchema,
+    tick: revisionSchema,
+    viewer: z
+      .object({ kind: z.literal("player"), slotId: z.string().min(1) })
+      .strict(),
+    view: jsonValueSchema,
+    outcome: jsonValueSchema.nullable(),
+    acknowledgedInputSequence: acknowledgedInputSequenceSchema,
+  })
+  .strict();
+type InferredRealtimeSnapshot = z.infer<typeof realtimeSnapshotSchema>;
+export type RealtimeSnapshot<View = unknown, Outcome = unknown> = Omit<
+  InferredRealtimeSnapshot,
+  "outcome" | "view"
+> & {
+  readonly view: View;
+  readonly outcome: Outcome | null;
+};
+
+export const realtimeErrorCodeSchema = z.enum([
+  "NOT_A_PLAYER",
+  "MATCH_NOT_ACTIVE",
+  "ROUND_MISMATCH",
+  "INVALID_INPUT_PAYLOAD",
+  "STALE_INPUT_SEQUENCE",
+  "DUPLICATE_COMMAND",
+  "RATE_LIMITED",
+  "INTERNAL_ERROR",
+]);
+export type RealtimeErrorCode = z.infer<typeof realtimeErrorCodeSchema>;
+
+export const realtimeRejectedSchema = z
+  .object({
+    type: z.literal("realtime.rejected"),
+    realtimeProtocolVersion: realtimeProtocolVersionSchema,
+    commandId: commandIdSchema.optional(),
+    code: realtimeErrorCodeSchema,
+    retryable: z.boolean(),
+    acknowledgedInputSequence: acknowledgedInputSequenceSchema.optional(),
+    snapshot: realtimeSnapshotSchema.optional(),
+  })
+  .strict();
+type InferredRealtimeRejected = z.infer<typeof realtimeRejectedSchema>;
+export type RealtimeRejected = Omit<InferredRealtimeRejected, "snapshot"> & {
+  readonly snapshot?: RealtimeSnapshot;
+};
+
+export const realtimeServerMessageSchema = z.discriminatedUnion("type", [
+  realtimeSnapshotSchema,
+  realtimeRejectedSchema,
+]);
+export type RealtimeServerMessage = z.infer<typeof realtimeServerMessageSchema>;
