@@ -681,11 +681,17 @@ export const gameRoomRequestV6Schema = z.discriminatedUnion("type", [
   createGameRoomRequestV6Schema,
   joinGameRoomRequestV6Schema,
 ]);
+export type CreateGameRoomRequestV6 = z.infer<
+  typeof createGameRoomRequestV6Schema
+>;
+export type JoinGameRoomRequestV6 = z.infer<typeof joinGameRoomRequestV6Schema>;
+export type GameRoomRequestV6 = z.infer<typeof gameRoomRequestV6Schema>;
 
 export const roomConnectedV6Schema = roomConnectedSchema
   .omit({ protocolVersion: true })
   .extend({ protocolVersion: setupProtocolVersionSchema })
   .strict();
+export type RoomConnectedV6 = z.infer<typeof roomConnectedV6Schema>;
 
 export const matchSnapshotV6Schema = matchSnapshotSchema
   .omit({ protocolVersion: true })
@@ -713,6 +719,10 @@ export const commandRejectedV6Schema = z
     snapshot: matchSnapshotV6Schema.optional(),
   })
   .strict();
+type InferredCommandRejectedV6 = z.infer<typeof commandRejectedV6Schema>;
+export type CommandRejectedV6 = Omit<InferredCommandRejectedV6, "snapshot"> & {
+  readonly snapshot?: MatchSnapshotV6;
+};
 
 export const clientMessageV6Schema = z.discriminatedUnion("type", [
   gameActionCommandV6Schema,

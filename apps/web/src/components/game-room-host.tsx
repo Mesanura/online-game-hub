@@ -19,14 +19,18 @@ import {
 } from "@online-game-hub/game-client-sdk";
 import type {
   GameClientHostState,
+  GameSetupProtocol,
   UnknownGameClientModule,
 } from "@online-game-hub/game-client-sdk";
 import type {
   CommandRejected,
+  CommandRejectedV6,
   MatchStatus,
   RealtimeRejected,
   RoomConnected,
+  RoomConnectedV6,
   RoomLifecycleState,
+  RoomLifecycleStateV6,
   StarterChoice as ProtocolStarterChoice,
 } from "@online-game-hub/protocol";
 import {
@@ -42,8 +46,43 @@ import {
   loadRealtimeGameClientModule,
 } from "@online-game-hub/game-registry/client";
 import { gameCatalog } from "@online-game-hub/game-registry/catalog";
+import { resolveCurrentGameDeployment } from "@online-game-hub/game-registry/deployment";
 
 type StarterChoice = ProtocolStarterChoice;
+type WebRoomConnected = RoomConnected | RoomConnectedV6;
+type WebCommandRejected = CommandRejected | CommandRejectedV6;
+
+export interface WebLifecyclePlayer {
+  readonly slotId: string;
+  readonly occupied: boolean;
+  readonly online: boolean;
+  readonly ready: boolean;
+  readonly assignment: string | null;
+}
+
+export interface WebNextRoundLifecycle {
+  readonly roundNumber: number;
+  readonly starter: StarterChoice | null;
+  readonly selfReady: boolean;
+  readonly readyPlayerCount: number;
+  readonly requiredPlayerCount: number;
+  readonly assignmentOptions?: readonly string[] | undefined;
+  readonly setupRevision?: number;
+  readonly setupView?: unknown;
+  readonly canReady?: boolean;
+}
+
+export interface WebRoomLifecycle {
+  readonly type: "room.lifecycle";
+  readonly protocolVersion: 5 | 6;
+  readonly isOwner: boolean;
+  readonly currentRound: RoomLifecycleState["currentRound"];
+  readonly nextRound: WebNextRoundLifecycle | null;
+  readonly closed: boolean;
+  readonly closeReason: RoomLifecycleState["closeReason"];
+  readonly players?: readonly WebLifecyclePlayer[] | undefined;
+  readonly causedByCommandId?: string | undefined;
+}
 
 export interface WebRoomSnapshot {
   readonly gameId: string;
@@ -61,11 +100,11 @@ export interface WebRoomSnapshot {
 
 export interface WebRoomHostState {
   readonly connectionState: GameClientHostState["connectionState"];
-  readonly room: RoomConnected | null;
-  readonly roomLifecycle: RoomLifecycleState | null;
+  readonly room: WebRoomConnected | null;
+  readonly roomLifecycle: WebRoomLifecycle | null;
   readonly previousSnapshot: WebRoomSnapshot | null;
   readonly snapshot: WebRoomSnapshot | null;
-  readonly rejection: CommandRejected | RealtimeRejected | null;
+  readonly rejection: WebCommandRejected | RealtimeRejected | null;
   readonly error: { readonly code: string; readonly message: string } | null;
 }
 
@@ -83,9 +122,58 @@ function realtimeErrorMessage(code: string): string {
   return labels[code] ?? "实时连接发生错误。";
 }
 
+function setupViewStarter(setupView: unknown): StarterChoice | null {
+  if (
+    setupView === null ||
+    typeof setupView !== "object" ||
+    !("starter" in setupView)
+  ) {
+    return null;
+  }
+  const starter = setupView.starter;
+  return starter === "OWNER" || starter === "NON_OWNER" || starter === "RANDOM"
+    ? starter
+    : null;
+}
+
+export function normalizeRoomLifecycle(
+  lifecycle: RoomLifecycleState | RoomLifecycleStateV6 | null,
+): WebRoomLifecycle | null {
+  if (lifecycle === null || lifecycle.protocolVersion === 5) return lifecycle;
+  const nextRound = lifecycle.nextRound;
+  return {
+    type: lifecycle.type,
+    protocolVersion: lifecycle.protocolVersion,
+    isOwner: lifecycle.isOwner,
+    currentRound: lifecycle.currentRound,
+    nextRound:
+      nextRound === null
+        ? null
+        : {
+            roundNumber: nextRound.roundNumber,
+            starter: setupViewStarter(nextRound.setupView),
+            selfReady: nextRound.readiness.selfReady,
+            readyPlayerCount: nextRound.readiness.readySlotIds.length,
+            requiredPlayerCount: nextRound.readiness.requiredSlotIds.length,
+            setupRevision: nextRound.setupRevision,
+            setupView: nextRound.setupView,
+            canReady: nextRound.readiness.canReady,
+          },
+    closed: lifecycle.closed,
+    closeReason: lifecycle.closeReason,
+    players: lifecycle.players.map((player) => ({
+      ...player,
+      assignment: null,
+    })),
+    ...(lifecycle.causedByCommandId === undefined
+      ? {}
+      : { causedByCommandId: lifecycle.causedByCommandId }),
+  };
+}
+
 function mapRealtimeSnapshot(
   snapshot: RealtimeGameClientHostState["snapshot"],
-  lifecycle: RoomLifecycleState | null,
+  lifecycle: WebRoomLifecycle | null,
 ): WebRoomSnapshot | null {
   if (snapshot === null) return null;
   const lifecycleStatus = lifecycle?.currentRound?.status;
@@ -124,6 +212,7 @@ export class RuntimeAwareHost {
   public constructor(options: {
     readonly runtime: RuntimeKind;
     readonly gameServerUrl: string;
+    readonly setupProtocol?: GameSetupProtocol;
   }) {
     this.runtime = options.runtime;
     if (options.runtime === "realtime") {
@@ -131,6 +220,9 @@ export class RuntimeAwareHost {
       const realtime = new RealtimeGameClientHost({
         gameServerUrl: options.gameServerUrl,
         ticketProvider: createRealtimeHttpTicketProvider(),
+        ...(options.setupProtocol === undefined
+          ? {}
+          : { setupProtocol: options.setupProtocol }),
       });
       this.#realtime = realtime;
       this.#state = this.#mapRealtimeState(realtime.getState());
@@ -143,6 +235,9 @@ export class RuntimeAwareHost {
       const turnBased = new GameClientHost({
         gameServerUrl: options.gameServerUrl,
         ticketProvider: createHttpTicketProvider(),
+        ...(options.setupProtocol === undefined
+          ? {}
+          : { setupProtocol: options.setupProtocol }),
       });
       this.#turnBased = turnBased;
       this.#state = this.#mapTurnBasedState(turnBased.getState());
@@ -189,6 +284,13 @@ export class RuntimeAwareHost {
     return realtime === null
       ? Promise.reject(new Error("Turn-based rooms accept actions."))
       : realtime.submitInput(input);
+  }
+
+  public submitSetup(action: unknown): Promise<void> {
+    const realtime = this.#realtime;
+    return realtime === null
+      ? this.#requireTurnBased().submitSetup(action)
+      : realtime.submitSetup(action);
   }
 
   public selectStarter(starter: StarterChoice): Promise<void> {
@@ -270,10 +372,11 @@ export class RuntimeAwareHost {
   }
 
   #mapTurnBasedState(state: GameClientHostState): WebRoomHostState {
+    const roomLifecycle = normalizeRoomLifecycle(state.roomLifecycle);
     return {
       connectionState: state.connectionState,
       room: state.room,
-      roomLifecycle: state.roomLifecycle,
+      roomLifecycle,
       previousSnapshot: null,
       snapshot:
         state.snapshot === null || state.snapshot.viewer.kind !== "player"
@@ -298,15 +401,16 @@ export class RuntimeAwareHost {
 
   #mapRealtimeState(state: RealtimeGameClientHostState): WebRoomHostState {
     const rejection = state.rejection ?? state.controlRejection;
+    const roomLifecycle = normalizeRoomLifecycle(state.roomLifecycle);
     return {
       connectionState: state.connectionState,
       room: state.room,
-      roomLifecycle: state.roomLifecycle,
+      roomLifecycle,
       previousSnapshot: mapRealtimeSnapshot(
         state.previousSnapshot,
-        state.roomLifecycle,
+        roomLifecycle,
       ),
-      snapshot: mapRealtimeSnapshot(state.snapshot, state.roomLifecycle),
+      snapshot: mapRealtimeSnapshot(state.snapshot, roomLifecycle),
       rejection,
       error:
         state.error === null
@@ -416,13 +520,16 @@ export function GameRoomHostProvider({
   const runtime: RuntimeKind =
     gameCatalog.find((candidate) => candidate.id === gameId)?.runtime ??
     "turn-based";
+  const setupProtocol =
+    resolveCurrentGameDeployment(gameId)?.setupProtocol ?? 5;
   const host = useMemo(
     () =>
       new RuntimeAwareHost({
         runtime,
         gameServerUrl,
+        setupProtocol,
       }),
-    [gameServerUrl, runtime],
+    [gameServerUrl, runtime, setupProtocol],
   );
   const subscribe = useCallback(
     (listener: () => void) => host.subscribe(listener),

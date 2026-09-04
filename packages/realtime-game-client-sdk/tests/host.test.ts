@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  GAME_SETUP_MESSAGE,
+  PROTOCOL_VERSION,
   REALTIME_INPUT_MESSAGE,
   REALTIME_SERVER_MESSAGE,
   ROOM_CONTROL_MESSAGE,
   SERVER_PROTOCOL_MESSAGE,
+  SETUP_PROTOCOL_VERSION,
 } from "@online-game-hub/protocol";
 
 import { RealtimeGameClientHost } from "../src/index.js";
@@ -58,7 +61,7 @@ class FakeRoom implements RealtimeTransportRoom {
 function lifecycle() {
   return {
     type: "room.lifecycle",
-    protocolVersion: 5,
+    protocolVersion: PROTOCOL_VERSION,
     isOwner: true,
     currentRound: { roundNumber: 1, status: "active" },
     nextRound: null,
@@ -70,11 +73,61 @@ function lifecycle() {
 function connected() {
   return {
     type: "room.connected",
-    protocolVersion: 5,
+    protocolVersion: PROTOCOL_VERSION,
     roomCode: "ABCD2345",
     gameId: "pong",
     gameVersion: "1.0.0",
     playerSlotId: "slot-left",
+  } as const;
+}
+
+function connectedV6() {
+  return {
+    ...connected(),
+    protocolVersion: SETUP_PROTOCOL_VERSION,
+  } as const;
+}
+
+function lifecycleV6(
+  active: boolean,
+  options: {
+    readonly setupRevision?: number;
+    readonly causedByCommandId?: string;
+  } = {},
+) {
+  return {
+    type: "room.lifecycle",
+    protocolVersion: SETUP_PROTOCOL_VERSION,
+    isOwner: true,
+    currentRound: active ? { roundNumber: 1, status: "active" as const } : null,
+    nextRound: active
+      ? null
+      : {
+          roundNumber: 1,
+          setupRevision: options.setupRevision ?? 0,
+          setupView: {
+            config: { targetScore: 3 },
+            starter: options.setupRevision === 1 ? "OWNER" : "UNSELECTED",
+            fixedStarterSlotId: null,
+            participantSlotIds: ["slot-left", "slot-right"],
+            canEdit: true,
+          },
+          readiness: {
+            canReady: options.setupRevision === 1,
+            selfReady: false,
+            readySlotIds: [],
+            requiredSlotIds: ["slot-left", "slot-right"],
+          },
+        },
+    closed: false,
+    closeReason: null,
+    players: [
+      { slotId: "slot-left", occupied: true, online: true, ready: false },
+      { slotId: "slot-right", occupied: true, online: true, ready: false },
+    ],
+    ...(options.causedByCommandId === undefined
+      ? {}
+      : { causedByCommandId: options.causedByCommandId }),
   } as const;
 }
 
@@ -134,6 +187,71 @@ describe("RealtimeGameClientHost", () => {
     room.emit(REALTIME_SERVER_MESSAGE, snapshot(1, 1));
     await expect(pending).resolves.toBeUndefined();
     expect(host.getState().snapshot).toMatchObject({ tick: 1 });
+  });
+
+  it("uses V6 for setup while realtime input and snapshots remain V1", async () => {
+    const room = new FakeRoom();
+    const requests: unknown[] = [];
+    const client: RealtimeTransportClient = {
+      async create(_roomName, options) {
+        requests.push(options);
+        return room;
+      },
+      async join() {
+        return room;
+      },
+    };
+    let command = 0;
+    const host = new RealtimeGameClientHost<{ readonly tick: number }>({
+      gameServerUrl: "http://127.0.0.1:2567",
+      ticketProvider: async () => "ticket",
+      transport: { createClient: () => client },
+      setupProtocol: SETUP_PROTOCOL_VERSION,
+      commandIds: { createCommandId: () => `command-${++command}` },
+    });
+    await host.createRoom("pong", { targetScore: 3 });
+    expect(requests[0]).toMatchObject({
+      protocolVersion: SETUP_PROTOCOL_VERSION,
+    });
+    room.emit(SERVER_PROTOCOL_MESSAGE, connectedV6());
+    room.emit(ROOM_CONTROL_MESSAGE, lifecycleV6(false));
+
+    const setupCommand = host.selectStarter("OWNER");
+    expect(room.sent.at(-1)).toMatchObject({
+      type: GAME_SETUP_MESSAGE,
+      payload: {
+        protocolVersion: SETUP_PROTOCOL_VERSION,
+        commandId: "command-1",
+        expectedSetupRevision: 0,
+        action: { type: "SELECT_STARTER", starter: "OWNER" },
+      },
+    });
+    room.emit(
+      ROOM_CONTROL_MESSAGE,
+      lifecycleV6(false, {
+        setupRevision: 1,
+        causedByCommandId: "command-1",
+      }),
+    );
+    await expect(setupCommand).resolves.toBeUndefined();
+
+    const readyCommand = host.readyForRound();
+    room.emit(
+      ROOM_CONTROL_MESSAGE,
+      lifecycleV6(true, { causedByCommandId: "command-2" }),
+    );
+    await expect(readyCommand).resolves.toBeUndefined();
+    room.emit(REALTIME_SERVER_MESSAGE, snapshot(0, 0));
+    void host.submitInput({ type: "DIRECTION", direction: 1 });
+    expect(room.sent.at(-1)).toMatchObject({
+      type: REALTIME_INPUT_MESSAGE,
+      payload: {
+        realtimeProtocolVersion: 1,
+        commandId: "command-3",
+        inputSequence: 1,
+      },
+    });
+    expect(room.sent.at(-1)?.payload).not.toHaveProperty("protocolVersion");
   });
 
   it("ignores backward snapshots and fails closed on a forged viewer", async () => {
