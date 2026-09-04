@@ -1,0 +1,25 @@
+{
+  "name": "@online-game-hub/surface-workbench",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "onlineGameHub": {
+    "surfaceArtifact": false
+  },
+  "scripts": {
+    "build": "vite build",
+    "contract-test": "vitest run tests/bridge-conformance.test.ts",
+    "dev": "vite --host 127.0.0.1",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@online-game-hub/game-surface-bridge": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.3",
+    "typescript": "6.0.3",
+    "vite": "8.2.2",
+    "vitest": "4.1.11"
+  }
+}

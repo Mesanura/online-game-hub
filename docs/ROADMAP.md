@@ -316,7 +316,7 @@ M8 结束后再由产品证据选择下一个 M7 候选能力；不要把 OAuth�
 
 ### M9-C：独立 Surface 工具链与 Host
 
-> 实施状态：进行中；Bridge V1、workspace/artifact 发布链与 Web iframe Host 已实现，Workbench、Docker static copy 和 viewport E2E 待完成。
+> 实施状态：进行中；Bridge V1、workspace/artifact 发布链、Web iframe Host 与独立 Workbench 已实现，Docker static copy 和 viewport E2E 待完成。
 
 - `game-surfaces/*` 加入 workspace、Turbo、依赖检查、CI 和 Docker static copy；`dist` 不提交；
 - manifest/digest/version drift 校验后复制到 `/game-surfaces/<gameId>/<surfaceVersion>/<mode>/` 并使用 immutable cache；

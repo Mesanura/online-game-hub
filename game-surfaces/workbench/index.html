@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light" />
+    <title>Game Surface Workbench</title>
+  </head>
+  <body>
+    <main class="workbench">
+      <header class="workbench-header">
+        <div>
+          <p class="eyebrow">Online Game Hub</p>
+          <h1>Game Surface Workbench</h1>
+          <p>无需启动 Next 或 Game Server，直接加载任意 Surface 开发地址。</p>
+        </div>
+        <span class="status-pill" data-state="idle" id="bridge-status"
+          >未加载</span
+        >
+      </header>
+
+      <section class="control-panel" aria-label="Surface 模拟控制">
+        <form class="url-row" id="surface-form">
+          <label for="surface-url">Surface URL</label>
+          <input
+            id="surface-url"
+            name="surface-url"
+            placeholder="http://127.0.0.1:5174/play/index.html"
+            required
+            type="url"
+          />
+          <button type="submit">加载 / 重载</button>
+        </form>
+
+        <div class="control-grid">
+          <label>
+            Fixture
+            <select id="fixture"></select>
+          </label>
+          <label>
+            连接状态
+            <select id="connection-state">
+              <option value="idle">idle</option>
+              <option value="loading">loading</option>
+              <option value="connecting">connecting</option>
+              <option value="connected" selected>connected</option>
+              <option value="reconnecting">reconnecting</option>
+              <option value="closed">closed</option>
+            </select>
+          </label>
+          <label>
+            Viewport
+            <select id="viewport"></select>
+          </label>
+          <label>
+            Intent result
+            <select id="intent-result">
+              <option value="accepted" selected>accepted</option>
+              <option value="rejected">rejected</option>
+              <option value="stale">stale</option>
+            </select>
+          </label>
+          <label class="check-control">
+            <input id="read-only" type="checkbox" />
+            只读
+          </label>
+          <label class="check-control">
+            <input id="terminal" type="checkbox" />
+            终局
+          </label>
+          <label class="check-control">
+            <input id="reduced-motion" type="checkbox" />
+            Reduced motion
+          </label>
+        </div>
+
+        <div class="action-row">
+          <button id="advance" type="button">推进 revision / tick</button>
+          <button id="send-state" type="button">重发当前状态</button>
+          <button id="toggle-fullscreen" type="button">
+            全屏 / Focus mode
+          </button>
+        </div>
+      </section>
+
+      <section class="preview-section" aria-label="Surface 预览">
+        <div class="preview-scroll">
+          <div class="preview-shell" data-focus-mode="false" id="preview-shell">
+            <div class="empty-preview" id="empty-preview">
+              输入 Surface URL 后开始独立联调。
+            </div>
+          </div>
+        </div>
+        <aside class="event-log" aria-label="Bridge 事件">
+          <div class="event-log-heading">
+            <h2>Bridge 事件</h2>
+            <button id="clear-log" type="button">清空</button>
+          </div>
+          <ol id="event-log"></ol>
+        </aside>
+      </section>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

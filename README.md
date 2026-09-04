@@ -87,6 +87,14 @@ pnpm create-game --game-id example-game
 
 该命令只生成 package 和登记骨架。游戏规则、客户端界面、测试与回放 fixture 仍须按 [Game Plugin 规范](./docs/GAME_PLUGIN_SPEC.md) 完成。
 
+独立开发 Game Surface 时，可以单独启动 Workbench：
+
+```sh
+pnpm --filter @online-game-hub/surface-workbench dev
+```
+
+打开 Vite 输出的本地地址后，输入任意 Surface dev URL，即可在不启动 Next 或 Game Server 的情况下切换 Setup、回合制 Play、Realtime Play、Replay fixture，并模拟断线、重连、只读、终局、revision/tick、reduced-motion、验收 viewport 和全屏/focus mode。
+
 ## 4. 代码结构与基本原理
 
 ```text

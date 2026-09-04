@@ -344,27 +344,29 @@ Harness 为 Web 预留随机 loopback port，并用 `port: 0` 启动正式 ticke
 
 ## 11. Change-to-Test Matrix
 
-| 改动                  | 最低检查                                                            |
-| --------------------- | ------------------------------------------------------------------- |
-| 单游戏 Core           | 该游戏 unit + determinism + replay fixtures + typecheck             |
-| Game manifest/client  | registry contract + client component + relevant E2E                 |
-| `game-sdk`            | 全部游戏 Core/replay + public API type tests + dependency checks    |
-| `protocol`            | protocol contract + server integration + multiplayer/E2E smoke      |
-| `game-setup`          | contract/unit + 两套 runtime integration + replay header invariants |
-| `game-surface-bridge` | schema/handshake/security contract + Host + Surface conformance     |
-| Surface artifact      | 独立 test/build/contract + digest/copy + viewport E2E               |
-| `game-server-runtime` | server integration + multiplayer + replay store tests               |
-| database/schema       | migrations + real PostgreSQL integration + restart reads + shutdown |
+| 改动                    | 最低检查                                                              |
+| ----------------------- | --------------------------------------------------------------------- |
+| 单游戏 Core             | 该游戏 unit + determinism + replay fixtures + typecheck               |
+| Game manifest/client    | registry contract + client component + relevant E2E                   |
+| `game-sdk`              | 全部游戏 Core/replay + public API type tests + dependency checks      |
+| `protocol`              | protocol contract + server integration + multiplayer/E2E smoke        |
+| `game-setup`            | contract/unit + 两套 runtime integration + replay header invariants   |
+| `game-surface-bridge`   | schema/handshake/security contract + Host + Surface conformance       |
+| Surface artifact        | 独立 test/build/contract + digest/copy + viewport E2E                 |
+| `game-server-runtime`   | server integration + multiplayer + replay store tests                 |
+| database/schema         | migrations + real PostgreSQL integration + restart reads + shutdown   |
+| match/history/identity  | PostgreSQL integration + API authorization/privacy + relevant E2E     |
+| session/ticket          | auth contract + join/reconnect + security negative cases              |
+| replay format/version   | reader compatibility + all supported golden replays                   |
+| replay capability       | registry + history/API matrix + exact playback Surface                |
+| build/dependency config | full typecheck/lint/unit + affected build graph                       |
+| `tools/create-game`     | package test/typecheck/build + registry contract + root quality gates |
 
 Surface 包的独立契约门禁由 `pnpm contract-test` 进入 Turbo graph。全仓 `pnpm build` 后必须依次运行 `pnpm surface:verify` 与 `pnpm surface:publish`：前者验证所有显式发布 workspace 的 manifest、mode entrypoint 与 canonical digest，后者验证不可覆盖的 immutable 复制；相同 digest 的重复发布只能是 no-op，不得重写目标文件。
 
 Web iframe Host 的组件测试至少验证 sandbox 不含 same-origin/form/popup/top-navigation 权限，静态路径具备 immutable/CORS/CSP headers 且绕过 session proxy；Web production build 必须实际加载 `next.config.ts`，防止只在测试对象中成立而部署配置无效。握手、nonce、非法消息、重复 intent、timeout、retry 与 dispose 继续由 `game-surface-bridge` 的 fake-channel contract tests 覆盖。
-| match/history/identity | PostgreSQL integration + API authorization/privacy + relevant E2E |
-| session/ticket | auth contract + join/reconnect + security negative cases |
-| replay format/version | reader compatibility + all supported golden replays |
-| replay capability | registry + history/API matrix + exact playback Surface |
-| build/dependency config | full typecheck/lint/unit + affected build graph |
-| `tools/create-game` | package test/typecheck/build + registry contract + root quality gates |
+
+Workbench contract tests必须覆盖 Setup/Play/Replay mode、active/terminal projected payload 的 strict Bridge parse、敏感 key 扫描、完整 viewport 矩阵及 `surfaceArtifact: false`/唯一 workspace dependency。其 `test`、`typecheck`、`build` 与 `contract-test` 均可在不启动 Next 或 Game Server 时独立运行。
 
 ## 12. Root Commands
 

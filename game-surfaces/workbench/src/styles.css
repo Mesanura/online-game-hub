@@ -1,0 +1,275 @@
+:root {
+  color: #3d332e;
+  font-family:
+    Inter,
+    ui-rounded,
+    "Segoe UI",
+    system-ui,
+    -apple-system,
+    sans-serif;
+  font-synthesis: none;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  background: #fff7ed;
+  margin: 0;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+button {
+  background: #fffaf4;
+  border: 1px solid #d9a66c;
+  border-radius: 0.75rem;
+  color: #604937;
+  cursor: pointer;
+  font-weight: 750;
+  min-height: 2.65rem;
+  padding: 0.55rem 0.9rem;
+}
+
+button:hover {
+  background: #ffe1bf;
+}
+
+.workbench {
+  display: grid;
+  gap: 1rem;
+  min-height: 100dvh;
+  padding: clamp(0.75rem, 2vw, 1.5rem);
+}
+
+.workbench-header,
+.control-panel,
+.preview-section,
+.event-log {
+  background: #fffaf4;
+  border: 1px solid #ead1b6;
+  border-radius: 1.25rem;
+  box-shadow: 0 0.65rem 1.5rem rgb(112 70 36 / 12%);
+}
+
+.workbench-header {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  padding: 1rem 1.25rem;
+}
+
+.workbench-header h1,
+.event-log h2 {
+  margin: 0;
+}
+
+.workbench-header p {
+  color: #796759;
+  margin: 0.25rem 0 0;
+}
+
+.eyebrow {
+  color: #0f766e !important;
+  font-size: 0.72rem;
+  font-weight: 850;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.status-pill {
+  background: #ede7df;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  font-weight: 800;
+  padding: 0.55rem 0.8rem;
+}
+
+.status-pill[data-state="ready"] {
+  background: #d7f4e8;
+  color: #116149;
+}
+
+.status-pill[data-state="failed"] {
+  background: #ffe0dc;
+  color: #a23b32;
+}
+
+.control-panel {
+  display: grid;
+  gap: 1rem;
+  padding: 1rem;
+}
+
+.url-row {
+  align-items: end;
+  display: grid;
+  gap: 0.6rem;
+  grid-template-columns: auto minmax(16rem, 1fr) auto;
+}
+
+.url-row label,
+.control-grid label {
+  color: #796759;
+  display: grid;
+  font-size: 0.76rem;
+  font-weight: 800;
+  gap: 0.35rem;
+}
+
+input,
+select {
+  background: white;
+  border: 1px solid #d7beaa;
+  border-radius: 0.65rem;
+  color: #3d332e;
+  min-height: 2.65rem;
+  padding: 0.45rem 0.65rem;
+}
+
+.control-grid {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.check-control {
+  align-items: center;
+  display: flex !important;
+  flex-direction: row;
+  min-height: 2.65rem;
+}
+
+.check-control input {
+  min-height: auto;
+}
+
+.action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+}
+
+.preview-section {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: minmax(0, 1fr) minmax(16rem, 22rem);
+  min-height: 32rem;
+  overflow: hidden;
+  padding: 1rem;
+}
+
+.preview-scroll {
+  background: #e9dfd5;
+  border-radius: 0.85rem;
+  min-height: 0;
+  overflow: auto;
+  padding: 1rem;
+}
+
+.preview-shell {
+  background: #f6d3a6;
+  border: 1px solid #d9a66c;
+  border-radius: 0.75rem;
+  box-shadow: 0 0.4rem 1rem rgb(88 57 34 / 18%);
+  max-width: none;
+  overflow: hidden;
+  position: relative;
+}
+
+.preview-shell:fullscreen,
+.preview-shell.is-focus-mode {
+  border: 0;
+  border-radius: 0;
+  height: 100dvh !important;
+  inset: 0;
+  width: 100vw !important;
+}
+
+.preview-shell.is-focus-mode {
+  position: fixed;
+  z-index: 100;
+}
+
+.surface-frame {
+  border: 0;
+  display: block;
+  height: 100%;
+  width: 100%;
+}
+
+.empty-preview {
+  align-items: center;
+  color: #796759;
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 1rem;
+  position: absolute;
+  text-align: center;
+}
+
+.event-log {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.event-log-heading {
+  align-items: center;
+  border-bottom: 1px solid #ead1b6;
+  display: flex;
+  justify-content: space-between;
+  padding: 0.75rem;
+}
+
+.event-log h2 {
+  font-size: 1rem;
+}
+
+.event-log ol {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  list-style: none;
+  margin: 0;
+  max-height: 42rem;
+  overflow: auto;
+  padding: 0.75rem;
+}
+
+.event-log li {
+  background: #f4ede5;
+  border-radius: 0.55rem;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 0.72rem;
+  overflow-wrap: anywhere;
+  padding: 0.55rem;
+}
+
+@media (max-width: 900px) {
+  .control-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .preview-section {
+    grid-template-columns: 1fr;
+  }
+
+  .url-row {
+    align-items: stretch;
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+  }
+}

@@ -182,6 +182,8 @@ V1 Host 只创建不含 `allow-same-origin` 的 sandboxed iframe，按能力最�
 
 `game-surface-bridge` 的公开 JavaScript helper 由两端组成：平台使用 `SurfaceBridgeHost.start/retry/send/reportSurfaceCrash/dispose` 驱动 `idle → loading → ready | failed → disposed` 生命周期；Surface 使用 `GameSurfaceBridge.start/send/dispose` 接收单次握手并绑定专用 port。握手传输或 port 发送抛错一律 fail closed；失败实例必须由 Host 显式 `retry` 创建新 nonce 和新 channel。非 JavaScript Surface 可直接按同一 strict JSON schema 实现，不依赖 helper。
 
+`game-surfaces/workbench` 是显式 `surfaceArtifact: false` 的非发布 Host 工具，只依赖 Bridge，不依赖 Next、Game Server 或具体游戏。它可加载任意 HTTP(S) Surface dev URL，并以安全 projected fixtures覆盖 Setup、回合制 Play、Realtime Play 与 Replay；开发者可切换连接/只读/终局/reduced-motion、推进 revision/setupRevision/tick、选择完整验收 viewport，并验证 fullscreen/focus mode 与 intent accepted/rejected/stale 结果。Fixture 与 conformance tests 必须继续通过 Bridge sensitive-key 拒绝规则。
+
 Host 只发送 mode、game/version、locale、reduced-motion、最新 projected View、平台连接/只读/round/revision/tick 状态、viewport/fullscreen、intent 结果和 dispose。Surface 只发送 Setup Action、回合制 Action 或 realtime Input intent，以及无敏感数据的 ready/error/diagnostic。Host SDK 才能补充 command ID、round、expected revision、input sequence 和 transport envelope；Surface 不接触 ticket、session、actor、raw State、RNG、canonical replay 或 WebSocket。
 
 ### 7.3 Game-defined Round Setup
