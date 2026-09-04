@@ -259,6 +259,62 @@ describe("RealtimeGameClientHost", () => {
     expect(room.sent.at(-1)?.payload).not.toHaveProperty("protocolVersion");
   });
 
+  it("accepts a V6 waiting lifecycle before the second realtime player joins", async () => {
+    const room = new FakeRoom();
+    const client: RealtimeTransportClient = {
+      async create() {
+        return room;
+      },
+      async join() {
+        return room;
+      },
+    };
+    const host = new RealtimeGameClientHost({
+      gameServerUrl: "http://127.0.0.1:2567",
+      ticketProvider: async () => "ticket",
+      transport: { createClient: () => client },
+      setupProtocol: SETUP_PROTOCOL_VERSION,
+    });
+    await host.createRoom("pong", { targetScore: 3 });
+    room.emit(SERVER_PROTOCOL_MESSAGE, connectedV6());
+    const waiting = lifecycleV6(false);
+    room.emit(ROOM_CONTROL_MESSAGE, {
+      ...waiting,
+      nextRound: {
+        ...waiting.nextRound,
+        setupView: {
+          ...waiting.nextRound?.setupView,
+          participantSlotIds: ["slot-left"],
+        },
+        readiness: {
+          canReady: false,
+          selfReady: false,
+          readySlotIds: [],
+          requiredSlotIds: ["slot-left"],
+        },
+      },
+      players: [
+        { slotId: "slot-left", occupied: true, online: true, ready: false },
+        {
+          slotId: "slot-right",
+          occupied: false,
+          online: false,
+          ready: false,
+        },
+      ],
+    });
+
+    expect(host.getState()).toMatchObject({
+      connectionState: "connected",
+      error: null,
+      roomLifecycle: {
+        nextRound: {
+          readiness: { requiredSlotIds: ["slot-left"] },
+        },
+      },
+    });
+  });
+
   it("pins a discovered V6 generation through reconnect and resets create to its default", async () => {
     const firstRoom = new FakeRoom();
     const reconnectedRoom = new FakeRoom();

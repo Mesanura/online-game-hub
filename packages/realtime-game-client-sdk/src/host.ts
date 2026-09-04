@@ -608,7 +608,13 @@ export class RealtimeGameClientHost<View = unknown, Outcome = unknown> {
       (("requiredPlayerCount" in lifecycle.nextRound &&
         lifecycle.nextRound.requiredPlayerCount !== 2) ||
         ("readiness" in lifecycle.nextRound &&
-          lifecycle.nextRound.readiness.requiredSlotIds.length !== 2))
+          (lifecycle.nextRound.readiness.requiredSlotIds.length > 2 ||
+            lifecycle.nextRound.readiness.requiredSlotIds.some(
+              (slotId) =>
+                !lifecycle.players?.some(
+                  (player) => player.slotId === slotId && player.occupied,
+                ),
+            ))))
     ) {
       this.#failProtocol();
       return;
