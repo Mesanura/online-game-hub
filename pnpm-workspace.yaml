@@ -2,6 +2,7 @@ packages:
   - apps/*
   - packages/*
   - games/*
+  - game-surfaces/*
   - tooling/*
   - tools/*
 allowBuilds:

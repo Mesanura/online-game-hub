@@ -6,6 +6,15 @@
       "inputs": ["$TURBO_DEFAULT$", "../../tsconfig.base.json"],
       "outputs": ["dist/**"]
     },
+    "contract-test": {
+      "dependsOn": ["^build"],
+      "inputs": ["$TURBO_DEFAULT$"],
+      "outputs": []
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true
+    },
     "test": {
       "dependsOn": ["^build"],
       "inputs": ["$TURBO_DEFAULT$"],

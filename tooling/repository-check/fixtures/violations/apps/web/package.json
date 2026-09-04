@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "@fixture/game-sdk": "workspace:*"
+    "@fixture/game-sdk": "workspace:*",
+    "@fixture/surface-alpha": "workspace:*"
   }
 }

@@ -268,6 +268,8 @@ interface GameClientModule<View, Action> {
 
 新表现层位于独立 `game-surfaces/<game-id>` workspace，可自行选择 React、Vue、Svelte、Phaser、Canvas、WebGL、WASM 或其他浏览器技术；契约不是 React component。每个 Surface 独立提供 dev/build/test/contract-test，并输出通过 `SurfaceArtifactManifestV1` 校验的静态 artifact：Setup 与 Play entrypoint 必填，Replay entrypoint 只在 `player-playback` 时需要。
 
+发布型 Surface 在 package manifest 中声明 `onlineGameHub.surfaceArtifact: true`，把 `surface.manifest.json` 与 `setup/`、`play/`、可选 `replay/` 输出到 `dist`。`pnpm surface:verify` 检查 schema、gameId、mode 目录、entrypoint 和 canonical digest；`pnpm surface:publish` 只把校验通过的内容幂等复制到 Web 静态目录，并拒绝同一 `surfaceVersion` 的内容漂移。Workbench 等不发布 artifact 的 workspace 必须显式声明 `false`，不能靠缺失 manifest 被静默跳过。
+
 Surface 只实现 `@online-game-hub/game-surface-bridge` 的 JSON 消息协议。它解析 projected payload、渲染全部游戏专属信息并发送最小 intent；不得读取 Core、ticket、session、actor、raw State、RNG、canonical replay 或 WebSocket。平台 HUD 不解释比分、棋子、阵营、当前回合、排名或 Outcome。
 
 JavaScript Surface 可选用 `GameSurfaceBridge` helper：实例只接受指定 parent window/origin 的一次 `host.hello`，随后只通过移交的 `MessagePort` 收发 strict message，并在 timeout、非法消息或 dispose 后关闭。平台侧 `SurfaceBridgeHost` 在 ready 前拒绝发消息，负责 timeout/crash/retry 与重复 `clientIntentId` 抑制。两者都是 transport helper，不解释游戏 intent，也不补写 command ID、actor、round、revision 或 input sequence；这些仍只属于平台 Host SDK。

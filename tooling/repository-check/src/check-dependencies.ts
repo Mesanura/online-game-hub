@@ -6,7 +6,14 @@ import { pathToFileURL } from "node:url";
 
 import ts from "typescript";
 
-const WORKSPACE_PARENTS = ["apps", "packages", "games", "tooling", "tools"];
+const WORKSPACE_PARENTS = [
+  "apps",
+  "packages",
+  "games",
+  "game-surfaces",
+  "tooling",
+  "tools",
+];
 const SOURCE_EXTENSIONS = new Set([
   ".cjs",
   ".cts",
@@ -30,7 +37,9 @@ const IGNORED_DIRECTORIES = new Set([
 ]);
 const PLATFORM_PACKAGES_WITHOUT_GAME_DEPENDENCIES = new Set([
   "packages/game-sdk",
+  "packages/game-setup",
   "packages/game-server-runtime",
+  "packages/game-surface-bridge",
   "packages/realtime-game-client-sdk",
   "packages/realtime-game-sdk",
   "packages/realtime-game-server-runtime",
@@ -62,6 +71,8 @@ export type DependencyViolationCode =
   | "GAME_IMPORT_OUTSIDE_REGISTRY"
   | "INVALID_PACKAGE_EXPORT"
   | "PLATFORM_TO_GAME_DEPENDENCY"
+  | "SURFACE_FORBIDDEN_DEPENDENCY"
+  | "SURFACE_SOURCE_IMPORT"
   | "UI_FORBIDDEN_DEPENDENCY"
   | "UNDECLARED_WORKSPACE_DEPENDENCY"
   | "UNEXPORTED_WORKSPACE_IMPORT";
@@ -263,6 +274,10 @@ async function listSourceFiles(directory: string): Promise<string[]> {
 
 function isGamePackage(workspacePackage: WorkspacePackage): boolean {
   return workspacePackage.relativeDir.startsWith("games/");
+}
+
+function isGameSurfacePackage(workspacePackage: WorkspacePackage): boolean {
+  return workspacePackage.relativeDir.startsWith("game-surfaces/");
 }
 
 function isGameCoreFile(
@@ -493,6 +508,28 @@ function relationViolations(
       code: "GAME_IMPORT_OUTSIDE_REGISTRY",
       file: displayPath,
       message: `${ownerPackage.name} must access concrete games only through game-registry composition.`,
+    });
+  }
+
+  if (
+    isGameSurfacePackage(ownerPackage) &&
+    targetPackage.relativeDir !== "packages/game-surface-bridge"
+  ) {
+    violations.push({
+      code: "SURFACE_FORBIDDEN_DEPENDENCY",
+      file: displayPath,
+      message: `${ownerPackage.name} must communicate through game-surface-bridge and must not ${relationship} workspace package ${targetPackage.name}.`,
+    });
+  }
+
+  if (
+    isGameSurfacePackage(targetPackage) &&
+    ownerPackage.rootDir !== targetPackage.rootDir
+  ) {
+    violations.push({
+      code: "SURFACE_SOURCE_IMPORT",
+      file: displayPath,
+      message: `${ownerPackage.name} must load ${targetPackage.name} as an immutable artifact instead of ${relationship} its source package.`,
     });
   }
 

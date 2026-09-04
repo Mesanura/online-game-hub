@@ -8,6 +8,7 @@ test-results/
 .npm-cache/
 .pnpm-store/
 /data/
+/apps/web/public/game-surfaces/
 
 .env
 .env.*

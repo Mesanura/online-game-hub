@@ -174,6 +174,8 @@ Realtime simulation 使用固定整数单位和单调 server tick；实际 wall 
 
 `game-surfaces/<game-id>` 各自拥有 `dev`、`build`、`test` 与 `contract-test`。构建输出由 `SurfaceArtifactManifestV1` 描述：`schemaVersion`、`gameId`、`supportedGameVersions`、独立 `surfaceVersion`、`bridgeVersion`、Setup/Play/可选 Replay HTML entrypoint、浏览器能力和内容摘要。CI 校验摘要与版本漂移后，把未提交的 `dist` 复制到 `/game-surfaces/<gameId>/<surfaceVersion>/<mode>/`；版本化资源使用 immutable cache，registry 回滚只切换引用，绝不覆盖 artifact。
 
+每个 `game-surfaces/*/package.json` 必须显式声明 `onlineGameHub.surfaceArtifact: true | false`；只有 Workbench 等非发布工具可以是 `false`。发布 artifact 的 `dist/surface.manifest.json` 不参与自身摘要；其余文件按 POSIX 相对路径排序，以 `online-game-hub-surface-artifact-v1` 域分隔、路径字节数、路径、内容字节数和原始内容做 canonical SHA-256。Setup/Play/Replay entrypoint 必须分别位于同名 mode 目录。发布工具允许相同摘要的幂等重试，但拒绝覆盖同一 gameId/surfaceVersion 下不同摘要的已有内容。
+
 V1 Host 只创建不含 `allow-same-origin` 的 sandboxed iframe，按能力最小开放 scripts 与 pointer lock。静态路径不读取登录态，并为 opaque origin 模块加载提供 CORS；CSP 默认 `connect-src 'none'`，素材随 artifact 发布。首个 window `postMessage` 仅携带一次性 nonce 并移交 `MessageChannel`，之后双方只监听专用 port。Host 校验 iframe window、nonce、bridge version 和每条 strict schema；10 秒未 ready、Surface crash 或非法消息进入可重试错误态，且不会提交 intent。
 
 `game-surface-bridge` 的公开 JavaScript helper 由两端组成：平台使用 `SurfaceBridgeHost.start/retry/send/reportSurfaceCrash/dispose` 驱动 `idle → loading → ready | failed → disposed` 生命周期；Surface 使用 `GameSurfaceBridge.start/send/dispose` 接收单次握手并绑定专用 port。握手传输或 port 发送抛错一律 fail closed；失败实例必须由 Host 显式 `retry` 创建新 nonce 和新 channel。非 JavaScript Surface 可直接按同一 strict JSON schema 实现，不依赖 helper。

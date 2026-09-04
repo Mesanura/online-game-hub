@@ -1,4 +1,7 @@
-import type { SurfaceArtifactManifestV1 } from "@online-game-hub/game-surface-bridge";
+import type {
+  SurfaceArtifactManifestV1,
+  SurfaceMode,
+} from "@online-game-hub/game-surface-bridge";
 
 import { gameCatalog } from "./catalog.js";
 
@@ -17,6 +20,15 @@ export interface GameDeploymentRegistration {
   readonly gameVersion: string;
   readonly setupProtocol: SetupProtocolGeneration;
   readonly presentation: GamePresentationRegistration;
+}
+
+export interface ResolvedSurfaceEntrypoint {
+  readonly gameId: string;
+  readonly gameVersion: string;
+  readonly surfaceVersion: string;
+  readonly mode: SurfaceMode;
+  readonly url: string;
+  readonly artifact: SurfaceArtifactManifestV1;
 }
 
 const legacy = (
@@ -62,4 +74,38 @@ export function resolveCurrentGameDeployment(
   return manifest === undefined
     ? undefined
     : resolveGameDeployment(manifest.id, manifest.gameVersion);
+}
+
+export function resolveSurfaceEntrypoint(
+  registration: GameDeploymentRegistration,
+  mode: SurfaceMode,
+): ResolvedSurfaceEntrypoint | undefined {
+  if (registration.presentation.kind !== "surface-v1") return undefined;
+  const { artifact, publicBasePath } = registration.presentation;
+  if (!artifact.supportedGameVersions.includes(registration.gameVersion)) {
+    return undefined;
+  }
+  const entrypoint = artifact.entrypoints[mode];
+  if (entrypoint === undefined) return undefined;
+  const basePath = publicBasePath.replace(/\/+$/u, "");
+  if (basePath.length === 0) return undefined;
+  return Object.freeze({
+    gameId: registration.gameId,
+    gameVersion: registration.gameVersion,
+    surfaceVersion: artifact.surfaceVersion,
+    mode,
+    url: `${basePath}/${entrypoint}`,
+    artifact,
+  });
+}
+
+export function resolveGameSurfaceEntrypoint(
+  gameId: string,
+  gameVersion: string,
+  mode: SurfaceMode,
+): ResolvedSurfaceEntrypoint | undefined {
+  const registration = resolveGameDeployment(gameId, gameVersion);
+  return registration === undefined
+    ? undefined
+    : resolveSurfaceEntrypoint(registration, mode);
 }

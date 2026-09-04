@@ -100,8 +100,9 @@ packages/
   game-client-sdk/     浏览器连接与游戏 Client Module 合约
   game-registry/       游戏的显式 catalog 与解析
   database/            PostgreSQL schema、migration 和持久化适配器
+game-surfaces/         独立构建的游戏画面与 Surface Workbench
 games/                 每个游戏独立的 manifest、Core、Client 和测试
-tooling/               仓库检查、E2E 与测试工具
+tooling/               仓库检查、Surface artifact 发布、E2E 与测试工具
 tools/create-game/     新游戏机械骨架生成器
 ```
 

@@ -32,6 +32,8 @@ test("fixtures prove every M1 dependency boundary fails closed", async () => {
   assert.ok(codes.has("INVALID_PACKAGE_EXPORT"));
   assert.ok(codes.has("UNEXPORTED_WORKSPACE_IMPORT"));
   assert.ok(codes.has("CYCLIC_DEPENDENCY"));
+  assert.ok(codes.has("SURFACE_FORBIDDEN_DEPENDENCY"));
+  assert.ok(codes.has("SURFACE_SOURCE_IMPORT"));
 
   for (const platformPackage of [
     "game-sdk",
@@ -79,6 +81,14 @@ test("fixtures prove every M1 dependency boundary fails closed", async () => {
     /@fixture\/beta must access concrete games only through game-registry composition/u,
   );
   assert.match(messages, /@fixture\/game-sdk\/src\/private\.js/u);
+  assert.match(
+    messages,
+    /@fixture\/surface-alpha must communicate through game-surface-bridge/u,
+  );
+  assert.match(
+    messages,
+    /@fixture\/web must load @fixture\/surface-alpha as an immutable artifact/u,
+  );
 });
 
 test("framework and browser-test generated directories are not source", async () => {

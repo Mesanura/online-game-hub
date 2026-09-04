@@ -10,6 +10,9 @@ import {
 import {
   resolveCurrentGameDeployment,
   resolveGameDeployment,
+  resolveGameSurfaceEntrypoint,
+  resolveSurfaceEntrypoint,
+  type GameDeploymentRegistration,
 } from "../src/deployment.js";
 import {
   resolveCurrentGameDefinition,
@@ -97,6 +100,49 @@ describe("explicit game registry", () => {
         resolveGameManifest(manifest.id, `${manifest.gameVersion}-unknown`),
       ).toBeUndefined();
     }
+  });
+
+  it("resolves Surface artifacts by exact game, version and mode", () => {
+    const registration: GameDeploymentRegistration = {
+      gameId: "fixture-game",
+      gameVersion: "1.0.0",
+      setupProtocol: 6,
+      presentation: {
+        kind: "surface-v1",
+        publicBasePath: "/game-surfaces/fixture-game/2.0.0/",
+        artifact: {
+          schemaVersion: 1,
+          gameId: "fixture-game",
+          supportedGameVersions: ["1.0.0"],
+          surfaceVersion: "2.0.0",
+          bridgeVersion: 1,
+          entrypoints: {
+            setup: "setup/index.html",
+            play: "play/index.html",
+          },
+          capabilities: {},
+          contentDigest: `sha256-${"A".repeat(43)}=`,
+        },
+      },
+    };
+
+    expect(resolveSurfaceEntrypoint(registration, "setup")).toMatchObject({
+      gameId: "fixture-game",
+      gameVersion: "1.0.0",
+      surfaceVersion: "2.0.0",
+      mode: "setup",
+      url: "/game-surfaces/fixture-game/2.0.0/setup/index.html",
+    });
+    expect(resolveSurfaceEntrypoint(registration, "replay")).toBeUndefined();
+    expect(
+      resolveSurfaceEntrypoint(
+        { ...registration, gameVersion: "1.1.0" },
+        "play",
+      ),
+    ).toBeUndefined();
+    expect(
+      resolveGameSurfaceEntrypoint("tic-tac-toe", "1.1.0", "play"),
+    ).toBeUndefined();
   });
 
   it("selects each explicitly registered current definition for new rooms", () => {

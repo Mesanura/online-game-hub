@@ -11,6 +11,7 @@
   },
   "scripts": {
     "build": "turbo run build",
+    "contract-test": "turbo run contract-test",
     "create-game": "node tools/create-game/src/cli.ts",
     "deps:check": "node tooling/repository-check/src/check-dependencies.ts",
     "db:check": "pnpm --filter @online-game-hub/database db:check",
@@ -19,6 +20,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "pnpm format:check && eslint . --max-warnings 0 && pnpm docs:check && pnpm deps:check",
+    "surface:publish": "turbo run build --filter=@online-game-hub/surface-artifact && node tooling/surface-artifact/src/cli.ts publish",
+    "surface:verify": "turbo run build --filter=@online-game-hub/surface-artifact && node tooling/surface-artifact/src/cli.ts verify",
     "test": "turbo run test",
     "test:database": "turbo run build --filter=@online-game-hub/game-server && pnpm --filter @online-game-hub/database test:database && pnpm --filter @online-game-hub/game-server test:database",
     "test:integration": "pnpm --filter @online-game-hub/game-server test:integration",
