@@ -276,7 +276,7 @@ describe("in-memory realtime room store", () => {
     const store = new InMemoryRealtimeRoomStore();
     await expect(
       store.create({ ...storedRoom, setupProtocol: 7 } as never),
-    ).rejects.toThrow("Invalid realtime room setup protocol");
+    ).rejects.toThrow("Invalid realtime room");
 
     await store.create(storedRoom);
     const firstRead = await store.getByRoomCode(" abcd2345 ");
@@ -294,7 +294,7 @@ describe("in-memory realtime room store", () => {
     });
     await expect(
       store.save({ ...storedRoom, setupProtocol: 7 } as never),
-    ).rejects.toThrow("Invalid realtime room setup protocol");
+    ).rejects.toThrow("Invalid realtime room");
     await expect(store.getByRoomCode("ABCD2345")).resolves.toMatchObject({
       setupProtocol: 5,
     });
@@ -304,6 +304,18 @@ describe("in-memory realtime room store", () => {
       roomId: "runtime-room-2",
       roomCode: "EFGH2345",
       setupProtocol: 6,
+      nextRoundSetup: {
+        schemaVersion: 1,
+        setupState: { starter: "UNSELECTED" },
+        setupRevision: 0,
+        setupRng: {
+          algorithm: "fnv1a32-counter-v1",
+          seed: "setup-seed",
+          cursor: 0,
+        },
+        readySlotIds: [],
+        finalizedSetup: null,
+      },
     } as const;
     await store.create(v6Room);
     await store.save(v6Room);

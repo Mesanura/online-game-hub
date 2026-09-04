@@ -141,6 +141,12 @@ export function createGameServer(
       resolveCurrentRealtimeGameDefinition,
     resolveDefinition:
       options.resolveRealtimeDefinition ?? resolveRealtimeGameDefinition,
+    resolveRoundSetupDefinition:
+      options.resolveRoundSetupDefinition ?? resolveRoundSetupDefinition,
+    resolveSetupProtocol:
+      options.resolveSetupProtocol ??
+      ((gameId, gameVersion) =>
+        resolveGameDeployment(gameId, gameVersion)?.setupProtocol),
     replayStore: realtimeReplayStore,
     roomStore: realtimeRoomStore,
     ...(options.realtimeMatchArchive === undefined

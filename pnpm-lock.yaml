@@ -573,6 +573,9 @@ importers:
       '@colyseus/core':
         specifier: 0.18.10
         version: 0.18.10(@colyseus/better-call@1.3.3(zod@4.4.3))(@colyseus/schema@5.0.23(typescript@6.0.3))(@colyseus/ws-transport@0.18.2)(express@5.2.1)(zod@4.4.3)
+      '@online-game-hub/game-setup':
+        specifier: workspace:*
+        version: link:../game-setup
       '@online-game-hub/protocol':
         specifier: workspace:*
         version: link:../protocol

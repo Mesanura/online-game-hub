@@ -3,6 +3,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { CloseCode, Room, ServerError } from "@colyseus/core";
 import type { Client } from "@colyseus/core";
 import {
+  GAME_SETUP_MESSAGE,
   PROTOCOL_VERSION,
   REALTIME_GAME_ROOM_NAME,
   REALTIME_INPUT_MESSAGE,
@@ -10,14 +11,20 @@ import {
   REALTIME_SERVER_MESSAGE,
   ROOM_CONTROL_MESSAGE,
   SERVER_PROTOCOL_MESSAGE,
+  SETUP_PROTOCOL_VERSION,
   createGameRoomRequestSchema,
+  createGameRoomRequestV6Schema,
+  gameRoomRequestV6Schema,
   gameRoomRequestSchema,
+  gameSetupCommandSchema,
   realtimeInputCommandSchema,
   roomControlCommandSchema,
+  roomControlCommandV6Schema,
   setupProtocolGenerationSchema,
 } from "@online-game-hub/protocol";
 import type {
   CommandRejected,
+  CommandRejectedV6,
   ProtocolErrorCode,
   RealtimeErrorCode,
   RealtimeInputCommand,
@@ -25,9 +32,28 @@ import type {
   RealtimeSnapshot,
   RoomCloseReason,
   RoomConnected,
+  RoomConnectedV6,
+  RoomControlCommandV6,
   RoomLifecycleState,
+  RoomLifecycleStateV6,
   SetupProtocolGeneration,
 } from "@online-game-hub/protocol";
+import {
+  applyRoundSetupAction,
+  createSetupRng,
+  finalizeRoundSetup,
+  getRoundSetupReadiness,
+  initializeRoundSetupCoordinator,
+  projectRoundSetupView,
+  setRoundSetupReady,
+} from "@online-game-hub/game-setup";
+import type {
+  FinalizedRoundSetup,
+  RoundSetupCoordinatorState,
+  SetupJsonValue,
+  SetupSlot,
+  UnknownRoundSetupDefinition,
+} from "@online-game-hub/game-setup";
 import {
   REALTIME_RNG_ALGORITHM_V1,
   createRealtimeRng,
@@ -704,6 +730,9 @@ export interface RealtimeTicketVerification {
   readonly status: "verified";
   readonly playerSessionId: string;
   readonly userId: string | null;
+  readonly claims: {
+    readonly protocolVersion: SetupProtocolGeneration;
+  };
 }
 
 export interface RealtimeTicketRejection {
@@ -733,6 +762,7 @@ export interface RealtimeRuntimeClock {
 export interface RealtimeRuntimeIdSource {
   createRoomCode(): string;
   createReplayId(): string;
+  createSetupRngSeed(): string;
   createRngSeed(): string;
   createPlayerSlotId(index: number): RealtimePlayerSlotId;
 }
@@ -753,6 +783,7 @@ export const secureRealtimeRuntimeIdSource: RealtimeRuntimeIdSource = {
       .join("");
   },
   createReplayId: () => randomUUID(),
+  createSetupRngSeed: () => randomBytes(32).toString("base64url"),
   createRngSeed: () => randomBytes(32).toString("base64url"),
   createPlayerSlotId: (index) =>
     defineRealtimePlayerSlotId(
@@ -798,7 +829,94 @@ export interface RealtimeStoredRoom {
   readonly initialConfig: JsonValue;
   readonly players: readonly RealtimeStoredPlayerSlot[];
   readonly currentRound: RealtimeStoredRound | null;
+  /** Present while a Protocol V6 room offers setup for its next round. */
+  readonly nextRoundSetup?: RoundSetupCoordinatorState;
+  /** Present after a Protocol V6 room has started at least one round. */
+  readonly previousFinalizedSetup?: FinalizedRoundSetup;
   readonly closeReason: RoomCloseReason | null;
+}
+
+function validFinalizedSetup(
+  setup: FinalizedRoundSetup,
+  players: readonly RealtimeStoredPlayerSlot[],
+): boolean {
+  const participants = setup.participantSlotIds;
+  const occupied = new Set(
+    players
+      .filter((player) => player.playerSessionId !== null)
+      .map((player) => player.slotId),
+  );
+  const assignmentSlots = setup.assignments.map((entry) => entry.slotId);
+  return (
+    isJsonValue(setup.config) &&
+    participants.length > 0 &&
+    new Set(participants).size === participants.length &&
+    participants.every((slotId) => occupied.has(slotId)) &&
+    setup.playerOrder.length === participants.length &&
+    new Set(setup.playerOrder).size === setup.playerOrder.length &&
+    setup.playerOrder.every((slotId) => participants.includes(slotId)) &&
+    assignmentSlots.length === participants.length &&
+    new Set(assignmentSlots).size === assignmentSlots.length &&
+    assignmentSlots.every((slotId) => participants.includes(slotId)) &&
+    setup.assignments.every(
+      (entry) =>
+        entry.assignment === null ||
+        (typeof entry.assignment === "string" && entry.assignment.length > 0),
+    )
+  );
+}
+
+function validRoundSetup(
+  setup: RoundSetupCoordinatorState,
+  players: readonly RealtimeStoredPlayerSlot[],
+): boolean {
+  const slotIds = new Set(players.map((player) => player.slotId));
+  return (
+    setup.schemaVersion === 1 &&
+    isJsonValue(setup.setupState) &&
+    Number.isSafeInteger(setup.setupRevision) &&
+    setup.setupRevision >= 0 &&
+    setup.setupRng.algorithm === "fnv1a32-counter-v1" &&
+    setup.setupRng.seed.length > 0 &&
+    Number.isSafeInteger(setup.setupRng.cursor) &&
+    setup.setupRng.cursor >= 0 &&
+    new Set(setup.readySlotIds).size === setup.readySlotIds.length &&
+    setup.readySlotIds.every((slotId) => slotIds.has(slotId)) &&
+    (setup.finalizedSetup === null ||
+      validFinalizedSetup(setup.finalizedSetup, players))
+  );
+}
+
+function validRealtimeStoredRoom(room: RealtimeStoredRoom): boolean {
+  const setupProtocol = setupProtocolGenerationSchema.safeParse(
+    room.setupProtocol,
+  );
+  if (!setupProtocol.success || !isJsonValue(room.initialConfig)) return false;
+  if (room.setupProtocol === PROTOCOL_VERSION) {
+    return (
+      room.nextRoundSetup === undefined &&
+      room.previousFinalizedSetup === undefined
+    );
+  }
+  if (
+    room.nextRoundSetup !== undefined &&
+    !validRoundSetup(room.nextRoundSetup, room.players)
+  ) {
+    return false;
+  }
+  if (
+    room.previousFinalizedSetup !== undefined &&
+    !validFinalizedSetup(room.previousFinalizedSetup, room.players)
+  ) {
+    return false;
+  }
+  if (room.currentRound === null) return room.nextRoundSetup !== undefined;
+  if (room.previousFinalizedSetup === undefined) return false;
+  return (
+    room.closeReason !== null ||
+    room.currentRound.status === "active" ||
+    room.nextRoundSetup !== undefined
+  );
 }
 
 export interface RealtimeRoomStore {
@@ -811,8 +929,8 @@ export class InMemoryRealtimeRoomStore implements RealtimeRoomStore {
   readonly #rooms = new Map<string, RealtimeStoredRoom>();
 
   public async create(room: RealtimeStoredRoom): Promise<void> {
-    if (!setupProtocolGenerationSchema.safeParse(room.setupProtocol).success) {
-      throw new TypeError("Invalid realtime room setup protocol.");
+    if (!validRealtimeStoredRoom(room)) {
+      throw new TypeError("Invalid realtime room.");
     }
     if (this.#rooms.has(room.roomCode)) {
       throw new Error("Realtime room code already exists.");
@@ -822,7 +940,7 @@ export class InMemoryRealtimeRoomStore implements RealtimeRoomStore {
 
   public async save(room: RealtimeStoredRoom): Promise<void> {
     if (!setupProtocolGenerationSchema.safeParse(room.setupProtocol).success) {
-      throw new TypeError("Invalid realtime room setup protocol.");
+      throw new TypeError("Invalid realtime room.");
     }
     const existing = this.#rooms.get(room.roomCode);
     if (existing === undefined) {
@@ -830,6 +948,9 @@ export class InMemoryRealtimeRoomStore implements RealtimeRoomStore {
     }
     if (existing.setupProtocol !== room.setupProtocol) {
       throw new Error("Realtime room setup protocol cannot change.");
+    }
+    if (!validRealtimeStoredRoom(room)) {
+      throw new TypeError("Invalid realtime room.");
     }
     this.#rooms.set(room.roomCode, cloneJson(room));
   }
@@ -861,6 +982,14 @@ export interface RealtimeGameRoomDependencies {
     gameId: string,
     gameVersion: string,
   ) => UnknownRealtimeGameDefinition | undefined;
+  readonly resolveRoundSetupDefinition: (
+    gameId: string,
+    gameVersion: string,
+  ) => UnknownRoundSetupDefinition | undefined;
+  readonly resolveSetupProtocol: (
+    gameId: string,
+    gameVersion: string,
+  ) => SetupProtocolGeneration | undefined;
   readonly roomStore?: RealtimeRoomStore;
   readonly replayStore: RealtimeReplayStore;
   readonly matchArchive?: RealtimeMatchArchive;
@@ -877,7 +1006,7 @@ export interface RealtimeGameRoomMetadata {
   readonly roomCode: string;
   readonly gameId: string;
   readonly gameVersion: string;
-  readonly setupProtocol: typeof PROTOCOL_VERSION;
+  readonly setupProtocol: SetupProtocolGeneration;
 }
 
 export type RealtimeGameRoomClass = new () => Room<{
@@ -892,6 +1021,41 @@ const systemRealtimeClock: RealtimeRuntimeClock = {
   },
 };
 
+type RealtimeGameRoomRequest =
+  | ReturnType<typeof gameRoomRequestSchema.parse>
+  | ReturnType<typeof gameRoomRequestV6Schema.parse>;
+
+function requestedProtocolVersion(input: unknown): unknown {
+  return input !== null &&
+    typeof input === "object" &&
+    "protocolVersion" in input
+    ? (input as { readonly protocolVersion?: unknown }).protocolVersion
+    : undefined;
+}
+
+function parseRealtimeGameRoomRequest(
+  input: unknown,
+): RealtimeGameRoomRequest | null {
+  const schema =
+    requestedProtocolVersion(input) === SETUP_PROTOCOL_VERSION
+      ? gameRoomRequestV6Schema
+      : gameRoomRequestSchema;
+  const result = schema.safeParse(input);
+  return result.success ? result.data : null;
+}
+
+function parseRealtimeCreateRequest(
+  input: unknown,
+  setupProtocol: SetupProtocolGeneration,
+): Extract<RealtimeGameRoomRequest, { readonly type: "room.create" }> | null {
+  const schema =
+    setupProtocol === SETUP_PROTOCOL_VERSION
+      ? createGameRoomRequestV6Schema
+      : createGameRoomRequestSchema;
+  const result = schema.safeParse(input);
+  return result.success ? result.data : null;
+}
+
 function realtimeProtocolError(
   code: Extract<
     ProtocolErrorCode,
@@ -903,6 +1067,15 @@ function realtimeProtocolError(
 
 function realtimeRetryable(code: RealtimeErrorCode): boolean {
   return code === "RATE_LIMITED";
+}
+
+function protocolRetryable(code: ProtocolErrorCode): boolean {
+  return (
+    code === "STALE_REVISION" ||
+    code === "STALE_SETUP_REVISION" ||
+    code === "SETUP_NOT_READY" ||
+    code === "RATE_LIMITED"
+  );
 }
 
 export function createRealtimeGameRoomClass(
@@ -935,6 +1108,10 @@ export function createRealtimeGameRoomClass(
   }> {
     #definition: UnknownRealtimeGameDefinition | undefined;
     #initialConfig: JsonValue | undefined;
+    #setupProtocol: SetupProtocolGeneration | undefined;
+    #setupDefinition: UnknownRoundSetupDefinition | null = null;
+    #nextRoundSetup: RoundSetupCoordinatorState | null = null;
+    #previousFinalizedSetup: FinalizedRoundSetup | null = null;
     #roomCode: string | undefined;
     #creatorSessionId: string | undefined;
     #slots: Array<{
@@ -959,7 +1136,13 @@ export function createRealtimeGameRoomClass(
     #ready = new Set<string>();
     #rematchOrder: readonly RealtimePlayerSlotId[] | null = null;
     #activeBySession = new Map<string, Client>();
-    #commandOutcomes = new Map<string, CommandRejected | RoomLifecycleState>();
+    #commandOutcomes = new Map<
+      string,
+      | CommandRejected
+      | CommandRejectedV6
+      | RoomLifecycleState
+      | RoomLifecycleStateV6
+    >();
     #queue: Promise<void> = Promise.resolve();
     #scheduler: RealtimeTickScheduler | null = null;
     #terminalTimeout: { cancel(): void } | null = null;
@@ -968,6 +1151,8 @@ export function createRealtimeGameRoomClass(
     #pendingRound: {
       readonly roundNumber: number;
       readonly replayId: string;
+      readonly config: JsonValue;
+      readonly finalizedSetup: FinalizedRoundSetup | null;
       readonly playerOrder: readonly [
         RealtimePlayerSlotId,
         RealtimePlayerSlotId,
@@ -980,6 +1165,7 @@ export function createRealtimeGameRoomClass(
         JsonValue
       >;
     } | null = null;
+    #pendingNextRoundSetup: RoundSetupCoordinatorState | null = null;
     /** A simulated tick is held here until its Match/room persistence commits. */
     #pendingRoundPersistence: {
       readonly status: "active" | "completed" | "abandoned";
@@ -996,23 +1182,24 @@ export function createRealtimeGameRoomClass(
       readonly playerSessionId: string;
       readonly userId: string | null;
     }> {
-      const request = gameRoomRequestSchema.safeParse(options);
-      if (!request.success) {
+      const request = parseRealtimeGameRoomRequest(options);
+      if (request === null) {
+        const requested = requestedProtocolVersion(options);
         const unsupported =
-          options !== null &&
-          typeof options === "object" &&
-          "protocolVersion" in options &&
-          (options as { readonly protocolVersion?: unknown })
-            .protocolVersion !== PROTOCOL_VERSION;
+          requested !== PROTOCOL_VERSION &&
+          requested !== SETUP_PROTOCOL_VERSION;
         throw realtimeProtocolError(
           unsupported ? "PROTOCOL_VERSION_UNSUPPORTED" : "UNAUTHENTICATED",
         );
       }
       const verification = await dependencies.ticketVerifier.verify(
-        request.data.ticket,
+        request.ticket,
       );
       if (verification.status === "rejected") {
         throw realtimeProtocolError(verification.protocolCode);
+      }
+      if (verification.claims.protocolVersion !== request.protocolVersion) {
+        throw realtimeProtocolError("PROTOCOL_VERSION_UNSUPPORTED");
       }
       return {
         playerSessionId: verification.playerSessionId,
@@ -1021,14 +1208,12 @@ export function createRealtimeGameRoomClass(
     }
 
     public override async onCreate(options: unknown): Promise<void> {
-      const request = createGameRoomRequestSchema.safeParse(options);
-      if (!request.success) {
+      const genericRequest = parseRealtimeGameRoomRequest(options);
+      if (genericRequest === null || genericRequest.type !== "room.create") {
+        const requested = requestedProtocolVersion(options);
         const unsupported =
-          options !== null &&
-          typeof options === "object" &&
-          "protocolVersion" in options &&
-          (options as { readonly protocolVersion?: unknown })
-            .protocolVersion !== PROTOCOL_VERSION;
+          requested !== PROTOCOL_VERSION &&
+          requested !== SETUP_PROTOCOL_VERSION;
         throw new ServerError(
           400,
           unsupported
@@ -1036,14 +1221,8 @@ export function createRealtimeGameRoomClass(
             : "INVALID_ACTION_PAYLOAD",
         );
       }
-      const verification = await dependencies.ticketVerifier.verify(
-        request.data.ticket,
-      );
-      if (verification.status === "rejected") {
-        throw realtimeProtocolError(verification.protocolCode);
-      }
       const definition = dependencies.resolveCurrentDefinition(
-        request.data.gameId,
+        genericRequest.gameId,
       );
       if (
         definition === undefined ||
@@ -1051,14 +1230,35 @@ export function createRealtimeGameRoomClass(
       ) {
         throw new ServerError(404, "ROOM_NOT_FOUND");
       }
+      const setupProtocol = dependencies.resolveSetupProtocol(
+        definition.manifest.id,
+        definition.manifest.gameVersion,
+      );
+      if (setupProtocol === undefined) {
+        throw new ServerError(500, "INTERNAL_ERROR");
+      }
+      const request = parseRealtimeCreateRequest(options, setupProtocol);
+      if (request === null) {
+        throw realtimeProtocolError("PROTOCOL_VERSION_UNSUPPORTED");
+      }
+      const verification = await dependencies.ticketVerifier.verify(
+        request.ticket,
+      );
+      if (verification.status === "rejected") {
+        throw realtimeProtocolError(verification.protocolCode);
+      }
+      if (verification.claims.protocolVersion !== setupProtocol) {
+        throw realtimeProtocolError("PROTOCOL_VERSION_UNSUPPORTED");
+      }
       const configResult = definition.configSchema.safeParse(
-        request.data.initialConfig,
+        request.initialConfig,
       );
       if (!configResult.success) {
         throw new ServerError(400, "INVALID_ACTION_PAYLOAD");
       }
       this.#definition = definition;
       this.#initialConfig = configResult.data;
+      this.#setupProtocol = setupProtocol;
       this.#roomCode = await this.#createRoomCode();
       this.#creatorSessionId = verification.playerSessionId;
       this.#slots = [0, 1].map((index) => ({
@@ -1068,6 +1268,37 @@ export function createRealtimeGameRoomClass(
         reservedUntilMilliseconds: null,
         timeout: null,
       }));
+      const setupDefinition =
+        setupProtocol === SETUP_PROTOCOL_VERSION
+          ? dependencies.resolveRoundSetupDefinition(
+              definition.manifest.id,
+              definition.manifest.gameVersion,
+            )
+          : null;
+      if (
+        setupProtocol === SETUP_PROTOCOL_VERSION &&
+        setupDefinition === undefined
+      ) {
+        throw new ServerError(500, "INTERNAL_ERROR");
+      }
+      this.#setupDefinition = setupDefinition ?? null;
+      if (this.#setupDefinition !== null) {
+        try {
+          this.#nextRoundSetup = initializeRoundSetupCoordinator(
+            this.#setupDefinition,
+            {
+              source: {
+                kind: "defaults",
+                config: configResult.data as SetupJsonValue,
+              },
+              slots: this.#setupSlots(false),
+            },
+            createSetupRng(ids.createSetupRngSeed()),
+          );
+        } catch {
+          throw new ServerError(500, "INTERNAL_ERROR");
+        }
+      }
       this.autoDispose = false;
       this.patchRate = null;
       // Keep a second reservation available for a same-session takeover.
@@ -1081,7 +1312,7 @@ export function createRealtimeGameRoomClass(
         roomCode: this.#roomCode,
         gameId: definition.manifest.id,
         gameVersion: definition.manifest.gameVersion,
-        setupProtocol: PROTOCOL_VERSION,
+        setupProtocol,
       });
       this.onMessage(REALTIME_INPUT_MESSAGE, (client, message: unknown) =>
         this.#enqueue(() => this.#handleInput(client, message)),
@@ -1089,6 +1320,11 @@ export function createRealtimeGameRoomClass(
       this.onMessage(ROOM_CONTROL_MESSAGE, (client, message: unknown) =>
         this.#enqueue(() => this.#handleControl(client, message)),
       );
+      if (setupProtocol === SETUP_PROTOCOL_VERSION) {
+        this.onMessage(GAME_SETUP_MESSAGE, (client, message: unknown) =>
+          this.#enqueue(() => this.#handleSetup(client, message)),
+        );
+      }
     }
 
     public override async onJoin(
@@ -1096,11 +1332,14 @@ export function createRealtimeGameRoomClass(
       options: unknown,
     ): Promise<void> {
       await this.#enqueue(async () => {
-        const request = gameRoomRequestSchema.safeParse(options);
+        const request = parseRealtimeGameRoomRequest(options);
         const definition = this.#requireDefinition();
         const session = this.#clientSession(client);
         const userId = this.#clientUserId(client);
-        if (!request.success)
+        if (
+          request === null ||
+          request.protocolVersion !== this.#requireSetupProtocol()
+        )
           throw new ServerError(400, "INVALID_ACTION_PAYLOAD");
         if (
           resolveDefinition(
@@ -1110,14 +1349,14 @@ export function createRealtimeGameRoomClass(
         ) {
           throw new ServerError(404, "ROOM_NOT_FOUND");
         }
-        if (request.data.type === "room.create") {
+        if (request.type === "room.create") {
           if (
-            request.data.gameId !== definition.manifest.id ||
+            request.gameId !== definition.manifest.id ||
             session !== this.#creatorSessionId
           ) {
             throw new ServerError(403, "NOT_A_PLAYER");
           }
-        } else if (request.data.roomCode !== this.#roomCode) {
+        } else if (request.roomCode !== this.#roomCode) {
           throw new ServerError(403, "NOT_A_PLAYER");
         }
         if (this.#closedReason !== null)
@@ -1129,7 +1368,7 @@ export function createRealtimeGameRoomClass(
           throw new ServerError(403, "NOT_A_PLAYER");
         }
         if (slot === undefined) {
-          if (this.#roundStatus !== null || request.data.type !== "room.join") {
+          if (this.#roundStatus !== null || request.type !== "room.join") {
             throw new ServerError(
               400,
               this.#roundStatus === null ? "ROOM_FULL" : "ROOM_NOT_JOINABLE",
@@ -1146,7 +1385,7 @@ export function createRealtimeGameRoomClass(
         slot.timeout = null;
         slot.reservedUntilMilliseconds = null;
         const previous = this.#activeBySession.get(session);
-        this.#ready.delete(session);
+        this.#clearReadyForSlot(slot.slotId);
         this.#activeBySession.set(session, client);
         client.userData = { session, userId, slotId: slot.slotId };
         if (previous !== undefined && previous !== client) {
@@ -1169,7 +1408,7 @@ export function createRealtimeGameRoomClass(
         if (data?.session === undefined || data.slotId === undefined) return;
         if (this.#activeBySession.get(data.session) !== client) return;
         this.#activeBySession.delete(data.session);
-        this.#ready.delete(data.session);
+        const readinessChanged = this.#clearReadyForSlot(data.slotId);
         if (this.#closedReason !== null || this.#disposed) return;
         const slot = this.#slots.find(
           (candidate) => candidate.slotId === data.slotId,
@@ -1177,6 +1416,7 @@ export function createRealtimeGameRoomClass(
         if (slot === undefined) return;
         if (code === CloseCode.CONSENTED) {
           if (this.#roundStatus === "completed") {
+            if (readinessChanged) await roomStore.save(this.#storedRoom());
             this.#broadcastLifecycle();
           } else {
             await this.#closeRoom("PLAYER_LEFT");
@@ -1184,6 +1424,7 @@ export function createRealtimeGameRoomClass(
           return;
         }
         if (this.#roundStatus === "completed") {
+          if (readinessChanged) await roomStore.save(this.#storedRoom());
           this.#broadcastLifecycle();
           return;
         }
@@ -1243,7 +1484,139 @@ export function createRealtimeGameRoomClass(
       }
     }
 
+    async #handleSetup(client: Client, raw: unknown): Promise<void> {
+      if (this.#requireSetupProtocol() !== SETUP_PROTOCOL_VERSION) {
+        this.#sendProtocolRejection(client, "PROTOCOL_VERSION_UNSUPPORTED");
+        return;
+      }
+      const parsed = gameSetupCommandSchema.safeParse(raw);
+      if (!parsed.success) {
+        this.#sendProtocolRejection(client, "INVALID_SETUP_PAYLOAD");
+        return;
+      }
+      const command = parsed.data;
+      const data = client.userData as
+        { session?: string; slotId?: RealtimePlayerSlotId } | undefined;
+      if (
+        data?.session === undefined ||
+        data.slotId === undefined ||
+        this.#activeBySession.get(data.session) !== client
+      ) {
+        this.#sendProtocolRejection(client, "NOT_A_PLAYER", command.commandId);
+        return;
+      }
+      const key = `${data.session}:${command.commandId}`;
+      const cached = this.#commandOutcomes.get(key);
+      if (cached !== undefined) {
+        this.#sendCommandOutcome(client, cached);
+        return;
+      }
+      const definition = this.#setupDefinition;
+      const coordinator = this.#nextRoundSetup;
+      const nextRoundNumber = this.#roundNumber + 1;
+      if (
+        this.#closedReason !== null ||
+        definition === null ||
+        coordinator === null ||
+        this.#roundStatus === "active" ||
+        command.roundNumber !== nextRoundNumber
+      ) {
+        this.#rejectSetupAndCache(
+          client,
+          key,
+          "SETUP_NOT_READY",
+          command.commandId,
+          coordinator?.setupRevision,
+        );
+        return;
+      }
+      const parsedAction = definition.setupActionSchema.safeParse(
+        command.action,
+      );
+      if (!parsedAction.success) {
+        this.#rejectSetupAndCache(
+          client,
+          key,
+          "INVALID_SETUP_PAYLOAD",
+          command.commandId,
+          coordinator.setupRevision,
+        );
+        return;
+      }
+      let result: ReturnType<typeof applyRoundSetupAction>;
+      try {
+        result = applyRoundSetupAction(definition, coordinator, {
+          action: parsedAction.data,
+          actorSlotId: data.slotId,
+          isOwner: data.session === this.#creatorSessionId,
+          expectedSetupRevision: command.expectedSetupRevision,
+          slots: this.#setupSlots(),
+        });
+      } catch {
+        this.#sendProtocolRejection(
+          client,
+          "INTERNAL_ERROR",
+          command.commandId,
+        );
+        return;
+      }
+      if (result.status === "stale") {
+        this.#rejectSetupAndCache(
+          client,
+          key,
+          "STALE_SETUP_REVISION",
+          command.commandId,
+          result.setupRevision,
+        );
+        return;
+      }
+      if (result.status === "rejected") {
+        if (
+          result.code === "INVALID_SETUP_ACTION" ||
+          result.code === "INVALID_SETUP_STATE" ||
+          result.code === "SETUP_REVISION_EXHAUSTED"
+        ) {
+          this.#sendProtocolRejection(
+            client,
+            "INTERNAL_ERROR",
+            command.commandId,
+          );
+          return;
+        }
+        this.#rejectSetupAndCache(
+          client,
+          key,
+          "SETUP_RULE_REJECTED",
+          command.commandId,
+          coordinator.setupRevision,
+          result.code,
+        );
+        return;
+      }
+      try {
+        await roomStore.save(
+          this.#storedRoom({ nextRoundSetup: result.coordinator }),
+        );
+      } catch {
+        this.#sendProtocolRejection(
+          client,
+          "INTERNAL_ERROR",
+          command.commandId,
+        );
+        return;
+      }
+      this.#nextRoundSetup = result.coordinator;
+      this.#pendingRound = null;
+      const lifecycle = this.#lifecycle(client, command.commandId);
+      this.#commandOutcomes.set(key, lifecycle);
+      this.#broadcastLifecycle(client, command.commandId);
+    }
+
     async #handleControl(client: Client, raw: unknown): Promise<void> {
+      if (this.#requireSetupProtocol() === SETUP_PROTOCOL_VERSION) {
+        await this.#handleControlV6(client, raw);
+        return;
+      }
       const parsed = roomControlCommandSchema.safeParse(raw);
       const data = client.userData as { session?: string } | undefined;
       if (!parsed.success || data?.session === undefined) {
@@ -1385,12 +1758,162 @@ export function createRealtimeGameRoomClass(
       this.#broadcastLifecycle(client, command.commandId);
     }
 
-    async #startRound(): Promise<void> {
-      const definition = this.#requireDefinition();
+    async #handleControlV6(client: Client, raw: unknown): Promise<void> {
+      const parsed = roomControlCommandV6Schema.safeParse(raw);
+      const data = client.userData as
+        { session?: string; slotId?: RealtimePlayerSlotId } | undefined;
+      if (
+        !parsed.success ||
+        data?.session === undefined ||
+        data.slotId === undefined
+      ) {
+        this.#sendProtocolRejection(client, "INVALID_ACTION_PAYLOAD");
+        return;
+      }
+      const command: RoomControlCommandV6 = parsed.data;
+      const key = `${data.session}:${command.commandId}`;
+      const cached = this.#commandOutcomes.get(key);
+      if (cached !== undefined) {
+        this.#sendCommandOutcome(client, cached);
+        return;
+      }
+      if (this.#activeBySession.get(data.session) !== client) {
+        this.#cacheControl(client, key, command.commandId, "NOT_A_PLAYER");
+        return;
+      }
+      if (command.operation === "CLOSE_ROOM") {
+        if (data.session !== this.#creatorSessionId) {
+          this.#cacheControl(
+            client,
+            key,
+            command.commandId,
+            "ROOM_CONTROL_NOT_ALLOWED",
+          );
+          return;
+        }
+        await this.#closeRoom("OWNER_CLOSED");
+        const lifecycle = this.#lifecycle(client, command.commandId);
+        this.#commandOutcomes.set(key, lifecycle);
+        return;
+      }
+
+      const definition = this.#setupDefinition;
+      const coordinator = this.#nextRoundSetup;
       if (
         this.#closedReason !== null ||
-        this.#starter === null ||
-        !this.#allConnected() ||
+        definition === null ||
+        coordinator === null ||
+        this.#roundStatus === "active"
+      ) {
+        this.#rejectSetupAndCache(
+          client,
+          key,
+          "SETUP_NOT_READY",
+          command.commandId,
+          coordinator?.setupRevision,
+        );
+        return;
+      }
+      const setupSlots = this.#setupSlots();
+      const ready = setRoundSetupReady(
+        definition,
+        coordinator,
+        setupSlots,
+        data.slotId,
+        command.operation === "READY_FOR_ROUND",
+      );
+      if (ready.status === "rejected") {
+        this.#rejectSetupAndCache(
+          client,
+          key,
+          "SETUP_NOT_READY",
+          command.commandId,
+          coordinator.setupRevision,
+          ready.code,
+        );
+        return;
+      }
+
+      let candidate = ready.coordinator;
+      let shouldStart = false;
+      if (command.operation === "READY_FOR_ROUND") {
+        const readiness = getRoundSetupReadiness(
+          definition,
+          candidate,
+          setupSlots,
+          data.slotId,
+        );
+        if (
+          readiness.canFinalize &&
+          readiness.requiredSlotIds.every((slotId) =>
+            readiness.readySlotIds.includes(slotId),
+          )
+        ) {
+          const finalized = finalizeRoundSetup(
+            definition,
+            candidate,
+            setupSlots,
+            this.#requireDefinition().manifest.minPlayers,
+            this.#requireDefinition().manifest.maxPlayers,
+          );
+          if (finalized.status === "rejected") {
+            this.#rejectSetupAndCache(
+              client,
+              key,
+              "SETUP_RULE_REJECTED",
+              command.commandId,
+              coordinator.setupRevision,
+              finalized.code,
+            );
+            return;
+          }
+          if (finalized.status === "finalized") {
+            candidate = finalized.coordinator;
+            shouldStart = true;
+          }
+        }
+      }
+
+      if (candidate !== coordinator) {
+        try {
+          await roomStore.save(this.#storedRoom({ nextRoundSetup: candidate }));
+        } catch {
+          this.#sendProtocolRejection(
+            client,
+            "INTERNAL_ERROR",
+            command.commandId,
+          );
+          return;
+        }
+        this.#nextRoundSetup = candidate;
+      }
+      if (shouldStart) {
+        try {
+          await this.#startRound();
+        } catch (error) {
+          dependencies.onError?.(error);
+          this.#sendProtocolRejection(
+            client,
+            "INTERNAL_ERROR",
+            command.commandId,
+          );
+          return;
+        }
+      }
+      const lifecycle = this.#lifecycle(client, command.commandId);
+      this.#commandOutcomes.set(key, lifecycle);
+      this.#broadcastLifecycle(client, command.commandId);
+      if (shouldStart) this.#broadcastSnapshots();
+    }
+
+    async #startRound(): Promise<void> {
+      const definition = this.#requireDefinition();
+      const setupProtocol = this.#requireSetupProtocol();
+      if (
+        this.#closedReason !== null ||
+        (setupProtocol === SETUP_PROTOCOL_VERSION
+          ? !this.#v6SetupReadyToStart()
+          : this.#starter === null || !this.#allConnected()) ||
         (this.#roundStatus !== null && this.#roundStatus !== "completed")
       ) {
         throw new Error(
@@ -1404,37 +1927,59 @@ export function createRealtimeGameRoomClass(
           RealtimePlayerSlotId,
           RealtimePlayerSlotId,
         ];
-        const baseOrder =
-          this.#rematchOrder === null
-            ? slots
-            : this.#rematchOrder.every((slotId) => slots.includes(slotId)) &&
-                new Set(this.#rematchOrder).size === 2
-              ? ([this.#rematchOrder[0], this.#rematchOrder[1]] as [
-                  RealtimePlayerSlotId,
-                  RealtimePlayerSlotId,
-                ])
-              : slots;
-        const ownerSlot =
-          this.#slots.find(
-            (slot) => slot.playerSessionId === this.#creatorSessionId,
-          )?.slotId ?? slots[0];
-        const otherSlot =
-          baseOrder.find((slotId) => slotId !== ownerSlot) ??
-          slots.find((slotId) => slotId !== ownerSlot) ??
-          ownerSlot;
-        const firstSlot =
-          this.#starter === "OWNER"
-            ? ownerSlot
-            : this.#starter === "NON_OWNER"
-              ? otherSlot
-              : random.nextBoolean()
-                ? ownerSlot
-                : otherSlot;
-        const firstIndex = baseOrder.indexOf(firstSlot);
-        const ordered: readonly [RealtimePlayerSlotId, RealtimePlayerSlotId] =
-          firstIndex === 0
-            ? [baseOrder[0], baseOrder[1]]
-            : [baseOrder[1], baseOrder[0]];
+        let ordered: readonly [RealtimePlayerSlotId, RealtimePlayerSlotId];
+        let config: JsonValue;
+        let finalizedSetup: FinalizedRoundSetup | null = null;
+        if (setupProtocol === SETUP_PROTOCOL_VERSION) {
+          const finalized = this.#nextRoundSetup?.finalizedSetup;
+          if (
+            finalized === null ||
+            finalized === undefined ||
+            finalized.playerOrder.length !== 2 ||
+            !isJsonValue(finalized.config)
+          ) {
+            throw new Error("Protocol V6 setup has not been finalized.");
+          }
+          ordered = [
+            finalized.playerOrder[0] as RealtimePlayerSlotId,
+            finalized.playerOrder[1] as RealtimePlayerSlotId,
+          ];
+          config = finalized.config as JsonValue;
+          finalizedSetup = finalized;
+        } else {
+          const baseOrder =
+            this.#rematchOrder === null
+              ? slots
+              : this.#rematchOrder.every((slotId) => slots.includes(slotId)) &&
+                  new Set(this.#rematchOrder).size === 2
+                ? ([this.#rematchOrder[0], this.#rematchOrder[1]] as [
+                    RealtimePlayerSlotId,
+                    RealtimePlayerSlotId,
+                  ])
+                : slots;
+          const ownerSlot =
+            this.#slots.find(
+              (slot) => slot.playerSessionId === this.#creatorSessionId,
+            )?.slotId ?? slots[0];
+          const otherSlot =
+            baseOrder.find((slotId) => slotId !== ownerSlot) ??
+            slots.find((slotId) => slotId !== ownerSlot) ??
+            ownerSlot;
+          const firstSlot =
+            this.#starter === "OWNER"
+              ? ownerSlot
+              : this.#starter === "NON_OWNER"
+                ? otherSlot
+                : random.nextBoolean()
+                  ? ownerSlot
+                  : otherSlot;
+          const firstIndex = baseOrder.indexOf(firstSlot);
+          ordered =
+            firstIndex === 0
+              ? [baseOrder[0], baseOrder[1]]
+              : [baseOrder[1], baseOrder[0]];
+          config = this.#requireConfig();
+        }
         const roundNumber = this.#roundNumber + 1;
         if (roundNumber > Number.MAX_SAFE_INTEGER) {
           throw new Error("Realtime room round number is exhausted.");
@@ -1442,21 +1987,36 @@ export function createRealtimeGameRoomClass(
         const replayId = ids.createReplayId();
         const round = await RealtimeRound.create({
           definition,
-          config: this.#requireConfig(),
+          config,
           players: ordered,
           rng: createRealtimeRng(ids.createRngSeed()),
           roundNumber,
           replayId,
           replayStore: dependencies.replayStore,
         });
-        pending = { roundNumber, replayId, playerOrder: ordered, round };
+        pending = {
+          roundNumber,
+          replayId,
+          config,
+          finalizedSetup,
+          playerOrder: ordered,
+          round,
+        };
         this.#pendingRound = pending;
       }
 
       // Archive and room persistence are intentionally retried with the same
       // pending round. This preserves replay id, seed and player order when a
       // database/archive call transiently fails.
-      const pendingRoom = this.#storedRoomForRound(pending, "active", null);
+      const pendingRoom = this.#storedRoomForRound(pending, "active", null, {
+        initialConfig: pending.config,
+        ...(setupProtocol === SETUP_PROTOCOL_VERSION
+          ? {
+              nextRoundSetup: null,
+              previousFinalizedSetup: pending.finalizedSetup,
+            }
+          : {}),
+      });
       await archive.createRound(pendingRoom);
       await roomStore.save(pendingRoom);
 
@@ -1464,12 +2024,20 @@ export function createRealtimeGameRoomClass(
       this.#roundNumber = pending.roundNumber;
       this.#replayId = pending.replayId;
       this.#playerOrder = pending.playerOrder;
+      this.#initialConfig = pending.config;
+      if (setupProtocol === SETUP_PROTOCOL_VERSION) {
+        this.#nextRoundSetup = null;
+        this.#previousFinalizedSetup = pending.finalizedSetup;
+      }
       this.#pendingRound = null;
+      this.#pendingNextRoundSetup = null;
       this.#pendingRoundPersistence = null;
       this.#roundStatus = "active";
       this.#outcome = null;
-      this.#ready.clear();
-      this.#rematchOrder = null;
+      if (setupProtocol === PROTOCOL_VERSION) {
+        this.#ready.clear();
+        this.#rematchOrder = null;
+      }
       this.#runtimeFailureHandled = false;
       this.#terminalTimeout?.cancel();
       this.#terminalTimeout = null;
@@ -1537,6 +2105,11 @@ export function createRealtimeGameRoomClass(
       ) {
         throw new Error("Realtime round persistence is not initialized.");
       }
+      const nextRoundSetup =
+        pending.status === "completed" &&
+        this.#requireSetupProtocol() === SETUP_PROTOCOL_VERSION
+          ? this.#createNextRoundSetupCandidate()
+          : null;
       const candidate = this.#storedRoomForRound(
         {
           roundNumber: this.#roundNumber,
@@ -1546,12 +2119,17 @@ export function createRealtimeGameRoomClass(
         },
         pending.status,
         pending.outcome,
+        nextRoundSetup === null ? {} : { nextRoundSetup },
       );
       await archive.saveRound(candidate);
       await roomStore.save(candidate);
 
       this.#roundStatus = pending.status;
       this.#outcome = pending.outcome;
+      if (nextRoundSetup !== null) {
+        this.#nextRoundSetup = nextRoundSetup;
+        this.#pendingNextRoundSetup = null;
+      }
       this.#pendingRoundPersistence = null;
       this.#broadcastSnapshots();
       if (pending.status === "completed") {
@@ -1627,14 +2205,18 @@ export function createRealtimeGameRoomClass(
     }
 
     #sendConnected(client: Client, slotId: RealtimePlayerSlotId): void {
-      client.send(SERVER_PROTOCOL_MESSAGE, {
+      const shared = {
         type: "room.connected",
-        protocolVersion: PROTOCOL_VERSION,
         roomCode: this.#requireRoomCode(),
         gameId: this.#requireDefinition().manifest.id,
         gameVersion: this.#requireDefinition().manifest.gameVersion,
         playerSlotId: slotId,
-      } satisfies RoomConnected);
+      } as const;
+      const message: RoomConnected | RoomConnectedV6 =
+        this.#requireSetupProtocol() === SETUP_PROTOCOL_VERSION
+          ? { ...shared, protocolVersion: SETUP_PROTOCOL_VERSION }
+          : { ...shared, protocolVersion: PROTOCOL_VERSION };
+      client.send(SERVER_PROTOCOL_MESSAGE, message);
     }
 
     #broadcastLifecycle(causingClient?: Client, commandId?: string): void {
@@ -1649,8 +2231,12 @@ export function createRealtimeGameRoomClass(
       }
     }
 
-    #lifecycle(client: Client, commandId?: string): RoomLifecycleState {
-      const data = client.userData as { session?: string } | undefined;
+    #lifecycle(
+      client: Client,
+      commandId?: string,
+    ): RoomLifecycleState | RoomLifecycleStateV6 {
+      const data = client.userData as
+        { session?: string; slotId?: RealtimePlayerSlotId } | undefined;
       const currentRound =
         this.#roundStatus === null || this.#roundNumber === 0
           ? null
@@ -1662,6 +2248,68 @@ export function createRealtimeGameRoomClass(
           currentRound.status === "abandoned");
       const nextRoundNumber =
         this.#pendingRound?.roundNumber ?? this.#roundNumber + 1;
+      if (this.#requireSetupProtocol() === SETUP_PROTOCOL_VERSION) {
+        const definition = this.#setupDefinition;
+        const coordinator = this.#nextRoundSetup;
+        if (
+          available &&
+          (definition === null ||
+            coordinator === null ||
+            data?.slotId === undefined)
+        ) {
+          throw new ServerError(500, "INTERNAL_ERROR");
+        }
+        let nextRound: RoomLifecycleStateV6["nextRound"] = null;
+        if (
+          available &&
+          definition !== null &&
+          coordinator !== null &&
+          data?.slotId !== undefined
+        ) {
+          const setupView = projectRoundSetupView(
+            definition,
+            coordinator,
+            this.#setupSlots(),
+            { kind: "player", slotId: data.slotId },
+          );
+          const readiness = getRoundSetupReadiness(
+            definition,
+            coordinator,
+            this.#setupSlots(),
+            data.slotId,
+          );
+          nextRound = {
+            roundNumber: nextRoundNumber,
+            setupRevision: coordinator.setupRevision,
+            setupView,
+            readiness: {
+              canReady: readiness.canReady,
+              selfReady: readiness.selfReady,
+              readySlotIds: [...readiness.readySlotIds],
+              requiredSlotIds: [...readiness.requiredSlotIds],
+            },
+          };
+        }
+        const readySlotIds = new Set(coordinator?.readySlotIds ?? []);
+        return {
+          type: "room.lifecycle",
+          protocolVersion: SETUP_PROTOCOL_VERSION,
+          isOwner: data?.session === this.#creatorSessionId,
+          currentRound,
+          nextRound,
+          players: this.#slots.map((slot) => ({
+            slotId: slot.slotId,
+            occupied: slot.playerSessionId !== null,
+            online:
+              slot.playerSessionId !== null &&
+              this.#activeBySession.has(slot.playerSessionId),
+            ready: readySlotIds.has(slot.slotId),
+          })),
+          closed: this.#closedReason !== null,
+          closeReason: this.#closedReason,
+          ...(commandId === undefined ? {} : { causedByCommandId: commandId }),
+        };
+      }
       return {
         type: "room.lifecycle",
         protocolVersion: PROTOCOL_VERSION,
@@ -1729,15 +2377,74 @@ export function createRealtimeGameRoomClass(
       commandId: string,
       code: ProtocolErrorCode,
     ): void {
-      const rejection = {
-        type: "command.rejected",
-        protocolVersion: PROTOCOL_VERSION,
-        commandId,
-        code,
-        retryable: false,
-      } satisfies CommandRejected;
+      const rejection = this.#protocolRejection(code, commandId);
       this.#commandOutcomes.set(key, rejection);
       client.send(SERVER_PROTOCOL_MESSAGE, rejection);
+    }
+
+    #rejectSetupAndCache(
+      client: Client,
+      key: string,
+      code: ProtocolErrorCode,
+      commandId: string,
+      setupRevision?: number,
+      gameRuleCode?: string,
+    ): void {
+      const rejection = this.#protocolRejection(
+        code,
+        commandId,
+        setupRevision,
+        gameRuleCode,
+      );
+      this.#commandOutcomes.set(key, rejection);
+      client.send(SERVER_PROTOCOL_MESSAGE, rejection);
+    }
+
+    #sendProtocolRejection(
+      client: Client,
+      code: ProtocolErrorCode,
+      commandId?: string,
+      setupRevision?: number,
+    ): void {
+      client.send(
+        SERVER_PROTOCOL_MESSAGE,
+        this.#protocolRejection(code, commandId, setupRevision),
+      );
+    }
+
+    #protocolRejection(
+      code: ProtocolErrorCode,
+      commandId?: string,
+      setupRevision?: number,
+      gameRuleCode?: string,
+    ): CommandRejected | CommandRejectedV6 {
+      const shared = {
+        type: "command.rejected" as const,
+        ...(commandId === undefined ? {} : { commandId }),
+        code,
+        ...(setupRevision === undefined ? {} : { setupRevision }),
+        ...(gameRuleCode === undefined ? {} : { gameRuleCode }),
+        retryable: protocolRetryable(code),
+      };
+      return this.#requireSetupProtocol() === SETUP_PROTOCOL_VERSION
+        ? { ...shared, protocolVersion: SETUP_PROTOCOL_VERSION }
+        : { ...shared, protocolVersion: PROTOCOL_VERSION };
+    }
+
+    #sendCommandOutcome(
+      client: Client,
+      outcome:
+        | CommandRejected
+        | CommandRejectedV6
+        | RoomLifecycleState
+        | RoomLifecycleStateV6,
+    ): void {
+      client.send(
+        outcome.type === "room.lifecycle"
+          ? ROOM_CONTROL_MESSAGE
+          : SERVER_PROTOCOL_MESSAGE,
+        outcome,
+      );
     }
 
     #allConnected(): boolean {
@@ -1745,6 +2452,91 @@ export function createRealtimeGameRoomClass(
         (slot) =>
           slot.playerSessionId !== null &&
           this.#activeBySession.has(slot.playerSessionId),
+      );
+    }
+
+    #setupSlots(forceOffline = false): readonly SetupSlot[] {
+      return this.#slots.map((slot) => ({
+        slotId: slot.slotId,
+        occupied: slot.playerSessionId !== null,
+        online:
+          !forceOffline &&
+          slot.playerSessionId !== null &&
+          this.#activeBySession.has(slot.playerSessionId),
+        isOwner: slot.playerSessionId === this.#creatorSessionId,
+      }));
+    }
+
+    #clearReadyForSlot(slotId: string): boolean {
+      if (
+        this.#requireSetupProtocol() === SETUP_PROTOCOL_VERSION &&
+        this.#setupDefinition !== null &&
+        this.#nextRoundSetup !== null
+      ) {
+        const result = setRoundSetupReady(
+          this.#setupDefinition,
+          this.#nextRoundSetup,
+          this.#setupSlots(),
+          slotId,
+          false,
+        );
+        if (result.status !== "rejected") {
+          const changed = result.coordinator !== this.#nextRoundSetup;
+          this.#nextRoundSetup = result.coordinator;
+          return changed;
+        }
+        return false;
+      }
+      const slot = this.#slots.find((candidate) => candidate.slotId === slotId);
+      return slot?.playerSessionId === null ||
+        slot?.playerSessionId === undefined
+        ? false
+        : this.#ready.delete(slot.playerSessionId);
+    }
+
+    #createNextRoundSetupCandidate(): RoundSetupCoordinatorState {
+      if (this.#pendingNextRoundSetup !== null) {
+        return this.#pendingNextRoundSetup;
+      }
+      if (
+        this.#setupDefinition === null ||
+        this.#previousFinalizedSetup === null
+      ) {
+        throw new Error("Previous realtime finalized setup is unavailable.");
+      }
+      const candidate = initializeRoundSetupCoordinator(
+        this.#setupDefinition,
+        {
+          source: {
+            kind: "previous-round",
+            setup: this.#previousFinalizedSetup,
+          },
+          slots: this.#setupSlots(),
+        },
+        createSetupRng(ids.createSetupRngSeed()),
+      );
+      this.#pendingNextRoundSetup = candidate;
+      return candidate;
+    }
+
+    #v6SetupReadyToStart(): boolean {
+      if (
+        this.#setupDefinition === null ||
+        this.#nextRoundSetup === null ||
+        this.#nextRoundSetup.finalizedSetup === null
+      ) {
+        return false;
+      }
+      const readiness = getRoundSetupReadiness(
+        this.#setupDefinition,
+        this.#nextRoundSetup,
+        this.#setupSlots(),
+      );
+      return (
+        readiness.canFinalize &&
+        readiness.requiredSlotIds.every((slotId) =>
+          readiness.readySlotIds.includes(slotId),
+        )
       );
     }
 
@@ -1779,14 +2571,28 @@ export function createRealtimeGameRoomClass(
           : null;
     }
 
-    #storedRoom(): RealtimeStoredRoom {
+    #storedRoom(
+      overrides: {
+        readonly initialConfig?: JsonValue;
+        readonly nextRoundSetup?: RoundSetupCoordinatorState | null;
+        readonly previousFinalizedSetup?: FinalizedRoundSetup | null;
+      } = {},
+    ): RealtimeStoredRoom {
+      const nextRoundSetup =
+        "nextRoundSetup" in overrides
+          ? (overrides.nextRoundSetup ?? null)
+          : this.#nextRoundSetup;
+      const previousFinalizedSetup =
+        "previousFinalizedSetup" in overrides
+          ? (overrides.previousFinalizedSetup ?? null)
+          : this.#previousFinalizedSetup;
       return {
         roomId: this.roomId,
         roomCode: this.#requireRoomCode(),
         gameId: this.#requireDefinition().manifest.id,
         gameVersion: this.#requireDefinition().manifest.gameVersion,
-        setupProtocol: PROTOCOL_VERSION,
-        initialConfig: this.#requireConfig(),
+        setupProtocol: this.#requireSetupProtocol(),
+        initialConfig: overrides.initialConfig ?? this.#requireConfig(),
         players: this.#slots.map((slot) => ({
           slotId: slot.slotId,
           playerSessionId: slot.playerSessionId,
@@ -1805,6 +2611,8 @@ export function createRealtimeGameRoomClass(
                 status: this.#roundStatus ?? "active",
                 outcome: this.#outcome,
               },
+        ...(nextRoundSetup === null ? {} : { nextRoundSetup }),
+        ...(previousFinalizedSetup === null ? {} : { previousFinalizedSetup }),
         closeReason: this.#closedReason,
       };
     }
@@ -1827,14 +2635,27 @@ export function createRealtimeGameRoomClass(
       },
       status: "active" | "completed" | "abandoned",
       outcome: JsonValue | null,
+      overrides: {
+        readonly initialConfig?: JsonValue;
+        readonly nextRoundSetup?: RoundSetupCoordinatorState | null;
+        readonly previousFinalizedSetup?: FinalizedRoundSetup | null;
+      } = {},
     ): RealtimeStoredRoom {
+      const nextRoundSetup =
+        "nextRoundSetup" in overrides
+          ? (overrides.nextRoundSetup ?? null)
+          : this.#nextRoundSetup;
+      const previousFinalizedSetup =
+        "previousFinalizedSetup" in overrides
+          ? (overrides.previousFinalizedSetup ?? null)
+          : this.#previousFinalizedSetup;
       return {
         roomId: this.roomId,
         roomCode: this.#requireRoomCode(),
         gameId: this.#requireDefinition().manifest.id,
         gameVersion: this.#requireDefinition().manifest.gameVersion,
-        setupProtocol: PROTOCOL_VERSION,
-        initialConfig: this.#requireConfig(),
+        setupProtocol: this.#requireSetupProtocol(),
+        initialConfig: overrides.initialConfig ?? this.#requireConfig(),
         players: this.#slots.map((slot) => ({
           slotId: slot.slotId,
           playerSessionId: slot.playerSessionId,
@@ -1849,6 +2670,8 @@ export function createRealtimeGameRoomClass(
           status,
           outcome,
         },
+        ...(nextRoundSetup === null ? {} : { nextRoundSetup }),
+        ...(previousFinalizedSetup === null ? {} : { previousFinalizedSetup }),
         closeReason: this.#closedReason,
       };
     }
@@ -1863,6 +2686,13 @@ export function createRealtimeGameRoomClass(
       if (this.#initialConfig === undefined)
         throw new Error("Realtime room is not initialized.");
       return this.#initialConfig;
+    }
+
+    #requireSetupProtocol(): SetupProtocolGeneration {
+      if (this.#setupProtocol === undefined) {
+        throw new Error("Realtime room is not initialized.");
+      }
+      return this.#setupProtocol;
     }
 
     #requireRoomCode(): string {
