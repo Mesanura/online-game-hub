@@ -417,6 +417,7 @@ export const realtimeRooms = pgTable(
     roomCode: text("room_code").notNull(),
     gameId: text("game_id").notNull(),
     gameVersion: text("game_version").notNull(),
+    setupProtocol: integer("setup_protocol").default(5).notNull(),
     initialConfig: jsonb("initial_config").$type<unknown>().notNull(),
     currentRoundNumber: integer("current_round_number"),
     currentReplayId: text("current_replay_id").references(
@@ -454,6 +455,10 @@ export const realtimeRooms = pgTable(
     check(
       "realtime_rooms_game_version_not_empty",
       sql`length(${table.gameVersion}) > 0`,
+    ),
+    check(
+      "realtime_rooms_setup_protocol_supported",
+      sql`${table.setupProtocol} in (5, 6)`,
     ),
     check(
       "realtime_rooms_current_tick_nonnegative",

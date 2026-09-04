@@ -14,12 +14,14 @@ import type {
   StoredGameRoom,
 } from "@online-game-hub/game-server-runtime";
 import { resolveGameDefinition } from "@online-game-hub/game-registry/server";
+import type { RealtimeStoredRoom } from "@online-game-hub/realtime-game-server-runtime";
 
 import {
   PostgresAccountRepository,
   PostgresMatchArchive,
   PostgresMatchRepository,
   PostgresReplayStore,
+  PostgresRealtimeRoomStore,
   PostgresUserRepository,
   applyDatabaseMigrations,
   createPostgresDatabaseClient,
@@ -30,7 +32,12 @@ import {
   requireTestDatabaseUrl,
 } from "../src/testing.js";
 import type { IsolatedTestDatabase } from "../src/testing.js";
-import { accountSessions, replays } from "../src/schema.js";
+import {
+  accountSessions,
+  realtimeRoomPlayers,
+  realtimeRooms,
+  replays,
+} from "../src/schema.js";
 
 const header = {
   replayFormatVersion: REPLAY_FORMAT_VERSION,
@@ -91,6 +98,7 @@ function roomRecord(
     roomCode,
     gameId: "tic-tac-toe",
     gameVersion: "1.0.0",
+    setupProtocol: 5,
     initialConfig: null,
     players: [
       {
@@ -129,6 +137,37 @@ function currentRound(room: StoredGameRoom): StoredGameRound {
     throw new Error("Expected an archived round.");
   }
   return room.currentRound;
+}
+
+function realtimeRoomRecord(
+  roomId: string,
+  roomCode: string,
+  setupProtocol: 5 | 6,
+): RealtimeStoredRoom {
+  return {
+    roomId,
+    roomCode,
+    gameId: "pong",
+    gameVersion: "1.0.0",
+    setupProtocol,
+    initialConfig: { targetScore: 3 },
+    players: [
+      {
+        slotId: "left",
+        playerSessionId: "realtime-session-left",
+        userId: null,
+        reservedUntilMilliseconds: null,
+      },
+      {
+        slotId: "right",
+        playerSessionId: null,
+        userId: null,
+        reservedUntilMilliseconds: null,
+      },
+    ],
+    currentRound: null,
+    closeReason: null,
+  };
 }
 
 describe.sequential("PostgreSQL + Drizzle persistence", () => {
@@ -181,6 +220,134 @@ describe.sequential("PostgreSQL + Drizzle persistence", () => {
       "replays",
       "users",
     ]);
+  });
+
+  it("persists pinned realtime room generations across adapter reconstruction", async () => {
+    const store = new PostgresRealtimeRoomStore(isolated.client.database);
+    const v5Room = realtimeRoomRecord(
+      "realtime-room-generation-v5",
+      "PERS2345",
+      5,
+    );
+    const v6Room = realtimeRoomRecord(
+      "realtime-room-generation-v6",
+      "PERS6789",
+      6,
+    );
+    await store.create(v5Room);
+    await store.create(v6Room);
+    await store.save({
+      ...v5Room,
+      players: v5Room.players.map((player) =>
+        player.slotId === "right"
+          ? { ...player, playerSessionId: "realtime-session-right" }
+          : player,
+      ),
+    });
+    await expect(
+      store.save({ ...v5Room, setupProtocol: 6 }),
+    ).rejects.toMatchObject({ code: "DATABASE_OPERATION_ERROR" });
+    await expect(store.getByRoomCode(" pers2345 ")).resolves.toMatchObject({
+      setupProtocol: 5,
+      players: [
+        expect.objectContaining({ slotId: "left" }),
+        expect.objectContaining({
+          slotId: "right",
+          playerSessionId: "realtime-session-right",
+        }),
+      ],
+    });
+
+    const rebuiltClient = createPostgresDatabaseClient({
+      url: isolated.url,
+      applicationName: "database-integration-realtime-room-rebuild",
+      maxConnections: 2,
+    });
+    try {
+      const rebuiltStore = new PostgresRealtimeRoomStore(
+        rebuiltClient.database,
+      );
+      await expect(
+        rebuiltStore.getByRoomCode("PERS2345"),
+      ).resolves.toMatchObject({ setupProtocol: 5 });
+      await expect(
+        rebuiltStore.getByRoomCode("PERS6789"),
+      ).resolves.toMatchObject({ setupProtocol: 6 });
+    } finally {
+      await rebuiltClient.close();
+    }
+  });
+
+  it("defaults legacy realtime room rows to V5 and enforces the database generation constraint", async () => {
+    await isolated.client.database.insert(realtimeRooms).values({
+      roomId: "realtime-room-generation-default",
+      roomCode: "DFLT2345",
+      gameId: "pong",
+      gameVersion: "1.0.0",
+      initialConfig: { targetScore: 3 },
+    });
+    await isolated.client.database.insert(realtimeRoomPlayers).values([
+      {
+        roomId: "realtime-room-generation-default",
+        playerSlotId: "left",
+        playerSessionId: "realtime-default-left",
+      },
+      {
+        roomId: "realtime-room-generation-default",
+        playerSlotId: "right",
+      },
+    ]);
+    const store = new PostgresRealtimeRoomStore(isolated.client.database);
+    await expect(store.getByRoomCode("DFLT2345")).resolves.toMatchObject({
+      setupProtocol: 5,
+    });
+
+    await expect(
+      isolated.client.database.insert(realtimeRooms).values({
+        roomId: "realtime-room-generation-invalid",
+        roomCode: "BADG2345",
+        gameId: "pong",
+        gameVersion: "1.0.0",
+        setupProtocol: 7,
+        initialConfig: { targetScore: 3 },
+      }),
+    ).rejects.toThrow();
+  });
+
+  it("fails closed with a stable error when a realtime room generation is corrupted", async () => {
+    const store = new PostgresRealtimeRoomStore(isolated.client.database);
+    const corrupted = realtimeRoomRecord(
+      "realtime-room-generation-corrupt",
+      "CRPT2345",
+      5,
+    );
+    await store.create(corrupted);
+    await isolated.client.database.execute(sql`
+      alter table "realtime_rooms"
+      drop constraint "realtime_rooms_setup_protocol_supported"
+    `);
+    try {
+      await isolated.client.database
+        .update(realtimeRooms)
+        .set({ setupProtocol: 7 })
+        .where(eq(realtimeRooms.roomId, corrupted.roomId));
+      await expect(
+        store.getByRoomCode(corrupted.roomCode),
+      ).rejects.toMatchObject({
+        code: "DATABASE_DATA_INVALID",
+        message: "DATABASE_DATA_INVALID",
+      });
+    } finally {
+      await isolated.client.database
+        .update(realtimeRooms)
+        .set({ setupProtocol: 5 })
+        .where(eq(realtimeRooms.roomId, corrupted.roomId));
+      await isolated.client.database.execute(sql`
+        alter table "realtime_rooms"
+        add constraint "realtime_rooms_setup_protocol_supported"
+        check ("setup_protocol" in (5, 6))
+      `);
+    }
   });
 
   it("backfills display names when the profile migration upgrades legacy users", async () => {

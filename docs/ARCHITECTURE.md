@@ -40,6 +40,7 @@ Browser
 - 统一首页、游戏目录、游戏页面和房间加入界面；
 - 建立匿名访客 session，并管理用户名+密码账户、可撤销账户 session 和同源认证 API；
 - 签发短期 Game Server 连接票据；
+- 通过同源只读代理发现已有房间固定的 runtime、game version 与 Setup Protocol generation；
 - 按 exact deployment registration 加载 legacy Client Module 或 sandboxed Game Surface；
 - 把服务器 View 投影、平台状态和 viewport 传给 Surface，并为 Surface intent 补充 command/round/revision/input sequence；
 - 以 server-verified guest 读取私有比赛 metadata。
@@ -58,6 +59,7 @@ Browser
 - 启动 Colyseus 和注册具体游戏；
 - 验证连接票据并映射 `PlayerSessionId`；
 - 创建/加入房间、分配 `PlayerSlotId`，管理多轮、关闭和重连；
+- 从 active room record 提供最小且无身份信息的协议代际发现；
 - 调用通用 game runtime 处理 Action；
 - 组装内存 active `RoomStore`、PostgreSQL `ReplayStore` 和 Match archive adapter；
 - 暴露健康检查与运行指标。
@@ -66,7 +68,7 @@ Browser
 
 无副作用的 `createGameServer(options)` 必须注入 `TicketVerifier`，默认组合 `InMemoryRoomStore`、`InMemoryReplayStore`、secure runtime ID source、结构化 logger 和内存 metrics；`start`/`stop` 显式控制生命周期，`port: 0` 支持无固定公共端口的测试。HTTP 使用 Colyseus 自带 router 暴露 `/health` 与 `/metrics`，WebSocket 使用 `@colyseus/ws-transport`。Express 只因该 transport 的运行时顶层 import 而由 app 拥有，不承载业务路由。
 
-`createProductionGameServer(config, overrides?)` 在 composition layer 注入正式 HMAC ticket verifier、60 秒 reconnect、Web origin allowlist，以及按配置创建的 PostgreSQL client、`PostgresReplayStore` 和独立 `PostgresMatchArchive`。live `RoomStore` 始终是单独的内存 port，不再由 decorator 隐式写 Match。启动前显式把单实例遗留的旧 waiting/当前 active archive 标记 abandoned；`SIGINT`/`SIGTERM` 先停止 Colyseus 再关闭数据库连接。模块 import 不连接数据库、不迁移、不启动进程，生产模块不导入 `game-server-runtime/testing`。
+`createProductionGameServer(config, overrides?)` 在 composition layer 注入正式 HMAC ticket verifier、60 秒 reconnect、Web origin allowlist，以及按配置创建的 PostgreSQL client、`PostgresReplayStore` 和独立 `PostgresMatchArchive`。turn-based live `RoomStore` 仍是单独的内存 port；realtime production 另有 PostgreSQL room metadata store，但它不保存 simulation State，也不构成 active-room recovery。两者都不再由 decorator 隐式写 Match。启动前显式把单实例遗留的旧 waiting/当前 active archive 标记 abandoned；`SIGINT`/`SIGTERM` 先停止 Colyseus 再关闭数据库连接。模块 import 不连接数据库、不迁移、不启动进程，生产模块不导入 `game-server-runtime/testing`。
 
 ## 4. Package 职责
 
@@ -194,6 +196,16 @@ Platform 通用校验只允许已占用 stable slot，强制 manifest 人数范�
 
 新房间以 manifest `defaultConfig` 初始化首轮 Setup。完成 Round 后，下一轮从上一轮 `FinalizedRoundSetup` 初始化，复用 config、参与者、实际顺序与 assignments，但不复用 State、Outcome、revision/tick、seed、RNG cursor、ready、Match ID 或 replay ID。每位参与者必须分别重新 ready；accepted 设置变更再次清空全部确认。
 
+### 7.4 房间协议代际固定与发现
+
+Exact deployment registration 只决定新建房间使用 V5 还是 V6；runtime 在创建时把结果写入 room record 的 `setupProtocol`，之后任何 `save` 都不得改变该值。加入已有房间不能读取当前 deployment default，因为注册切换或回滚可能已经发生；Web 先经同源 `/api/room-discovery` 从 Game Server 的 active room store 读取最小 `{ roomCode, gameId, gameVersion, setupProtocol, runtime }`，校验 game/runtime 后才按该 generation 申请 ticket 和 join。
+
+Client Host 将 generation 作为连接目标的一部分，而不是进程级可变选项。ticket、matchmaking request、connected/lifecycle schema、命令和 reconnect 必须全部使用同一固定 generation；并发或失败的旧连接尝试不得覆盖新目标状态。创建新房间始终恢复 exact deployment registration 的默认 generation，不继承之前加入过的 legacy 房间。
+
+Discovery response 不含 ticket、session、UserId、slot、内部 room ID、State、seed 或 replay，且全链路禁用缓存。找不到唯一的开放 room record 时返回 404；损坏 generation、store 故障或非法上游响应返回稳定 503。Realtime PostgreSQL `setup_protocol` 对旧行默认 V5，并以 check constraint 只允许 5/6；两个内存 store 同样在 create/save 边界校验且禁止代际变更。
+
+该发现路径不引入多实例 ownership 或 durable active-room recovery。它只让当前可发现的 room record 与连接 generation 一致；seat 是否仍可加入、身份是否拥有原 slot 以及 Colyseus room 是否仍存活，继续由 matchmaking/runtime authoritative 地判断。
+
 ## 8. Authoritative Action Pipeline
 
 Game Server 对每个客户端 Action 严格按以下顺序处理：
@@ -293,7 +305,7 @@ Room 必须串行处理 Action。任何未来多实例方案都必须维持“�
 - 单区域、单个 Game Server 实例。
 - 根 `docker-compose.yml` 提供通用单机部署基线：独立 Web、Game Server、一次性 migration 和 PostgreSQL 容器；应用使用 CI 发布的 Docker Hub 镜像，PostgreSQL 使用可备份迁移的宿主数据目录，部署主机不需要源码。
 - Web 通过环境注入浏览器可达的 Game Server public URL；Game Server 通过环境注入允许的 Web origins 和与 Web 一致的 ticket issuer/secret。
-- live `RoomStore` 使用内存 adapter；Replay、Match archive 与完成历史使用独立 PostgreSQL adapters。
+- turn-based live `RoomStore` 使用内存 adapter；realtime room metadata 在 PostgreSQL 模式下持久化 generation、slot/lifecycle 摘要，但不持久化可恢复的 simulation State。Replay、Match archive 与完成历史使用独立 PostgreSQL adapters。
 - 默认重连宽限为 60 秒；同一 session 通过新 ticket 和新的 Colyseus seat reservation 接管 stable slot，旧连接立即失去 writer 权限。超时策略为 `abandoned`。
 - 同一 live room 可以顺序承载多轮，但每轮 Match/replay 独立；completed room 的 live TTL 为 5 分钟，且不再接纳新参与者。
 - 服务器重启会丢失 live room、待开局设置、State、socket 与 reconnect timer；已完成 replay/history 保留。启动协调只把旧 waiting/当前 active archive 标记 abandoned。

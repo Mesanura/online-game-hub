@@ -10,6 +10,7 @@ import {
   SERVER_PROTOCOL_MESSAGE,
   verifyReplay,
 } from "@online-game-hub/game-server-runtime";
+import { InMemoryRealtimeRoomStore } from "@online-game-hub/realtime-game-server-runtime";
 import type {
   MatchArchive,
   ReplayAction,
@@ -422,6 +423,46 @@ describe.sequential("authoritative Colyseus Game Server", () => {
       roomCode: "PLAY2345",
       playerSlotId: "slot-1",
     });
+    const discoveryResponse = await fetch(
+      `${address.httpUrl}/room-discovery?gameId=tic-tac-toe&roomCode=play2345`,
+    );
+    expect(discoveryResponse.status).toBe(200);
+    expect(discoveryResponse.headers.get("cache-control")).toBe("no-store");
+    const discovery = (await discoveryResponse.json()) as Record<
+      string,
+      unknown
+    >;
+    expect(discovery).toEqual({
+      roomCode: "PLAY2345",
+      gameId: "tic-tac-toe",
+      gameVersion: "1.1.0",
+      setupProtocol: PROTOCOL_VERSION,
+      runtime: "turn-based",
+    });
+    expect(Object.keys(discovery).sort()).toEqual([
+      "gameId",
+      "gameVersion",
+      "roomCode",
+      "runtime",
+      "setupProtocol",
+    ]);
+    expect(JSON.stringify(discovery)).not.toMatch(/session|slot|ticket/iu);
+    await expect(
+      fetch(
+        `${address.httpUrl}/room-discovery?gameId=pong&roomCode=PLAY2345`,
+      ).then(async (response) => ({
+        status: response.status,
+        body: await response.json(),
+      })),
+    ).resolves.toEqual({ status: 404, body: { code: "ROOM_NOT_FOUND" } });
+    await expect(
+      fetch(
+        `${address.httpUrl}/room-discovery?gameId=tic-tac-toe&roomCode=WXYZ2345`,
+      ).then(async (response) => ({
+        status: response.status,
+        body: await response.json(),
+      })),
+    ).resolves.toEqual({ status: 404, body: { code: "ROOM_NOT_FOUND" } });
     await expect(
       lifecycleA.next((message) => message.currentRound === null),
     ).resolves.toMatchObject({
@@ -892,6 +933,13 @@ describe.sequential("authoritative Colyseus Game Server", () => {
       controlCommand("owner-close", "CLOSE_ROOM"),
     );
     await Promise.all([closedA, closedB, leftA, leftB]);
+    const closedDiscovery = await fetch(
+      `${address.httpUrl}/room-discovery?gameId=tic-tac-toe&roomCode=PLAY2345`,
+    );
+    expect(closedDiscovery.status).toBe(404);
+    await expect(closedDiscovery.json()).resolves.toEqual({
+      code: "ROOM_NOT_FOUND",
+    });
   });
 
   it("does not acknowledge or commit when replay append fails", async () => {
@@ -3385,5 +3433,92 @@ describe.sequential("authoritative Colyseus Game Server", () => {
       secondRoom.leave(true),
       thirdRoom.leave(true),
     ]);
+  });
+});
+
+describe.sequential("room discovery failure boundary", () => {
+  const discoveryAuthority = new TestTicketAuthority({
+    issuer: "discovery-integration-web",
+    secret: "discovery-integration-secret-at-least-16-characters",
+    clock: new FakeRuntimeClock(1_000_000),
+    lifetimeSeconds: 600,
+  });
+
+  it("fails closed on ambiguous or unavailable stores", async () => {
+    const turnBasedStore = new InMemoryRoomStore();
+    const realtimeStore = new InMemoryRealtimeRoomStore();
+    const commonRoom = {
+      roomCode: "CLSH2345",
+      gameId: "tic-tac-toe",
+      gameVersion: "1.1.0",
+      setupProtocol: PROTOCOL_VERSION,
+      initialConfig: null,
+      players: [
+        {
+          slotId: "slot-1",
+          playerSessionId: "collision-a",
+          userId: null,
+          reservedUntilMilliseconds: null,
+        },
+        {
+          slotId: "slot-2",
+          playerSessionId: null,
+          userId: null,
+          reservedUntilMilliseconds: null,
+        },
+      ],
+      currentRound: null,
+      closeReason: null,
+    } as const;
+    await turnBasedStore.create({
+      ...commonRoom,
+      roomId: "discovery-collision-turn-based",
+    });
+    await realtimeStore.create({
+      ...commonRoom,
+      roomId: "discovery-collision-realtime",
+    });
+    const collisionApp = createGameServer({
+      ticketVerifier: discoveryAuthority,
+      roomStore: turnBasedStore,
+      realtimeRoomStore: realtimeStore,
+      logger: { write: () => undefined },
+    });
+    try {
+      const collisionAddress = await collisionApp.start({ port: 0 });
+      const response = await fetch(
+        `${collisionAddress.httpUrl}/room-discovery?gameId=tic-tac-toe&roomCode=CLSH2345`,
+      );
+      expect(response.status).toBe(404);
+      await expect(response.json()).resolves.toEqual({
+        code: "ROOM_NOT_FOUND",
+      });
+    } finally {
+      await collisionApp.stop();
+    }
+
+    class UnavailableRoomStore extends InMemoryRoomStore {
+      public override getByRoomCode(): Promise<StoredGameRoom | null> {
+        return Promise.reject(new Error("injected discovery failure"));
+      }
+    }
+    const unavailableApp = createGameServer({
+      ticketVerifier: discoveryAuthority,
+      roomStore: new UnavailableRoomStore(),
+      logger: { write: () => undefined },
+    });
+    try {
+      const unavailableAddress = await unavailableApp.start({ port: 0 });
+      const response = await fetch(
+        `${unavailableAddress.httpUrl}/room-discovery?gameId=tic-tac-toe&roomCode=CLSH2345`,
+      );
+      expect(response.status).toBe(503);
+      expect(response.headers.get("cache-control")).toBe("no-store");
+      await expect(response.json()).resolves.toEqual({
+        code: "ROOM_DISCOVERY_UNAVAILABLE",
+      });
+    } finally {
+      await unavailableApp.stop();
+    }
   });
 });

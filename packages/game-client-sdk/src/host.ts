@@ -119,6 +119,7 @@ export interface GameClientHostOptions {
 interface RoomTarget {
   readonly gameId: string;
   readonly roomCode: string;
+  readonly setupProtocol: GameSetupProtocol;
 }
 
 interface PendingCommand {
@@ -170,7 +171,6 @@ export class GameClientHost<View = unknown, Outcome = unknown> {
       | "reconnectWindowMilliseconds"
       | "nowMilliseconds"
       | "delay"
-      | "setupProtocol"
     >
   > &
     Pick<GameClientHostOptions, "gameServerUrl" | "ticketProvider">;
@@ -187,6 +187,8 @@ export class GameClientHost<View = unknown, Outcome = unknown> {
   #transportRoom: GameTransportRoom | null = null;
   #target: RoomTarget | null = null;
   #expectedGameId: string | null = null;
+  readonly #defaultSetupProtocol: GameSetupProtocol;
+  #setupProtocol: GameSetupProtocol;
   #generation = 0;
   #closing = false;
 
@@ -219,8 +221,9 @@ export class GameClientHost<View = unknown, Outcome = unknown> {
       reconnectWindowMilliseconds,
       nowMilliseconds: options.nowMilliseconds ?? Date.now,
       delay: options.delay ?? defaultDelay,
-      setupProtocol,
     };
+    this.#defaultSetupProtocol = setupProtocol;
+    this.#setupProtocol = setupProtocol;
   }
 
   public getState(): GameClientHostState<View, Outcome> {
@@ -236,17 +239,18 @@ export class GameClientHost<View = unknown, Outcome = unknown> {
     gameId: string,
     initialConfig: unknown,
   ): Promise<void> {
+    const setupProtocol = this.#defaultSetupProtocol;
     this.#expectedGameId = gameId;
     this.#target = null;
-    await this.#connect(async (ticket, client) =>
+    await this.#connect(setupProtocol, async (ticket, client) =>
       client.create(
         GAME_ROOM_NAME,
-        (this.#options.setupProtocol === SETUP_PROTOCOL_VERSION
+        (setupProtocol === SETUP_PROTOCOL_VERSION
           ? createGameRoomRequestV6Schema
           : createGameRoomRequestSchema
         ).parse({
           type: "room.create",
-          protocolVersion: this.#options.setupProtocol,
+          protocolVersion: setupProtocol,
           ticket,
           gameId,
           initialConfig,
@@ -255,20 +259,30 @@ export class GameClientHost<View = unknown, Outcome = unknown> {
     );
   }
 
-  public async joinRoom(gameId: string, roomCode: string): Promise<void> {
+  public async joinRoom(
+    gameId: string,
+    roomCode: string,
+    setupProtocol = this.#defaultSetupProtocol,
+  ): Promise<void> {
+    if (
+      setupProtocol !== PROTOCOL_VERSION &&
+      setupProtocol !== SETUP_PROTOCOL_VERSION
+    ) {
+      throw new RangeError("Unsupported setup protocol generation.");
+    }
     const normalizedRoomCode = roomCode.trim().toUpperCase();
     const validatedRoomCode = roomCodeSchema.parse(normalizedRoomCode);
     this.#expectedGameId = gameId;
-    this.#target = { gameId, roomCode: validatedRoomCode };
-    await this.#connect(async (ticket, client) =>
+    this.#target = { gameId, roomCode: validatedRoomCode, setupProtocol };
+    await this.#connect(setupProtocol, async (ticket, client) =>
       client.join(
         GAME_ROOM_NAME,
-        (this.#options.setupProtocol === SETUP_PROTOCOL_VERSION
+        (setupProtocol === SETUP_PROTOCOL_VERSION
           ? joinGameRoomRequestV6Schema
           : joinGameRoomRequestSchema
         ).parse({
           type: "room.join",
-          protocolVersion: this.#options.setupProtocol,
+          protocolVersion: setupProtocol,
           ticket,
           roomCode: validatedRoomCode,
         }),
@@ -293,12 +307,12 @@ export class GameClientHost<View = unknown, Outcome = unknown> {
     const commandId = this.#options.commandIds.createCommandId();
     const roundNumber = currentRound.roundNumber;
     const command = (
-      this.#options.setupProtocol === SETUP_PROTOCOL_VERSION
+      this.#setupProtocol === SETUP_PROTOCOL_VERSION
         ? gameActionCommandV6Schema
         : gameActionCommandSchema
     ).parse({
       type: "game.action",
-      protocolVersion: this.#options.setupProtocol,
+      protocolVersion: this.#setupProtocol,
       commandId,
       roundNumber,
       expectedRevision: snapshot.revision,
@@ -328,21 +342,21 @@ export class GameClientHost<View = unknown, Outcome = unknown> {
   }
 
   public selectStarter(starter: StarterChoice): Promise<void> {
-    if (this.#options.setupProtocol === SETUP_PROTOCOL_VERSION) {
+    if (this.#setupProtocol === SETUP_PROTOCOL_VERSION) {
       return this.submitSetup({ type: "SELECT_STARTER", starter });
     }
     return this.#sendControl({ operation: "SELECT_STARTER", starter });
   }
 
   public selectPlayerCount(playerCount: number): Promise<void> {
-    if (this.#options.setupProtocol === SETUP_PROTOCOL_VERSION) {
+    if (this.#setupProtocol === SETUP_PROTOCOL_VERSION) {
       return this.submitSetup({ type: "SELECT_PLAYER_COUNT", playerCount });
     }
     return this.#sendControl({ operation: "SELECT_PLAYER_COUNT", playerCount });
   }
 
   public selectPlayerAssignment(assignment: string): Promise<void> {
-    if (this.#options.setupProtocol === SETUP_PROTOCOL_VERSION) {
+    if (this.#setupProtocol === SETUP_PROTOCOL_VERSION) {
       return this.submitSetup({
         type: "SELECT_PLAYER_ASSIGNMENT",
         assignment,
@@ -355,7 +369,7 @@ export class GameClientHost<View = unknown, Outcome = unknown> {
   }
 
   public clearPlayerAssignment(): Promise<void> {
-    if (this.#options.setupProtocol === SETUP_PROTOCOL_VERSION) {
+    if (this.#setupProtocol === SETUP_PROTOCOL_VERSION) {
       return this.submitSetup({ type: "CLEAR_PLAYER_ASSIGNMENT" });
     }
     return this.#sendControl({ operation: "CLEAR_PLAYER_ASSIGNMENT" });
@@ -370,7 +384,7 @@ export class GameClientHost<View = unknown, Outcome = unknown> {
   }
 
   public startRematch(): Promise<void> {
-    if (this.#options.setupProtocol === SETUP_PROTOCOL_VERSION) {
+    if (this.#setupProtocol === SETUP_PROTOCOL_VERSION) {
       return this.readyForRound();
     }
     return this.#sendControl({ operation: "START_REMATCH" });
@@ -381,7 +395,7 @@ export class GameClientHost<View = unknown, Outcome = unknown> {
   }
 
   public submitSetup(action: unknown): Promise<void> {
-    if (this.#options.setupProtocol !== SETUP_PROTOCOL_VERSION) {
+    if (this.#setupProtocol !== SETUP_PROTOCOL_VERSION) {
       return Promise.reject(
         new Error("Game-defined setup requires protocol version 6."),
       );
@@ -479,7 +493,7 @@ export class GameClientHost<View = unknown, Outcome = unknown> {
     }
     const commandId = this.#options.commandIds.createCommandId();
     if (
-      this.#options.setupProtocol === SETUP_PROTOCOL_VERSION &&
+      this.#setupProtocol === SETUP_PROTOCOL_VERSION &&
       input.operation !== "READY_FOR_ROUND" &&
       input.operation !== "CANCEL_ROUND_READY" &&
       input.operation !== "CLOSE_ROOM"
@@ -489,12 +503,12 @@ export class GameClientHost<View = unknown, Outcome = unknown> {
       );
     }
     const command = (
-      this.#options.setupProtocol === SETUP_PROTOCOL_VERSION
+      this.#setupProtocol === SETUP_PROTOCOL_VERSION
         ? roomControlCommandV6Schema
         : roomControlCommandSchema
     ).parse({
       type: "room.control",
-      protocolVersion: this.#options.setupProtocol,
+      protocolVersion: this.#setupProtocol,
       commandId,
       ...input,
     }) satisfies RoomControlCommand | RoomControlCommandV6;
@@ -519,6 +533,7 @@ export class GameClientHost<View = unknown, Outcome = unknown> {
   }
 
   async #connect(
+    setupProtocol: GameSetupProtocol,
     reserve: (
       ticket: string,
       client: GameTransportClient,
@@ -526,6 +541,7 @@ export class GameClientHost<View = unknown, Outcome = unknown> {
   ): Promise<void> {
     this.#closing = false;
     const generation = ++this.#generation;
+    this.#setupProtocol = setupProtocol;
     this.#replaceState({
       connectionState: "loading",
       room: null,
@@ -537,10 +553,15 @@ export class GameClientHost<View = unknown, Outcome = unknown> {
     let ticket: string;
     try {
       ticket = gameServerTicketSchema.parse(
-        await this.#options.ticketProvider(this.#options.setupProtocol),
+        await this.#options.ticketProvider(setupProtocol),
       );
     } catch {
-      this.#fail("TICKET_ERROR", "A Game Server ticket could not be obtained.");
+      if (generation === this.#generation) {
+        this.#fail(
+          "TICKET_ERROR",
+          "A Game Server ticket could not be obtained.",
+        );
+      }
       return;
     }
     if (generation !== this.#generation) {
@@ -594,7 +615,7 @@ export class GameClientHost<View = unknown, Outcome = unknown> {
 
   #handleLifecycle(payload: unknown): void {
     const parsed = (
-      this.#options.setupProtocol === SETUP_PROTOCOL_VERSION
+      this.#setupProtocol === SETUP_PROTOCOL_VERSION
         ? roomLifecycleStateV6Schema
         : roomLifecycleStateSchema
     ).safeParse(payload);
@@ -661,7 +682,7 @@ export class GameClientHost<View = unknown, Outcome = unknown> {
 
   #handleServerMessage(payload: unknown): void {
     const parsed = (
-      this.#options.setupProtocol === SETUP_PROTOCOL_VERSION
+      this.#setupProtocol === SETUP_PROTOCOL_VERSION
         ? serverMessageV6Schema
         : serverMessageSchema
     ).safeParse(payload);
@@ -678,7 +699,11 @@ export class GameClientHost<View = unknown, Outcome = unknown> {
         this.#failProtocol();
         return;
       }
-      this.#target = { gameId: message.gameId, roomCode: message.roomCode };
+      this.#target = {
+        gameId: message.gameId,
+        roomCode: message.roomCode,
+        setupProtocol: this.#setupProtocol,
+      };
       this.#replaceState({
         ...this.#state,
         connectionState: "connected",
@@ -792,6 +817,7 @@ export class GameClientHost<View = unknown, Outcome = unknown> {
       return;
     }
     const generation = ++this.#generation;
+    const setupProtocol = target.setupProtocol;
     const deadline =
       this.#options.nowMilliseconds() +
       this.#options.reconnectWindowMilliseconds;
@@ -809,19 +835,19 @@ export class GameClientHost<View = unknown, Outcome = unknown> {
     ) {
       try {
         const ticket = gameServerTicketSchema.parse(
-          await this.#options.ticketProvider(this.#options.setupProtocol),
+          await this.#options.ticketProvider(setupProtocol),
         );
         const client = this.#options.transport.createClient(
           this.#options.gameServerUrl,
         );
         const room = await client.join(
           GAME_ROOM_NAME,
-          (this.#options.setupProtocol === SETUP_PROTOCOL_VERSION
+          (setupProtocol === SETUP_PROTOCOL_VERSION
             ? joinGameRoomRequestV6Schema
             : joinGameRoomRequestSchema
           ).parse({
             type: "room.join",
-            protocolVersion: this.#options.setupProtocol,
+            protocolVersion: setupProtocol,
             ticket,
             roomCode: target.roomCode,
           }),

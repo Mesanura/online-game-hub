@@ -125,6 +125,7 @@ Golden fixture 只在确认规则或版本策略变化后更新。不能通过�
 - server response 不包含 stack、ticket、cookie、完整 State 或 RNG seed；
 - encode/decode round trip 保持稳定字段；
 - Protocol V5 exact schemas 拒绝 V1–V4、缺字段和 extra fields；ticket 覆盖账户/游客 claim、伪造 UserId 与 extra fields；`room.control` 严格区分 starter/人数/assignment/ready/cancel/immediate rematch/close，拒绝非法 starter、人数、assignment 与 identity 字段；`room.lifecycle` 拒绝不一致 current/next Round、ready/closed 状态；Action/snapshot 的 `roundNumber` 必填并拒绝非法值；
+- room discovery query/response 必须 strict、规范化 room code，并且只允许 `roomCode/gameId/gameVersion/setupProtocol/runtime`；额外 identity、ticket、slot、State、seed 或 replay 字段一律拒绝；
 - platform error 与 `gameRuleCode` 的映射不混淆。
 
 Protocol V6 另须覆盖 exact V5/V6 互拒、`game.setup` payload/identity/size、`expectedSetupRevision`、Setup rejection codes、viewer-specific `setupView`、readiness slot 集合与 current/next Round 不变量；确认 Realtime Input/Snapshot Protocol V1 的 schema 和语义未改变。
@@ -146,6 +147,7 @@ Protocol V6 另须覆盖 exact V5/V6 互拒、`game.setup` payload/identity/size
 - 参与者不完整、断线/重连、席位替换、playerOrder 排列、assignment 键冲突和 setup RNG 重试稳定；
 - 下一轮复用完整 config/participant/playerOrder/assignment，但生成新 gameplay seed/RNG/revision/tick/Match/replay ID，并要求所有玩家分别重新 ready；
 - V5/V6 房间并存、恢复、创建时 generation pinning、注册回滚只影响新房间与 V5 排空策略。
+- Client Host 以 discovery generation 加入并在 ticket/request/reconnect 全链路固定；非法 generation 不发请求，加入 V6 后再创建仍恢复 deployment default V5。
 
 ## 7. Game Server Integration Tests
 
@@ -170,6 +172,9 @@ Server integration tests 位于 `apps/game-server/tests/game-server.integration.
 - Outcome 只由 Core 产生，断线状态只由平台 lifecycle 处理。
 - 房主加入前预选/提前 ready、非房主伪造选择、未选 starter 时拒绝 ready、随机先手只改变本轮 playerOrder 而不消费游戏 RNG、不同选择清全部 ready、重复选择保留 ready、断线/takeover 只清对应 ready、双方 ready 开新轮、双方在线时复用上一轮 playerOrder 的 immediate rematch、terminal outsider 拒绝、owner close、non-owner leave 和 5 分钟 terminal TTL 都由平台处理。
 - 首局与后续轮都注入 Round 启动失败，验证 replay header 已创建而 Match archive 失败时保留相同 pending replay ID/seed/playerOrder，并以新 command ID 幂等重试。
+- `GET /room-discovery` 对 turn-based/realtime 开放房间只返回最小白名单与固定 generation；小写 code 被规范化，未知/关闭/gameId 不匹配/双 runtime 同码返回 404，store 或损坏记录返回 503，所有响应禁用缓存。
+
+Web 同源代理另以独立 route tests 覆盖 strict query、规范化转发、上游 404、上游 5xx/网络失败、非法或 game/code 不一致 payload、敏感 extra field 拒绝，以及 `no-store, private`。
 
 ### 7.3 Reconnect
 
@@ -284,6 +289,7 @@ try {
 - 匿名 Round 的 `match_players.user_id` 永久为 null；注册/登录、归档重试不回填；登录后新 Round 正确记录 UserId；
 - `users.display_name` 迁移从凭证回填用户名、无凭证回填“游客”；注册默认显示名等于用户名，更新只影响目标 UserId，新数据库连接可读取更新结果；
 - adapter/connection shutdown 后无遗留 client；数据库错误经稳定 code 清洗，不泄漏 SQL、DSN、session、ticket、State、seed 或 canonical replay。
+- realtime room 的 V5/V6 generation 可在新 adapter/connection 重读，save 不得改代际；旧行省略列时默认 V5，数据库 constraint 拒绝其他整数，损坏 generation 由 adapter 以稳定 `DATABASE_DATA_INVALID` fail closed。
 
 ## 10. Playwright E2E
 

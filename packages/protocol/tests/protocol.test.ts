@@ -29,6 +29,8 @@ import {
   realtimeServerMessageSchema,
   realtimeSnapshotSchema,
   roomControlCommandSchema,
+  roomDiscoveryQuerySchema,
+  roomDiscoverySchema,
   roomLifecycleStateSchema,
   roomLifecycleStateV6Schema,
   roomConnectedSchema,
@@ -617,6 +619,27 @@ describe("ticket and room matchmaking contracts", () => {
         }).success,
       ).toBe(false);
     }
+  });
+
+  it("discovers only exact non-sensitive room generation metadata", () => {
+    expect(
+      roomDiscoveryQuerySchema.parse({
+        gameId: "tic-tac-toe",
+        roomCode: " abcd2345 ",
+      }),
+    ).toEqual({ gameId: "tic-tac-toe", roomCode: "ABCD2345" });
+    const discovery = {
+      roomCode: "ABCD2345",
+      gameId: "tic-tac-toe",
+      gameVersion: "1.1.0",
+      setupProtocol: SETUP_PROTOCOL_VERSION,
+      runtime: "turn-based",
+    } as const;
+    expect(roomDiscoverySchema.parse(discovery)).toEqual(discovery);
+    expect(
+      roomDiscoverySchema.safeParse({ ...discovery, playerSessionId: "secret" })
+        .success,
+    ).toBe(false);
   });
 
   it("round trips the public room connection response without internal ids", () => {

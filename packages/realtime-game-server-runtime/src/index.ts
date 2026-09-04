@@ -14,6 +14,7 @@ import {
   gameRoomRequestSchema,
   realtimeInputCommandSchema,
   roomControlCommandSchema,
+  setupProtocolGenerationSchema,
 } from "@online-game-hub/protocol";
 import type {
   CommandRejected,
@@ -25,6 +26,7 @@ import type {
   RoomCloseReason,
   RoomConnected,
   RoomLifecycleState,
+  SetupProtocolGeneration,
 } from "@online-game-hub/protocol";
 import {
   REALTIME_RNG_ALGORITHM_V1,
@@ -792,6 +794,7 @@ export interface RealtimeStoredRoom {
   readonly roomCode: string;
   readonly gameId: string;
   readonly gameVersion: string;
+  readonly setupProtocol: SetupProtocolGeneration;
   readonly initialConfig: JsonValue;
   readonly players: readonly RealtimeStoredPlayerSlot[];
   readonly currentRound: RealtimeStoredRound | null;
@@ -808,6 +811,9 @@ export class InMemoryRealtimeRoomStore implements RealtimeRoomStore {
   readonly #rooms = new Map<string, RealtimeStoredRoom>();
 
   public async create(room: RealtimeStoredRoom): Promise<void> {
+    if (!setupProtocolGenerationSchema.safeParse(room.setupProtocol).success) {
+      throw new TypeError("Invalid realtime room setup protocol.");
+    }
     if (this.#rooms.has(room.roomCode)) {
       throw new Error("Realtime room code already exists.");
     }
@@ -815,8 +821,15 @@ export class InMemoryRealtimeRoomStore implements RealtimeRoomStore {
   }
 
   public async save(room: RealtimeStoredRoom): Promise<void> {
-    if (!this.#rooms.has(room.roomCode)) {
+    if (!setupProtocolGenerationSchema.safeParse(room.setupProtocol).success) {
+      throw new TypeError("Invalid realtime room setup protocol.");
+    }
+    const existing = this.#rooms.get(room.roomCode);
+    if (existing === undefined) {
       throw new Error("Realtime room does not exist.");
+    }
+    if (existing.setupProtocol !== room.setupProtocol) {
+      throw new Error("Realtime room setup protocol cannot change.");
     }
     this.#rooms.set(room.roomCode, cloneJson(room));
   }
@@ -864,6 +877,7 @@ export interface RealtimeGameRoomMetadata {
   readonly roomCode: string;
   readonly gameId: string;
   readonly gameVersion: string;
+  readonly setupProtocol: typeof PROTOCOL_VERSION;
 }
 
 export type RealtimeGameRoomClass = new () => Room<{
@@ -1067,6 +1081,7 @@ export function createRealtimeGameRoomClass(
         roomCode: this.#roomCode,
         gameId: definition.manifest.id,
         gameVersion: definition.manifest.gameVersion,
+        setupProtocol: PROTOCOL_VERSION,
       });
       this.onMessage(REALTIME_INPUT_MESSAGE, (client, message: unknown) =>
         this.#enqueue(() => this.#handleInput(client, message)),
@@ -1770,6 +1785,7 @@ export function createRealtimeGameRoomClass(
         roomCode: this.#requireRoomCode(),
         gameId: this.#requireDefinition().manifest.id,
         gameVersion: this.#requireDefinition().manifest.gameVersion,
+        setupProtocol: PROTOCOL_VERSION,
         initialConfig: this.#requireConfig(),
         players: this.#slots.map((slot) => ({
           slotId: slot.slotId,
@@ -1817,6 +1833,7 @@ export function createRealtimeGameRoomClass(
         roomCode: this.#requireRoomCode(),
         gameId: this.#requireDefinition().manifest.id,
         gameVersion: this.#requireDefinition().manifest.gameVersion,
+        setupProtocol: PROTOCOL_VERSION,
         initialConfig: this.#requireConfig(),
         players: this.#slots.map((slot) => ({
           slotId: slot.slotId,

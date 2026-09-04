@@ -147,6 +147,23 @@ export const roomCodeSchema = z
   .trim()
   .toUpperCase()
   .regex(/^[A-HJ-NP-Z2-9]{8}$/u);
+export const roomRuntimeSchema = z.enum(["turn-based", "realtime"]);
+export const roomDiscoveryQuerySchema = z
+  .object({
+    gameId: gameIdSchema,
+    roomCode: roomCodeSchema,
+  })
+  .strict();
+export const roomDiscoverySchema = z
+  .object({
+    roomCode: roomCodeSchema,
+    gameId: gameIdSchema,
+    gameVersion: gameVersionSchema,
+    setupProtocol: setupProtocolGenerationSchema,
+    runtime: roomRuntimeSchema,
+  })
+  .strict();
+export type RoomDiscovery = z.infer<typeof roomDiscoverySchema>;
 export const gameServerTicketSchema = z.string().min(1).max(4096);
 export const jsonValueSchema = z.custom<unknown>(isJsonValue, {
   error: "Expected a JSON-serializable value.",

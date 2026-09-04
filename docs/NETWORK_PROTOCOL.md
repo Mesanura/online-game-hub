@@ -157,7 +157,29 @@ interface JoinGameRoomRequest {
 
 V5 room code 是去掉首尾空白后转为大写的 8 位 `[A-HJ-NP-Z2-9]` 字符串。Colyseus 会在 room 的 Zod transform 之前使用原始 matchmaking options 执行 `roomCode` filter，因此调用 SDK `join` 前必须已经把 code 规范化为大写；不能依赖 room 内部 transform 修正 filter 输入。
 
-### 5.3 连接确认
+### 5.3 房间协议代际发现
+
+加入或重连已有房间前，Web 必须先通过同源 `GET /api/room-discovery?gameId=<gameId>&roomCode=<roomCode>` 发现该房间创建时固定的协议代际。Web server 把规范化后的 strict query 转发到 Game Server `GET /room-discovery`；成功响应只包含：
+
+```ts
+interface RoomDiscovery {
+  roomCode: string;
+  gameId: string;
+  gameVersion: string;
+  setupProtocol: 5 | 6;
+  runtime: "turn-based" | "realtime";
+}
+```
+
+- 浏览器校验响应的 gameId、规范 room code 和 catalog runtime，再按 `setupProtocol` 请求同代 ticket 并发送同代 join request。Client Host 把 generation 固定在本次连接目标上；异步 reservation、后续命令和自动重连都使用该固定值，不读取可被另一连接尝试改变的全局默认值。
+- 创建房间不使用 discovery。它始终读取 exact deployment registration 的 generation；一次 join 选择不会改变 Host 的创建默认值。
+- room record 的 `setupProtocol` 创建后不可修改。内存 store 对非 `5 | 6` 或代际变更 fail closed；realtime PostgreSQL 旧行由 `DEFAULT 5` 解释，数据库 check 只允许 `5 | 6`。该字段不允许 runtime 在生命周期内重新推断或升级房间。
+- 未找到、已关闭、gameId 不匹配或两个 runtime 出现同码歧义时返回 `404 { "code": "ROOM_NOT_FOUND" }`；store 故障、损坏记录或非法上游 payload 返回稳定的 `503 { "code": "ROOM_DISCOVERY_UNAVAILABLE" }`。
+- Game Server 响应使用 `Cache-Control: no-store`，Web 响应使用 `Cache-Control: no-store, private`。query 和 response 都是 strict schema；响应不得包含内部 room ID、ticket、session、UserId、slot、State、seed、replay 或 reservation 数据。
+
+Discovery 只钉住连接协议，不承诺 seat 可用，也不改变单实例 active-room 恢复边界；成功 discovery 后的 join 仍由对应 runtime authoritative 地验证房间、席位、身份和 lifecycle。
+
+### 5.4 连接确认
 
 WebSocket join 成功后，Server 先在 `protocol` message channel 发送：
 
@@ -462,7 +484,7 @@ V5/V6 `ProtocolErrorCode` 至少包括；Setup 专用代码只会出现在 V6：
 ### 11.1 Client Host 收敛语义
 
 - `GameClientHostState` 明确暴露 `idle | loading | connecting | connected | reconnecting | closed`，以及独立的 room metadata、`roomLifecycle`、最新 snapshot、command rejection 和 ticket/room/protocol/closed error。
-- `createRoom(gameId, initialConfig)` 和 `joinRoom(gameId, roomCode)` 每次先通过 provider 获取新 ticket；join 在调用 Colyseus SDK 前执行 `trim().toUpperCase()` 并用 Protocol V5 schema 校验。
+- `createRoom(gameId, initialConfig)` 按 deployment default generation 获取新 ticket；`joinRoom(gameId, roomCode, setupProtocol)` 使用 discovery 固定的 V5/V6 generation，并在调用 Colyseus SDK 前执行 `trim().toUpperCase()`。连接目标保存 exact generation，自动重连继续请求同代 ticket；后续 create 恢复 deployment default，不继承上次加入房间的代际。
 - Host 将每个 `protocol` transport payload 当作 `unknown`，只有通过 `serverMessageSchema` 且 game/room/version/viewer identity 与当前连接一致后才更新状态；非法或不一致消息会关闭连接并报告 `INVALID_SERVER_MESSAGE`。
 - `submitAction(action)` 只在 current Round 为 active、snapshot 与 lifecycle 的 round/status 一致时可用；它使用安全 UUID command ID，并填充必填 `roundNumber` 和 `expectedRevision`。Host 不接收 actor/State/Outcome，也不计算下一个 revision；pending promise 只由同轮 matching rejection 或服务器 snapshot 结算。
 - Rejection 中若包含 snapshot，host 先应用完整 snapshot 再暴露 rejection。duplicate、stale 和 reconnect 都通过 server snapshot 收敛，不在客户端 replay Action 或推导 authoritative State。

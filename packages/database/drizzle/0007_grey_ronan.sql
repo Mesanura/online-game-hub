@@ -1,0 +1,2 @@
+ALTER TABLE "realtime_rooms" ADD COLUMN "setup_protocol" integer DEFAULT 5 NOT NULL;--> statement-breakpoint
+ALTER TABLE "realtime_rooms" ADD CONSTRAINT "realtime_rooms_setup_protocol_supported" CHECK ("realtime_rooms"."setup_protocol" in (5, 6));

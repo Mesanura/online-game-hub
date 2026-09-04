@@ -32,6 +32,10 @@ import type {
   RealtimeReplayStore,
 } from "@online-game-hub/realtime-game-server-runtime";
 import type { UnknownRealtimeGameDefinition } from "@online-game-hub/realtime-game-sdk";
+import {
+  roomDiscoveryQuerySchema,
+  roomDiscoverySchema,
+} from "@online-game-hub/protocol";
 import type {
   ExactGameDefinitionResolver,
   CurrentGameDefinitionResolver,
@@ -193,6 +197,58 @@ export function createGameServer(
     ),
     metrics: createEndpoint("/metrics", { method: "GET" }, async () =>
       Response.json({ samples: metrics.snapshot() }, { status: 200 }),
+    ),
+    roomDiscovery: createEndpoint(
+      "/room-discovery",
+      { method: "GET", query: roomDiscoveryQuerySchema },
+      async ({ query }) => {
+        try {
+          const [turnBased, realtime] = await Promise.all([
+            roomStore.getByRoomCode(query.roomCode),
+            realtimeRoomStore.getByRoomCode(query.roomCode),
+          ]);
+          const candidates = [
+            ...(turnBased !== null &&
+            turnBased.closeReason === null &&
+            turnBased.gameId === query.gameId
+              ? [{ room: turnBased, runtime: "turn-based" as const }]
+              : []),
+            ...(realtime !== null &&
+            realtime.closeReason === null &&
+            realtime.gameId === query.gameId
+              ? [{ room: realtime, runtime: "realtime" as const }]
+              : []),
+          ];
+          const candidate = candidates.length === 1 ? candidates[0] : undefined;
+          if (candidate === undefined) {
+            return Response.json(
+              { code: "ROOM_NOT_FOUND" },
+              {
+                status: 404,
+                headers: { "cache-control": "no-store" },
+              },
+            );
+          }
+          return Response.json(
+            roomDiscoverySchema.parse({
+              roomCode: candidate.room.roomCode,
+              gameId: candidate.room.gameId,
+              gameVersion: candidate.room.gameVersion,
+              setupProtocol: candidate.room.setupProtocol,
+              runtime: candidate.runtime,
+            }),
+            { status: 200, headers: { "cache-control": "no-store" } },
+          );
+        } catch {
+          return Response.json(
+            { code: "ROOM_DISCOVERY_UNAVAILABLE" },
+            {
+              status: 503,
+              headers: { "cache-control": "no-store" },
+            },
+          );
+        }
+      },
     ),
   });
   const gameServer = defineServer({

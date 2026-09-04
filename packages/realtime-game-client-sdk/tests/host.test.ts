@@ -259,6 +259,84 @@ describe("RealtimeGameClientHost", () => {
     expect(room.sent.at(-1)?.payload).not.toHaveProperty("protocolVersion");
   });
 
+  it("pins a discovered V6 generation through reconnect and resets create to its default", async () => {
+    const firstRoom = new FakeRoom();
+    const reconnectedRoom = new FakeRoom();
+    const createdRoom = new FakeRoom();
+    const rooms = [firstRoom, reconnectedRoom, createdRoom];
+    const requests: Array<{
+      readonly method: "create" | "join";
+      readonly options: unknown;
+    }> = [];
+    const client: RealtimeTransportClient = {
+      async create(_roomName, options) {
+        requests.push({ method: "create", options });
+        const room = rooms.shift();
+        if (room === undefined) throw new Error("No fake realtime room.");
+        return room;
+      },
+      async join(_roomName, options) {
+        requests.push({ method: "join", options });
+        const room = rooms.shift();
+        if (room === undefined) throw new Error("No fake realtime room.");
+        return room;
+      },
+    };
+    const ticketGenerations: unknown[] = [];
+    const host = new RealtimeGameClientHost({
+      gameServerUrl: "http://127.0.0.1:2567",
+      ticketProvider: async (generation) => {
+        ticketGenerations.push(generation);
+        return `ticket-${ticketGenerations.length}`;
+      },
+      transport: { createClient: () => client },
+      delay: async () => undefined,
+    });
+
+    await expect(host.joinRoom("pong", "ABCD2345", 7 as never)).rejects.toThrow(
+      "Unsupported setup protocol generation",
+    );
+    await host.joinRoom("pong", "ABCD2345", SETUP_PROTOCOL_VERSION);
+    expect(requests[0]).toMatchObject({
+      method: "join",
+      options: {
+        protocolVersion: SETUP_PROTOCOL_VERSION,
+        ticket: "ticket-1",
+      },
+    });
+    firstRoom.emit(SERVER_PROTOCOL_MESSAGE, connectedV6());
+    firstRoom.emit(ROOM_CONTROL_MESSAGE, lifecycleV6(false));
+    firstRoom.disconnect();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(ticketGenerations).toEqual([
+      SETUP_PROTOCOL_VERSION,
+      SETUP_PROTOCOL_VERSION,
+    ]);
+    expect(requests[1]).toMatchObject({
+      method: "join",
+      options: {
+        protocolVersion: SETUP_PROTOCOL_VERSION,
+        ticket: "ticket-2",
+      },
+    });
+    reconnectedRoom.emit(SERVER_PROTOCOL_MESSAGE, connectedV6());
+    reconnectedRoom.emit(ROOM_CONTROL_MESSAGE, lifecycleV6(false));
+    await host.leaveRoom();
+
+    await host.createRoom("pong", { targetScore: 3 });
+    expect(ticketGenerations).toEqual([
+      SETUP_PROTOCOL_VERSION,
+      SETUP_PROTOCOL_VERSION,
+      PROTOCOL_VERSION,
+    ]);
+    expect(requests[2]).toMatchObject({
+      method: "create",
+      options: { protocolVersion: PROTOCOL_VERSION, ticket: "ticket-3" },
+    });
+  });
+
   it("ignores backward snapshots and fails closed on a forged viewer", async () => {
     const { host, room } = await setup();
     room.emit(REALTIME_SERVER_MESSAGE, snapshot(4, 0));

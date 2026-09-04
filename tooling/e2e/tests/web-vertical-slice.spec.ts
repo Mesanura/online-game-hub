@@ -361,9 +361,9 @@ test("two isolated accounts complete win/draw, converge on reconnect, and cannot
   await pageB.goto(`${harness.webUrl}/games/tic-tac-toe`);
   await pageB.locator("#room-code").fill(" fake2345 ");
   await pageB.getByTestId("join-room").click();
-  await expect(pageB.getByTestId("connection-error")).toHaveText(
-    "The game room could not be opened.",
-  );
+  await expect(
+    pageB.getByText("房间码无效或房间已关闭，请重试。", { exact: true }),
+  ).toBeVisible();
 
   const winningRoom = await createAndJoinRoom(pageA, pageB);
   await assertIsolatedGuestCookies(contextA, contextB);

@@ -1,6 +1,11 @@
 import { isJsonValue } from "@online-game-hub/game-sdk";
 import type { JsonValue, RngState } from "@online-game-hub/game-sdk";
-import type { MatchStatus, RoomCloseReason } from "@online-game-hub/protocol";
+import {
+  setupProtocolGenerationSchema,
+  type MatchStatus,
+  type RoomCloseReason,
+  type SetupProtocolGeneration,
+} from "@online-game-hub/protocol";
 
 export interface StoredPlayerSlot {
   readonly slotId: string;
@@ -26,6 +31,7 @@ export interface StoredGameRoom {
   readonly roomCode: string;
   readonly gameId: string;
   readonly gameVersion: string;
+  readonly setupProtocol: SetupProtocolGeneration;
   readonly initialConfig: JsonValue;
   readonly players: readonly StoredPlayerSlot[];
   readonly currentRound: StoredGameRound | null;
@@ -110,6 +116,7 @@ function validRoom(room: StoredGameRoom): boolean {
     /^[A-HJ-NP-Z2-9]{8}$/u.test(room.roomCode) &&
     room.gameId.length > 0 &&
     room.gameVersion.length > 0 &&
+    setupProtocolGenerationSchema.safeParse(room.setupProtocol).success &&
     room.players.length > 0 &&
     room.players.every(
       (player) =>
@@ -164,6 +171,12 @@ export class InMemoryRoomStore implements RoomStore {
       throw new RoomStoreError(
         "INVALID_ROOM",
         "Room code cannot change after creation.",
+      );
+    }
+    if (existing.setupProtocol !== room.setupProtocol) {
+      throw new RoomStoreError(
+        "INVALID_ROOM",
+        "Room setup protocol cannot change after creation.",
       );
     }
     this.#roomsById.set(room.roomId, cloneRoom(room));

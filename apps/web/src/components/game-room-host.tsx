@@ -29,10 +29,12 @@ import type {
   RealtimeRejected,
   RoomConnected,
   RoomConnectedV6,
+  RoomDiscovery,
   RoomLifecycleState,
   RoomLifecycleStateV6,
   StarterChoice as ProtocolStarterChoice,
 } from "@online-game-hub/protocol";
+import { roomDiscoverySchema } from "@online-game-hub/protocol";
 import {
   RealtimeGameClientHost,
   createRealtimeHttpTicketProvider,
@@ -266,10 +268,15 @@ export class RuntimeAwareHost {
     return this.#requireTurnBased().createRoom(gameId, initialConfig);
   }
 
-  public async joinRoom(gameId: string, roomCode: string): Promise<void> {
+  public async joinRoom(
+    gameId: string,
+    roomCode: string,
+    setupProtocol?: GameSetupProtocol,
+  ): Promise<void> {
     const realtime = this.#realtime;
-    if (realtime !== null) return realtime.joinRoom(gameId, roomCode);
-    return this.#requireTurnBased().joinRoom(gameId, roomCode);
+    if (realtime !== null)
+      return realtime.joinRoom(gameId, roomCode, setupProtocol);
+    return this.#requireTurnBased().joinRoom(gameId, roomCode, setupProtocol);
   }
 
   public submitAction(action: unknown): Promise<void> {
@@ -504,6 +511,30 @@ function routeIsPlay(pathname: string, gameId: string): boolean {
   );
 }
 
+async function discoverRoom(
+  gameId: string,
+  roomCode: string,
+): Promise<RoomDiscovery> {
+  const query = new URLSearchParams({ gameId, roomCode });
+  const response = await fetch(`/api/room-discovery?${query.toString()}`, {
+    method: "GET",
+    cache: "no-store",
+    headers: { accept: "application/json" },
+  });
+  if (!response.ok) throw new Error("ROOM_DISCOVERY_FAILED");
+  const parsed = roomDiscoverySchema.safeParse(
+    (await response.json()) as unknown,
+  );
+  if (
+    !parsed.success ||
+    parsed.data.gameId !== gameId ||
+    parsed.data.roomCode !== roomCode.trim().toUpperCase()
+  ) {
+    throw new Error("ROOM_DISCOVERY_FAILED");
+  }
+  return parsed.data;
+}
+
 export function GameRoomHostProvider({
   children,
   gameId,
@@ -570,11 +601,16 @@ export function GameRoomHostProvider({
     setRoomCode(targetCode);
     setBusy(true);
     setLocalError(null);
-    void host
-      .joinRoom(gameId, targetCode)
+    void discoverRoom(gameId, targetCode)
+      .then((discovery) => {
+        if (discovery.runtime !== runtime) {
+          throw new Error("ROOM_RUNTIME_MISMATCH");
+        }
+        return host.joinRoom(gameId, targetCode, discovery.setupProtocol);
+      })
       .catch(() => setLocalError("房间码无效或房间已关闭，请重试。"))
       .finally(() => setBusy(false));
-  }, [busy, gameId, host, pathname, state.room]);
+  }, [busy, gameId, host, pathname, runtime, state.room]);
 
   useEffect(() => {
     const room = state.room;
@@ -718,13 +754,16 @@ export function GameRoomHostProvider({
     setLocalNotice(null);
     handledCloseReason.current = null;
     try {
-      await host.joinRoom(gameId, roomCode);
+      const discovery = await discoverRoom(gameId, roomCode);
+      if (discovery.runtime !== runtime)
+        throw new Error("ROOM_RUNTIME_MISMATCH");
+      await host.joinRoom(gameId, roomCode, discovery.setupProtocol);
     } catch {
-      setLocalError("请输入有效的 8 位房间码。");
+      setLocalError("房间码无效或房间已关闭，请重试。");
     } finally {
       setBusy(false);
     }
-  }, [gameId, host, roomCode]);
+  }, [gameId, host, roomCode, runtime]);
 
   const selectStarter = useCallback(
     async (starter: StarterChoice): Promise<void> => {

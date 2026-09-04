@@ -14,6 +14,7 @@ const storedRoom = {
   roomCode: "ABCD2345",
   gameId: "tic-tac-toe",
   gameVersion: "1.0.0",
+  setupProtocol: 5,
   initialConfig: null,
   players: [
     {
@@ -139,6 +140,9 @@ describe("in-memory platform ports", () => {
         currentRound: { ...storedRoom.currentRound, roundNumber: 0 },
       }),
     ).rejects.toMatchObject({ code: "INVALID_ROOM" });
+    await expect(
+      store.create({ ...storedRoom, setupProtocol: 7 } as never),
+    ).rejects.toMatchObject({ code: "INVALID_ROOM" });
     await store.create(storedRoom);
     await expect(store.create(storedRoom)).rejects.toMatchObject({
       code: "ROOM_ALREADY_EXISTS",
@@ -149,6 +153,12 @@ describe("in-memory platform ports", () => {
     await expect(
       store.save({ ...storedRoom, roomId: "missing" }),
     ).rejects.toMatchObject({ code: "ROOM_NOT_FOUND" });
+    await expect(
+      store.save({ ...storedRoom, setupProtocol: 6 }),
+    ).rejects.toMatchObject({ code: "INVALID_ROOM" });
+    await expect(store.getByRoomId(storedRoom.roomId)).resolves.toMatchObject({
+      setupProtocol: 5,
+    });
   });
 
   it("collects metrics and exposes only session correlations", () => {

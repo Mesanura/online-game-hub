@@ -17,7 +17,10 @@ import type {
   RealtimeStoredPlayerSlot,
   RealtimeStoredRoom,
 } from "@online-game-hub/realtime-game-server-runtime";
-import { matchStatusSchema } from "@online-game-hub/protocol";
+import {
+  matchStatusSchema,
+  setupProtocolGenerationSchema,
+} from "@online-game-hub/protocol";
 import type { MatchStatus, RoomCloseReason } from "@online-game-hub/protocol";
 
 import type { OnlineGameHubDatabase } from "./client.js";
@@ -122,6 +125,7 @@ function validRoom(room: RealtimeStoredRoom): boolean {
     !/^[A-HJ-NP-Z2-9]{8}$/u.test(room.roomCode) ||
     !isRealtimeGameId(room.gameId) ||
     !isRealtimeGameVersion(room.gameVersion) ||
+    !setupProtocolGenerationSchema.safeParse(room.setupProtocol).success ||
     !isJsonValue(room.initialConfig) ||
     room.players.length !== 2 ||
     new Set(room.players.map((player) => player.slotId)).size !== 2
@@ -185,7 +189,11 @@ function roomFromRows(
   room: typeof realtimeRooms.$inferSelect,
   players: readonly (typeof realtimeRoomPlayers.$inferSelect)[],
 ): RealtimeStoredRoom {
+  const setupProtocol = setupProtocolGenerationSchema.safeParse(
+    room.setupProtocol,
+  );
   if (
+    !setupProtocol.success ||
     !isJsonValue(room.initialConfig) ||
     !Number.isSafeInteger(room.currentTick) ||
     room.currentTick < 0 ||
@@ -238,6 +246,7 @@ function roomFromRows(
     roomCode: room.roomCode,
     gameId: room.gameId,
     gameVersion: room.gameVersion,
+    setupProtocol: setupProtocol.data,
     initialConfig: room.initialConfig as JsonValue,
     players: players.map((player) => ({
       slotId: player.playerSlotId,
@@ -265,6 +274,7 @@ export class PostgresRealtimeRoomStore implements RealtimeRoomStore {
           roomCode: room.roomCode,
           gameId: room.gameId,
           gameVersion: room.gameVersion,
+          setupProtocol: room.setupProtocol,
           initialConfig: cloneJson(room.initialConfig),
           ...roomRoundColumns(room),
         });
@@ -299,7 +309,12 @@ export class PostgresRealtimeRoomStore implements RealtimeRoomStore {
             ...roomRoundColumns(room),
             updatedAt: new Date(),
           })
-          .where(eq(realtimeRooms.roomId, room.roomId))
+          .where(
+            and(
+              eq(realtimeRooms.roomId, room.roomId),
+              eq(realtimeRooms.setupProtocol, room.setupProtocol),
+            ),
+          )
           .returning({ roomId: realtimeRooms.roomId });
         if (updated.length !== 1)
           throw new DatabaseError("DATABASE_OPERATION_ERROR");

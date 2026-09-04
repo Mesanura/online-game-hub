@@ -8,10 +8,12 @@ import type { RealtimeGameDefinition } from "@online-game-hub/realtime-game-sdk"
 import { z } from "zod";
 
 import {
+  InMemoryRealtimeRoomStore,
   InMemoryRealtimeReplayStore,
   RealtimeRound,
   RealtimeTickScheduler,
 } from "../src/index.js";
+import type { RealtimeStoredRoom } from "../src/index.js";
 
 type State = {
   readonly players: readonly [string, string];
@@ -241,6 +243,73 @@ describe("in-memory realtime replay store", () => {
     await expect(
       store.complete("id", 1, 2, 0, { type: "DONE" }),
     ).rejects.toThrow("conflict");
+  });
+});
+
+describe("in-memory realtime room store", () => {
+  const storedRoom = {
+    roomId: "runtime-room-1",
+    roomCode: "ABCD2345",
+    gameId: "runtime-test",
+    gameVersion: "1.0.0",
+    setupProtocol: 5,
+    initialConfig: null,
+    players: [
+      {
+        slotId: "left",
+        playerSessionId: "session-left",
+        userId: null,
+        reservedUntilMilliseconds: null,
+      },
+      {
+        slotId: "right",
+        playerSessionId: null,
+        userId: null,
+        reservedUntilMilliseconds: null,
+      },
+    ],
+    currentRound: null,
+    closeReason: null,
+  } as const satisfies RealtimeStoredRoom;
+
+  it("round-trips pinned V5/V6 generations and rejects invalid changes", async () => {
+    const store = new InMemoryRealtimeRoomStore();
+    await expect(
+      store.create({ ...storedRoom, setupProtocol: 7 } as never),
+    ).rejects.toThrow("Invalid realtime room setup protocol");
+
+    await store.create(storedRoom);
+    const firstRead = await store.getByRoomCode(" abcd2345 ");
+    const secondRead = await store.getByRoomCode("ABCD2345");
+    expect(firstRead).toEqual(storedRoom);
+    expect(firstRead).not.toBe(secondRead);
+    expect(firstRead?.players).not.toBe(secondRead?.players);
+
+    await store.save(storedRoom);
+    await expect(
+      store.save({ ...storedRoom, setupProtocol: 6 }),
+    ).rejects.toThrow("Realtime room setup protocol cannot change");
+    await expect(store.getByRoomCode("ABCD2345")).resolves.toMatchObject({
+      setupProtocol: 5,
+    });
+    await expect(
+      store.save({ ...storedRoom, setupProtocol: 7 } as never),
+    ).rejects.toThrow("Invalid realtime room setup protocol");
+    await expect(store.getByRoomCode("ABCD2345")).resolves.toMatchObject({
+      setupProtocol: 5,
+    });
+
+    const v6Room = {
+      ...storedRoom,
+      roomId: "runtime-room-2",
+      roomCode: "EFGH2345",
+      setupProtocol: 6,
+    } as const;
+    await store.create(v6Room);
+    await store.save(v6Room);
+    await expect(store.getByRoomCode("EFGH2345")).resolves.toMatchObject({
+      setupProtocol: 6,
+    });
   });
 });
 

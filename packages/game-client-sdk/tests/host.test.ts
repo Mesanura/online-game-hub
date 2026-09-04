@@ -395,6 +395,65 @@ describe("GameClientHost", () => {
     });
   });
 
+  it("pins a discovered V6 generation through reconnect and resets create to its default", async () => {
+    const firstRoom = new FakeRoom();
+    const reconnectedRoom = new FakeRoom();
+    const createdRoom = new FakeRoom();
+    const transport = new FakeTransport([
+      firstRoom,
+      reconnectedRoom,
+      createdRoom,
+    ]);
+    const ticketGenerations: unknown[] = [];
+    const host = new GameClientHost({
+      gameServerUrl: "http://127.0.0.1:1234",
+      ticketProvider: async (generation) => {
+        ticketGenerations.push(generation);
+        return `ticket-${ticketGenerations.length}`;
+      },
+      transport,
+      delay: async () => undefined,
+    });
+
+    await expect(
+      host.joinRoom("tic-tac-toe", "ABCD2345", 7 as never),
+    ).rejects.toThrow("Unsupported setup protocol generation");
+    await host.joinRoom("tic-tac-toe", "ABCD2345", SETUP_PROTOCOL_VERSION);
+    expect(transport.clients[0]?.requests[0]?.options).toMatchObject({
+      protocolVersion: SETUP_PROTOCOL_VERSION,
+      ticket: "ticket-1",
+    });
+    firstRoom.emit(connectedV6);
+    firstRoom.emitLifecycle(lifecycleV6(null));
+    firstRoom.disconnect();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(ticketGenerations).toEqual([
+      SETUP_PROTOCOL_VERSION,
+      SETUP_PROTOCOL_VERSION,
+    ]);
+    expect(transport.clients[1]?.requests[0]?.options).toMatchObject({
+      protocolVersion: SETUP_PROTOCOL_VERSION,
+      ticket: "ticket-2",
+      roomCode: "ABCD2345",
+    });
+    reconnectedRoom.emit(connectedV6);
+    reconnectedRoom.emitLifecycle(lifecycleV6(null));
+    await host.leaveRoom();
+
+    await host.createRoom("tic-tac-toe", null);
+    expect(ticketGenerations).toEqual([
+      SETUP_PROTOCOL_VERSION,
+      SETUP_PROTOCOL_VERSION,
+      PROTOCOL_VERSION,
+    ]);
+    expect(transport.clients[2]?.requests[0]).toMatchObject({
+      method: "create",
+      options: { protocolVersion: PROTOCOL_VERSION, ticket: "ticket-3" },
+    });
+  });
+
   it("applies stale recovery snapshots and surfaces structured rejection", async () => {
     const room = new FakeRoom();
     const host = new GameClientHost({

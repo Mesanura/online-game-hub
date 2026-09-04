@@ -213,6 +213,30 @@ describe.sequential("realtime Pong Game Server", () => {
     await waitUntil(
       () => inboxA.connected.length === 1 && inboxA.lifecycle.length >= 1,
     );
+    const discoveryResponse = await fetch(
+      `${address.httpUrl}/room-discovery?gameId=pong&roomCode=pang2345`,
+    );
+    expect(discoveryResponse.status).toBe(200);
+    expect(discoveryResponse.headers.get("cache-control")).toBe("no-store");
+    const discovery = (await discoveryResponse.json()) as Record<
+      string,
+      unknown
+    >;
+    expect(discovery).toEqual({
+      roomCode: "PANG2345",
+      gameId: "pong",
+      gameVersion: "1.0.0",
+      setupProtocol: PROTOCOL_VERSION,
+      runtime: "realtime",
+    });
+    expect(Object.keys(discovery).sort()).toEqual([
+      "gameId",
+      "gameVersion",
+      "roomCode",
+      "runtime",
+      "setupProtocol",
+    ]);
+    expect(JSON.stringify(discovery)).not.toMatch(/session|slot|ticket/iu);
     const roomB = await clientB.join(REALTIME_GAME_ROOM_NAME, {
       type: "room.join",
       protocolVersion: PROTOCOL_VERSION,

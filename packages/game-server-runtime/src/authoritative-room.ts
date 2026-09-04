@@ -95,6 +95,7 @@ export interface GameRoomMetadata {
   readonly roomCode: string;
   readonly gameId: string;
   readonly gameVersion: string;
+  readonly setupProtocol: typeof PROTOCOL_VERSION;
 }
 
 export type AuthoritativeGameRoomClass = new () => Room<{
@@ -324,6 +325,7 @@ export function createAuthoritativeGameRoomClass(
         roomCode,
         gameId: definition.manifest.id,
         gameVersion: definition.manifest.gameVersion,
+        setupProtocol: PROTOCOL_VERSION,
       });
 
       const labels = this.#labels();
@@ -1744,6 +1746,7 @@ export function createAuthoritativeGameRoomClass(
         roomCode: aggregate.roomCode,
         gameId: aggregate.definition.manifest.id,
         gameVersion: aggregate.definition.manifest.gameVersion,
+        setupProtocol: PROTOCOL_VERSION,
         initialConfig: aggregate.initialConfig,
         players,
         currentRound,
