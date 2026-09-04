@@ -76,6 +76,10 @@ describe("normalizeRoomLifecycle", () => {
         requiredPlayerCount: 2,
         setupRevision: 3,
         canReady: true,
+        setupView: {
+          starter: "RANDOM",
+          participantSlotIds: ["slot-owner", "slot-guest"],
+        },
       },
       players: [
         { slotId: "slot-owner", assignment: null },

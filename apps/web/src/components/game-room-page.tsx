@@ -410,12 +410,16 @@ function PlayerPod({
 }
 
 function RoomView({ title }: Pick<GameRoomPageProps, "title">) {
+  const reducedMotion = useReducedMotionPreference();
+  const locale =
+    typeof navigator === "undefined" ? "zh-CN" : navigator.language || "zh-CN";
   const {
     busy,
     closeRoom,
     copyInviteLink,
     inviteCopyState,
     inviteUrl,
+    host,
     leaveRoom,
     selectInviteFallback,
     selectStarter,
@@ -431,11 +435,17 @@ function RoomView({ title }: Pick<GameRoomPageProps, "title">) {
   if (room === null || lifecycle === null || lifecycle.closed) {
     return <LoadingView label="正在连接房间…" />;
   }
+  const setupSurfaceEntrypoint =
+    lifecycle.protocolVersion === 6
+      ? resolveGameSurfaceEntrypoint(room.gameId, room.gameVersion, "setup")
+      : undefined;
   const roundNumber =
     nextRound?.roundNumber ?? lifecycle.currentRound?.roundNumber ?? 1;
   const selfReady = nextRound?.selfReady ?? false;
   const required = nextRound?.requiredPlayerCount ?? 2;
   const readyCount = nextRound?.readyPlayerCount ?? 0;
+  const canReady =
+    nextRound !== null && (nextRound.canReady ?? nextRound.starter !== null);
   const otherReady = readyCount === required || (readyCount > 0 && !selfReady);
   const lifecyclePlayers = lifecycle.players ?? [
     {
@@ -486,7 +496,7 @@ function RoomView({ title }: Pick<GameRoomPageProps, "title">) {
         <header className="stage-heading">
           <p className="eyebrow">房间设置</p>
           <h1>准备下一局</h1>
-          <p>确认先手与玩家准备状态，全部就绪后自动进入对局。</p>
+          <p>完成本局游戏设置并确认准备，全部就绪后自动进入对局。</p>
         </header>
         <section aria-labelledby="players-heading" className="player-bays">
           <div className="section-heading">
@@ -511,7 +521,8 @@ function RoomView({ title }: Pick<GameRoomPageProps, "title">) {
             ))}
           </div>
         </section>
-        {nextRound?.assignmentOptions === undefined ? null : (
+        {setupSurfaceEntrypoint !== undefined ||
+        nextRound?.assignmentOptions === undefined ? null : (
           <section
             aria-labelledby="assignment-heading"
             className="round-dock clay-surface assignment-dock"
@@ -581,14 +592,42 @@ function RoomView({ title }: Pick<GameRoomPageProps, "title">) {
           <div className="round-dock-header">
             <div>
               <p className="eyebrow">第 {roundNumber} 局</p>
-              <h2 id="round-settings-heading">房主选择先手</h2>
+              <h2 id="round-settings-heading">
+                {setupSurfaceEntrypoint === undefined
+                  ? "房主选择先手"
+                  : "游戏规则"}
+              </h2>
             </div>
             <span className="round-dock-note">
               <UsersThree size={18} weight="bold" aria-hidden="true" />
               {readyCount}/{required} 人已准备
             </span>
           </div>
-          {lifecycle.isOwner && nextRound !== null ? (
+          {setupSurfaceEntrypoint !== undefined && nextRound !== null ? (
+            <div
+              className="round-setup-surface"
+              data-testid="round-setup-surface"
+            >
+              <GameSurfaceFrame
+                connectionState={state.connectionState}
+                entrypoint={setupSurfaceEntrypoint}
+                locale={locale}
+                onIntent={async (intent) => {
+                  try {
+                    await host.submitSetup(intent);
+                    return { status: "accepted" };
+                  } catch {
+                    return { status: "rejected", code: "HOST_REJECTED" };
+                  }
+                }}
+                payload={nextRound.setupView}
+                readOnly={false}
+                reducedMotion={reducedMotion}
+                roundNumber={nextRound.roundNumber}
+                setupRevision={nextRound.setupRevision ?? 0}
+              />
+            </div>
+          ) : lifecycle.isOwner && nextRound !== null ? (
             <div aria-label="选择先手方" className="starter-options">
               <button
                 aria-pressed={nextRound.starter === "OWNER"}
@@ -641,14 +680,16 @@ function RoomView({ title }: Pick<GameRoomPageProps, "title">) {
               data-testid="round-setup-status"
               role="status"
             >
-              {nextRound?.starter === null
-                ? "房主尚未选择先手方"
+              {!canReady
+                ? setupSurfaceEntrypoint === undefined
+                  ? "房主尚未选择先手方"
+                  : "请先完成本局游戏设置"
                 : `${selfReady ? "你已准备；" : ""}${readyCount}/${required} 人已准备`}
             </p>
             <button
               className="clay-button clay-button-primary"
               data-testid="toggle-round-ready"
-              disabled={busy || nextRound?.starter === null}
+              disabled={busy || !canReady}
               onClick={() => void toggleRoundReady()}
               type="button"
             >
@@ -684,8 +725,10 @@ function RoomView({ title }: Pick<GameRoomPageProps, "title">) {
             </button>
           )}
           <p className="room-help-copy">
-            {nextRound?.starter === null
-              ? "准备开始前，需要由房主选定先手。"
+            {!canReady
+              ? setupSurfaceEntrypoint === undefined
+                ? "准备开始前，需要由房主选定先手。"
+                : "准备开始前，需要先完成本局游戏设置。"
               : readyCount === required
                 ? "玩家已到齐，正在进入对局…"
                 : `等待其余玩家完成准备（${readyCount}/${required}）。`}

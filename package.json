@@ -25,7 +25,7 @@
     "test": "turbo run test",
     "test:database": "turbo run build --filter=@online-game-hub/game-server && pnpm --filter @online-game-hub/database test:database && pnpm --filter @online-game-hub/game-server test:database",
     "test:integration": "pnpm --filter @online-game-hub/game-server test:integration",
-    "test:e2e": "pnpm build && pnpm --filter @online-game-hub/e2e test:e2e",
+    "test:e2e": "pnpm build && pnpm surface:verify && pnpm surface:publish && pnpm --filter @online-game-hub/e2e test:e2e",
     "typecheck": "turbo run typecheck"
   },
   "devDependencies": {

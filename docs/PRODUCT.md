@@ -1,6 +1,6 @@
 # 产品目标与范围
 
-> 状态：产品基线（M1–M8 已完成；独立 Game Surface 与 Setup Protocol V6 正在分阶段迁移，现有房间继续使用 Protocol V5）
+> 状态：产品基线（M1–M8 已完成；独立 Game Surface 与 Setup Protocol V6 正在分阶段迁移，井字棋纵切已上线，房间继续固定其创建时的 V5/V6 代际）
 > 本文是产品目标、范围和非目标的权威来源。技术实现边界见 [ARCHITECTURE.md](./ARCHITECTURE.md)。
 
 ## 1. 产品愿景

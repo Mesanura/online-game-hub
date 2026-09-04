@@ -70,12 +70,21 @@ describe("explicit game registry", () => {
       );
       expect(
         resolveGameDeployment(manifest.id, manifest.gameVersion),
-      ).toMatchObject({
-        gameId: manifest.id,
-        gameVersion: manifest.gameVersion,
-        setupProtocol: 5,
-        presentation: { kind: "legacy-react" },
-      });
+      ).toMatchObject(
+        manifest.id === "tic-tac-toe"
+          ? {
+              gameId: manifest.id,
+              gameVersion: manifest.gameVersion,
+              setupProtocol: 6,
+              presentation: { kind: "surface-v1" },
+            }
+          : {
+              gameId: manifest.id,
+              gameVersion: manifest.gameVersion,
+              setupProtocol: 5,
+              presentation: { kind: "legacy-react" },
+            },
+      );
       expect(resolveCurrentGameDeployment(manifest.id)).toEqual(
         resolveGameDeployment(manifest.id, manifest.gameVersion),
       );
@@ -142,9 +151,35 @@ describe("explicit game registry", () => {
         "play",
       ),
     ).toBeUndefined();
+    expect(resolveGameDeployment("tic-tac-toe", "1.0.0")).toMatchObject({
+      setupProtocol: 5,
+      presentation: { kind: "legacy-react" },
+    });
     expect(
-      resolveGameSurfaceEntrypoint("tic-tac-toe", "1.1.0", "play"),
+      resolveGameSurfaceEntrypoint("tic-tac-toe", "1.0.0", "play"),
     ).toBeUndefined();
+    expect(resolveGameDeployment("tic-tac-toe", "1.1.0")).toMatchObject({
+      setupProtocol: 6,
+      presentation: {
+        kind: "surface-v1",
+        publicBasePath: "/game-surfaces/tic-tac-toe/1.0.0",
+        artifact: {
+          surfaceVersion: "1.0.0",
+          contentDigest: "sha256-kP7B2210ENPCKROxkYKZde3AVYDOJpHtGtNx1QC6yow=",
+        },
+      },
+    });
+    for (const mode of ["setup", "play", "replay"] as const) {
+      expect(
+        resolveGameSurfaceEntrypoint("tic-tac-toe", "1.1.0", mode),
+      ).toMatchObject({
+        gameId: "tic-tac-toe",
+        gameVersion: "1.1.0",
+        surfaceVersion: "1.0.0",
+        mode,
+        url: `/game-surfaces/tic-tac-toe/1.0.0/${mode}/index.html`,
+      });
+    }
   });
 
   it("selects each explicitly registered current definition for new rooms", () => {

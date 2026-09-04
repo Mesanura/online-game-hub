@@ -201,7 +201,7 @@ Multiplayer integration 使用两个独立客户端连接同一真实 room，验
 
 真实 integration cases 覆盖：health/metrics 与 Protocol V5 ticket trust boundary；井字棋、四子棋、五子棋、六贯棋、黑白棋和中国跳棋 stable slots、无 snapshot setup、active/completed、invalid/rule-rejected commands、per-viewer snapshot 与 verified canonical replay；replay append failure 不确认/不提交；新 ticket + 新 reservation 的 reconnect、connection takeover、错误 session theft 和 fake-clock 60 秒 abandoned；逐局 starter/ready/cancel、随机 starter、复用 playerOrder 的 immediate rematch、跨轮 duplicate/错轮防护、terminal outsider、房主关闭、非房主 active leave 和 terminal TTL。中国跳棋额外覆盖 2–6 人人数控制、唯一营地权限、多人 playerOrder、排名和 assignment replay metadata。ticket verifier、ports、composition logger 另有无 transport 的 contract/unit tests。
 
-独立的 dormant Protocol V6 turn-based integration fixture 使用 V6 ticket/create/join/connected/lifecycle/Action 全链路，覆盖非 owner、伪造敏感字段、schema invalid、stale setup revision、duplicate ready、accepted 设置清 ready、Setup RoomStore 保存失败同 command 重试、finalized RANDOM setup 在 archive 失败后的原 command 重试、revision 0 active snapshot，以及第二局完整复用 config/order/assignments但生成独立 gameplay seed/replay。该 fixture 不改变 production deployment 的 V5 默认值。
+Protocol V6 turn-based integration fixture 使用 V6 ticket/create/join/connected/lifecycle/Action 全链路，覆盖非 owner、伪造敏感字段、schema invalid、stale setup revision、duplicate ready、accepted 设置清 ready、Setup RoomStore 保存失败同 command 重试、finalized RANDOM setup 在 archive 失败后的原 command 重试、revision 0 active snapshot，以及第二局完整复用 config/order/assignments 但生成独立 gameplay seed/replay。`tic-tac-toe@1.1.0` 的 production deployment 默认使用 V6；既有 V5 suites 显式固定 V5 resolver，持续验证两代房间并存。
 
 黑白棋 integration 额外覆盖本轮 BLACK/WHITE role、schema-invalid/伪造 actor、错回合与无翻转拒绝不推进 revision/replay、权威翻转、revision 18 后 WHITE 强制连续行动、25-action 非满盘终局、PASS-free canonical replay，以及同房间第二轮 revision 重置、独立 Match/replay 与 11-action 非满盘终局。
 
@@ -297,10 +297,10 @@ try {
 
 `tooling/e2e/tests/web-vertical-slice.spec.ts` 使用两个隔离且已登录的 browser contexts 验证账户归属与既有房间行为；`auth-vertical-slice.spec.ts` 另以双浏览器先完成游客局，再注册并完成账户局：
 
-1. A 创建井字棋 room 后在无 snapshot 页面预选“我先”，B 以规范化 room code 加入；双方 ready 后才获得不同 stable slots、相同 room code/revision 和各自完整 View；
-2. 越过 disabled affordance 提交非当前玩家 intent 和重复点击，真实 Server 不产生额外 revision、棋盘或 replay action；
+1. A 创建井字棋 V6 room 后在独立 Setup Surface 选择“房主先手”，B 以规范化 room code 加入；所需参与者到齐后双方分别 ready，自动切换至独立 Play Surface，并获得不同 stable slots、相同 room code/revision 和各自完整 View；
+2. 确认非当前玩家的 Surface 棋格被禁用；伪造 actor、schema-invalid、stale 与 duplicate intent 的权威拒绝由 Protocol V6 integration 覆盖，均不得推进 revision、棋盘或 replay action；
 3. 两者完成第 1 局 5-revision 胜局并验证 WIN；临时断线仍以同一账户身份和 PlayerSessionId、新 ticket/new reservation 恢复原 slot；
-4. A 为第 2 局选择“对方先”，ready、cancel、再次 ready，B ready 后在同一 room code 和 stable slots 进入新 `playerOrder`，页面显示轮次且 revision 重置为 `0`；
+4. completed 后进入同一 Setup Surface，默认复用上一局完整 finalized setup；A 再选择“另一位玩家先手”，ready、cancel、再次 ready，B ready 后在同一 room code 和 stable slots 进入新 `playerOrder`，页面显示轮次且 revision 重置为 `0`；
 5. 两者以交换后的 X/O 角色完成第 2 局 9-revision 平局并验证 DRAW；两轮各有独立 Match/replay/history，Replay header 顺序相反且均通过 `verifyReplay`，history 返回 `roundNumber`；
 6. 第三 context 猜到 completed room code 仍被 `ROOM_NOT_JOINABLE` 拒绝；另一账户查询不到 A/B history；
 7. completed room 由房主关闭并返回入口；另一个尚未开始首局的 room 由房主无确认关闭，且不产生 abandoned Match；
@@ -308,7 +308,7 @@ try {
 9. 另一 active room 用 fake clock 前进 60,001 ms，验证 `RECONNECT_TIMEOUT` abandoned 并关闭 live room；
 10. 关闭并重建 database adapter 后，两轮 history metadata 和 completed canonical replays 仍存在；浏览器只看到安全 metadata，不看到数据库或 replay 细节。
 
-Web E2E 同时验证三阶段 App Router：创建/加入和 canonical 邀请进入等待页，旧 `?roomCode=` 兼容入口规范化，双方 ready 后自动进入 `/play`，active 刷新/reconnect 回到 `/play`，completed 保留最终棋盘并通过“下一局设置”返回等待页，closed 返回入口并显示原因。复制邀请覆盖 Clipboard 成功状态与 API 失败后的可操作手动复制后备；六套 E2E 都从对局左侧共用 HUD 取消一次投降并确认一次，验证取消不产生 Action、确认只产生一个 `RESIGN`/revision、双方收敛到 `RESIGNATION` WIN 且 PostgreSQL replay exact verification 通过；中国跳棋额外覆盖 3 人营地选择、排名和 assignment replay metadata。HUD 仍直接提供关闭/离开并为 active 房间保留独立确认。
+Web E2E 同时验证三阶段 App Router：创建/加入和 canonical 邀请进入等待页，旧 `?roomCode=` 兼容入口规范化，双方 ready 后自动进入 `/play`，active 刷新/reconnect 回到 `/play`，completed 保留最终棋盘并通过“调整设置”返回等待页，closed 返回入口并显示原因。井字棋还验证 exact Setup/Play/Replay Surface entrypoint、iframe 内交互、只读历史回放和 production V6；复制邀请覆盖 Clipboard 成功状态与 API 失败后的可操作手动复制后备。各游戏从默认收起的覆盖式 HUD 执行通用投降/关闭/离开，验证投降取消不产生 Action、确认只产生一个 `RESIGN`/revision、双方收敛到 `RESIGNATION` WIN 且 PostgreSQL replay exact verification 通过；中国跳棋额外覆盖 3 人营地选择、排名和 assignment replay metadata。
 
 `auth-vertical-slice.spec.ts` 还验证右上角 ProfileMenu：游客显示“游客”并可修改显示名、实时更新头像且刷新后仍保留；登录后下半部切换为历史/设置/退出，账户更新由另一 browser context 读取，退出后恢复为独立游客资料；键盘 Escape、外部点击和 live room 中身份变化确认均有效。
 
@@ -348,7 +348,7 @@ Web E2E 同时验证三阶段 App Router：创建/加入和 canonical 邀请进�
 
 Harness 为 Web 预留随机 loopback port，并用 `port: 0` 启动正式 ticket verifier/CORS composition 的真实 Colyseus Server；随后启动真实 Next production server 和 Chromium。M5/M6 E2E 使用测试 owner 创建的隔离 PostgreSQL database 和正式 adapters，只注入 fake clock、deterministic IDs 与测试 logger 等已有可控 ports，不 mock 数据库、浏览器、ticket route、matchmaking、WebSocket 或 Action pipeline，也不访问外部服务。活动 RoomStore 仍在内存中，因此该测试只验证 archive/replay 跨 adapter 重建，不声称恢复活动 room。
 
-断言优先使用可访问 role/test id 和用户可见文本；恶意 intent case 明确调用实际 React click handler 以绕过 UX disable，但仍通过真实 client host/transport/server。Playwright trace/video 关闭，避免 bearer ticket 进入测试制品；失败 screenshot 只包含不显示 credential 的 UI。harness 在 `afterAll` 对两个进程执行停止清理。
+断言优先使用可访问 role/test id 和用户可见文本；legacy Client Module 的恶意 intent case 可调用实际 React click handler 绕过 UX disable，但仍须通过真实 client host/transport/server；sandboxed Surface 不通过篡改 iframe 内框架私有属性制造攻击，权威负例由 Bridge contract 与 V6 integration 覆盖。Playwright trace/video 关闭，避免 bearer ticket 进入测试制品；失败 screenshot 只包含不显示 credential 的 UI。harness 在 `afterAll` 对两个进程执行停止清理。
 
 ## 11. Change-to-Test Matrix
 
@@ -393,7 +393,7 @@ pnpm db:migrate
 pnpm test:database
 ```
 
-`pnpm lint` 包含格式、ESLint、本地 Markdown 链接与依赖边界检查。`pnpm test` 纳入 Game SDK、Protocol、井字棋/四子棋/五子棋/六贯棋/黑白棋 Core/client/golden、registry、ticket authority、Web guest/config、runtime/replay stores、Game Server unit tests、create-game 隔离 fixture 和 repository-check 的全部故意违规 fixture tests。`pnpm test:integration` 执行真实 Colyseus SDK tests。`pnpm test:e2e` 先执行完整 workspace build，再执行 PostgreSQL-backed Playwright。`pnpm test:database` 执行真实 PostgreSQL tests；这些命令都不是空脚本。
+`pnpm lint` 包含格式、ESLint、本地 Markdown 链接与依赖边界检查。`pnpm test` 纳入 Game SDK、Protocol、井字棋/四子棋/五子棋/六贯棋/黑白棋 Core/client/golden、registry、ticket authority、Web guest/config、runtime/replay stores、Game Server unit tests、create-game 隔离 fixture 和 repository-check 的全部故意违规 fixture tests。`pnpm test:integration` 执行真实 Colyseus SDK tests。`pnpm test:e2e` 先执行完整 workspace build、Surface verify/publish，再执行 PostgreSQL-backed Playwright。`pnpm test:database` 执行真实 PostgreSQL tests；这些命令都不是空脚本。
 
 `pnpm db:check` 是只读 migration/schema 一致性检查。`pnpm db:migrate` 只在调用者显式提供 `DATABASE_URL` 时应用 checked-in migrations；应用 import 或 production startup 都不会自动 migration。本地创建、迁移与停止 PostgreSQL 的命令见根 README。测试必须使用独立 database/schema，禁止对默认 development `DATABASE_URL` 执行 destructive reset。
 

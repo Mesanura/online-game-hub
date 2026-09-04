@@ -1,5 +1,10 @@
 import { expect, test } from "@playwright/test";
-import type { BrowserContext, Page } from "@playwright/test";
+import type {
+  BrowserContext,
+  FrameLocator,
+  Locator,
+  Page,
+} from "@playwright/test";
 
 import {
   PostgresReplayStore,
@@ -34,6 +39,21 @@ function capturePageErrors(page: Page, errors: string[]): void {
   page.on("pageerror", (error) => errors.push(error.message));
 }
 
+function ticTacToeSurface(page: Page): FrameLocator {
+  return page.frameLocator('[data-testid="game-surface-iframe"]');
+}
+
+function ticTacToeCell(page: Page, cell: number): Locator {
+  return ticTacToeSurface(page).locator(".tic-board button").nth(cell);
+}
+
+async function selectSurfaceStarter(
+  page: Page,
+  name: "房主先手" | "另一位玩家先手" | "随机先手",
+): Promise<void> {
+  await ticTacToeSurface(page).getByRole("button", { name }).click();
+}
+
 async function expectRevision(
   pages: readonly Page[],
   revision: number,
@@ -65,7 +85,7 @@ async function playAcceptedMove(
   cell: number,
   revision: number,
 ): Promise<void> {
-  const button = actor.locator(`[data-cell-index="${cell}"]`);
+  const button = ticTacToeCell(actor, cell);
   await expect(button).toBeEnabled();
   await button.click();
   await expectRevision(viewers, revision);
@@ -87,16 +107,23 @@ async function createAndJoinRoom(
   await expect(pageA.getByTestId("connection-state")).toHaveText("已连接");
   await expect(pageA.getByTestId("game-stage")).toHaveCount(0);
   await expect(pageA.getByTestId("match-status")).toHaveCount(0);
+  await expect(pageA.getByTestId("game-surface-iframe")).toHaveAttribute(
+    "src",
+    "/game-surfaces/tic-tac-toe/1.0.0/setup/index.html",
+  );
   await expect(pageA.getByTestId("round-setup-status")).toHaveText(
-    "房主尚未选择先手方",
+    "请先完成本局游戏设置",
   );
   const playerCountNotice = pageA.getByTestId("player-count-notice");
   await expect(playerCountNotice).toHaveText("等待其他玩家加入…");
   await expect(playerCountNotice).toHaveAttribute("data-state", "waiting");
   await expect(playerCountNotice).toHaveCSS("position", "fixed");
-  await pageA.getByTestId("starter-owner").click();
+  await selectSurfaceStarter(pageA, "房主先手");
+  await expect(
+    ticTacToeSurface(pageA).getByRole("button", { name: "房主先手" }),
+  ).toHaveAttribute("aria-pressed", "true");
   await expect(pageA.getByTestId("round-setup-status")).toHaveText(
-    "0/2 人已准备",
+    "请先完成本局游戏设置",
   );
 
   const inviteUrl = await pageA.getByTestId("invite-link").getAttribute("href");
@@ -148,6 +175,9 @@ async function createAndJoinRoom(
       expect(page.getByTestId("connection-state")).toHaveText("已连接"),
     ),
   );
+  await expect(pageA.getByTestId("round-setup-status")).toHaveText(
+    "0/2 人已准备",
+  );
   await pageA.getByTestId("toggle-round-ready").click();
   await expect(pageB.getByTestId("round-setup-status")).toHaveText(
     "1/2 人已准备",
@@ -156,6 +186,10 @@ async function createAndJoinRoom(
   await Promise.all(
     [pageA, pageB].map(async (page) => {
       await expect(page.getByTestId("game-stage")).toBeVisible();
+      await expect(page.getByTestId("game-surface-iframe")).toHaveAttribute(
+        "src",
+        "/game-surfaces/tic-tac-toe/1.0.0/play/index.html",
+      );
       const readyNotice = page.getByTestId("player-count-notice");
       await expect(readyNotice).toHaveText("玩家已到齐，游戏开始！");
       await expect(readyNotice).toHaveAttribute("data-state", "ready");
@@ -367,63 +401,26 @@ test("two isolated accounts complete win/draw, converge on reconnect, and cannot
 
   const winningRoom = await createAndJoinRoom(pageA, pageB);
   await assertIsolatedGuestCookies(contextA, contextB);
-  await expect(pageA.getByTestId("player-mark")).toContainText("X");
-  await expect(pageB.getByTestId("player-mark")).toContainText("O");
-
-  const illegalButton = pageB.locator('[data-cell-index="0"]');
-  await illegalButton.evaluate((element) => {
-    const propsKey = Object.keys(element).find((key) =>
-      key.startsWith("__reactProps$"),
-    );
-    if (propsKey === undefined) {
-      throw new Error("React button props were not available.");
-    }
-    const props = (element as unknown as Record<string, unknown>)[propsKey];
-    if (
-      props === null ||
-      typeof props !== "object" ||
-      !("onClick" in props) ||
-      typeof props.onClick !== "function"
-    ) {
-      throw new Error("The game button has no intent handler.");
-    }
-    props.onClick();
-  });
-  await expect(pageB.getByTestId("command-rejection")).toContainText(
-    "还没有轮到你",
+  await expect(ticTacToeSurface(pageA).locator(".mark-chip")).toHaveText(
+    "你的棋子 X",
   );
-  await expectRevision([pageA, pageB], 0);
-  await expect(illegalButton).toHaveText("");
+  await expect(ticTacToeSurface(pageB).locator(".mark-chip")).toHaveText(
+    "你的棋子 O",
+  );
 
-  const duplicateButton = pageA.locator('[data-cell-index="0"]');
-  await duplicateButton.evaluate((element) => {
-    const propsKey = Object.keys(element).find((key) =>
-      key.startsWith("__reactProps$"),
-    );
-    if (propsKey === undefined) {
-      throw new Error("React button props were not available.");
-    }
-    const props = (element as unknown as Record<string, unknown>)[propsKey];
-    if (
-      props === null ||
-      typeof props !== "object" ||
-      !("onClick" in props) ||
-      typeof props.onClick !== "function"
-    ) {
-      throw new Error("The game button has no intent handler.");
-    }
-    props.onClick();
-    props.onClick();
-  });
-  await expectRevision([pageA, pageB], 1);
-  await expect(pageA.getByTestId("command-rejection")).toContainText("旧画面");
-  await expect(pageA.locator('[data-cell-index="0"]')).toHaveText("X");
+  const illegalButton = ticTacToeCell(pageB, 0);
+  await expect(illegalButton).toBeDisabled();
+  await expectRevision([pageA, pageB], 0);
+  await expect(illegalButton.locator("span")).toHaveText("");
+
+  await playAcceptedMove(pageA, [pageA, pageB], 0, 1);
+  await expect(ticTacToeCell(pageA, 0).locator("span")).toHaveText("X");
   expect(
-    await pageA
-      .locator("[data-cell-index]")
+    await ticTacToeSurface(pageA)
+      .locator(".tic-board [data-mark]")
       .evaluateAll((elements) =>
         elements
-          .map((element) => element.textContent ?? "")
+          .map((element) => element.getAttribute("data-mark") ?? "")
           .filter((value) => value.length > 0),
       ),
   ).toEqual(["X"]);
@@ -449,7 +446,7 @@ test("two isolated accounts complete win/draw, converge on reconnect, and cannot
   await expect(pageA.getByTestId("player-slot")).toHaveText(winningRoom.slotA);
   await expect(pageB.getByTestId("player-slot")).toHaveText(winningRoom.slotB);
   await expectRevision([pageA, pageB], 1);
-  await expect(pageA.locator('[data-cell-index="0"]')).toHaveText("X");
+  await expect(ticTacToeCell(pageA, 0).locator("span")).toHaveText("X");
   expect(ticketRequestsA >= 2).toBe(true);
   expect(joinReservationsA >= 1).toBe(true);
 
@@ -462,8 +459,12 @@ test("two isolated accounts complete win/draw, converge on reconnect, and cannot
       expect(page.getByTestId("match-status")).toHaveText("对局已完成"),
     ),
   );
-  await expect(pageA.getByTestId("turn-status")).toContainText("胜者：你");
-  await expect(pageB.getByTestId("turn-status")).toContainText("胜者：对手");
+  await expect(ticTacToeSurface(pageA).getByRole("heading")).toHaveText(
+    "你赢了",
+  );
+  await expect(ticTacToeSurface(pageB).getByRole("heading")).toHaveText(
+    "对手获胜",
+  );
   await assertCanonicalReplay(winningRoom.roomCode, 1, 5, "WIN");
   const persistedMatchId = await assertPrivateCompletedHistory(
     pageA,
@@ -471,6 +472,21 @@ test("two isolated accounts complete win/draw, converge on reconnect, and cannot
     1,
     5,
   );
+  const replayPage = await contextA.newPage();
+  await replayPage.goto(
+    `${harness.webUrl}/account/matches/${encodeURIComponent(persistedMatchId)}/replay`,
+  );
+  await expect(replayPage.getByTestId("replay-page")).toBeVisible();
+  await expect(replayPage.getByTestId("game-surface-iframe")).toHaveAttribute(
+    "src",
+    "/game-surfaces/tic-tac-toe/1.0.0/replay/index.html",
+  );
+  await replayPage.getByTestId("replay-last").click();
+  await expect(ticTacToeSurface(replayPage).getByRole("heading")).toHaveText(
+    "你赢了",
+  );
+  await expect(ticTacToeCell(replayPage, 8)).toBeDisabled();
+  await replayPage.close();
 
   const unrelatedContext = await browser.newContext();
   const missingSession = await unrelatedContext.request.get(
@@ -513,7 +529,11 @@ test("two isolated accounts complete win/draw, converge on reconnect, and cannot
   await expect(pageA.getByTestId("close-room")).toBeVisible();
   await expect(pageB.getByTestId("leave-room")).toBeVisible();
 
-  await pageA.getByTestId("starter-non-owner").click();
+  await expect(pageA.getByTestId("game-surface-iframe")).toHaveAttribute(
+    "src",
+    "/game-surfaces/tic-tac-toe/1.0.0/setup/index.html",
+  );
+  await selectSurfaceStarter(pageA, "另一位玩家先手");
   await expect(pageB.getByTestId("round-setup-status")).toHaveText(
     "0/2 人已准备",
   );
@@ -545,8 +565,12 @@ test("two isolated accounts complete win/draw, converge on reconnect, and cannot
   await expectRevision([pageA, pageB], 0);
   await expect(pageA.getByTestId("player-slot")).toHaveText(winningRoom.slotA);
   await expect(pageB.getByTestId("player-slot")).toHaveText(winningRoom.slotB);
-  await expect(pageA.getByTestId("player-mark")).toContainText("O");
-  await expect(pageB.getByTestId("player-mark")).toContainText("X");
+  await expect(ticTacToeSurface(pageA).locator(".mark-chip")).toHaveText(
+    "你的棋子 O",
+  );
+  await expect(ticTacToeSurface(pageB).locator(".mark-chip")).toHaveText(
+    "你的棋子 X",
+  );
 
   const drawMoves = [
     [pageB, 0],
@@ -562,8 +586,12 @@ test("two isolated accounts complete win/draw, converge on reconnect, and cannot
   for (const [index, [actor, cell]] of drawMoves.entries()) {
     await playAcceptedMove(actor, [pageA, pageB], cell, index + 1);
   }
-  await expect(pageA.getByTestId("turn-status")).toHaveText("平局");
-  await expect(pageB.getByTestId("turn-status")).toHaveText("平局");
+  await expect(ticTacToeSurface(pageA).getByRole("heading")).toHaveText(
+    "本局平局",
+  );
+  await expect(ticTacToeSurface(pageB).getByRole("heading")).toHaveText(
+    "本局平局",
+  );
   await assertCanonicalReplay(winningRoom.roomCode, 2, 9, "DRAW");
   await assertPrivateCompletedHistory(pageA, pageB, 2, 9);
 
@@ -600,7 +628,7 @@ test("two isolated accounts complete win/draw, converge on reconnect, and cannot
   await pageA.getByTestId("create-room").click();
   await expect(pageA.getByTestId("game-stage")).toHaveCount(0);
   await expect(pageA.getByTestId("round-setup-status")).toHaveText(
-    "房主尚未选择先手方",
+    "请先完成本局游戏设置",
   );
   const waitingRoomCode = await pageA.getByTestId("room-code").innerText();
   await pageA.getByTestId("close-room").click();

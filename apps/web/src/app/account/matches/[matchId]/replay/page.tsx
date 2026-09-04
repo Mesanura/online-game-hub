@@ -16,8 +16,11 @@ import { use, useEffect, useMemo, useRef, useState } from "react";
 import { loadGameClientModule } from "@online-game-hub/game-registry/client";
 import { loadRealtimeGameClientModule } from "@online-game-hub/game-registry/client";
 import { gameCatalog } from "@online-game-hub/game-registry/catalog";
+import { resolveGameSurfaceEntrypoint } from "@online-game-hub/game-registry/deployment";
 import type { UnknownGameClientModule } from "@online-game-hub/game-client-sdk";
 import type { UnknownRealtimeGameClientModule } from "@online-game-hub/realtime-game-client-sdk";
+
+import { GameSurfaceFrame } from "../../../../../components/game-surface-frame";
 
 type ReplayFrame =
   | { readonly revision: number; readonly view: unknown }
@@ -50,6 +53,18 @@ function isReplayPayload(input: unknown): input is ReplayPayload {
   );
 }
 
+function useReducedMotionPreference(): boolean {
+  const [reducedMotion, setReducedMotion] = useState(false);
+  useEffect(() => {
+    const media = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const update = () => setReducedMotion(media.matches);
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
+  return reducedMotion;
+}
+
 export default function ReplayPage({
   params,
 }: {
@@ -57,6 +72,9 @@ export default function ReplayPage({
 }) {
   const { matchId } = use(params);
   const router = useRouter();
+  const reducedMotion = useReducedMotionPreference();
+  const locale =
+    typeof navigator === "undefined" ? "zh-CN" : navigator.language || "zh-CN";
   const [payload, setPayload] = useState<ReplayPayload | null>(null);
   const [module, setModule] = useState<UnknownGameClientModule | null>(null);
   const [realtimeModule, setRealtimeModule] =
@@ -68,6 +86,12 @@ export default function ReplayPage({
 
   useEffect(() => {
     let cancelled = false;
+    setPayload(null);
+    setModule(null);
+    setRealtimeModule(null);
+    setFrameIndex(0);
+    setPlaying(false);
+    setError(null);
     void fetch(`/api/matches/${encodeURIComponent(matchId)}/replay`, {
       cache: "no-store",
     })
@@ -86,20 +110,32 @@ export default function ReplayPage({
               : "REPLAY_LOAD_FAILED",
           );
         }
+        const surfaceEntrypoint = resolveGameSurfaceEntrypoint(
+          body.match.gameId,
+          body.match.gameVersion,
+          "replay",
+        );
         const loaded =
-          body.runtime === "realtime"
-            ? await loadRealtimeGameClientModule(
-                body.match.gameId,
-                body.match.gameVersion,
-              )
-            : await loadGameClientModule(
-                body.match.gameId,
-                body.match.gameVersion,
-              );
-        if (loaded === undefined) throw new Error("REPLAY_UNAVAILABLE");
+          surfaceEntrypoint !== undefined
+            ? null
+            : body.runtime === "realtime"
+              ? await loadRealtimeGameClientModule(
+                  body.match.gameId,
+                  body.match.gameVersion,
+                )
+              : await loadGameClientModule(
+                  body.match.gameId,
+                  body.match.gameVersion,
+                );
+        if (surfaceEntrypoint === undefined && loaded === undefined) {
+          throw new Error("REPLAY_UNAVAILABLE");
+        }
         if (!cancelled) {
           setPayload(body);
-          if (body.runtime === "realtime") {
+          if (surfaceEntrypoint !== undefined) {
+            setModule(null);
+            setRealtimeModule(null);
+          } else if (body.runtime === "realtime") {
             setRealtimeModule(loaded as UnknownRealtimeGameClientModule);
             setModule(null);
           } else {
@@ -146,7 +182,16 @@ export default function ReplayPage({
   }, [playing, payload]);
 
   const frame = payload?.frames[frameIndex] ?? null;
+  const surfaceEntrypoint =
+    payload === null
+      ? undefined
+      : resolveGameSurfaceEntrypoint(
+          payload.match.gameId,
+          payload.match.gameVersion,
+          "replay",
+        );
   const parsedView = useMemo(() => {
+    if (surfaceEntrypoint !== undefined) return frame?.view ?? null;
     const activeModule = module ?? realtimeModule;
     if (activeModule === null || frame === null) return null;
     try {
@@ -154,14 +199,19 @@ export default function ReplayPage({
     } catch {
       return null;
     }
-  }, [frame, module, realtimeModule]);
+  }, [frame, module, realtimeModule, surfaceEntrypoint]);
   const title =
     payload === null
       ? "回放中心"
       : (gameCatalog.find((game) => game.id === payload.match.gameId)?.title ??
         "回放中心");
 
-  if (payload === null || (module === null && realtimeModule === null)) {
+  if (
+    payload === null ||
+    (surfaceEntrypoint === undefined &&
+      module === null &&
+      realtimeModule === null)
+  ) {
     return (
       <div
         className="page-shell replay-page"
@@ -211,7 +261,26 @@ export default function ReplayPage({
           <div className="replay-frame-label" data-testid="replay-frame">
             第 {frameNumber} 帧
           </div>
-          {payload.runtime === "realtime" && realtimeModule !== null ? (
+          {surfaceEntrypoint !== undefined ? (
+            <GameSurfaceFrame
+              connectionState="closed"
+              entrypoint={surfaceEntrypoint}
+              locale={locale}
+              onIntent={() =>
+                Promise.resolve({
+                  status: "rejected",
+                  code: "REPLAY_READ_ONLY",
+                })
+              }
+              payload={frame.view}
+              readOnly
+              reducedMotion={reducedMotion}
+              roundNumber={payload.match.roundNumber}
+              {...(payload.runtime === "realtime"
+                ? { tick: frameNumber }
+                : { revision: frameNumber })}
+            />
+          ) : payload.runtime === "realtime" && realtimeModule !== null ? (
             <realtimeModule.Component
               acknowledgedInputSequence={0}
               connectionState="closed"

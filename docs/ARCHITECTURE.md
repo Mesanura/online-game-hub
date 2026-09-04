@@ -196,7 +196,7 @@ Platform 通用校验只允许已占用 stable slot，强制 manifest 人数范�
 
 新房间以 manifest `defaultConfig` 初始化首轮 Setup。完成 Round 后，下一轮从上一轮 `FinalizedRoundSetup` 初始化，复用 config、参与者、实际顺序与 assignments，但不复用 State、Outcome、revision/tick、seed、RNG cursor、ready、Match ID 或 replay ID。每位参与者必须分别重新 ready；accepted 设置变更再次清空全部确认。
 
-回合制 runtime 已具备 dormant V5/V6 双轨：新建房间按 exact deployment 固定 generation，V6 aggregate/RoomStore 保存 versioned coordinator、ready slot、上一局 finalized setup，并以独立 setup/gameplay seed 启动 Round。Setup Action 与 ready 的候选状态先保存再提交内存；finalize 后的随机结果在 Round archive/replay 创建失败期间保持固化，同一命令可重试而不重新随机。completed setup 阶段的断线会同时清除对应 slot 的 ready 并写回 RoomStore。当前生产 registration 仍全部为 V5；井字棋 Surface/等待页完成前不得切换，realtime V6 adapter 仍属于 M9-D 后续工作。
+回合制 runtime 已具备 V5/V6 双轨：新建房间按 exact deployment 固定 generation，V6 aggregate/RoomStore 保存 versioned coordinator、ready slot、上一局 finalized setup，并以独立 setup/gameplay seed 启动 Round。Setup Action 与 ready 的候选状态先保存再提交内存；finalize 后的随机结果在 Round archive/replay 创建失败期间保持固化，同一命令可重试而不重新随机。completed setup 阶段的断线会同时清除对应 slot 的 ready 并写回 RoomStore。`tic-tac-toe@1.1.0` 的生产 registration 已切换为 V6 与 `surface-v1`，其 `1.0.0` 历史版本及其余游戏继续使用 V5/legacy；realtime V6 adapter 仍属于 M9-D 后续工作。
 
 ### 7.4 房间协议代际固定与发现
 
@@ -239,15 +239,15 @@ Room 必须串行处理 Action。任何未来多实例方案都必须维持“�
 ### 8.2 M4 Web 与 Client Host
 
 - Next Proxy 在首次页面请求建立签名 `ogh_guest` cookie；Web 从可选的有效 `ogh_account` session 为 `POST /api/game-ticket` 签入可信 UserId。PlayerSessionId、UserId 和 signing secrets 都由服务器决定，浏览器不能提交或读取内部 identity。
-- 首页和目录只从 `game-registry/catalog` 读取 manifest；游戏页使用 manifest 的 `defaultConfig` 创建房间，并从 `game-registry/client` 加载 Client Module，不导入 Core 或 server registry。
+- 首页和目录只从 `game-registry/catalog` 读取 manifest；游戏页使用 manifest 的 `defaultConfig` 创建房间，并按 exact deployment 加载独立 Surface 或迁移期 Client Module，不导入 Core 或 server registry。
 - Next App Router 以 `/games/[gameId]`、`/games/[gameId]/rooms/[roomCode]` 和 `/games/[gameId]/rooms/[roomCode]/play` 表达入口、等待和对局三个真实页面阶段。`GameClientHostProvider` 位于 `[gameId]/layout`，三个子路由共享同一 host，路由切换不重建连接或重复 join；旧 `/games/[gameId]?roomCode=...` 由服务端兼容重定向到规范房间 URL。
 - 通用 `GameClientHost` 获取新 ticket 后调用 Colyseus `create`/`join`；join 在 SDK 调用前执行 `trim().toUpperCase()`。连接成功先以 `room.connected` 的 stable slot 和 `room.lifecycle` 为准；首局未启动时没有 snapshot，只有 active/completed Round 才有完整 `match.snapshot`。
 - Web 只从当前非敏感 gameId/roomCode 构造 canonical invite URL，并通过 Clipboard API 提供 copying/copied/failed 和手动选择后备。lifecycle 的 waiting/next-round setup 映射到房间页，active 映射到 play，completed 保留在 play；closed 原因返回入口。刷新与 reconnect 都先由 host 收敛服务器 lifecycle，再决定规范路由。
-- 对局页不复用等待页的邀请控件或额外连接详情；左侧共用 HUD 底部从 `room.roomCode` 显示房间码，在 active player 的 Client Module 暴露 `createResignAction` 时显示二次确认投降，并依据 server lifecycle 的 `isOwner` 选择 `closeRoom()` 或 `leaveRoom()`。投降确认后只调用 host `submitAction`；关闭/离开在 active Round 仍独立确认，UI 不自行裁定 resignation、关闭或 abandoned 结果。
+- 对局页不复用等待页的邀请控件或额外连接详情；平台 HUD 是默认收起、不参与舞台尺寸计算的覆盖式抽屉，最小浮动工具条只保留打开 HUD、连接状态和全屏。HUD 从 `room.roomCode` 显示房间码，在游戏 exact integration 支持投降时显示二次确认，并依据 server lifecycle 的 `isOwner` 选择 `closeRoom()` 或 `leaveRoom()`。投降确认后只向 Host 提交 intent；关闭/离开在 active Round 仍独立确认，UI 不自行裁定 resignation、关闭或 abandoned 结果。
 - host 只保存当前 per-viewer View snapshot、`roomLifecycle`、round/revision、连接/拒绝状态。`submitAction` 生成 `commandId` 并从最新 lifecycle/snapshot 填充 `roundNumber` 和 `expectedRevision`；它不持有或重演 authoritative State。
-- 所有 server payload 都先通过 Protocol V5 exact schema。duplicate、stale、schema-invalid 和 game-rule rejection 不在浏览器模拟；host 接受服务器附带或随后发送的完整 snapshot 收敛。
+- 所有 server payload 都先通过房间固定代际对应的 Protocol V5 或 V6 exact schema。duplicate、stale、schema-invalid 和 game-rule rejection 不在浏览器模拟；host 接受服务器附带或随后发送的完整 snapshot 收敛。
 - transport 非主动关闭时，host 在 60 秒窗口内以指数退避获取新 ticket 并重新执行 room-code join，生成新的 seat reservation；不使用 SDK reconnection token 证明席位所有权。
-- 井字棋 Client Module 只解析 View 并渲染 3×3 棋盘；四子棋 Client Module 不导入 Core，只解析 View 并渲染 7×6 棋盘；五子棋 Client Module 按 View 的 `boardSize` 渲染 15×15/19×19 棋盘；六贯棋 Client Module 渲染固定 11×11 菱形六边格；黑白棋 Client Module 渲染固定 8×8 View；中国跳棋 Client Module 渲染 73 位六芒星 View、合法跳跃目标和排名。各组件只提交自身普通落子或移动 intent，支持投降的 current modules 另以可选 `createResignAction` 向共用 HUD 提供 strict `RESIGN`，不各自实现投降按钮或确认；按钮禁用与确认仅是 UX，不能代替 authoritative rejection。
+- `tic-tac-toe@1.1.0` 使用独立 Setup/Play/Replay Surface 渲染 3×3 棋盘；其历史 `1.0.0` 与尚未迁移的四子棋、五子棋、六贯棋、黑白棋和中国跳棋继续使用 Client Module。各表现层只提交自身普通落子、移动或输入 intent；平台投降按钮与确认不进入 Game Surface，按钮禁用与确认仅是 UX，不能代替 authoritative rejection。
 
 ### 8.3 Legacy V5 Live Room、Round 设置与关闭
 

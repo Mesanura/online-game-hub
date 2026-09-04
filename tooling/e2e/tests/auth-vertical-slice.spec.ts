@@ -23,7 +23,10 @@ async function completeTicTacToeRound(pageA: Page, pageB: Page): Promise<void> {
   if (invite === null) throw new Error("Account E2E room has no invite URL.");
   await pageB.goto(invite);
   await expect(pageB.getByTestId("connection-state")).toHaveText("已连接");
-  await pageA.getByTestId("starter-owner").click();
+  await pageA
+    .frameLocator('[data-testid="game-surface-iframe"]')
+    .getByRole("button", { name: "房主先手" })
+    .click();
   await pageA.getByTestId("toggle-round-ready").click();
   await pageB.getByTestId("toggle-round-ready").click();
   await Promise.all(
@@ -39,7 +42,11 @@ async function completeTicTacToeRound(pageA: Page, pageB: Page): Promise<void> {
     [pageA, 2],
   ] as const;
   for (const [index, [page, cell]] of moves.entries()) {
-    await page.locator(`[data-cell-index="${cell}"]`).click();
+    await page
+      .frameLocator('[data-testid="game-surface-iframe"]')
+      .locator(".tic-board button")
+      .nth(cell)
+      .click();
     await Promise.all(
       [pageA, pageB].map((viewer) =>
         expect(viewer.getByTestId("revision")).toHaveText(String(index + 1)),

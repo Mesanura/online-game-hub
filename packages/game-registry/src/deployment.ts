@@ -42,9 +42,35 @@ const legacy = (
     presentation: Object.freeze({ kind: "legacy-react" }),
   });
 
+const ticTacToeSurfaceArtifactV1 = {
+  schemaVersion: 1,
+  gameId: "tic-tac-toe",
+  supportedGameVersions: ["1.1.0"],
+  surfaceVersion: "1.0.0",
+  bridgeVersion: 1,
+  entrypoints: {
+    setup: "setup/index.html",
+    play: "play/index.html",
+    replay: "replay/index.html",
+  },
+  capabilities: {},
+  contentDigest: "sha256-kP7B2210ENPCKROxkYKZde3AVYDOJpHtGtNx1QC6yow=",
+} satisfies SurfaceArtifactManifestV1;
+
+const ticTacToeSurfaceV1: GameDeploymentRegistration = Object.freeze({
+  gameId: "tic-tac-toe",
+  gameVersion: "1.1.0",
+  setupProtocol: 6,
+  presentation: Object.freeze({
+    kind: "surface-v1",
+    publicBasePath: "/game-surfaces/tic-tac-toe/1.0.0",
+    artifact: ticTacToeSurfaceArtifactV1,
+  }),
+});
+
 const gameDeployments = Object.freeze([
   legacy("tic-tac-toe", "1.0.0"),
-  legacy("tic-tac-toe", "1.1.0"),
+  ticTacToeSurfaceV1,
   legacy("connect-four", "1.0.0"),
   legacy("connect-four", "1.1.0"),
   legacy("gomoku", "1.0.0"),

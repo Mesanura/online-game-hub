@@ -234,6 +234,7 @@ describe("real PostgreSQL authoritative persistence", () => {
       {
         ids: createDeterministicRuntimeIdSource(["PERS2345"]),
         logger: { write: () => undefined },
+        resolveSetupProtocol: () => PROTOCOL_VERSION,
       },
     );
     let roomA: ClientRoom | undefined;

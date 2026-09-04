@@ -1088,6 +1088,12 @@ summary:focus-visible {
   font-size: 1.25rem;
   margin: 0;
 }
+.round-setup-surface {
+  height: clamp(20rem, 46dvh, 32rem);
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
 .round-dock-note {
   align-items: center;
   color: var(--teal-deep);
@@ -1923,6 +1929,9 @@ summary:focus-visible {
   overflow: hidden;
   padding: 1rem;
 }
+.replay-board-shell > .game-surface-frame {
+  height: clamp(20rem, 62dvh, 42rem);
+}
 .replay-frame-label {
   font-weight: 800;
   margin-bottom: 0.5rem;
@@ -2340,6 +2349,10 @@ summary:focus-visible {
   .round-dock {
     gap: 0.7rem;
     padding: 1rem;
+  }
+  .round-setup-surface {
+    height: min(30rem, 58dvh);
+    min-height: 20rem;
   }
   .play-page {
     height: 100dvh;

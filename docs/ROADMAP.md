@@ -326,7 +326,7 @@ M8 结束后再由产品证据选择下一个 M7 候选能力；不要把 OAuth�
 
 ### M9-D：Setup V6 与双 runtime
 
-> 实施状态：回合制 dormant V5/V6 runtime 与井字棋 Setup integration 已完成；production registration 仍为 V5。Realtime adapter、等待页 Setup Surface 和试点切换尚未完成。
+> 实施状态：回合制 V5/V6 runtime、井字棋 Setup integration、等待页 Setup Surface 与 `tic-tac-toe@1.1.0` production V6 切换已完成。Realtime adapter 尚未完成。
 
 - 两套 runtime 使用同一纯 setup coordinator，RoomStore 保存 versioned Setup State、setupRevision、ready slots、上一局 finalized setup 与协议代际；
 - 实现服务端 actor/schema/权限、stale/idempotency、持久化重试、per-viewer projection 和独立 setup RNG；
@@ -336,7 +336,7 @@ M8 结束后再由产品证据选择下一个 M7 候选能力；不要把 OAuth�
 
 ### M9-E：井字棋与 Pong 双试点
 
-> 实施状态：井字棋独立 React/Vite Setup/Play/Replay artifact 与源码摘要锁已完成；等待页接入、production registration 切换与全链路验收尚未完成。
+> 实施状态：井字棋独立 React/Vite Setup/Play/Replay artifact、等待页/对局/回放接入、production registration 切换与全链路验收已完成；Pong 独立 Surface 尚未开始。
 
 1. 井字棋以独立 React/Vite Surface 验证 Setup/Play/Replay 与回合制 Bridge；Core、Action、Replay V1 和 gameVersion 不变。
 2. Pong 以 TypeScript + Phaser Surface 验证 realtime input sequence/ack/reconnect/replay；800×400 逻辑场地使用响应式 FIT，`targetScore` 首轮保留默认值。

@@ -489,6 +489,7 @@ describe.sequential("authoritative Colyseus Game Server", () => {
       matchArchive,
       metrics,
       clock,
+      resolveSetupProtocol: () => PROTOCOL_VERSION,
       ids: createDeterministicRuntimeIdSource([
         "PLAY2345",
         "FALL2345",
