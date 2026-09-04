@@ -4,14 +4,14 @@
 
 ## 服务拓扑
 
-| Compose 服务  | 运行内容                                       | 默认宿主地址            | 就绪条件                               |
-| ------------- | ---------------------------------------------- | ----------------------- | -------------------------------------- |
-| `postgres`    | PostgreSQL 17.6                                | `127.0.0.1:5432`        | `pg_isready` 成功                      |
-| `migrate`     | 现有 `@online-game-hub/database` migration CLI | 不暴露端口              | PostgreSQL healthy 后执行并以 `0` 退出 |
-| `game-server` | Colyseus HTTP、matchmaking 和 WebSocket        | `http://localhost:2567` | `GET /health` 返回成功                 |
-| `web`         | Next.js standalone production server           | `http://localhost:3000` | 首页返回成功                           |
+| Compose 服务  | 运行内容                                          | 默认宿主地址            | 就绪条件                               |
+| ------------- | ------------------------------------------------- | ----------------------- | -------------------------------------- |
+| `postgres`    | PostgreSQL 17.6                                   | `127.0.0.1:5432`        | `pg_isready` 成功                      |
+| `migrate`     | 现有 `@online-game-hub/database` migration CLI    | 不暴露端口              | PostgreSQL healthy 后执行并以 `0` 退出 |
+| `game-server` | Colyseus HTTP、matchmaking 和 WebSocket           | `http://localhost:2567` | `GET /health` 返回成功                 |
+| `web`         | Next.js standalone 与版本化 Game Surface 静态产物 | `http://localhost:3000` | 首页返回成功                           |
 
-`web` 和 `game-server` 使用 non-root Node 用户运行。CI 从同一个多阶段 Dockerfile 构建并向 Docker Hub 发布 Web、Game Server 和 database migrator 镜像；最终镜像只包含各服务的生产运行文件。部署主机无需 Node.js、pnpm 或项目源码。PostgreSQL 数据写入默认位于 `./data/postgres` 的宿主目录，便于直接备份和迁移。
+`web` 和 `game-server` 使用 non-root Node 用户运行。CI 从同一个多阶段 Dockerfile 构建并向 Docker Hub 发布 Web、Game Server 和 database migrator 镜像；构建过程会独立构建全部 `game-surfaces/*` workspace，校验 manifest、entrypoint 与内容摘要，再把可发布 artifact 复制进 Web 镜像的 `/game-surfaces/<gameId>/<surfaceVersion>/` 静态路径。Workbench 等显式声明 `surfaceArtifact: false` 的工具不会进入生产镜像。最终镜像只包含各服务的生产运行文件，部署主机无需 Node.js、pnpm、Surface 源码或项目源码。PostgreSQL 数据写入默认位于 `./data/postgres` 的宿主目录，便于直接备份和迁移。
 
 浏览器直接访问 `GAME_SERVER_PUBLIC_URL`，不会经过 Next.js WebSocket 代理。该值必须是浏览器可访问的宿主地址，不能写成 Docker 内部的 `game-server` hostname。容器内部只有 PostgreSQL 连接使用 `postgres` 服务名。
 
@@ -175,7 +175,7 @@ docker compose -f docker-compose.yml -f docker-compose.build.yml build
 docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --wait
 ```
 
-overlay 只把三个已发布应用镜像替换为本地 Dockerfile targets；PostgreSQL、migration 顺序、healthcheck、端口和数据目录都继续复用生产 Compose。
+overlay 只把三个已发布应用镜像替换为本地 Dockerfile targets；PostgreSQL、migration 顺序、healthcheck、端口和数据目录都继续复用生产 Compose。Web target 不读取宿主机上被 `.dockerignore` 排除的 `dist`：Surface 必须在容器 build stage 中重新构建、校验并执行 immutable publish，随后才复制到最终 Web 镜像。
 
 ## Docker Hub 镜像发布
 
