@@ -8,6 +8,7 @@ import {
 import { resolveGameDefinition } from "@online-game-hub/game-registry/server";
 import { verifyReplay } from "@online-game-hub/game-server-runtime";
 
+import { openGameHud } from "../src/game-hud.js";
 import { startE2eHarness } from "../src/harness.js";
 import type { E2eHarness } from "../src/harness.js";
 
@@ -22,6 +23,7 @@ test.afterAll(async () => {
 });
 
 async function acceptResignation(page: Page) {
+  await openGameHud(page);
   const dialog = new Promise<string>((resolve) => {
     page.once("dialog", async (event) => {
       const message = event.message();
@@ -68,6 +70,7 @@ test("three players choose camps, start, resign into a ranking, and persist repl
     ).toBeVisible();
     await expect(page.locator("[data-cell-index]")).toHaveCount(73);
   }
+  const ownerSlotId = await pageA.getByTestId("player-slot").innerText();
 
   const secondDialog = acceptResignation(pageB);
   await expect(await secondDialog).toContain("排在未投降玩家之后");
@@ -79,8 +82,13 @@ test("three players choose camps, start, resign into a ranking, and persist repl
       expect(page.getByTestId("match-status")).toHaveText("对局已完成"),
     ),
   );
-  await expect(pageA.getByRole("list", { name: "最终排名" })).toBeVisible();
-  await expect(pageA.getByText("第 1 名：玩家 1")).toBeVisible();
+  const winnerRanking = pageA
+    .getByRole("list", { name: "最终排名" })
+    .getByRole("listitem")
+    .first();
+  await expect(winnerRanking).toContainText("第 1 名");
+  await expect(winnerRanking).toContainText(ownerSlotId);
+  await openGameHud(pageA);
   await pageA.getByTestId("next-round-settings").click();
   await expect(pageA).toHaveURL(
     /\/games\/chinese-checkers\/rooms\/[A-HJ-NP-Z2-9]{8}$/u,

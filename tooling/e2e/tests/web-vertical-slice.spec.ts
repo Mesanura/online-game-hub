@@ -8,6 +8,7 @@ import {
 import { resolveGameDefinition } from "@online-game-hub/game-registry/server";
 import { verifyReplay } from "@online-game-hub/game-server-runtime";
 
+import { openGameHud } from "../src/game-hud.js";
 import { startE2eHarness } from "../src/harness.js";
 import type { E2eHarness } from "../src/harness.js";
 import { registerE2eAccount } from "../src/account.js";
@@ -498,6 +499,7 @@ test("two isolated accounts complete win/draw, converge on reconnect, and cannot
     ),
   );
   await expect(pageA.getByTestId("create-room")).toHaveCount(0);
+  await Promise.all([pageA, pageB].map((page) => openGameHud(page)));
   await Promise.all(
     [pageA, pageB].map((page) =>
       page.getByTestId("next-round-settings").click(),
@@ -575,6 +577,7 @@ test("two isolated accounts complete win/draw, converge on reconnect, and cannot
   await expect(terminalOutsiderPage.getByTestId("player-slot")).toHaveCount(0);
   await terminalOutsiderContext.close();
 
+  await openGameHud(pageA);
   await pageA.getByTestId("close-room").click();
   await Promise.all(
     [pageA, pageB].map((page) =>
@@ -612,6 +615,7 @@ test("two isolated accounts complete win/draw, converge on reconnect, and cannot
 
   const explicitlyLeftRoom = await createAndJoinRoom(pageA, pageB);
   let leaveConfirmation = "";
+  await openGameHud(pageB);
   pageB.once("dialog", async (dialog) => {
     leaveConfirmation = dialog.message();
     await dialog.accept();
@@ -676,6 +680,7 @@ test("the shared HUD cancels and confirms a Tic-Tac-Toe resignation once", async
   const pageB = await contextB.newPage();
   const resignedRoom = await createAndJoinRoom(pageA, pageB);
 
+  await Promise.all([pageA, pageB].map((page) => openGameHud(page)));
   await Promise.all(
     [pageA, pageB].map((page) =>
       expect(page.getByTestId("resign-game")).toBeVisible(),

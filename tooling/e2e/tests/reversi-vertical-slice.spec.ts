@@ -8,6 +8,7 @@ import {
 import { resolveGameDefinition } from "@online-game-hub/game-registry/server";
 import { verifyReplay } from "@online-game-hub/game-server-runtime";
 
+import { openGameHud } from "../src/game-hud.js";
 import { startE2eHarness } from "../src/harness.js";
 import { registerE2eAccount } from "../src/account.js";
 import type { E2eHarness } from "../src/harness.js";
@@ -352,6 +353,7 @@ test("two accounts complete authoritative Reversi with flips and a non-full term
     expect(match).not.toHaveProperty("seed");
   }
 
+  await openGameHud(pageA);
   await pageA.getByTestId("close-room").click();
   await Promise.all(
     [pageA, pageB].map((page) =>
@@ -371,6 +373,7 @@ test("the shared HUD cancels and confirms a Reversi resignation once", async ({
   const pageB = await contextB.newPage();
   const resignedRoom = await startActiveRound(pageA, pageB);
 
+  await Promise.all([pageA, pageB].map((page) => openGameHud(page)));
   await Promise.all(
     [pageA, pageB].map((page) =>
       expect(page.getByTestId("resign-game")).toBeVisible(),

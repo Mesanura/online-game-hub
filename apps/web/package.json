@@ -17,6 +17,7 @@
     "@online-game-hub/game-sdk": "workspace:*",
     "@online-game-hub/game-server-runtime": "workspace:*",
     "@online-game-hub/game-server-ticket": "workspace:*",
+    "@online-game-hub/game-surface-bridge": "workspace:*",
     "@online-game-hub/protocol": "workspace:*",
     "@online-game-hub/realtime-game-client-sdk": "workspace:*",
     "@online-game-hub/realtime-game-sdk": "workspace:*",

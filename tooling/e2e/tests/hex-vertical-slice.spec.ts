@@ -8,6 +8,7 @@ import {
 import { resolveGameDefinition } from "@online-game-hub/game-registry/server";
 import { verifyReplay } from "@online-game-hub/game-server-runtime";
 
+import { openGameHud } from "../src/game-hud.js";
 import { startE2eHarness } from "../src/harness.js";
 import { registerE2eAccount } from "../src/account.js";
 import type { E2eHarness } from "../src/harness.js";
@@ -274,8 +275,9 @@ test("two accounts complete Hex by connection, then use the shared HUD to cancel
   );
   await expect(pageA.getByTestId("turn-status")).toContainText("胜者：你");
   await expect(pageB.getByTestId("turn-status")).toContainText("胜者：对手");
+  await openGameHud(pageA);
   await expect(pageA.getByTestId("rematch-game")).toHaveText("重新对局");
-  await expect(pageA.getByTestId("next-round-settings")).toHaveText("设置规则");
+  await expect(pageA.getByTestId("next-round-settings")).toHaveText("调整设置");
   await expect(pageA.locator(".hex-cell.winning-cell")).toHaveCount(11);
   for (const cell of BLUE_WINNING_PATH) {
     await expect(pageA.locator(`[data-cell-index="${cell}"]`)).toHaveClass(
@@ -307,6 +309,7 @@ test("two accounts complete Hex by connection, then use the shared HUD to cancel
     "CONNECTION",
   );
 
+  await Promise.all([pageA, pageB].map((page) => openGameHud(page)));
   await Promise.all(
     [pageA, pageB].map((page) =>
       page.getByTestId("next-round-settings").click(),
@@ -330,6 +333,7 @@ test("two accounts complete Hex by connection, then use the shared HUD to cancel
   await expect(pageA.getByTestId("player-slot")).toHaveText(slotA);
   await expect(pageB.getByTestId("player-slot")).toHaveText(slotB);
 
+  await Promise.all([pageA, pageB].map((page) => openGameHud(page)));
   await Promise.all(
     [pageA, pageB].map((page) =>
       expect(page.getByTestId("resign-game")).toBeVisible(),
@@ -422,6 +426,7 @@ test("two accounts complete Hex by connection, then use the shared HUD to cancel
     });
   }
 
+  await openGameHud(pageA);
   await pageA.getByTestId("close-room").click();
   await Promise.all(
     [pageA, pageB].map((page) =>
