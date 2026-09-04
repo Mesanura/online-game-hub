@@ -206,13 +206,20 @@ export class SurfaceBridgeHost {
         return;
       }
       this.#clearTimer();
-      this.#setStatus({ state: "ready", attempt: this.#attempt });
-      this.send({
-        type: "host.init",
-        bridgeVersion: SURFACE_BRIDGE_VERSION,
-        mode: this.#options.mode,
-        ...this.#options.init,
-      });
+      const readyStatus = { state: "ready", attempt: this.#attempt } as const;
+      this.#status = readyStatus;
+      if (
+        !this.send({
+          type: "host.init",
+          bridgeVersion: SURFACE_BRIDGE_VERSION,
+          mode: this.#options.mode,
+          ...this.#options.init,
+        })
+      ) {
+        if (this.#status.state === "ready") this.#fail("SURFACE_CRASH");
+        return;
+      }
+      this.#options.onStatusChange?.(readyStatus);
       return;
     }
     if (this.#status.state !== "ready") return;

@@ -8,8 +8,8 @@
   ],
   "exports": {
     ".": {
-      "types": "./dist/artifact.d.ts",
-      "import": "./dist/artifact.js"
+      "types": "./dist/src/artifact.d.ts",
+      "import": "./dist/src/artifact.js"
     }
   },
   "scripts": {

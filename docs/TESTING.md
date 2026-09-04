@@ -370,7 +370,7 @@ Harness 为 Web 预留随机 loopback port，并用 `port: 0` 启动正式 ticke
 | build/dependency config | full typecheck/lint/unit + affected build graph                       |
 | `tools/create-game`     | package test/typecheck/build + registry contract + root quality gates |
 
-Surface 包的独立契约门禁由 `pnpm contract-test` 进入 Turbo graph。全仓 `pnpm build` 后必须依次运行 `pnpm surface:verify` 与 `pnpm surface:publish`：前者验证所有显式发布 workspace 的 manifest、mode entrypoint 与 canonical digest，后者验证不可覆盖的 immutable 复制；相同 digest 的重复发布只能是 no-op，不得重写目标文件。
+Surface 包的独立契约门禁由 `pnpm contract-test` 进入 Turbo graph。全仓 `pnpm build` 后必须依次运行 `pnpm surface:verify` 与 `pnpm surface:publish`：前者验证所有显式发布 workspace 的 manifest、mode entrypoint、源码锁与 canonical digest，并拒绝未提升 `surfaceVersion` 的内容漂移；后者验证不可覆盖的 immutable 复制。相同 digest 的重复发布只能是 no-op，不得重写目标文件。
 
 Web iframe Host 的组件测试至少验证 sandbox 不含 same-origin/form/popup/top-navigation 权限，静态路径具备 immutable/CORS/CSP headers 且绕过 session proxy；Web production build 必须实际加载 `next.config.ts`，防止只在测试对象中成立而部署配置无效。握手、nonce、非法消息、重复 intent、timeout、retry 与 dispose 继续由 `game-surface-bridge` 的 fake-channel contract tests 覆盖。
 

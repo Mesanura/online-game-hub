@@ -20,6 +20,26 @@ import {
 } from "@online-game-hub/game-surface-bridge";
 
 export const SURFACE_MANIFEST_FILENAME = "surface.manifest.json";
+export const SURFACE_CONFIG_FILENAME = "surface.config.json";
+export const SURFACE_LOCK_FILENAME = "surface.lock.json";
+
+const surfaceArtifactConfigV1Schema = surfaceArtifactManifestV1Schema.omit({
+  contentDigest: true,
+});
+export type SurfaceArtifactConfigV1 = Omit<
+  SurfaceArtifactManifestV1,
+  "contentDigest"
+>;
+const surfaceArtifactLockV1Schema = surfaceArtifactManifestV1Schema.pick({
+  schemaVersion: true,
+  gameId: true,
+  surfaceVersion: true,
+  contentDigest: true,
+});
+export type SurfaceArtifactLockV1 = Pick<
+  SurfaceArtifactManifestV1,
+  "schemaVersion" | "gameId" | "surfaceVersion" | "contentDigest"
+>;
 
 export interface VerifiedSurfaceArtifact {
   readonly artifactRoot: string;
@@ -116,6 +136,181 @@ export async function writeSurfaceManifest(
   );
 }
 
+export async function readSurfaceArtifactConfig(
+  workspaceRoot: string,
+): Promise<SurfaceArtifactConfigV1> {
+  const configPath = path.join(
+    path.resolve(workspaceRoot),
+    SURFACE_CONFIG_FILENAME,
+  );
+  let configJson: unknown;
+  try {
+    configJson = JSON.parse(await readFile(configPath, "utf8")) as unknown;
+  } catch (error) {
+    throw new Error(`Cannot read Surface artifact config ${configPath}.`, {
+      cause: error,
+    });
+  }
+  return surfaceArtifactConfigV1Schema.parse(configJson);
+}
+
+export async function readSurfaceArtifactLock(
+  workspaceRoot: string,
+): Promise<SurfaceArtifactLockV1> {
+  const lockPath = path.join(
+    path.resolve(workspaceRoot),
+    SURFACE_LOCK_FILENAME,
+  );
+  let lockJson: unknown;
+  try {
+    lockJson = JSON.parse(await readFile(lockPath, "utf8")) as unknown;
+  } catch (error) {
+    throw new Error(`Cannot read Surface artifact lock ${lockPath}.`, {
+      cause: error,
+    });
+  }
+  return surfaceArtifactLockV1Schema.parse(lockJson);
+}
+
+export async function writeSurfaceArtifactLock(
+  workspaceRoot: string,
+  lock: SurfaceArtifactLockV1,
+): Promise<void> {
+  const parsed = surfaceArtifactLockV1Schema.parse(lock);
+  await writeFile(
+    path.join(path.resolve(workspaceRoot), SURFACE_LOCK_FILENAME),
+    `${JSON.stringify(parsed, null, 2)}\n`,
+    "utf8",
+  );
+}
+
+interface ComparableSemver {
+  readonly core: readonly [bigint, bigint, bigint];
+  readonly prerelease: readonly string[] | null;
+}
+
+function comparableSemver(version: string): ComparableSemver {
+  const withoutBuild = version.split("+", 1)[0] ?? version;
+  const prereleaseSeparator = withoutBuild.indexOf("-");
+  const coreText =
+    prereleaseSeparator === -1
+      ? withoutBuild
+      : withoutBuild.slice(0, prereleaseSeparator);
+  const coreParts = coreText.split(".").map((part) => BigInt(part));
+  const major = coreParts[0];
+  const minor = coreParts[1];
+  const patch = coreParts[2];
+  if (major === undefined || minor === undefined || patch === undefined) {
+    throw new TypeError(`Invalid Surface version ${version}.`);
+  }
+  return {
+    core: [major, minor, patch],
+    prerelease:
+      prereleaseSeparator === -1
+        ? null
+        : withoutBuild.slice(prereleaseSeparator + 1).split("."),
+  };
+}
+
+function compareSemver(leftVersion: string, rightVersion: string): number {
+  const left = comparableSemver(leftVersion);
+  const right = comparableSemver(rightVersion);
+  for (const index of [0, 1, 2] as const) {
+    const leftPart = left.core[index];
+    const rightPart = right.core[index];
+    if (leftPart !== rightPart) return leftPart < rightPart ? -1 : 1;
+  }
+  if (left.prerelease === null || right.prerelease === null) {
+    if (left.prerelease === right.prerelease) return 0;
+    return left.prerelease === null ? 1 : -1;
+  }
+  const identifiers = Math.max(left.prerelease.length, right.prerelease.length);
+  for (let index = 0; index < identifiers; index += 1) {
+    const leftIdentifier = left.prerelease[index];
+    const rightIdentifier = right.prerelease[index];
+    if (leftIdentifier === undefined) return -1;
+    if (rightIdentifier === undefined) return 1;
+    if (leftIdentifier === rightIdentifier) continue;
+    const leftNumeric = /^\d+$/u.test(leftIdentifier);
+    const rightNumeric = /^\d+$/u.test(rightIdentifier);
+    if (leftNumeric && rightNumeric) {
+      return BigInt(leftIdentifier) < BigInt(rightIdentifier) ? -1 : 1;
+    }
+    if (leftNumeric !== rightNumeric) return leftNumeric ? -1 : 1;
+    return leftIdentifier < rightIdentifier ? -1 : 1;
+  }
+  return 0;
+}
+
+export function assertSurfaceArtifactLockUpdate(
+  currentLock: SurfaceArtifactLockV1,
+  nextLock: SurfaceArtifactLockV1,
+): void {
+  const current = surfaceArtifactLockV1Schema.parse(currentLock);
+  const next = surfaceArtifactLockV1Schema.parse(nextLock);
+  if (current.gameId !== next.gameId) {
+    throw new Error("A Surface artifact lock cannot change gameId.");
+  }
+  if (
+    current.surfaceVersion !== next.surfaceVersion &&
+    compareSemver(next.surfaceVersion, current.surfaceVersion) <= 0
+  ) {
+    throw new Error("A Surface artifact lock must increment surfaceVersion.");
+  }
+  if (
+    current.surfaceVersion === next.surfaceVersion &&
+    current.contentDigest !== next.contentDigest
+  ) {
+    throw new Error(
+      "Surface content changed without a surfaceVersion increment.",
+    );
+  }
+}
+
+export async function writeLockedSurfaceManifest(
+  workspaceRoot: string,
+): Promise<VerifiedSurfaceArtifact> {
+  const resolvedWorkspace = path.resolve(workspaceRoot);
+  const config = await readSurfaceArtifactConfig(resolvedWorkspace);
+  const lock = await readSurfaceArtifactLock(resolvedWorkspace);
+  if (
+    lock.gameId !== config.gameId ||
+    lock.surfaceVersion !== config.surfaceVersion
+  ) {
+    throw new Error(
+      "Surface config and artifact lock identify different builds.",
+    );
+  }
+  await writeSurfaceManifest(path.join(resolvedWorkspace, "dist"), {
+    ...config,
+    contentDigest: lock.contentDigest,
+  });
+  return verifySurfaceWorkspace(resolvedWorkspace);
+}
+
+export async function updateSurfaceArtifactLock(
+  workspaceRoot: string,
+): Promise<VerifiedSurfaceArtifact> {
+  const resolvedWorkspace = path.resolve(workspaceRoot);
+  const artifactRoot = path.join(resolvedWorkspace, "dist");
+  const config = await readSurfaceArtifactConfig(resolvedWorkspace);
+  const nextLock = {
+    schemaVersion: config.schemaVersion,
+    gameId: config.gameId,
+    surfaceVersion: config.surfaceVersion,
+    contentDigest: await computeSurfaceContentDigest(artifactRoot),
+  } satisfies SurfaceArtifactLockV1;
+  if (await pathExists(path.join(resolvedWorkspace, SURFACE_LOCK_FILENAME))) {
+    assertSurfaceArtifactLockUpdate(
+      await readSurfaceArtifactLock(resolvedWorkspace),
+      nextLock,
+    );
+  }
+  await writeSurfaceArtifactLock(resolvedWorkspace, nextLock);
+  await writeSurfaceManifest(artifactRoot, { ...config, ...nextLock });
+  return verifySurfaceWorkspace(resolvedWorkspace);
+}
+
 export async function verifySurfaceArtifactDirectory(
   artifactRoot: string,
   expectedGameId?: string,
@@ -180,10 +375,21 @@ export async function verifySurfaceWorkspace(
       `${resolvedWorkspace} must declare onlineGameHub.surfaceArtifact: true.`,
     );
   }
-  return verifySurfaceArtifactDirectory(
+  const artifact = await verifySurfaceArtifactDirectory(
     path.join(resolvedWorkspace, "dist"),
     path.basename(resolvedWorkspace),
   );
+  const lock = await readSurfaceArtifactLock(resolvedWorkspace);
+  if (
+    lock.gameId !== artifact.manifest.gameId ||
+    lock.surfaceVersion !== artifact.manifest.surfaceVersion ||
+    lock.contentDigest !== artifact.manifest.contentDigest
+  ) {
+    throw new Error(
+      `Surface artifact lock does not match ${artifact.manifest.gameId}@${artifact.manifest.surfaceVersion}.`,
+    );
+  }
+  return artifact;
 }
 
 export async function verifyAllSurfaceArtifacts(

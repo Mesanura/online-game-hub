@@ -5,10 +5,14 @@ import path from "node:path";
 import test from "node:test";
 
 import {
+  assertSurfaceArtifactLockUpdate,
   computeSurfaceContentDigest,
   publishSurfaceArtifact,
+  updateSurfaceArtifactLock,
   verifyAllSurfaceArtifacts,
   verifySurfaceWorkspace,
+  writeSurfaceArtifactLock,
+  writeLockedSurfaceManifest,
   writeSurfaceManifest,
 } from "../src/artifact.ts";
 
@@ -25,6 +29,21 @@ async function createSurfaceWorkspace(root: string): Promise<string> {
       onlineGameHub: { surfaceArtifact: true },
     }),
   );
+  await writeFile(
+    path.join(workspaceRoot, "surface.config.json"),
+    JSON.stringify({
+      schemaVersion: 1,
+      gameId: "test-game",
+      supportedGameVersions: ["1.0.0"],
+      surfaceVersion: "1.0.0",
+      bridgeVersion: 1,
+      entrypoints: {
+        setup: "setup/index.html",
+        play: "play/index.html",
+      },
+      capabilities: {},
+    }),
+  );
   await writeFile(path.join(distRoot, "setup", "index.html"), "setup");
   await writeFile(path.join(distRoot, "play", "index.html"), "play");
   const digest = await computeSurfaceContentDigest(distRoot);
@@ -39,6 +58,12 @@ async function createSurfaceWorkspace(root: string): Promise<string> {
       play: "play/index.html",
     },
     capabilities: {},
+    contentDigest: digest,
+  });
+  await writeSurfaceArtifactLock(workspaceRoot, {
+    schemaVersion: 1,
+    gameId: "test-game",
+    surfaceVersion: "1.0.0",
     contentDigest: digest,
   });
   return workspaceRoot;
@@ -59,6 +84,99 @@ test("verifies canonical content and exact mode entrypoints", async () => {
     await assert.rejects(
       verifySurfaceWorkspace(workspace),
       /content digest mismatch/u,
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("rejects a source lock that does not match the built artifact", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "ogh-surface-artifact-"));
+  try {
+    const workspace = await createSurfaceWorkspace(root);
+    await writeSurfaceArtifactLock(workspace, {
+      schemaVersion: 1,
+      gameId: "test-game",
+      surfaceVersion: "1.0.1",
+      contentDigest: await computeSurfaceContentDigest(
+        path.join(workspace, "dist"),
+      ),
+    });
+    await assert.rejects(
+      verifySurfaceWorkspace(workspace),
+      /artifact lock does not match/u,
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("requires a surfaceVersion change before locking different content", () => {
+  const current = {
+    schemaVersion: 1,
+    gameId: "test-game",
+    surfaceVersion: "1.0.0",
+    contentDigest: "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+  } as const;
+  assert.throws(
+    () =>
+      assertSurfaceArtifactLockUpdate(current, {
+        ...current,
+        contentDigest: "sha256-BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=",
+      }),
+    /without a surfaceVersion increment/u,
+  );
+  assert.throws(
+    () =>
+      assertSurfaceArtifactLockUpdate(
+        { ...current, surfaceVersion: "2.0.0" },
+        { ...current, surfaceVersion: "1.9.9" },
+      ),
+    /must increment surfaceVersion/u,
+  );
+  assert.throws(
+    () =>
+      assertSurfaceArtifactLockUpdate(
+        { ...current, surfaceVersion: "1.0.0" },
+        { ...current, surfaceVersion: "1.0.0+rebuilt" },
+      ),
+    /must increment surfaceVersion/u,
+  );
+  assert.doesNotThrow(() =>
+    assertSurfaceArtifactLockUpdate(current, {
+      ...current,
+      surfaceVersion: "1.0.1",
+      contentDigest: "sha256-BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=",
+    }),
+  );
+});
+
+test("finalizes from the source config and updates content only after a version change", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "ogh-surface-artifact-"));
+  try {
+    const workspace = await createSurfaceWorkspace(root);
+    await writeFile(path.join(workspace, "dist", "play", "index.html"), "v2");
+    await assert.rejects(
+      writeLockedSurfaceManifest(workspace),
+      /content digest mismatch/u,
+    );
+    await assert.rejects(
+      updateSurfaceArtifactLock(workspace),
+      /without a surfaceVersion increment/u,
+    );
+
+    const configPath = path.join(workspace, "surface.config.json");
+    const config = JSON.parse(await readFile(configPath, "utf8")) as Record<
+      string,
+      unknown
+    >;
+    config.surfaceVersion = "1.0.1";
+    await writeFile(configPath, JSON.stringify(config));
+    const updated = await updateSurfaceArtifactLock(workspace);
+    assert.equal(updated.manifest.surfaceVersion, "1.0.1");
+    assert.equal(
+      (await writeLockedSurfaceManifest(workspace)).manifest.contentDigest,
+      updated.manifest.contentDigest,
     );
   } finally {
     await rm(root, { recursive: true, force: true });

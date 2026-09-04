@@ -27,10 +27,6 @@ class FakeWindowTarget implements SurfaceMessageEventTarget {
   }
 }
 
-function nextMessage(): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, 0));
-}
-
 describe("GameSurfaceBridge", () => {
   afterEach(() => vi.useRealTimers());
 
@@ -72,16 +68,17 @@ describe("GameSurfaceBridge", () => {
       },
       ports: [channel.port2],
     });
-    await nextMessage();
     expect(bridge.connected).toBe(true);
     expect(bridge.mode).toBe("play");
-    expect(surfaceMessages).toEqual([
-      {
-        type: "surface.ready",
-        bridgeVersion: 1,
-        nonce: "n".repeat(32),
-      },
-    ]);
+    await vi.waitFor(() =>
+      expect(surfaceMessages).toEqual([
+        {
+          type: "surface.ready",
+          bridgeVersion: 1,
+          nonce: "n".repeat(32),
+        },
+      ]),
+    );
 
     channel.port1.postMessage({
       type: "host.init",
@@ -92,8 +89,7 @@ describe("GameSurfaceBridge", () => {
       locale: "zh-CN",
       reducedMotion: false,
     });
-    await nextMessage();
-    expect(hostMessages).toHaveLength(1);
+    await vi.waitFor(() => expect(hostMessages).toHaveLength(1));
     bridge.dispose();
   });
 
@@ -122,7 +118,7 @@ describe("GameSurfaceBridge", () => {
       },
       ports: [channel.port2],
     });
-    await nextMessage();
+    expect(bridge.connected).toBe(true);
     const intent = {
       type: "surface.intent",
       clientIntentId: "intent-1",
@@ -130,8 +126,7 @@ describe("GameSurfaceBridge", () => {
     } as const;
     expect(bridge.send(intent)).toBe(true);
     expect(bridge.send(intent)).toBe(false);
-    await nextMessage();
-    expect(surfaceMessages).toContainEqual(intent);
+    await vi.waitFor(() => expect(surfaceMessages).toContainEqual(intent));
     bridge.dispose();
   });
 

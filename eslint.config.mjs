@@ -12,6 +12,7 @@ export default tseslint.config(
       "**/.next/**",
       "**/playwright-report/**",
       "**/test-results/**",
+      "apps/web/public/game-surfaces/**",
       "tooling/repository-check/fixtures/**",
     ],
   },

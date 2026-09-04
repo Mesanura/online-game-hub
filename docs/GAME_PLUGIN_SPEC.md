@@ -268,7 +268,7 @@ interface GameClientModule<View, Action> {
 
 新表现层位于独立 `game-surfaces/<game-id>` workspace，可自行选择 React、Vue、Svelte、Phaser、Canvas、WebGL、WASM 或其他浏览器技术；契约不是 React component。每个 Surface 独立提供 dev/build/test/contract-test，并输出通过 `SurfaceArtifactManifestV1` 校验的静态 artifact：Setup 与 Play entrypoint 必填，Replay entrypoint 只在 `player-playback` 时需要。
 
-发布型 Surface 在 package manifest 中声明 `onlineGameHub.surfaceArtifact: true`，把 `surface.manifest.json` 与 `setup/`、`play/`、可选 `replay/` 输出到 `dist`。`pnpm surface:verify` 检查 schema、gameId、mode 目录、entrypoint 和 canonical digest；`pnpm surface:publish` 只把校验通过的内容幂等复制到 Web 静态目录，并拒绝同一 `surfaceVersion` 的内容漂移。Workbench 等不发布 artifact 的 workspace 必须显式声明 `false`，不能靠缺失 manifest 被静默跳过。
+发布型 Surface 在 package manifest 中声明 `onlineGameHub.surfaceArtifact: true`，提交 `surface.config.json` 与 `surface.lock.json`，并把 `surface.manifest.json`、`setup/`、`play/`、可选 `replay/` 输出到 `dist`。仓库级 artifact CLI 负责 build 收尾和显式锁更新，不能成为 Surface 的 workspace 依赖。普通 build 不改锁，只有先提升 `surfaceVersion` 后才能显式更新内容摘要。`pnpm surface:verify` 检查 schema、gameId、mode 目录、entrypoint、锁和 canonical digest；`pnpm surface:publish` 只把校验通过的内容幂等复制到 Web 静态目录，并拒绝同一 `surfaceVersion` 的内容漂移。Workbench 等不发布 artifact 的 workspace 必须显式声明 `false`，不能靠缺失 manifest 被静默跳过。
 
 Surface 只实现 `@online-game-hub/game-surface-bridge` 的 JSON 消息协议。它解析 projected payload、渲染全部游戏专属信息并发送最小 intent；不得读取 Core、ticket、session、actor、raw State、RNG、canonical replay 或 WebSocket。平台 HUD 不解释比分、棋子、阵营、当前回合、排名或 Outcome。
 

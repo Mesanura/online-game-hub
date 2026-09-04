@@ -319,7 +319,7 @@ M8 结束后再由产品证据选择下一个 M7 候选能力；不要把 OAuth�
 > 实施状态：已完成；Bridge V1、workspace/artifact 发布链、Docker static copy、Web iframe Host、独立 Workbench 与全 viewport E2E 均已实现并通过验证。
 
 - `game-surfaces/*` 加入 workspace、Turbo、依赖检查、CI 和 Docker static copy；`dist` 不提交；
-- manifest/digest/version drift 校验后复制到 `/game-surfaces/<gameId>/<surfaceVersion>/<mode>/` 并使用 immutable cache；
+- manifest/source lock/digest/version drift 校验后复制到 `/game-surfaces/<gameId>/<surfaceVersion>/<mode>/` 并使用 immutable cache；
 - 实现 sandboxed iframe Host、Bridge handshake、timeout/retry、安全 headers 和生命周期；
 - Surface Workbench 支持任意 dev URL、fixtures、断线/重连/终局/只读/revision/tick/reduced-motion/viewport/fullscreen 模拟；
 - conformance tests 证明 Surface 无需 Next 或 Game Server 即可开发。
@@ -335,6 +335,8 @@ M8 结束后再由产品证据选择下一个 M7 候选能力；不要把 OAuth�
 - 第一轮迁移只复现现有 starter/人数/营地行为，不同时重做交互设计。
 
 ### M9-E：井字棋与 Pong 双试点
+
+> 实施状态：井字棋独立 React/Vite Setup/Play/Replay artifact 与源码摘要锁已完成；等待页接入、production registration 切换与全链路验收尚未完成。
 
 1. 井字棋以独立 React/Vite Surface 验证 Setup/Play/Replay 与回合制 Bridge；Core、Action、Replay V1 和 gameVersion 不变。
 2. Pong 以 TypeScript + Phaser Surface 验证 realtime input sequence/ack/reconnect/replay；800×400 逻辑场地使用响应式 FIT，`targetScore` 首轮保留默认值。

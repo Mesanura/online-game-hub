@@ -42,7 +42,20 @@ describe("SurfaceBridgeHost", () => {
       },
       createNonce: () => "n".repeat(32),
       onIntent: (message) => intents.push(message),
-      onStatusChange: (status) => statuses.push(status),
+      onStatusChange: (status) => {
+        statuses.push(status);
+        if (status.state === "ready") {
+          host.send({
+            type: "host.state",
+            sequence: 1,
+            connectionState: "connected",
+            readOnly: false,
+            roundNumber: 1,
+            revision: 0,
+            payload: { board: [] },
+          });
+        }
+      },
     });
 
     host.start();
@@ -62,15 +75,26 @@ describe("SurfaceBridgeHost", () => {
     });
     await vi.waitFor(() => expect(host.status.state).toBe("ready"));
     await vi.waitFor(() =>
-      expect(hostMessages).toContainEqual({
-        type: "host.init",
-        bridgeVersion: 1,
-        mode: "play",
-        gameId: "tic-tac-toe",
-        gameVersion: "1.1.0",
-        locale: "zh-CN",
-        reducedMotion: false,
-      }),
+      expect(hostMessages.slice(0, 2)).toEqual([
+        {
+          type: "host.init",
+          bridgeVersion: 1,
+          mode: "play",
+          gameId: "tic-tac-toe",
+          gameVersion: "1.1.0",
+          locale: "zh-CN",
+          reducedMotion: false,
+        },
+        {
+          type: "host.state",
+          sequence: 1,
+          connectionState: "connected",
+          readOnly: false,
+          roundNumber: 1,
+          revision: 0,
+          payload: { board: [] },
+        },
+      ]),
     );
 
     const intent = {

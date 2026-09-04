@@ -3,7 +3,10 @@ import { pathToFileURL } from "node:url";
 
 import {
   publishAllSurfaceArtifacts,
+  updateSurfaceArtifactLock,
   verifyAllSurfaceArtifacts,
+  verifySurfaceWorkspace,
+  writeLockedSurfaceManifest,
 } from "./artifact.ts";
 
 async function runCli(): Promise<void> {
@@ -29,8 +32,29 @@ async function runCli(): Promise<void> {
     );
     return;
   }
+  if (command === "verify-workspace") {
+    const artifact = await verifySurfaceWorkspace(repositoryRoot);
+    console.log(
+      `Verified Surface ${artifact.manifest.gameId}@${artifact.manifest.surfaceVersion}.`,
+    );
+    return;
+  }
+  if (command === "finalize") {
+    const artifact = await writeLockedSurfaceManifest(repositoryRoot);
+    console.log(
+      `Finalized Surface ${artifact.manifest.gameId}@${artifact.manifest.surfaceVersion}.`,
+    );
+    return;
+  }
+  if (command === "lock") {
+    const artifact = await updateSurfaceArtifactLock(repositoryRoot);
+    console.log(
+      `Locked Surface ${artifact.manifest.gameId}@${artifact.manifest.surfaceVersion}.`,
+    );
+    return;
+  }
   throw new Error(
-    "Usage: cli.ts <verify|publish> [repositoryRoot] [outputRoot]",
+    "Usage: cli.ts <verify|publish|verify-workspace|finalize|lock> [root] [outputRoot]",
   );
 }
 
