@@ -36,6 +36,20 @@
       "when": 1788336260857,
       "tag": "0004_kind_prowler",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1788443927136,
+      "tag": "0005_cultured_trish_tilby",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1788445489306,
+      "tag": "0006_thankful_ogun",
+      "breakpoints": true
     }
   ]
 }

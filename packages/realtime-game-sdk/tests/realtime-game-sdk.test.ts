@@ -5,6 +5,7 @@ import {
   defineRealtimeGameId,
   defineRealtimeGameVersion,
   eraseRealtimeGameDefinition,
+  reconstructRealtimeReplayFrames,
   verifyRealtimeReplay,
 } from "../src/index.js";
 import type {
@@ -54,7 +55,7 @@ const definition: RealtimeGameDefinition<
     rng,
   }),
   projectView: ({ state }) => state,
-  getOutcome: () => null,
+  getOutcome: (state) => (state.value >= 1 ? { type: "DONE" } : null),
 };
 
 const resolver = () => eraseRealtimeGameDefinition(definition);
@@ -75,7 +76,7 @@ describe("realtime replay verifier", () => {
       events: [
         { sequence: 1, tick: 0, actorSlotId: "a", input: { direction: 1 } },
       ],
-      recordedRngCursor: 0,
+      recordedRngCursor: null,
       recordedOutcome: null,
       finalTick: 1,
     };
@@ -101,7 +102,7 @@ describe("realtime replay verifier", () => {
       events: [
         { sequence: 2, tick: 0, actorSlotId: "a", input: { direction: 1 } },
       ],
-      recordedRngCursor: 0,
+      recordedRngCursor: null,
       recordedOutcome: null,
       finalTick: 1,
     };
@@ -131,5 +132,102 @@ describe("realtime replay verifier", () => {
         resolver,
       ),
     ).toMatchObject({ ok: false, code: "INVALID_INPUT" });
+  });
+
+  it("fails closed on version, protocol, config, and canonical-input tampering", () => {
+    const replay = {
+      header: {
+        replayFormatVersion: 1,
+        runtime: "realtime",
+        gameId: "test-realtime",
+        gameVersion: "1.0.0",
+        tickRate: 60,
+        rng: { algorithm: REALTIME_RNG_ALGORITHM_V1, seed: "seed" },
+        initialConfig: null,
+        players: [{ slotId: "a" }, { slotId: "b" }],
+      },
+      events: [
+        { sequence: 1, tick: 0, actorSlotId: "a", input: { direction: 1 } },
+      ],
+      recordedRngCursor: null,
+      recordedOutcome: null,
+      finalTick: 1,
+    };
+    expect(
+      verifyRealtimeReplay(
+        { ...replay, header: { ...replay.header, runtime: "turn-based" } },
+        resolver,
+      ),
+    ).toMatchObject({ ok: false, code: "INVALID_HEADER" });
+    expect(
+      verifyRealtimeReplay(
+        { ...replay, header: { ...replay.header, gameVersion: "2.0.0" } },
+        resolver,
+      ),
+    ).toMatchObject({ ok: false, code: "UNKNOWN_GAME_VERSION" });
+    expect(
+      verifyRealtimeReplay(
+        {
+          ...replay,
+          header: { ...replay.header, initialConfig: { forged: true } },
+        },
+        resolver,
+      ),
+    ).toMatchObject({ ok: false, code: "INVALID_CONFIG" });
+    expect(
+      verifyRealtimeReplay(
+        {
+          ...replay,
+          events: [
+            {
+              sequence: 1,
+              tick: 0,
+              actorSlotId: "a",
+              input: { direction: 1, forged: true },
+            },
+          ],
+        },
+        resolver,
+      ),
+    ).toMatchObject({ ok: false, code: "INVALID_INPUT" });
+  });
+
+  it("reconstructs bounded player-only frames and rejects non-player viewers", () => {
+    const replay = {
+      header: {
+        replayFormatVersion: 1,
+        runtime: "realtime",
+        gameId: "test-realtime",
+        gameVersion: "1.0.0",
+        tickRate: 60,
+        rng: { algorithm: REALTIME_RNG_ALGORITHM_V1, seed: "seed" },
+        initialConfig: null,
+        players: [{ slotId: "a" }, { slotId: "b" }],
+      },
+      events: [
+        { sequence: 1, tick: 0, actorSlotId: "a", input: { direction: 1 } },
+      ],
+      recordedRngCursor: 0,
+      recordedOutcome: { type: "DONE" },
+      finalTick: 1,
+    };
+    const frames = reconstructRealtimeReplayFrames(replay, resolver, {
+      kind: "player",
+      slotId: "a",
+    });
+    expect(frames).toMatchObject({
+      status: "rebuilt",
+      frames: [{ tick: 0 }, { tick: 1 }],
+    });
+    if (frames.status === "rebuilt") {
+      expect(frames.frames[0]?.view).not.toHaveProperty("seed");
+      expect(Object.isFrozen(frames.frames[0]?.view)).toBe(true);
+    }
+    expect(
+      reconstructRealtimeReplayFrames(replay, resolver, {
+        kind: "player",
+        slotId: "spectator",
+      }),
+    ).toMatchObject({ status: "invalid", code: "VIEWER_NOT_PLAYER" });
   });
 });

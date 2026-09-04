@@ -21,9 +21,304 @@ import type {
   GameClientHostState,
   UnknownGameClientModule,
 } from "@online-game-hub/game-client-sdk";
-import { loadGameClientModule } from "@online-game-hub/game-registry/client";
+import type {
+  CommandRejected,
+  MatchStatus,
+  RealtimeRejected,
+  RoomConnected,
+  RoomLifecycleState,
+  StarterChoice as ProtocolStarterChoice,
+} from "@online-game-hub/protocol";
+import {
+  RealtimeGameClientHost,
+  createRealtimeHttpTicketProvider,
+} from "@online-game-hub/realtime-game-client-sdk";
+import type {
+  RealtimeGameClientHostState,
+  UnknownRealtimeGameClientModule,
+} from "@online-game-hub/realtime-game-client-sdk";
+import {
+  loadGameClientModule,
+  loadRealtimeGameClientModule,
+} from "@online-game-hub/game-registry/client";
+import { gameCatalog } from "@online-game-hub/game-registry/catalog";
 
-type StarterChoice = Parameters<GameClientHost["selectStarter"]>[0];
+type StarterChoice = ProtocolStarterChoice;
+
+export interface WebRoomSnapshot {
+  readonly gameId: string;
+  readonly gameVersion: string;
+  readonly roundNumber: number;
+  readonly revision: number;
+  readonly status: MatchStatus;
+  readonly viewer: { readonly kind: "player"; readonly slotId: string };
+  readonly view: unknown;
+  readonly outcome: unknown | null;
+  readonly causedByCommandId?: string;
+  readonly tick?: number;
+  readonly acknowledgedInputSequence?: number;
+}
+
+export interface WebRoomHostState {
+  readonly connectionState: GameClientHostState["connectionState"];
+  readonly room: RoomConnected | null;
+  readonly roomLifecycle: RoomLifecycleState | null;
+  readonly previousSnapshot: WebRoomSnapshot | null;
+  readonly snapshot: WebRoomSnapshot | null;
+  readonly rejection: CommandRejected | RealtimeRejected | null;
+  readonly error: { readonly code: string; readonly message: string } | null;
+}
+
+type RuntimeKind = "turn-based" | "realtime";
+type TurnBasedHost = GameClientHost<unknown, unknown>;
+type RealtimeHost = RealtimeGameClientHost<unknown, unknown>;
+
+function realtimeErrorMessage(code: string): string {
+  const labels: Record<string, string> = {
+    TICKET_ERROR: "无法取得连接票据。",
+    ROOM_ERROR: "无法连接实时房间。",
+    INVALID_SERVER_MESSAGE: "服务器返回了无效的实时消息。",
+    CONNECTION_CLOSED: "实时连接已关闭。",
+  };
+  return labels[code] ?? "实时连接发生错误。";
+}
+
+function mapRealtimeSnapshot(
+  snapshot: RealtimeGameClientHostState["snapshot"],
+  lifecycle: RoomLifecycleState | null,
+): WebRoomSnapshot | null {
+  if (snapshot === null) return null;
+  const lifecycleStatus = lifecycle?.currentRound?.status;
+  const status: MatchStatus =
+    lifecycleStatus === "abandoned"
+      ? "abandoned"
+      : snapshot.outcome !== null || lifecycleStatus === "completed"
+        ? "completed"
+        : "active";
+  return {
+    gameId: snapshot.gameId,
+    gameVersion: snapshot.gameVersion,
+    roundNumber: snapshot.roundNumber,
+    revision: snapshot.tick,
+    status,
+    viewer: snapshot.viewer,
+    view: snapshot.view,
+    outcome: snapshot.outcome,
+    tick: snapshot.tick,
+    acknowledgedInputSequence: snapshot.acknowledgedInputSequence,
+  };
+}
+
+/**
+ * Composition-only adapter.  The two hosts remain independent packages and
+ * protocols; this class only presents the Web room UI with one stable shape.
+ */
+export class RuntimeAwareHost {
+  readonly runtime: RuntimeKind;
+  readonly #turnBased: TurnBasedHost | null;
+  readonly #realtime: RealtimeHost | null;
+  readonly #listeners = new Set<() => void>();
+  readonly #unsubscribe: () => void;
+  #state: WebRoomHostState;
+
+  public constructor(options: {
+    readonly runtime: RuntimeKind;
+    readonly gameServerUrl: string;
+  }) {
+    this.runtime = options.runtime;
+    if (options.runtime === "realtime") {
+      this.#turnBased = null;
+      const realtime = new RealtimeGameClientHost({
+        gameServerUrl: options.gameServerUrl,
+        ticketProvider: createRealtimeHttpTicketProvider(),
+      });
+      this.#realtime = realtime;
+      this.#state = this.#mapRealtimeState(realtime.getState());
+      this.#unsubscribe = realtime.subscribe(() => {
+        this.#state = this.#mapRealtimeState(realtime.getState());
+        this.#notify();
+      });
+    } else {
+      this.#realtime = null;
+      const turnBased = new GameClientHost({
+        gameServerUrl: options.gameServerUrl,
+        ticketProvider: createHttpTicketProvider(),
+      });
+      this.#turnBased = turnBased;
+      this.#state = this.#mapTurnBasedState(turnBased.getState());
+      this.#unsubscribe = turnBased.subscribe(() => {
+        this.#state = this.#mapTurnBasedState(turnBased.getState());
+        this.#notify();
+      });
+    }
+  }
+
+  public getState(): WebRoomHostState {
+    return this.#state;
+  }
+
+  public subscribe(listener: () => void): () => void {
+    this.#listeners.add(listener);
+    return () => this.#listeners.delete(listener);
+  }
+
+  public async createRoom(
+    gameId: string,
+    initialConfig: unknown,
+  ): Promise<void> {
+    const realtime = this.#realtime;
+    if (realtime !== null) return realtime.createRoom(gameId, initialConfig);
+    return this.#requireTurnBased().createRoom(gameId, initialConfig);
+  }
+
+  public async joinRoom(gameId: string, roomCode: string): Promise<void> {
+    const realtime = this.#realtime;
+    if (realtime !== null) return realtime.joinRoom(gameId, roomCode);
+    return this.#requireTurnBased().joinRoom(gameId, roomCode);
+  }
+
+  public submitAction(action: unknown): Promise<void> {
+    const turnBased = this.#turnBased;
+    return turnBased === null
+      ? Promise.reject(new Error("Realtime rooms accept input intents."))
+      : turnBased.submitAction(action);
+  }
+
+  public submitInput(input: unknown): Promise<void> {
+    const realtime = this.#realtime;
+    return realtime === null
+      ? Promise.reject(new Error("Turn-based rooms accept actions."))
+      : realtime.submitInput(input);
+  }
+
+  public selectStarter(starter: StarterChoice): Promise<void> {
+    const realtime = this.#realtime;
+    return realtime === null
+      ? this.#requireTurnBased().selectStarter(starter)
+      : realtime.selectStarter(starter);
+  }
+
+  public selectPlayerCount(playerCount: number): Promise<void> {
+    const turnBased = this.#turnBased;
+    return turnBased === null
+      ? Promise.reject(new Error("Realtime rooms have two fixed players."))
+      : turnBased.selectPlayerCount(playerCount);
+  }
+
+  public selectPlayerAssignment(assignment: string): Promise<void> {
+    const turnBased = this.#turnBased;
+    return turnBased === null
+      ? Promise.reject(new Error("Realtime rooms do not use assignments."))
+      : turnBased.selectPlayerAssignment(assignment);
+  }
+
+  public clearPlayerAssignment(): Promise<void> {
+    const turnBased = this.#turnBased;
+    return turnBased === null
+      ? Promise.reject(new Error("Realtime rooms do not use assignments."))
+      : turnBased.clearPlayerAssignment();
+  }
+
+  public readyForRound(): Promise<void> {
+    const realtime = this.#realtime;
+    return realtime === null
+      ? this.#requireTurnBased().readyForRound()
+      : realtime.readyForRound();
+  }
+
+  public cancelRoundReady(): Promise<void> {
+    const realtime = this.#realtime;
+    return realtime === null
+      ? this.#requireTurnBased().cancelRoundReady()
+      : realtime.cancelRoundReady();
+  }
+
+  public startRematch(): Promise<void> {
+    const realtime = this.#realtime;
+    return realtime === null
+      ? this.#requireTurnBased().startRematch()
+      : realtime.startRematch();
+  }
+
+  public closeRoom(): Promise<void> {
+    const realtime = this.#realtime;
+    return realtime === null
+      ? this.#requireTurnBased().closeRoom()
+      : realtime.closeRoom();
+  }
+
+  public leaveRoom(): Promise<void> {
+    const realtime = this.#realtime;
+    return realtime === null
+      ? this.#requireTurnBased().leaveRoom()
+      : realtime.leaveRoom();
+  }
+
+  public close(): Promise<void> {
+    this.#unsubscribe();
+    const realtime = this.#realtime;
+    return realtime === null
+      ? this.#requireTurnBased().close()
+      : realtime.close();
+  }
+
+  #requireTurnBased(): TurnBasedHost {
+    if (this.#turnBased === null) {
+      throw new Error("This realtime room has no turn-based host.");
+    }
+    return this.#turnBased;
+  }
+
+  #mapTurnBasedState(state: GameClientHostState): WebRoomHostState {
+    return {
+      connectionState: state.connectionState,
+      room: state.room,
+      roomLifecycle: state.roomLifecycle,
+      previousSnapshot: null,
+      snapshot:
+        state.snapshot === null || state.snapshot.viewer.kind !== "player"
+          ? null
+          : {
+              gameId: state.snapshot.gameId,
+              gameVersion: state.snapshot.gameVersion,
+              roundNumber: state.snapshot.roundNumber,
+              revision: state.snapshot.revision,
+              status: state.snapshot.status,
+              viewer: state.snapshot.viewer,
+              view: state.snapshot.view,
+              outcome: state.snapshot.outcome,
+              ...(state.snapshot.causedByCommandId === undefined
+                ? {}
+                : { causedByCommandId: state.snapshot.causedByCommandId }),
+            },
+      rejection: state.rejection,
+      error: state.error,
+    };
+  }
+
+  #mapRealtimeState(state: RealtimeGameClientHostState): WebRoomHostState {
+    const rejection = state.rejection ?? state.controlRejection;
+    return {
+      connectionState: state.connectionState,
+      room: state.room,
+      roomLifecycle: state.roomLifecycle,
+      previousSnapshot: mapRealtimeSnapshot(
+        state.previousSnapshot,
+        state.roomLifecycle,
+      ),
+      snapshot: mapRealtimeSnapshot(state.snapshot, state.roomLifecycle),
+      rejection,
+      error:
+        state.error === null
+          ? null
+          : { code: state.error, message: realtimeErrorMessage(state.error) },
+    };
+  }
+
+  #notify(): void {
+    for (const listener of this.#listeners) listener();
+  }
+}
 
 export const connectionLabels = {
   idle: "尚未连接",
@@ -45,8 +340,9 @@ export type InviteCopyState = "idle" | "copying" | "copied" | "failed";
 export type PlayerCountNotice = "waiting" | "ready";
 
 interface GameRoomHostContextValue {
-  readonly host: GameClientHost;
-  readonly state: GameClientHostState;
+  readonly host: RuntimeAwareHost;
+  readonly runtime: RuntimeKind;
+  readonly state: WebRoomHostState;
   readonly busy: boolean;
   readonly roomCode: string;
   readonly localError: string | null;
@@ -55,6 +351,7 @@ interface GameRoomHostContextValue {
   readonly inviteCopyState: InviteCopyState;
   readonly playerCountNotice: PlayerCountNotice | null;
   readonly clientModule: UnknownGameClientModule | null;
+  readonly realtimeClientModule: UnknownRealtimeGameClientModule | null;
   readonly setRoomCode: (value: string) => void;
   readonly createRoom: () => Promise<void>;
   readonly joinRoom: () => Promise<void>;
@@ -116,13 +413,16 @@ export function GameRoomHostProvider({
 }) {
   const router = useRouter();
   const pathname = usePathname();
+  const runtime: RuntimeKind =
+    gameCatalog.find((candidate) => candidate.id === gameId)?.runtime ??
+    "turn-based";
   const host = useMemo(
     () =>
-      new GameClientHost({
+      new RuntimeAwareHost({
+        runtime,
         gameServerUrl,
-        ticketProvider: createHttpTicketProvider(),
       }),
-    [gameServerUrl],
+    [gameServerUrl, runtime],
   );
   const subscribe = useCallback(
     (listener: () => void) => host.subscribe(listener),
@@ -141,6 +441,8 @@ export function GameRoomHostProvider({
     useState<PlayerCountNotice | null>(null);
   const [clientModule, setClientModule] =
     useState<UnknownGameClientModule | null>(null);
+  const [realtimeClientModule, setRealtimeClientModule] =
+    useState<UnknownRealtimeGameClientModule | null>(null);
   const autoJoinKey = useRef<string | null>(null);
   const handledCloseReason = useRef<string | null>(null);
   const allowCompletedSetup = useRef(false);
@@ -227,17 +529,32 @@ export function GameRoomHostProvider({
 
   useEffect(() => {
     const snapshot = state.snapshot;
-    if (snapshot === null) return;
+    if (snapshot === null) {
+      setClientModule(null);
+      setRealtimeClientModule(null);
+      return;
+    }
     let active = true;
-    void loadGameClientModule(snapshot.gameId, snapshot.gameVersion).then(
-      (module) => {
-        if (active) setClientModule(module ?? null);
-      },
-    );
+    if (runtime === "realtime") {
+      setClientModule(null);
+      void loadRealtimeGameClientModule(
+        snapshot.gameId,
+        snapshot.gameVersion,
+      ).then((module) => {
+        if (active) setRealtimeClientModule(module ?? null);
+      });
+    } else {
+      setRealtimeClientModule(null);
+      void loadGameClientModule(snapshot.gameId, snapshot.gameVersion).then(
+        (module) => {
+          if (active) setClientModule(module ?? null);
+        },
+      );
+    }
     return () => {
       active = false;
     };
-  }, [state.snapshot?.gameId, state.snapshot?.gameVersion]);
+  }, [runtime, state.snapshot?.gameId, state.snapshot?.gameVersion]);
 
   useEffect(() => {
     const status = state.roomLifecycle?.currentRound?.status ?? null;
@@ -475,6 +792,7 @@ export function GameRoomHostProvider({
   const value = useMemo<GameRoomHostContextValue>(
     () => ({
       host,
+      runtime,
       state,
       busy,
       roomCode,
@@ -484,6 +802,7 @@ export function GameRoomHostProvider({
       inviteCopyState,
       playerCountNotice,
       clientModule,
+      realtimeClientModule,
       setRoomCode,
       createRoom,
       joinRoom,
@@ -524,6 +843,8 @@ export function GameRoomHostProvider({
       clearPlayerAssignment,
       state,
       toggleRoundReady,
+      runtime,
+      realtimeClientModule,
     ],
   );
 

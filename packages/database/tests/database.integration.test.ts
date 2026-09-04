@@ -171,6 +171,12 @@ describe.sequential("PostgreSQL + Drizzle persistence", () => {
       "match_players",
       "matches",
       "password_credentials",
+      "realtime_match_players",
+      "realtime_matches",
+      "realtime_replay_events",
+      "realtime_replays",
+      "realtime_room_players",
+      "realtime_rooms",
       "replay_actions",
       "replays",
       "users",
@@ -191,14 +197,24 @@ describe.sequential("PostgreSQL + Drizzle persistence", () => {
       sql<{ readonly createdAt: number }>`
         select created_at as "createdAt"
         from "drizzle"."__drizzle_migrations"
-        order by created_at desc
+        order by created_at asc
+        offset 4
         limit 1
       `,
     );
-    const latestMigration = migrationRows[0];
-    if (latestMigration === undefined) {
+    const profileMigration = migrationRows[0];
+    if (profileMigration === undefined) {
       throw new Error("The profile migration journal entry is missing.");
     }
+    await isolated.client.database.execute(sql`
+      drop table
+        "realtime_room_players",
+        "realtime_rooms",
+        "realtime_match_players",
+        "realtime_matches",
+        "realtime_replay_events",
+        "realtime_replays"
+    `);
     await isolated.client.database.execute(
       sql`alter table "users" drop constraint "users_display_name_length_valid"`,
     );
@@ -209,7 +225,7 @@ describe.sequential("PostgreSQL + Drizzle persistence", () => {
       sql`alter table "users" drop column "display_name"`,
     );
     await isolated.client.database.execute(
-      sql`delete from "drizzle"."__drizzle_migrations" where created_at = ${latestMigration.createdAt}`,
+      sql`delete from "drizzle"."__drizzle_migrations" where created_at >= ${profileMigration.createdAt}`,
     );
 
     await applyDatabaseMigrations(isolated.client);

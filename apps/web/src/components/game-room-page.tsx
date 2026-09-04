@@ -24,14 +24,13 @@ import {
   X,
 } from "@phosphor-icons/react";
 import Link from "next/link";
-import { useMemo, useState } from "react";
-
-import type { GameClientHostState } from "@online-game-hub/game-client-sdk";
+import { useEffect, useMemo, useState } from "react";
 
 import {
   connectionLabels,
   useGameRoomHost,
   type InviteCopyState,
+  type WebRoomHostState,
 } from "./game-room-host";
 
 export type GameRoomPageMode = "entry" | "room" | "play";
@@ -46,9 +45,23 @@ interface GameRoomPageProps {
   readonly mode: GameRoomPageMode;
 }
 
-function rejectionLabel(state: GameClientHostState): string | null {
+function rejectionLabel(state: WebRoomHostState): string | null {
   const rejection = state.rejection;
   if (rejection === null) return null;
+  if (rejection.type === "realtime.rejected") {
+    const realtimeRules: Record<string, string> = {
+      NOT_A_PLAYER: "你不是该房间的玩家。",
+      MATCH_NOT_ACTIVE: "比赛当前未进行。",
+      ROUND_MISMATCH: "本轮已切换，请等待最新画面。",
+      INVALID_INPUT_PAYLOAD: "输入格式无效。",
+      STALE_INPUT_SEQUENCE: "输入已过期，正在同步服务器。",
+      DUPLICATE_COMMAND: "重复输入已忽略。",
+      RATE_LIMITED: "输入过于频繁，请稍后再试。",
+    };
+    return (
+      realtimeRules[rejection.code] ?? `服务器拒绝了输入（${rejection.code}）。`
+    );
+  }
   if (rejection.code === "STALE_REVISION") {
     return "操作基于旧画面，已同步服务器的最新棋盘。";
   }
@@ -70,7 +83,7 @@ function ConnectionBadge({
   state,
   testId,
 }: {
-  readonly state: GameClientHostState;
+  readonly state: WebRoomHostState;
   readonly testId?: string;
 }) {
   const label = connectionLabels[state.connectionState];
@@ -778,7 +791,7 @@ function LoadingView({ label }: { readonly label: string }) {
   );
 }
 
-function PlayView({ title }: Pick<GameRoomPageProps, "title">) {
+function TurnBasedPlayView({ title }: Pick<GameRoomPageProps, "title">) {
   const [resignPending, setResignPending] = useState(false);
   const {
     busy,
@@ -972,6 +985,260 @@ function PlayView({ title }: Pick<GameRoomPageProps, "title">) {
       <PageAlerts />
       <RoomToast />
     </div>
+  );
+}
+
+function RealtimePlayView({ title }: Pick<GameRoomPageProps, "title">) {
+  const [resignPending, setResignPending] = useState(false);
+  const [reducedMotion, setReducedMotion] = useState(false);
+  const {
+    busy,
+    closeRoom,
+    host,
+    leaveRoom,
+    openNextRoundSetup,
+    realtimeClientModule,
+    startRematch,
+    state,
+  } = useGameRoomHost();
+  const snapshot = state.snapshot;
+  const previousSnapshot = state.previousSnapshot;
+  const lifecycle = state.roomLifecycle;
+  const room = state.room;
+
+  useEffect(() => {
+    const media = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const update = () => setReducedMotion(media.matches);
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
+
+  const [viewError, parsedView, parsedPreviousView] = useMemo(() => {
+    if (snapshot === null || realtimeClientModule === null) {
+      return [false, null, null] as const;
+    }
+    try {
+      const current = realtimeClientModule.parseView(snapshot.view);
+      const previous =
+        previousSnapshot === null
+          ? null
+          : realtimeClientModule.parseView(previousSnapshot.view);
+      return [false, current, previous] as const;
+    } catch {
+      return [true, null, null] as const;
+    }
+  }, [previousSnapshot, realtimeClientModule, snapshot]);
+
+  if (
+    room === null ||
+    lifecycle === null ||
+    snapshot === null ||
+    parsedView === null ||
+    realtimeClientModule === null
+  ) {
+    return <LoadingView label="正在同步实时对局…" />;
+  }
+
+  const GameComponent = realtimeClientModule.Component;
+  const viewRecord =
+    parsedView !== null && typeof parsedView === "object"
+      ? (parsedView as Record<string, unknown>)
+      : null;
+  const scores =
+    viewRecord !== null && Array.isArray(viewRecord.scores)
+      ? viewRecord.scores
+      : [0, 0];
+  const outcome = viewRecord?.outcome ?? snapshot.outcome;
+  const isCompleted = snapshot.status === "completed";
+  const canResign =
+    snapshot.status === "active" &&
+    snapshot.viewer.kind === "player" &&
+    realtimeClientModule.createResignInput !== undefined;
+  const resign = async (): Promise<void> => {
+    const createResignInput = realtimeClientModule.createResignInput;
+    if (!canResign || createResignInput === undefined || resignPending) return;
+    if (!window.confirm(RESIGN_CONFIRMATION_MESSAGE)) return;
+    setResignPending(true);
+    try {
+      await host.submitInput(createResignInput());
+    } catch {
+      // The authoritative rejection is rendered by PageAlerts.
+    } finally {
+      setResignPending(false);
+    }
+  };
+  const resultLabel =
+    outcome !== null && typeof outcome === "object"
+      ? (outcome as Record<string, unknown>).winnerSlotId === room.playerSlotId
+        ? "你赢了"
+        : "对手获胜"
+      : "对局已完成";
+
+  return (
+    <div className="page-shell console-page play-page realtime-play-page">
+      <aside className="game-rail play-rail clay-surface">
+        <div className="game-mark game-mark-large" aria-hidden="true">
+          <GameController size={32} weight="duotone" />
+        </div>
+        <div className="game-rail-copy">
+          <p className="eyebrow">实时对局</p>
+          <h1>{title}</h1>
+          <span data-testid="round-number">第 {snapshot.roundNumber} 局</span>
+        </div>
+        <div className="rail-player-list">
+          <div className="hud-player">
+            <span className="stone stone-red" aria-hidden="true" />
+            <span>玩家 1</span>
+            <strong>{String(scores[0] ?? 0)}</strong>
+          </div>
+          <div className="hud-player">
+            <span className="stone stone-blue" aria-hidden="true" />
+            <span>玩家 2</span>
+            <strong>{String(scores[1] ?? 0)}</strong>
+          </div>
+        </div>
+        <div className="turn-pill">
+          <Sparkle size={17} weight="fill" aria-hidden="true" />
+          <span>{isCompleted ? resultLabel : "实时进行中"}</span>
+        </div>
+        <ConnectionBadge state={state} testId="connection-state" />
+        <div className="play-room-controls">
+          <div className="rail-meta">
+            <span>房间码</span>
+            <strong data-testid="room-code">{room.roomCode}</strong>
+          </div>
+          {canResign ? (
+            <button
+              className="clay-button clay-button-resign"
+              data-testid="resign-game"
+              disabled={
+                busy || resignPending || state.connectionState !== "connected"
+              }
+              onClick={() => void resign()}
+              type="button"
+            >
+              <WarningCircle size={18} weight="bold" aria-hidden="true" />
+              {resignPending ? "正在投降…" : "投降"}
+            </button>
+          ) : null}
+          {lifecycle.isOwner ? (
+            <button
+              className="clay-button clay-button-danger"
+              data-testid="close-room"
+              disabled={busy || resignPending}
+              onClick={() => void closeRoom()}
+              type="button"
+            >
+              <X size={18} weight="bold" aria-hidden="true" /> 关闭房间
+            </button>
+          ) : (
+            <button
+              className="clay-button clay-button-danger"
+              data-testid="leave-room"
+              disabled={busy || resignPending}
+              onClick={() => void leaveRoom()}
+              type="button"
+            >
+              <SignOut size={18} weight="bold" aria-hidden="true" /> 离开房间
+            </button>
+          )}
+        </div>
+        <span className="sr-only" data-testid="player-slot">
+          {room.playerSlotId}
+        </span>
+        <span className="sr-only" data-testid="revision">
+          {snapshot.revision}
+        </span>
+        <span
+          className="sr-only"
+          data-status={snapshot.status}
+          data-testid="match-status"
+        >
+          {isCompleted ? "对局已完成" : "对局进行中"}
+        </span>
+        <span className="sr-only" data-testid="server-tick">
+          {snapshot.tick ?? snapshot.revision}
+        </span>
+        <span className="sr-only" data-testid="acknowledged-input-sequence">
+          {snapshot.acknowledgedInputSequence ?? 0}
+        </span>
+        <span className="sr-only" data-testid="score-left">
+          {String(scores[0] ?? 0)}
+        </span>
+        <span className="sr-only" data-testid="score-right">
+          {String(scores[1] ?? 0)}
+        </span>
+        <span className="sr-only" data-testid="pong-outcome">
+          {outcome === null ? "" : JSON.stringify(outcome)}
+        </span>
+      </aside>
+      <main className="play-stage-layout">
+        <div className="game-stage" data-testid="game-stage">
+          <GameComponent
+            acknowledgedInputSequence={snapshot.acknowledgedInputSequence ?? 0}
+            connectionState={state.connectionState}
+            previousView={parsedPreviousView as Readonly<unknown> | null}
+            readOnly={isCompleted}
+            reducedMotion={reducedMotion}
+            serverTick={snapshot.tick ?? snapshot.revision}
+            submitInput={(input) => host.submitInput(input)}
+            view={parsedView as Readonly<unknown>}
+          />
+        </div>
+        {viewError ? (
+          <p className="error-banner" role="alert">
+            服务器返回的实时游戏视图无效。
+          </p>
+        ) : null}
+        {isCompleted ? (
+          <section
+            aria-labelledby="result-heading"
+            className="result-dock clay-surface"
+          >
+            <div className="result-icon" aria-hidden="true">
+              <Trophy size={30} weight="fill" />
+            </div>
+            <div>
+              <p className="eyebrow">本局结果</p>
+              <h2 id="result-heading">{resultLabel}</h2>
+            </div>
+            <div className="result-actions">
+              <button
+                className="clay-button clay-button-primary"
+                data-testid="rematch-game"
+                disabled={busy || state.connectionState !== "connected"}
+                onClick={() => void startRematch()}
+                type="button"
+              >
+                <ArrowsClockwise size={20} weight="bold" aria-hidden="true" />
+                重新对局
+              </button>
+              <button
+                className="clay-button clay-button-secondary"
+                data-testid="next-round-settings"
+                onClick={() => void openNextRoundSetup()}
+                type="button"
+              >
+                设置规则{" "}
+                <ArrowRight size={20} weight="bold" aria-hidden="true" />
+              </button>
+            </div>
+          </section>
+        ) : null}
+      </main>
+      <PageAlerts />
+      <RoomToast />
+    </div>
+  );
+}
+
+function PlayView({ title }: Pick<GameRoomPageProps, "title">) {
+  const { runtime } = useGameRoomHost();
+  return runtime === "realtime" ? (
+    <RealtimePlayView title={title} />
+  ) : (
+    <TurnBasedPlayView title={title} />
   );
 }
 

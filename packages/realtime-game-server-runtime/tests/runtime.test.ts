@@ -45,15 +45,21 @@ const definition: RealtimeGameDefinition<null, State, Input, View, Outcome> = {
   inputSchema: z
     .object({ direction: z.union([z.literal(-1), z.literal(0), z.literal(1)]) })
     .strict(),
-  createInitialState: ({ players, rng }) => ({
-    state: {
-      players: [players[0]!, players[1]!],
-      tick: 0,
-      values: [0, 0],
-      done: false,
-    },
-    rng,
-  }),
+  createInitialState: ({ players, rng }) => {
+    const [firstPlayer, secondPlayer] = players;
+    if (firstPlayer === undefined || secondPlayer === undefined) {
+      throw new Error("Runtime test requires two players.");
+    }
+    return {
+      state: {
+        players: [firstPlayer, secondPlayer],
+        tick: 0,
+        values: [0, 0],
+        done: false,
+      },
+      rng,
+    };
+  },
   step: ({ state, tick, inputs, rng }) => {
     if (tick !== state.tick) throw new Error("bad tick");
     const values: [number, number] = [...state.values];
@@ -122,6 +128,13 @@ describe("fixed-tick realtime round", () => {
 
   it("rejects malformed, stale sequence, wrong round and forged fields", async () => {
     const { round, store } = await setup();
+    const unknownSlot = defineRealtimePlayerSlotId("unknown");
+    expect(
+      await round.receiveInput(unknownSlot, command("unknown", 1, 1)),
+    ).toMatchObject({
+      accepted: false,
+      rejection: { code: "NOT_A_PLAYER" },
+    });
     expect(
       await round.receiveInput(left, { ...command("forged", 1, 1), tick: 50 }),
     ).toMatchObject({
@@ -144,6 +157,24 @@ describe("fixed-tick realtime round", () => {
       rejection: { code: "STALE_INPUT_SEQUENCE" },
     });
     expect((await store.get("replay"))?.events).toEqual([]);
+    expect(round.tick).toBe(0);
+  });
+
+  it("keeps accepted input queued until its assigned tick and acknowledges only applied input", async () => {
+    const { round, store } = await setup();
+    const accepted = await round.receiveInput(left, command("queued", 1, 1));
+    expect(accepted).toMatchObject({ accepted: true, effectiveTick: 1 });
+    expect((await store.get("replay"))?.events).toEqual([]);
+    expect(round.tick).toBe(0);
+    const snapshots = await round.advanceTick();
+    expect(round.tick).toBe(1);
+    expect(snapshots[0]?.acknowledgedInputSequence).toBe(1);
+    expect((await store.get("replay"))?.events[0]).toEqual({
+      sequence: 1,
+      tick: 0,
+      actorSlotId: "left",
+      input: { direction: 1 },
+    });
   });
 
   it("is command-idempotent and completes the replay exactly once", async () => {

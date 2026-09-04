@@ -1,0 +1,1415 @@
+{
+  "id": "ee66a1bf-653f-4d3f-95f3-b6fe76f17708",
+  "prevId": "d9d4129e-a724-4e5d-9e92-565d7ea1c686",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.account_sessions": {
+      "name": "account_sessions",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "token_hash": {
+          "name": "token_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "account_sessions_token_hash_unique": {
+          "name": "account_sessions_token_hash_unique",
+          "columns": [
+            {
+              "expression": "token_hash",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "account_sessions_user_expiry_idx": {
+          "name": "account_sessions_user_expiry_idx",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "expires_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "account_sessions_user_id_users_id_fk": {
+          "name": "account_sessions_user_id_users_id_fk",
+          "tableFrom": "account_sessions",
+          "tableTo": "users",
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "account_sessions_token_hash_format": {
+          "name": "account_sessions_token_hash_format",
+          "value": "\"account_sessions\".\"token_hash\" ~ '^[0-9a-f]{64}$'"
+        },
+        "account_sessions_expiry_valid": {
+          "name": "account_sessions_expiry_valid",
+          "value": "\"account_sessions\".\"expires_at\" > \"account_sessions\".\"created_at\""
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.match_players": {
+      "name": "match_players",
+      "schema": "",
+      "columns": {
+        "match_id": {
+          "name": "match_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "player_slot_id": {
+          "name": "player_slot_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "player_session_id": {
+          "name": "player_session_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "joined_at": {
+          "name": "joined_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "match_players_session_history_idx": {
+          "name": "match_players_session_history_idx",
+          "columns": [
+            {
+              "expression": "player_session_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "match_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "match_players_user_history_idx": {
+          "name": "match_players_user_history_idx",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "match_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "match_players_match_id_matches_id_fk": {
+          "name": "match_players_match_id_matches_id_fk",
+          "tableFrom": "match_players",
+          "tableTo": "matches",
+          "columnsFrom": ["match_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "match_players_user_id_users_id_fk": {
+          "name": "match_players_user_id_users_id_fk",
+          "tableFrom": "match_players",
+          "tableTo": "users",
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "match_players_match_slot_pk": {
+          "name": "match_players_match_slot_pk",
+          "columns": ["match_id", "player_slot_id"]
+        }
+      },
+      "uniqueConstraints": {
+        "match_players_match_session_unique": {
+          "name": "match_players_match_session_unique",
+          "nullsNotDistinct": false,
+          "columns": ["match_id", "player_session_id"]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "match_players_slot_not_empty": {
+          "name": "match_players_slot_not_empty",
+          "value": "length(\"match_players\".\"player_slot_id\") > 0"
+        },
+        "match_players_session_not_empty": {
+          "name": "match_players_session_not_empty",
+          "value": "length(\"match_players\".\"player_session_id\") > 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.matches": {
+      "name": "matches",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "runtime_room_id": {
+          "name": "runtime_room_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "round_number": {
+          "name": "round_number",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "replay_id": {
+          "name": "replay_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "game_id": {
+          "name": "game_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "game_version": {
+          "name": "game_version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "match_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "final_revision": {
+          "name": "final_revision",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "started_at": {
+          "name": "started_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "completed_at": {
+          "name": "completed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "abandoned_at": {
+          "name": "abandoned_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "matches_history_order_idx": {
+          "name": "matches_history_order_idx",
+          "columns": [
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "matches_replay_id_replays_id_fk": {
+          "name": "matches_replay_id_replays_id_fk",
+          "tableFrom": "matches",
+          "tableTo": "replays",
+          "columnsFrom": ["replay_id"],
+          "columnsTo": ["id"],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "matches_runtime_room_round_unique": {
+          "name": "matches_runtime_room_round_unique",
+          "nullsNotDistinct": false,
+          "columns": ["runtime_room_id", "round_number"]
+        },
+        "matches_replay_id_unique": {
+          "name": "matches_replay_id_unique",
+          "nullsNotDistinct": false,
+          "columns": ["replay_id"]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "matches_runtime_room_id_not_empty": {
+          "name": "matches_runtime_room_id_not_empty",
+          "value": "length(\"matches\".\"runtime_room_id\") > 0"
+        },
+        "matches_round_number_positive": {
+          "name": "matches_round_number_positive",
+          "value": "\"matches\".\"round_number\" > 0"
+        },
+        "matches_game_id_not_empty": {
+          "name": "matches_game_id_not_empty",
+          "value": "length(\"matches\".\"game_id\") > 0"
+        },
+        "matches_game_version_not_empty": {
+          "name": "matches_game_version_not_empty",
+          "value": "length(\"matches\".\"game_version\") > 0"
+        },
+        "matches_final_revision_nonnegative": {
+          "name": "matches_final_revision_nonnegative",
+          "value": "\"matches\".\"final_revision\" >= 0"
+        },
+        "matches_lifecycle_timestamps": {
+          "name": "matches_lifecycle_timestamps",
+          "value": "(\n        (\"matches\".\"status\" = 'waiting' and \"matches\".\"started_at\" is null and \"matches\".\"completed_at\" is null and \"matches\".\"abandoned_at\" is null)\n        or\n        (\"matches\".\"status\" = 'active' and \"matches\".\"started_at\" is not null and \"matches\".\"completed_at\" is null and \"matches\".\"abandoned_at\" is null)\n        or\n        (\"matches\".\"status\" = 'completed' and \"matches\".\"started_at\" is not null and \"matches\".\"completed_at\" is not null and \"matches\".\"abandoned_at\" is null)\n        or\n        (\"matches\".\"status\" = 'abandoned' and \"matches\".\"completed_at\" is null and \"matches\".\"abandoned_at\" is not null)\n      )"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.password_credentials": {
+      "name": "password_credentials",
+      "schema": "",
+      "columns": {
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "username": {
+          "name": "username",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "password_hash": {
+          "name": "password_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "password_credentials_username_unique": {
+          "name": "password_credentials_username_unique",
+          "columns": [
+            {
+              "expression": "username",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "password_credentials_user_id_users_id_fk": {
+          "name": "password_credentials_user_id_users_id_fk",
+          "tableFrom": "password_credentials",
+          "tableTo": "users",
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "password_credentials_username_format": {
+          "name": "password_credentials_username_format",
+          "value": "\"password_credentials\".\"username\" ~ '^[a-z0-9_]{3,24}$'"
+        },
+        "password_credentials_hash_length": {
+          "name": "password_credentials_hash_length",
+          "value": "length(\"password_credentials\".\"password_hash\") between 1 and 1024"
+        },
+        "password_credentials_timestamps_valid": {
+          "name": "password_credentials_timestamps_valid",
+          "value": "\"password_credentials\".\"created_at\" <= \"password_credentials\".\"updated_at\" and \"password_credentials\".\"updated_at\" <= now()"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.realtime_match_players": {
+      "name": "realtime_match_players",
+      "schema": "",
+      "columns": {
+        "match_id": {
+          "name": "match_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "player_slot_id": {
+          "name": "player_slot_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "player_session_id": {
+          "name": "player_session_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "joined_at": {
+          "name": "joined_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "realtime_match_players_user_history_idx": {
+          "name": "realtime_match_players_user_history_idx",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "match_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "realtime_match_players_match_id_realtime_matches_id_fk": {
+          "name": "realtime_match_players_match_id_realtime_matches_id_fk",
+          "tableFrom": "realtime_match_players",
+          "tableTo": "realtime_matches",
+          "columnsFrom": ["match_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "realtime_match_players_user_id_users_id_fk": {
+          "name": "realtime_match_players_user_id_users_id_fk",
+          "tableFrom": "realtime_match_players",
+          "tableTo": "users",
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "realtime_match_players_match_slot_pk": {
+          "name": "realtime_match_players_match_slot_pk",
+          "columns": ["match_id", "player_slot_id"]
+        }
+      },
+      "uniqueConstraints": {
+        "realtime_match_players_match_session_unique": {
+          "name": "realtime_match_players_match_session_unique",
+          "nullsNotDistinct": false,
+          "columns": ["match_id", "player_session_id"]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "realtime_match_players_slot_not_empty": {
+          "name": "realtime_match_players_slot_not_empty",
+          "value": "length(\"realtime_match_players\".\"player_slot_id\") > 0"
+        },
+        "realtime_match_players_session_not_empty": {
+          "name": "realtime_match_players_session_not_empty",
+          "value": "length(\"realtime_match_players\".\"player_session_id\") > 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.realtime_matches": {
+      "name": "realtime_matches",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "runtime_room_id": {
+          "name": "runtime_room_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "round_number": {
+          "name": "round_number",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "replay_id": {
+          "name": "replay_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "game_id": {
+          "name": "game_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "game_version": {
+          "name": "game_version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "match_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "final_tick": {
+          "name": "final_tick",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "started_at": {
+          "name": "started_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "completed_at": {
+          "name": "completed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "abandoned_at": {
+          "name": "abandoned_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "realtime_matches_history_order_idx": {
+          "name": "realtime_matches_history_order_idx",
+          "columns": [
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "realtime_matches_replay_id_realtime_replays_id_fk": {
+          "name": "realtime_matches_replay_id_realtime_replays_id_fk",
+          "tableFrom": "realtime_matches",
+          "tableTo": "realtime_replays",
+          "columnsFrom": ["replay_id"],
+          "columnsTo": ["id"],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "realtime_matches_room_round_unique": {
+          "name": "realtime_matches_room_round_unique",
+          "nullsNotDistinct": false,
+          "columns": ["runtime_room_id", "round_number"]
+        },
+        "realtime_matches_replay_id_unique": {
+          "name": "realtime_matches_replay_id_unique",
+          "nullsNotDistinct": false,
+          "columns": ["replay_id"]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "realtime_matches_round_positive": {
+          "name": "realtime_matches_round_positive",
+          "value": "\"realtime_matches\".\"round_number\" > 0"
+        },
+        "realtime_matches_final_tick_nonnegative": {
+          "name": "realtime_matches_final_tick_nonnegative",
+          "value": "\"realtime_matches\".\"final_tick\" >= 0"
+        },
+        "realtime_matches_lifecycle_timestamps": {
+          "name": "realtime_matches_lifecycle_timestamps",
+          "value": "(\n        (\"realtime_matches\".\"status\" = 'active' and \"realtime_matches\".\"started_at\" is not null and \"realtime_matches\".\"completed_at\" is null and \"realtime_matches\".\"abandoned_at\" is null)\n        or\n        (\"realtime_matches\".\"status\" = 'completed' and \"realtime_matches\".\"started_at\" is not null and \"realtime_matches\".\"completed_at\" is not null and \"realtime_matches\".\"abandoned_at\" is null)\n        or\n        (\"realtime_matches\".\"status\" = 'abandoned' and \"realtime_matches\".\"abandoned_at\" is not null and \"realtime_matches\".\"completed_at\" is null)\n      )"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.realtime_replay_events": {
+      "name": "realtime_replay_events",
+      "schema": "",
+      "columns": {
+        "replay_id": {
+          "name": "replay_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sequence": {
+          "name": "sequence",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "tick": {
+          "name": "tick",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "actor_slot_id": {
+          "name": "actor_slot_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "input": {
+          "name": "input",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "realtime_replay_events_replay_id_realtime_replays_id_fk": {
+          "name": "realtime_replay_events_replay_id_realtime_replays_id_fk",
+          "tableFrom": "realtime_replay_events",
+          "tableTo": "realtime_replays",
+          "columnsFrom": ["replay_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "realtime_replay_events_replay_sequence_pk": {
+          "name": "realtime_replay_events_replay_sequence_pk",
+          "columns": ["replay_id", "sequence"]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "realtime_replay_events_sequence_positive": {
+          "name": "realtime_replay_events_sequence_positive",
+          "value": "\"realtime_replay_events\".\"sequence\" > 0"
+        },
+        "realtime_replay_events_tick_nonnegative": {
+          "name": "realtime_replay_events_tick_nonnegative",
+          "value": "\"realtime_replay_events\".\"tick\" >= 0"
+        },
+        "realtime_replay_events_actor_not_empty": {
+          "name": "realtime_replay_events_actor_not_empty",
+          "value": "length(\"realtime_replay_events\".\"actor_slot_id\") > 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.realtime_replays": {
+      "name": "realtime_replays",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "replay_format_version": {
+          "name": "replay_format_version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "runtime": {
+          "name": "runtime",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "game_id": {
+          "name": "game_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "game_version": {
+          "name": "game_version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "tick_rate": {
+          "name": "tick_rate",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "rng_algorithm": {
+          "name": "rng_algorithm",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "rng_seed": {
+          "name": "rng_seed",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "initial_config": {
+          "name": "initial_config",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "players": {
+          "name": "players",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "recorded_rng_cursor": {
+          "name": "recorded_rng_cursor",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "recorded_outcome": {
+          "name": "recorded_outcome",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "final_tick": {
+          "name": "final_tick",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "completed_at": {
+          "name": "completed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "realtime_replays_id_not_empty": {
+          "name": "realtime_replays_id_not_empty",
+          "value": "length(\"realtime_replays\".\"id\") > 0"
+        },
+        "realtime_replays_format_version": {
+          "name": "realtime_replays_format_version",
+          "value": "\"realtime_replays\".\"replay_format_version\" = 1"
+        },
+        "realtime_replays_runtime": {
+          "name": "realtime_replays_runtime",
+          "value": "\"realtime_replays\".\"runtime\" = 'realtime'"
+        },
+        "realtime_replays_game_id_not_empty": {
+          "name": "realtime_replays_game_id_not_empty",
+          "value": "length(\"realtime_replays\".\"game_id\") > 0"
+        },
+        "realtime_replays_game_version_not_empty": {
+          "name": "realtime_replays_game_version_not_empty",
+          "value": "length(\"realtime_replays\".\"game_version\") > 0"
+        },
+        "realtime_replays_tick_rate": {
+          "name": "realtime_replays_tick_rate",
+          "value": "\"realtime_replays\".\"tick_rate\" = 60"
+        },
+        "realtime_replays_rng_algorithm": {
+          "name": "realtime_replays_rng_algorithm",
+          "value": "\"realtime_replays\".\"rng_algorithm\" = 'fnv1a32-counter-v1'"
+        },
+        "realtime_replays_rng_seed_not_empty": {
+          "name": "realtime_replays_rng_seed_not_empty",
+          "value": "length(\"realtime_replays\".\"rng_seed\") > 0"
+        },
+        "realtime_replays_final_tick_nonnegative": {
+          "name": "realtime_replays_final_tick_nonnegative",
+          "value": "\"realtime_replays\".\"final_tick\" >= 0"
+        },
+        "realtime_replays_completion_consistent": {
+          "name": "realtime_replays_completion_consistent",
+          "value": "(\n        (\"realtime_replays\".\"completed_at\" is null and \"realtime_replays\".\"recorded_rng_cursor\" is null and \"realtime_replays\".\"recorded_outcome\" is null)\n        or\n        (\"realtime_replays\".\"completed_at\" is not null and \"realtime_replays\".\"recorded_rng_cursor\" >= 0 and \"realtime_replays\".\"recorded_outcome\" is not null and \"realtime_replays\".\"final_tick\" > 0)\n      )"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.realtime_room_players": {
+      "name": "realtime_room_players",
+      "schema": "",
+      "columns": {
+        "room_id": {
+          "name": "room_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "player_slot_id": {
+          "name": "player_slot_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "player_session_id": {
+          "name": "player_session_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reserved_until": {
+          "name": "reserved_until",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "realtime_room_players_room_id_realtime_rooms_room_id_fk": {
+          "name": "realtime_room_players_room_id_realtime_rooms_room_id_fk",
+          "tableFrom": "realtime_room_players",
+          "tableTo": "realtime_rooms",
+          "columnsFrom": ["room_id"],
+          "columnsTo": ["room_id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "realtime_room_players_user_id_users_id_fk": {
+          "name": "realtime_room_players_user_id_users_id_fk",
+          "tableFrom": "realtime_room_players",
+          "tableTo": "users",
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "realtime_room_players_room_slot_pk": {
+          "name": "realtime_room_players_room_slot_pk",
+          "columns": ["room_id", "player_slot_id"]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "realtime_room_players_slot_not_empty": {
+          "name": "realtime_room_players_slot_not_empty",
+          "value": "length(\"realtime_room_players\".\"player_slot_id\") > 0"
+        },
+        "realtime_room_players_session_not_empty": {
+          "name": "realtime_room_players_session_not_empty",
+          "value": "\"realtime_room_players\".\"player_session_id\" is null or length(\"realtime_room_players\".\"player_session_id\") > 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.realtime_rooms": {
+      "name": "realtime_rooms",
+      "schema": "",
+      "columns": {
+        "room_id": {
+          "name": "room_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "room_code": {
+          "name": "room_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "game_id": {
+          "name": "game_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "game_version": {
+          "name": "game_version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "initial_config": {
+          "name": "initial_config",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "current_round_number": {
+          "name": "current_round_number",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "current_replay_id": {
+          "name": "current_replay_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "current_tick": {
+          "name": "current_tick",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "current_status": {
+          "name": "current_status",
+          "type": "match_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "current_outcome": {
+          "name": "current_outcome",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "close_reason": {
+          "name": "close_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "realtime_rooms_room_code_unique": {
+          "name": "realtime_rooms_room_code_unique",
+          "columns": [
+            {
+              "expression": "room_code",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "realtime_rooms_current_replay_id_realtime_replays_id_fk": {
+          "name": "realtime_rooms_current_replay_id_realtime_replays_id_fk",
+          "tableFrom": "realtime_rooms",
+          "tableTo": "realtime_replays",
+          "columnsFrom": ["current_replay_id"],
+          "columnsTo": ["id"],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "realtime_rooms_room_id_not_empty": {
+          "name": "realtime_rooms_room_id_not_empty",
+          "value": "length(\"realtime_rooms\".\"room_id\") > 0"
+        },
+        "realtime_rooms_room_code_format": {
+          "name": "realtime_rooms_room_code_format",
+          "value": "\"realtime_rooms\".\"room_code\" ~ '^[A-HJ-NP-Z2-9]{8}$'"
+        },
+        "realtime_rooms_game_id_not_empty": {
+          "name": "realtime_rooms_game_id_not_empty",
+          "value": "length(\"realtime_rooms\".\"game_id\") > 0"
+        },
+        "realtime_rooms_game_version_not_empty": {
+          "name": "realtime_rooms_game_version_not_empty",
+          "value": "length(\"realtime_rooms\".\"game_version\") > 0"
+        },
+        "realtime_rooms_current_tick_nonnegative": {
+          "name": "realtime_rooms_current_tick_nonnegative",
+          "value": "\"realtime_rooms\".\"current_tick\" >= 0"
+        },
+        "realtime_rooms_round_consistent": {
+          "name": "realtime_rooms_round_consistent",
+          "value": "(\n        (\"realtime_rooms\".\"current_round_number\" is null and \"realtime_rooms\".\"current_replay_id\" is null and \"realtime_rooms\".\"current_status\" is null and \"realtime_rooms\".\"current_tick\" = 0)\n        or\n        (\"realtime_rooms\".\"current_round_number\" > 0 and \"realtime_rooms\".\"current_replay_id\" is not null and \"realtime_rooms\".\"current_status\" is not null)\n      )"
+        },
+        "realtime_rooms_close_reason_consistent": {
+          "name": "realtime_rooms_close_reason_consistent",
+          "value": "(\"realtime_rooms\".\"close_reason\" is null or \"realtime_rooms\".\"close_reason\" in ('OWNER_CLOSED','PLAYER_LEFT','RECONNECT_TIMEOUT','REMATCH_TIMEOUT'))"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.replay_actions": {
+      "name": "replay_actions",
+      "schema": "",
+      "columns": {
+        "replay_id": {
+          "name": "replay_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sequence": {
+          "name": "sequence",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "actor_slot_id": {
+          "name": "actor_slot_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "action": {
+          "name": "action",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "replay_actions_replay_id_replays_id_fk": {
+          "name": "replay_actions_replay_id_replays_id_fk",
+          "tableFrom": "replay_actions",
+          "tableTo": "replays",
+          "columnsFrom": ["replay_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "replay_actions_replay_sequence_pk": {
+          "name": "replay_actions_replay_sequence_pk",
+          "columns": ["replay_id", "sequence"]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "replay_actions_sequence_positive": {
+          "name": "replay_actions_sequence_positive",
+          "value": "\"replay_actions\".\"sequence\" > 0"
+        },
+        "replay_actions_actor_not_empty": {
+          "name": "replay_actions_actor_not_empty",
+          "value": "length(\"replay_actions\".\"actor_slot_id\") > 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.replays": {
+      "name": "replays",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "replay_format_version": {
+          "name": "replay_format_version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "game_id": {
+          "name": "game_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "game_version": {
+          "name": "game_version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "rng_algorithm": {
+          "name": "rng_algorithm",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "rng_seed": {
+          "name": "rng_seed",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "initial_config": {
+          "name": "initial_config",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "players": {
+          "name": "players",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "recorded_rng_cursor": {
+          "name": "recorded_rng_cursor",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "recorded_outcome": {
+          "name": "recorded_outcome",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "completed_at": {
+          "name": "completed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "replays_id_not_empty": {
+          "name": "replays_id_not_empty",
+          "value": "length(\"replays\".\"id\") > 0"
+        },
+        "replays_format_version_positive": {
+          "name": "replays_format_version_positive",
+          "value": "\"replays\".\"replay_format_version\" > 0"
+        },
+        "replays_game_id_not_empty": {
+          "name": "replays_game_id_not_empty",
+          "value": "length(\"replays\".\"game_id\") > 0"
+        },
+        "replays_game_version_not_empty": {
+          "name": "replays_game_version_not_empty",
+          "value": "length(\"replays\".\"game_version\") > 0"
+        },
+        "replays_rng_algorithm_not_empty": {
+          "name": "replays_rng_algorithm_not_empty",
+          "value": "length(\"replays\".\"rng_algorithm\") > 0"
+        },
+        "replays_rng_seed_not_empty": {
+          "name": "replays_rng_seed_not_empty",
+          "value": "length(\"replays\".\"rng_seed\") > 0"
+        },
+        "replays_completion_consistent": {
+          "name": "replays_completion_consistent",
+          "value": "(\n        (\"replays\".\"completed_at\" is null and \"replays\".\"recorded_rng_cursor\" is null and \"replays\".\"recorded_outcome\" is null)\n        or\n        (\"replays\".\"completed_at\" is not null and \"replays\".\"recorded_rng_cursor\" >= 0 and \"replays\".\"recorded_outcome\" is not null)\n      )"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.users": {
+      "name": "users",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "display_name": {
+          "name": "display_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "users_display_name_length_valid": {
+          "name": "users_display_name_length_valid",
+          "value": "length(trim(\"users\".\"display_name\")) between 1 and 96"
+        },
+        "users_created_at_valid": {
+          "name": "users_created_at_valid",
+          "value": "\"users\".\"created_at\" <= now()"
+        }
+      },
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {
+    "public.match_status": {
+      "name": "match_status",
+      "schema": "public",
+      "values": ["waiting", "active", "completed", "abandoned"]
+    }
+  },
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

@@ -14,6 +14,24 @@ import {
   secureRuntimeIdSource,
   systemRuntimeClock,
 } from "@online-game-hub/game-server-runtime";
+import {
+  createRealtimeGameRoomClass,
+  InMemoryRealtimeReplayStore,
+  InMemoryRealtimeRoomStore,
+  REALTIME_GAME_ROOM_NAME,
+} from "@online-game-hub/realtime-game-server-runtime";
+import type {
+  RealtimeGameRoomClass,
+  RealtimeMatchArchive,
+  RealtimeRoomStore,
+  RealtimeRuntimeClock,
+  RealtimeRuntimeIdSource,
+  RealtimePlatformRandom,
+  RealtimeSchedulerTimer,
+  RealtimeTicketVerifier,
+  RealtimeReplayStore,
+} from "@online-game-hub/realtime-game-server-runtime";
+import type { UnknownRealtimeGameDefinition } from "@online-game-hub/realtime-game-sdk";
 import type {
   ExactGameDefinitionResolver,
   CurrentGameDefinitionResolver,
@@ -29,6 +47,8 @@ import type {
 import {
   resolveCurrentGameDefinition,
   resolveGameDefinition,
+  resolveCurrentRealtimeGameDefinition,
+  resolveRealtimeGameDefinition,
 } from "@online-game-hub/game-registry/server";
 
 export interface GameServerStartOptions {
@@ -56,12 +76,30 @@ export interface GameServerCompositionOptions {
   readonly logger?: RuntimeLogger;
   readonly reconnectGraceMilliseconds?: number;
   readonly terminalRoomTtlMilliseconds?: number;
+  readonly realtimeReplayStore?: RealtimeReplayStore;
+  readonly realtimeRoomStore?: RealtimeRoomStore;
+  readonly realtimeMatchArchive?: RealtimeMatchArchive;
+  readonly realtimeClock?: RealtimeRuntimeClock;
+  readonly realtimeIds?: RealtimeRuntimeIdSource;
+  readonly realtimeTicketVerifier?: RealtimeTicketVerifier;
+  readonly resolveCurrentRealtimeDefinition?: (
+    gameId: string,
+  ) => UnknownRealtimeGameDefinition | undefined;
+  readonly resolveRealtimeDefinition?: (
+    gameId: string,
+    gameVersion: string,
+  ) => UnknownRealtimeGameDefinition | undefined;
+  readonly realtimeReconnectGraceMilliseconds?: number;
+  readonly realtimeTerminalRoomTtlMilliseconds?: number;
+  readonly realtimeRandom?: RealtimePlatformRandom;
+  readonly realtimeSchedulerTimer?: RealtimeSchedulerTimer;
 }
 
 export interface GameServerApplication {
   readonly roomStore: RoomStore;
   readonly replayStore: ReplayStore;
   readonly metrics: MetricsCollector;
+  readonly realtimeReplayStore: RealtimeReplayStore;
   start(options?: GameServerStartOptions): Promise<GameServerAddress>;
   stop(): Promise<void>;
   address(): GameServerAddress | null;
@@ -80,6 +118,47 @@ export function createGameServer(
   const roomStore = options.roomStore ?? new InMemoryRoomStore();
   const replayStore = options.replayStore ?? new InMemoryReplayStore();
   const metrics = options.metrics ?? new InMemoryMetricsCollector();
+  const realtimeReplayStore =
+    options.realtimeReplayStore ?? new InMemoryRealtimeReplayStore();
+  const realtimeRoomStore =
+    options.realtimeRoomStore ?? new InMemoryRealtimeRoomStore();
+  const realtimeVerifier =
+    options.realtimeTicketVerifier ?? options.ticketVerifier;
+  const RealtimeRoomClass: RealtimeGameRoomClass = createRealtimeGameRoomClass({
+    ticketVerifier: realtimeVerifier,
+    resolveCurrentDefinition:
+      options.resolveCurrentRealtimeDefinition ??
+      resolveCurrentRealtimeGameDefinition,
+    resolveDefinition:
+      options.resolveRealtimeDefinition ?? resolveRealtimeGameDefinition,
+    replayStore: realtimeReplayStore,
+    roomStore: realtimeRoomStore,
+    ...(options.realtimeMatchArchive === undefined
+      ? {}
+      : { matchArchive: options.realtimeMatchArchive }),
+    ...(options.realtimeClock === undefined
+      ? {}
+      : { clock: options.realtimeClock }),
+    ...(options.realtimeIds === undefined ? {} : { ids: options.realtimeIds }),
+    ...(options.realtimeReconnectGraceMilliseconds === undefined
+      ? {}
+      : {
+          reconnectGraceMilliseconds:
+            options.realtimeReconnectGraceMilliseconds,
+        }),
+    ...(options.realtimeTerminalRoomTtlMilliseconds === undefined
+      ? {}
+      : {
+          terminalRoomTtlMilliseconds:
+            options.realtimeTerminalRoomTtlMilliseconds,
+        }),
+    ...(options.realtimeRandom === undefined
+      ? {}
+      : { random: options.realtimeRandom }),
+    ...(options.realtimeSchedulerTimer === undefined
+      ? {}
+      : { schedulerTimer: options.realtimeSchedulerTimer }),
+  });
   const transport = new WebSocketTransport();
   const RoomClass = createAuthoritativeGameRoomClass({
     ticketVerifier: options.ticketVerifier,
@@ -104,6 +183,9 @@ export function createGameServer(
   });
   const rooms = {
     [GAME_ROOM_NAME]: defineRoom(RoomClass).filterBy(["roomCode"]),
+    [REALTIME_GAME_ROOM_NAME]: defineRoom(RealtimeRoomClass).filterBy([
+      "roomCode",
+    ]),
   };
   const routes = createRouter({
     health: createEndpoint("/health", { method: "GET" }, async () =>
@@ -127,6 +209,7 @@ export function createGameServer(
     roomStore,
     replayStore,
     metrics,
+    realtimeReplayStore,
     address: () => currentAddress,
     async start(startOptions = {}) {
       if (currentAddress !== null) {

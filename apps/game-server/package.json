@@ -18,7 +18,7 @@
     "start": "node --env-file-if-exists=.env.local dist/main.js",
     "test": "vitest run tests/server.test.ts tests/production.test.ts",
     "test:database": "vitest run tests/database.integration.test.ts",
-    "test:integration": "vitest run tests/game-server.integration.test.ts",
+    "test:integration": "vitest run tests/game-server.integration.test.ts tests/realtime-game-server.integration.test.ts",
     "typecheck": "tsc -p tsconfig.json && tsc -p tests/tsconfig.json"
   },
   "dependencies": {
@@ -29,6 +29,8 @@
     "@online-game-hub/game-server-runtime": "workspace:*",
     "@online-game-hub/game-server-ticket": "workspace:*",
     "@online-game-hub/protocol": "workspace:*",
+    "@online-game-hub/realtime-game-sdk": "workspace:*",
+    "@online-game-hub/realtime-game-server-runtime": "workspace:*",
     "express": "5.2.1"
   },
   "devDependencies": {

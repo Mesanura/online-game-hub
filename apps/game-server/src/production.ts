@@ -2,6 +2,9 @@ import {
   PostgresMatchArchive,
   PostgresMatchRepository,
   PostgresReplayStore,
+  PostgresRealtimeMatchArchive,
+  PostgresRealtimeReplayStore,
+  PostgresRealtimeRoomStore,
   createPostgresDatabaseClient,
 } from "@online-game-hub/database";
 import type { PostgresDatabaseClient } from "@online-game-hub/database";
@@ -11,6 +14,7 @@ import { createGameServer } from "./server.js";
 import { createGameServerTicketVerifier } from "./ticket-verifier.js";
 import type { GameServerConfig } from "./config.js";
 import { configureGameServerCors } from "./cors.js";
+import { resolveRealtimeGameDefinition } from "@online-game-hub/game-registry/server";
 
 export type ProductionGameServerOverrides = Omit<
   GameServerCompositionOptions,
@@ -46,15 +50,35 @@ export function createProductionGameServer(
     matchRepository === null
       ? undefined
       : new PostgresMatchArchive(matchRepository);
+  const realtimeReplayStore =
+    databaseClient === null
+      ? undefined
+      : new PostgresRealtimeReplayStore(databaseClient.database, {
+          resolveDefinition: resolveRealtimeGameDefinition,
+        });
+  const realtimeRoomStore =
+    databaseClient === null
+      ? undefined
+      : new PostgresRealtimeRoomStore(databaseClient.database);
+  const realtimeMatchArchive =
+    databaseClient === null
+      ? undefined
+      : new PostgresRealtimeMatchArchive(databaseClient.database, {
+          resolveDefinition: resolveRealtimeGameDefinition,
+        });
   const application = createGameServer({
     ...overrides,
     ...(matchArchive === undefined ? {} : { matchArchive }),
     ...(replayStore === undefined ? {} : { replayStore }),
+    ...(realtimeReplayStore === undefined ? {} : { realtimeReplayStore }),
+    ...(realtimeRoomStore === undefined ? {} : { realtimeRoomStore }),
+    ...(realtimeMatchArchive === undefined ? {} : { realtimeMatchArchive }),
     ticketVerifier: createGameServerTicketVerifier({
       issuer: config.ticketIssuer,
       secret: config.ticketSecret,
     }),
     reconnectGraceMilliseconds: config.reconnectGraceMilliseconds,
+    realtimeReconnectGraceMilliseconds: config.reconnectGraceMilliseconds,
   });
   let restoreCors: (() => void) | null = null;
   let startupCoordinated = false;
@@ -63,6 +87,7 @@ export function createProductionGameServer(
   return {
     roomStore: application.roomStore,
     replayStore: application.replayStore,
+    realtimeReplayStore: application.realtimeReplayStore,
     metrics: application.metrics,
     address: () => application.address(),
     async start(options = {}) {

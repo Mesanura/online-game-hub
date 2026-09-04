@@ -11,7 +11,8 @@
     "@online-game-hub/database": "workspace:*",
     "@online-game-hub/game-registry": "workspace:*",
     "@online-game-hub/game-server": "workspace:*",
-    "@online-game-hub/game-server-runtime": "workspace:*"
+    "@online-game-hub/game-server-runtime": "workspace:*",
+    "@online-game-hub/realtime-game-sdk": "workspace:*"
   },
   "devDependencies": {
     "@playwright/test": "1.62.1",

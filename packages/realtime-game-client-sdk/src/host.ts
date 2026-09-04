@@ -1,12 +1,13 @@
 import { Client as ColyseusClient } from "@colyseus/sdk";
 import {
-  GAME_ROOM_NAME,
   PROTOCOL_VERSION,
+  REALTIME_GAME_ROOM_NAME,
   REALTIME_INPUT_MESSAGE,
   REALTIME_PROTOCOL_VERSION,
   REALTIME_SERVER_MESSAGE,
   ROOM_CONTROL_MESSAGE,
   SERVER_PROTOCOL_MESSAGE,
+  commandRejectedSchema,
   createGameRoomRequestSchema,
   gameServerTicketSchema,
   joinGameRoomRequestSchema,
@@ -19,16 +20,17 @@ import {
   roomLifecycleStateSchema,
 } from "@online-game-hub/protocol";
 import type {
+  CommandRejected,
   RealtimeRejected,
   RealtimeSnapshot,
   RoomConnected,
   RoomLifecycleState,
+  RoomControlCommand,
   StarterChoice,
 } from "@online-game-hub/protocol";
 
 import type { RealtimeClientConnectionState } from "./contracts.js";
-
-export type RealtimeTicketProvider = () => Promise<string>;
+import type { RealtimeTicketProvider } from "./ticket-provider.js";
 
 export interface RealtimeTransportRoom {
   onMessage<Payload>(
@@ -73,8 +75,13 @@ export interface RealtimeGameClientHostState<
   readonly previousSnapshot: RealtimeSnapshot<View, Outcome> | null;
   readonly snapshot: RealtimeSnapshot<View, Outcome> | null;
   readonly rejection: RealtimeRejected | null;
+  readonly controlRejection: CommandRejected | null;
   readonly error:
-    "TICKET_ERROR" | "ROOM_ERROR" | "INVALID_SERVER_MESSAGE" | null;
+    | "TICKET_ERROR"
+    | "ROOM_ERROR"
+    | "INVALID_SERVER_MESSAGE"
+    | "CONNECTION_CLOSED"
+    | null;
 }
 
 export interface RealtimeGameClientHostOptions {
@@ -82,10 +89,18 @@ export interface RealtimeGameClientHostOptions {
   readonly ticketProvider: RealtimeTicketProvider;
   readonly transport?: RealtimeTransportFactory;
   readonly commandIds?: RealtimeCommandIdSource;
+  readonly reconnectWindowMilliseconds?: number;
+  readonly nowMilliseconds?: () => number;
+  readonly delay?: (milliseconds: number) => Promise<void>;
 }
 
 interface PendingInput {
   readonly sequence: number;
+  readonly resolve: () => void;
+  readonly reject: (error: Error) => void;
+}
+
+interface PendingControl {
   readonly resolve: () => void;
   readonly reject: (error: Error) => void;
 }
@@ -99,11 +114,21 @@ export class RealtimeCommandRejectedError extends Error {
 
 export class RealtimeGameClientHost<View = unknown, Outcome = unknown> {
   readonly #options: Required<
-    Pick<RealtimeGameClientHostOptions, "transport" | "commandIds">
+    Pick<
+      RealtimeGameClientHostOptions,
+      | "transport"
+      | "commandIds"
+      | "reconnectWindowMilliseconds"
+      | "nowMilliseconds"
+      | "delay"
+    >
   > &
     Pick<RealtimeGameClientHostOptions, "gameServerUrl" | "ticketProvider">;
   readonly #listeners = new Set<() => void>();
   readonly #pending = new Map<string, PendingInput>();
+  readonly #pendingControls = new Map<string, PendingControl>();
+  /** Command ids are single-use for the lifetime of a host connection. */
+  readonly #usedCommandIds = new Set<string>();
   #state: RealtimeGameClientHostState<View, Outcome> = {
     connectionState: "idle",
     room: null,
@@ -111,12 +136,15 @@ export class RealtimeGameClientHost<View = unknown, Outcome = unknown> {
     previousSnapshot: null,
     snapshot: null,
     rejection: null,
+    controlRejection: null,
     error: null,
   };
   #transportRoom: RealtimeTransportRoom | null = null;
   #expectedGameId: string | null = null;
   #inputSequence = 0;
   #closing = false;
+  #target: { readonly gameId: string; readonly roomCode: string } | null = null;
+  #generation = 0;
 
   public constructor(options: RealtimeGameClientHostOptions) {
     if (options.gameServerUrl.length === 0)
@@ -126,7 +154,22 @@ export class RealtimeGameClientHost<View = unknown, Outcome = unknown> {
       ticketProvider: options.ticketProvider,
       transport: options.transport ?? colyseusRealtimeTransportFactory,
       commandIds: options.commandIds ?? secureRealtimeCommandIdSource,
+      reconnectWindowMilliseconds:
+        options.reconnectWindowMilliseconds ?? 60_000,
+      nowMilliseconds: options.nowMilliseconds ?? Date.now,
+      delay:
+        options.delay ??
+        ((milliseconds: number) =>
+          new Promise<void>((resolve) => setTimeout(resolve, milliseconds))),
     };
+    if (
+      !Number.isSafeInteger(this.#options.reconnectWindowMilliseconds) ||
+      this.#options.reconnectWindowMilliseconds < 0
+    ) {
+      throw new RangeError(
+        "Reconnect window must be a non-negative integer in milliseconds.",
+      );
+    }
   }
 
   public getState(): RealtimeGameClientHostState<View, Outcome> {
@@ -143,9 +186,12 @@ export class RealtimeGameClientHost<View = unknown, Outcome = unknown> {
     initialConfig: unknown,
   ): Promise<void> {
     this.#expectedGameId = gameId;
+    this.#target = null;
+    this.#inputSequence = 0;
+    this.#usedCommandIds.clear();
     await this.#connect((ticket, client) =>
       client.create(
-        GAME_ROOM_NAME,
+        REALTIME_GAME_ROOM_NAME,
         createGameRoomRequestSchema.parse({
           type: "room.create",
           protocolVersion: PROTOCOL_VERSION,
@@ -160,9 +206,12 @@ export class RealtimeGameClientHost<View = unknown, Outcome = unknown> {
   public async joinRoom(gameId: string, roomCode: string): Promise<void> {
     this.#expectedGameId = gameId;
     const canonicalCode = roomCodeSchema.parse(roomCode.trim().toUpperCase());
+    this.#target = { gameId, roomCode: canonicalCode };
+    this.#inputSequence = 0;
+    this.#usedCommandIds.clear();
     await this.#connect((ticket, client) =>
       client.join(
-        GAME_ROOM_NAME,
+        REALTIME_GAME_ROOM_NAME,
         joinGameRoomRequestSchema.parse({
           type: "room.join",
           protocolVersion: PROTOCOL_VERSION,
@@ -184,7 +233,11 @@ export class RealtimeGameClientHost<View = unknown, Outcome = unknown> {
       return Promise.reject(new Error("The realtime round is not active."));
     }
     const commandId = this.#options.commandIds.createCommandId();
+    if (this.#usedCommandIds.has(commandId))
+      return Promise.reject(new Error("Duplicate command id."));
     const inputSequence = this.#inputSequence + 1;
+    if (!Number.isSafeInteger(inputSequence))
+      return Promise.reject(new Error("Realtime input sequence is exhausted."));
     const command = realtimeInputCommandSchema.parse({
       type: "realtime.input",
       realtimeProtocolVersion: REALTIME_PROTOCOL_VERSION,
@@ -193,8 +246,7 @@ export class RealtimeGameClientHost<View = unknown, Outcome = unknown> {
       inputSequence,
       input,
     });
-    if (this.#pending.has(commandId))
-      return Promise.reject(new Error("Duplicate command id."));
+    this.#usedCommandIds.add(commandId);
     this.#inputSequence = inputSequence;
     return new Promise<void>((resolve, reject) => {
       this.#pending.set(commandId, {
@@ -211,31 +263,35 @@ export class RealtimeGameClientHost<View = unknown, Outcome = unknown> {
     });
   }
 
-  public selectStarter(starter: StarterChoice): void {
-    this.#sendControl({ operation: "SELECT_STARTER", starter });
+  public selectStarter(starter: StarterChoice): Promise<void> {
+    return this.#sendControl({ operation: "SELECT_STARTER", starter });
   }
 
-  public readyForRound(): void {
-    this.#sendControl({ operation: "READY_FOR_ROUND" });
+  public readyForRound(): Promise<void> {
+    return this.#sendControl({ operation: "READY_FOR_ROUND" });
   }
 
-  public cancelRoundReady(): void {
-    this.#sendControl({ operation: "CANCEL_ROUND_READY" });
+  public cancelRoundReady(): Promise<void> {
+    return this.#sendControl({ operation: "CANCEL_ROUND_READY" });
   }
 
-  public startRematch(): void {
-    this.#sendControl({ operation: "START_REMATCH" });
+  public startRematch(): Promise<void> {
+    return this.#sendControl({ operation: "START_REMATCH" });
   }
 
-  public closeRoom(): void {
-    this.#sendControl({ operation: "CLOSE_ROOM" });
+  public closeRoom(): Promise<void> {
+    return this.#sendControl({ operation: "CLOSE_ROOM" });
   }
 
   public async leaveRoom(): Promise<void> {
     this.#closing = true;
+    this.#generation += 1;
     const room = this.#transportRoom;
     this.#transportRoom = null;
+    this.#target = null;
+    this.#expectedGameId = null;
     this.#inputSequence = 0;
+    this.#usedCommandIds.clear();
     this.#rejectPending("The realtime room was left.");
     this.#replace({
       connectionState: "idle",
@@ -244,6 +300,7 @@ export class RealtimeGameClientHost<View = unknown, Outcome = unknown> {
       previousSnapshot: null,
       snapshot: null,
       rejection: null,
+      controlRejection: null,
       error: null,
     });
     if (room !== null) await room.leave(true).catch(() => 0);
@@ -251,8 +308,11 @@ export class RealtimeGameClientHost<View = unknown, Outcome = unknown> {
 
   public async close(): Promise<void> {
     this.#closing = true;
+    this.#generation += 1;
     const room = this.#transportRoom;
     this.#transportRoom = null;
+    this.#target = null;
+    this.#usedCommandIds.clear();
     this.#rejectPending("The realtime connection was closed.");
     this.#replace({ ...this.#state, connectionState: "closed" });
     if (room !== null) await room.leave(false).catch(() => 0);
@@ -265,6 +325,9 @@ export class RealtimeGameClientHost<View = unknown, Outcome = unknown> {
     ) => Promise<RealtimeTransportRoom>,
   ): Promise<void> {
     this.#closing = false;
+    this.#generation += 1;
+    const generation = this.#generation;
+    this.#rejectPending("The previous realtime connection was replaced.");
     this.#replace({ ...this.#state, connectionState: "loading", error: null });
     let ticket: string;
     try {
@@ -272,70 +335,38 @@ export class RealtimeGameClientHost<View = unknown, Outcome = unknown> {
         await this.#options.ticketProvider(),
       );
     } catch {
-      this.#replace({
-        ...this.#state,
-        connectionState: "closed",
-        error: "TICKET_ERROR",
-      });
+      if (generation === this.#generation) this.#fail("TICKET_ERROR");
       return;
     }
+    if (generation !== this.#generation || this.#closing) return;
     try {
       this.#replace({ ...this.#state, connectionState: "connecting" });
       const room = await reserve(
         ticket,
         this.#options.transport.createClient(this.#options.gameServerUrl),
       );
-      this.#bind(room);
+      if (generation !== this.#generation || this.#closing) {
+        await room.leave(false).catch(() => 0);
+        return;
+      }
+      this.#bind(room, generation);
     } catch {
-      this.#replace({
-        ...this.#state,
-        connectionState: "closed",
-        error: "ROOM_ERROR",
-      });
+      if (generation === this.#generation) this.#fail("ROOM_ERROR");
     }
   }
 
-  #bind(room: RealtimeTransportRoom): void {
+  #bind(room: RealtimeTransportRoom, generation: number): void {
     this.#transportRoom = room;
     room.onMessage<unknown>(SERVER_PROTOCOL_MESSAGE, (payload) => {
-      const parsed = roomConnectedSchema.safeParse(payload);
-      if (!parsed.success || parsed.data.gameId !== this.#expectedGameId) {
-        this.#failProtocol();
-        return;
-      }
-      this.#replace({
-        ...this.#state,
-        connectionState: "connected",
-        room: parsed.data,
-        error: null,
-      });
+      if (generation === this.#generation) this.#handleServerMessage(payload);
     });
     room.onMessage<unknown>(ROOM_CONTROL_MESSAGE, (payload) => {
-      const parsed = roomLifecycleStateSchema.safeParse(payload);
-      if (!parsed.success) {
-        this.#failProtocol();
-        return;
-      }
-      const currentRound = this.#state.roomLifecycle?.currentRound;
-      const nextRound = parsed.data.currentRound;
-      if (
-        currentRound !== null &&
-        currentRound !== undefined &&
-        nextRound !== null &&
-        nextRound.roundNumber < currentRound.roundNumber
-      ) {
-        return;
-      }
-      this.#replace({
-        ...this.#state,
-        roomLifecycle: parsed.data,
-        error: null,
-      });
+      if (generation === this.#generation) this.#handleLifecycle(payload);
     });
     room.onMessage<unknown>(REALTIME_SERVER_MESSAGE, (payload) => {
       const snapshot = realtimeSnapshotSchema.safeParse(payload);
       if (snapshot.success) {
-        this.#handleSnapshot(snapshot.data as RealtimeSnapshot<View, Outcome>);
+        this.#applySnapshot(snapshot.data as RealtimeSnapshot<View, Outcome>);
         return;
       }
       const rejection = realtimeRejectedSchema.safeParse(payload);
@@ -344,7 +375,9 @@ export class RealtimeGameClientHost<View = unknown, Outcome = unknown> {
         return;
       }
       const value = rejection.data as RealtimeRejected;
-      this.#replace({ ...this.#state, rejection: value, error: null });
+      // A rejected command must reject its promise even when the server also
+      // includes a snapshot acknowledging newer input. Apply the snapshot
+      // first without settling pending commands, then expose the rejection.
       if (value.commandId !== undefined) {
         const pending = this.#pending.get(value.commandId);
         if (pending !== undefined) {
@@ -352,16 +385,43 @@ export class RealtimeGameClientHost<View = unknown, Outcome = unknown> {
           pending.reject(new RealtimeCommandRejectedError(value));
         }
       }
+      if (value.snapshot !== undefined) {
+        this.#applySnapshot(
+          value.snapshot as RealtimeSnapshot<View, Outcome>,
+          false,
+          false,
+        );
+      }
+      if (value.acknowledgedInputSequence !== undefined) {
+        this.#inputSequence = Math.max(
+          this.#inputSequence,
+          value.acknowledgedInputSequence,
+        );
+      }
+      this.#replace({ ...this.#state, rejection: value, error: null });
     });
     room.onLeave(() => {
-      if (this.#closing || this.#transportRoom !== room) return;
+      if (
+        generation !== this.#generation ||
+        this.#closing ||
+        this.#transportRoom !== room
+      )
+        return;
       this.#transportRoom = null;
       this.#rejectPending("The realtime connection closed.");
-      this.#replace({ ...this.#state, connectionState: "reconnecting" });
+      if (this.#state.roomLifecycle?.closed === true) {
+        this.#fail("CONNECTION_CLOSED");
+        return;
+      }
+      void this.#reconnect();
     });
   }
 
-  #handleSnapshot(snapshot: RealtimeSnapshot<View, Outcome>): void {
+  #applySnapshot(
+    snapshot: RealtimeSnapshot<View, Outcome>,
+    clearRejection = true,
+    settlePending = true,
+  ): void {
     const room = this.#state.room;
     const lifecycleRound = this.#state.roomLifecycle?.currentRound;
     if (
@@ -378,17 +438,162 @@ export class RealtimeGameClientHost<View = unknown, Outcome = unknown> {
     }
     const current = this.#state.snapshot;
     if (current !== null && snapshot.tick < current.tick) return;
+    if (
+      current !== null &&
+      snapshot.acknowledgedInputSequence < current.acknowledgedInputSequence
+    ) {
+      return;
+    }
+    const advanced = current === null || snapshot.tick > current.tick;
     this.#replace({
       ...this.#state,
-      previousSnapshot: current,
+      previousSnapshot: advanced ? current : this.#state.previousSnapshot,
       snapshot,
-      rejection: null,
+      ...(clearRejection ? { rejection: null } : {}),
+      controlRejection: null,
       error: null,
     });
+    this.#inputSequence = Math.max(
+      this.#inputSequence,
+      snapshot.acknowledgedInputSequence,
+    );
+    if (!settlePending) return;
     for (const [commandId, pending] of this.#pending) {
       if (pending.sequence <= snapshot.acknowledgedInputSequence) {
         this.#pending.delete(commandId);
         pending.resolve();
+      }
+    }
+  }
+
+  #handleLifecycle(payload: unknown): void {
+    const parsed = roomLifecycleStateSchema.safeParse(payload);
+    if (!parsed.success || this.#state.room === null) {
+      this.#failProtocol();
+      return;
+    }
+    const lifecycle = parsed.data;
+    const current = this.#state.roomLifecycle;
+    const lifecycleRoundNumber = lifecycle.currentRound?.roundNumber ?? 0;
+    const currentRoundNumber = current?.currentRound?.roundNumber ?? 0;
+    if (lifecycleRoundNumber < currentRoundNumber) return;
+    if (current !== null && lifecycle.isOwner !== current.isOwner) {
+      this.#failProtocol();
+      return;
+    }
+    const room = this.#state.room;
+    if (room !== null && lifecycle.players !== undefined) {
+      const playerSlots = lifecycle.players.map((player) => player.slotId);
+      if (
+        new Set(playerSlots).size !== playerSlots.length ||
+        !playerSlots.includes(room.playerSlotId) ||
+        playerSlots.length !== 2 ||
+        lifecycle.players.some(
+          (player) => player.occupied === false && player.online,
+        )
+      ) {
+        this.#failProtocol();
+        return;
+      }
+    }
+    if (
+      lifecycle.nextRound !== null &&
+      lifecycle.nextRound.requiredPlayerCount !== 2
+    ) {
+      this.#failProtocol();
+      return;
+    }
+    if (
+      current?.currentRound !== null &&
+      current?.currentRound !== undefined &&
+      lifecycle.currentRound !== null &&
+      lifecycle.currentRound.roundNumber === current.currentRound.roundNumber &&
+      lifecycle.currentRound.status !== current.currentRound.status &&
+      current.currentRound.status !== "active"
+    ) {
+      this.#failProtocol();
+      return;
+    }
+    if (lifecycle.causedByCommandId !== undefined) {
+      const pending = this.#pendingControls.get(lifecycle.causedByCommandId);
+      if (pending !== undefined) {
+        this.#pendingControls.delete(lifecycle.causedByCommandId);
+        pending.resolve();
+      }
+    }
+    if (lifecycle.closed) {
+      this.#closing = true;
+      this.#generation += 1;
+      const room = this.#transportRoom;
+      this.#transportRoom = null;
+      this.#target = null;
+      this.#expectedGameId = null;
+      this.#rejectPending("The realtime room was closed.");
+      if (room !== null) void room.leave(false).catch(() => 0);
+      this.#replace({
+        ...this.#state,
+        connectionState: "closed",
+        room: null,
+        roomLifecycle: lifecycle,
+        snapshot: null,
+        previousSnapshot: null,
+        error: null,
+      });
+      return;
+    }
+    const roundChanged = lifecycleRoundNumber > currentRoundNumber;
+    if (roundChanged) {
+      this.#inputSequence = 0;
+      this.#usedCommandIds.clear();
+    }
+    this.#replace({
+      ...this.#state,
+      roomLifecycle: lifecycle,
+      ...(roundChanged
+        ? { snapshot: null, previousSnapshot: null, rejection: null }
+        : {}),
+      error: null,
+    });
+  }
+
+  #handleServerMessage(payload: unknown): void {
+    const connected = roomConnectedSchema.safeParse(payload);
+    if (connected.success) {
+      if (
+        connected.data.gameId !== this.#expectedGameId ||
+        (this.#target !== null &&
+          connected.data.roomCode !== this.#target.roomCode)
+      ) {
+        this.#failProtocol();
+        return;
+      }
+      this.#target = {
+        gameId: connected.data.gameId,
+        roomCode: connected.data.roomCode,
+      };
+      this.#replace({
+        ...this.#state,
+        connectionState: "connected",
+        room: connected.data,
+        controlRejection: null,
+        error: null,
+      });
+      return;
+    }
+    const rejected = commandRejectedSchema.safeParse(payload);
+    if (!rejected.success) {
+      this.#failProtocol();
+      return;
+    }
+    const value = rejected.data as CommandRejected;
+    this.#replace({ ...this.#state, controlRejection: value, error: null });
+    if (value.commandId !== undefined) {
+      const pending = this.#pendingControls.get(value.commandId);
+      if (pending !== undefined) {
+        this.#pendingControls.delete(value.commandId);
+        pending.reject(
+          new Error(`Realtime room control was rejected with ${value.code}.`),
+        );
       }
     }
   }
@@ -406,24 +611,94 @@ export class RealtimeGameClientHost<View = unknown, Outcome = unknown> {
             | "START_REMATCH"
             | "CLOSE_ROOM";
         },
-  ): void {
-    if (this.#transportRoom === null)
-      throw new Error("The room is not connected.");
-    this.#transportRoom.send(
-      ROOM_CONTROL_MESSAGE,
-      roomControlCommandSchema.parse({
-        type: "room.control",
-        protocolVersion: PROTOCOL_VERSION,
-        commandId: this.#options.commandIds.createCommandId(),
-        ...input,
-      }),
-    );
+  ): Promise<void> {
+    const room = this.#transportRoom;
+    if (room === null || this.#state.connectionState !== "connected") {
+      return Promise.reject(new Error("The room is not connected."));
+    }
+    const commandId = this.#options.commandIds.createCommandId();
+    if (this.#usedCommandIds.has(commandId)) {
+      return Promise.reject(new Error("Duplicate command id."));
+    }
+    const command = roomControlCommandSchema.parse({
+      type: "room.control",
+      protocolVersion: PROTOCOL_VERSION,
+      commandId,
+      ...input,
+    }) satisfies RoomControlCommand;
+    this.#usedCommandIds.add(commandId);
+    return new Promise<void>((resolve, reject) => {
+      this.#pendingControls.set(commandId, { resolve, reject });
+      try {
+        room.send(ROOM_CONTROL_MESSAGE, command);
+      } catch {
+        this.#pendingControls.delete(commandId);
+        reject(new Error("Realtime room control could not be sent."));
+      }
+    });
+  }
+
+  async #reconnect(): Promise<void> {
+    const target = this.#target;
+    if (target === null) {
+      this.#fail("CONNECTION_CLOSED");
+      return;
+    }
+    const generation = ++this.#generation;
+    const deadline =
+      this.#options.nowMilliseconds() +
+      this.#options.reconnectWindowMilliseconds;
+    this.#replace({
+      ...this.#state,
+      connectionState: "reconnecting",
+      rejection: null,
+      controlRejection: null,
+      error: null,
+    });
+    let delayMilliseconds = 100;
+    while (
+      generation === this.#generation &&
+      !this.#closing &&
+      this.#options.nowMilliseconds() <= deadline
+    ) {
+      try {
+        const ticket = gameServerTicketSchema.parse(
+          await this.#options.ticketProvider(),
+        );
+        const client = this.#options.transport.createClient(
+          this.#options.gameServerUrl,
+        );
+        const room = await client.join(
+          REALTIME_GAME_ROOM_NAME,
+          joinGameRoomRequestSchema.parse({
+            type: "room.join",
+            protocolVersion: PROTOCOL_VERSION,
+            ticket,
+            roomCode: target.roomCode,
+          }),
+        );
+        if (generation !== this.#generation || this.#closing) {
+          await room.leave(false).catch(() => 0);
+          return;
+        }
+        this.#bind(room, generation);
+        return;
+      } catch {
+        if (this.#options.nowMilliseconds() >= deadline) break;
+        await this.#options.delay(delayMilliseconds);
+        delayMilliseconds = Math.min(delayMilliseconds * 2, 2_000);
+      }
+    }
+    if (generation === this.#generation) {
+      this.#fail("CONNECTION_CLOSED");
+    }
   }
 
   #failProtocol(): void {
     const room = this.#transportRoom;
     this.#transportRoom = null;
     this.#closing = true;
+    this.#generation += 1;
     if (room !== null) void room.leave(false).catch(() => undefined);
     this.#rejectPending("The Game Server sent an invalid realtime message.");
     this.#replace({
@@ -433,10 +708,18 @@ export class RealtimeGameClientHost<View = unknown, Outcome = unknown> {
     });
   }
 
+  #fail(error: "TICKET_ERROR" | "ROOM_ERROR" | "CONNECTION_CLOSED"): void {
+    this.#rejectPending("The realtime connection was closed.");
+    this.#replace({ ...this.#state, connectionState: "closed", error });
+  }
+
   #rejectPending(message: string): void {
     for (const pending of this.#pending.values())
       pending.reject(new Error(message));
     this.#pending.clear();
+    for (const pending of this.#pendingControls.values())
+      pending.reject(new Error(message));
+    this.#pendingControls.clear();
   }
 
   #replace(state: RealtimeGameClientHostState<View, Outcome>): void {

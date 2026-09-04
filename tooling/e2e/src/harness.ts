@@ -151,6 +151,8 @@ export async function startE2eHarness(): Promise<E2eHarness> {
         "ABAN2345",
         "LATE2345",
         "HUDR2345",
+        "PANG2345",
+        "PANG2346",
       ]),
       logger: { write: () => undefined },
     },

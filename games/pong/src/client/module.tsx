@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { z } from "zod";
+import type { Game, GameObjects } from "phaser";
 
 import type {
   RealtimeGameClientModule,
@@ -150,13 +151,13 @@ export function PongClient(
     const parent = containerRef.current;
     if (parent === null) return;
     let disposed = false;
-    let game: import("phaser").Game | null = null;
+    let game: Game | null = null;
 
     void import("phaser").then(({ default: Phaser }) => {
       if (disposed) return;
-      let graphics: import("phaser").GameObjects.Graphics;
-      let score: import("phaser").GameObjects.Text;
-      let result: import("phaser").GameObjects.Text;
+      let graphics: GameObjects.Graphics;
+      let score: GameObjects.Text;
+      let result: GameObjects.Text;
       const pressed = new Set<string>();
       let lastDirection: -1 | 0 | 1 = 0;
 

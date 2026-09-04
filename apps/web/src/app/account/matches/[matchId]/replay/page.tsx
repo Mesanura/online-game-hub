@@ -14,11 +14,16 @@ import { useRouter } from "next/navigation";
 import { use, useEffect, useMemo, useRef, useState } from "react";
 
 import { loadGameClientModule } from "@online-game-hub/game-registry/client";
+import { loadRealtimeGameClientModule } from "@online-game-hub/game-registry/client";
 import { gameCatalog } from "@online-game-hub/game-registry/catalog";
 import type { UnknownGameClientModule } from "@online-game-hub/game-client-sdk";
+import type { UnknownRealtimeGameClientModule } from "@online-game-hub/realtime-game-client-sdk";
 
-type ReplayFrame = { readonly revision: number; readonly view: unknown };
+type ReplayFrame =
+  | { readonly revision: number; readonly view: unknown }
+  | { readonly tick: number; readonly view: unknown };
 type ReplayPayload = {
+  readonly runtime?: "realtime";
   readonly match: {
     readonly roundNumber: number;
     readonly gameId: string;
@@ -54,6 +59,8 @@ export default function ReplayPage({
   const router = useRouter();
   const [payload, setPayload] = useState<ReplayPayload | null>(null);
   const [module, setModule] = useState<UnknownGameClientModule | null>(null);
+  const [realtimeModule, setRealtimeModule] =
+    useState<UnknownRealtimeGameClientModule | null>(null);
   const [frameIndex, setFrameIndex] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -79,14 +86,26 @@ export default function ReplayPage({
               : "REPLAY_LOAD_FAILED",
           );
         }
-        const loaded = await loadGameClientModule(
-          body.match.gameId,
-          body.match.gameVersion,
-        );
+        const loaded =
+          body.runtime === "realtime"
+            ? await loadRealtimeGameClientModule(
+                body.match.gameId,
+                body.match.gameVersion,
+              )
+            : await loadGameClientModule(
+                body.match.gameId,
+                body.match.gameVersion,
+              );
         if (loaded === undefined) throw new Error("REPLAY_UNAVAILABLE");
         if (!cancelled) {
           setPayload(body);
-          setModule(loaded);
+          if (body.runtime === "realtime") {
+            setRealtimeModule(loaded as UnknownRealtimeGameClientModule);
+            setModule(null);
+          } else {
+            setModule(loaded as UnknownGameClientModule);
+            setRealtimeModule(null);
+          }
         }
       })
       .catch((caught: unknown) => {
@@ -128,20 +147,21 @@ export default function ReplayPage({
 
   const frame = payload?.frames[frameIndex] ?? null;
   const parsedView = useMemo(() => {
-    if (module === null || frame === null) return null;
+    const activeModule = module ?? realtimeModule;
+    if (activeModule === null || frame === null) return null;
     try {
-      return module.parseView(frame.view);
+      return activeModule.parseView(frame.view);
     } catch {
       return null;
     }
-  }, [module, frame]);
+  }, [frame, module, realtimeModule]);
   const title =
     payload === null
       ? "回放中心"
       : (gameCatalog.find((game) => game.id === payload.match.gameId)?.title ??
         "回放中心");
 
-  if (payload === null || module === null) {
+  if (payload === null || (module === null && realtimeModule === null)) {
     return (
       <div
         className="page-shell replay-page"
@@ -164,8 +184,9 @@ export default function ReplayPage({
       </div>
     );
   }
-  const GameComponent = module.Component;
   const lastIndex = payload.frames.length - 1;
+  const frameNumber =
+    frame !== null && "tick" in frame ? frame.tick : (frame?.revision ?? 0);
   const move = (next: number) => {
     setPlaying(false);
     setFrameIndex(Math.min(lastIndex, Math.max(0, next)));
@@ -188,15 +209,28 @@ export default function ReplayPage({
           data-testid="replay-board"
         >
           <div className="replay-frame-label" data-testid="replay-frame">
-            第 {frame.revision} 帧
+            第 {frameNumber} 帧
           </div>
-          <GameComponent
-            readOnly
-            connectionState="closed"
-            revision={frame.revision}
-            submitAction={async () => undefined}
-            view={parsedView as Readonly<unknown>}
-          />
+          {payload.runtime === "realtime" && realtimeModule !== null ? (
+            <realtimeModule.Component
+              acknowledgedInputSequence={0}
+              connectionState="closed"
+              previousView={null}
+              readOnly
+              reducedMotion
+              serverTick={frameNumber}
+              submitInput={async () => undefined}
+              view={parsedView as Readonly<unknown>}
+            />
+          ) : module !== null ? (
+            <module.Component
+              readOnly
+              connectionState="closed"
+              revision={frameNumber}
+              submitAction={async () => undefined}
+              view={parsedView as Readonly<unknown>}
+            />
+          ) : null}
         </section>
         <section className="replay-controls clay-surface" aria-label="回放控制">
           <span data-testid="replay-frame-count">

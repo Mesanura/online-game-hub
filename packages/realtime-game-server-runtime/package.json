@@ -19,6 +19,7 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
+    "@colyseus/core": "0.18.10",
     "@online-game-hub/protocol": "workspace:*",
     "@online-game-hub/realtime-game-sdk": "workspace:*",
     "zod": "4.4.3"
