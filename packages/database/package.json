@@ -30,6 +30,7 @@
   "dependencies": {
     "@online-game-hub/game-sdk": "workspace:*",
     "@online-game-hub/game-server-runtime": "workspace:*",
+    "@online-game-hub/game-setup": "workspace:*",
     "@online-game-hub/protocol": "workspace:*",
     "@online-game-hub/realtime-game-sdk": "workspace:*",
     "@online-game-hub/realtime-game-server-runtime": "workspace:*",

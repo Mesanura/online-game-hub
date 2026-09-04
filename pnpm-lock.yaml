@@ -412,6 +412,9 @@ importers:
       '@online-game-hub/game-server-runtime':
         specifier: workspace:*
         version: link:../game-server-runtime
+      '@online-game-hub/game-setup':
+        specifier: workspace:*
+        version: link:../game-setup
       '@online-game-hub/protocol':
         specifier: workspace:*
         version: link:../protocol

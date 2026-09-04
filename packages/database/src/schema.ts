@@ -419,6 +419,8 @@ export const realtimeRooms = pgTable(
     gameVersion: text("game_version").notNull(),
     setupProtocol: integer("setup_protocol").default(5).notNull(),
     initialConfig: jsonb("initial_config").$type<unknown>().notNull(),
+    nextRoundSetup: jsonb("next_round_setup").$type<unknown>(),
+    previousFinalizedSetup: jsonb("previous_finalized_setup").$type<unknown>(),
     currentRoundNumber: integer("current_round_number"),
     currentReplayId: text("current_replay_id").references(
       () => realtimeReplays.id,
@@ -459,6 +461,22 @@ export const realtimeRooms = pgTable(
     check(
       "realtime_rooms_setup_protocol_supported",
       sql`${table.setupProtocol} in (5, 6)`,
+    ),
+    check(
+      "realtime_rooms_setup_state_consistent",
+      sql`(
+        (${table.setupProtocol} = 5 and ${table.nextRoundSetup} is null and ${table.previousFinalizedSetup} is null)
+        or
+        (${table.setupProtocol} = 6 and (
+          (${table.currentRoundNumber} is null and ${table.nextRoundSetup} is not null and ${table.previousFinalizedSetup} is null)
+          or
+          (${table.currentRoundNumber} is not null and ${table.previousFinalizedSetup} is not null and (
+            (${table.currentStatus} = 'completed' and ${table.nextRoundSetup} is not null)
+            or
+            (${table.currentStatus} in ('active', 'abandoned') and ${table.nextRoundSetup} is null)
+          ))
+        ))
+      )`,
     ),
     check(
       "realtime_rooms_current_tick_nonnegative",

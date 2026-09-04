@@ -11,6 +11,11 @@ import type {
   RealtimeCanonicalReplay,
   RealtimeDefinitionResolver,
 } from "@online-game-hub/realtime-game-sdk";
+import { SETUP_RNG_ALGORITHM_V1 } from "@online-game-hub/game-setup";
+import type {
+  FinalizedRoundSetup,
+  RoundSetupCoordinatorState,
+} from "@online-game-hub/game-setup";
 import type {
   RealtimeMatchArchive,
   RealtimeRoomStore,
@@ -59,6 +64,10 @@ function isJsonValue(
     : Object.values(value).every((entry) => isJsonValue(entry, ancestors));
   ancestors.delete(value);
   return valid;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
 function jsonEqual(left: unknown, right: unknown): boolean {
@@ -118,6 +127,114 @@ function millisecondsFromDate(value: Date | null): number | null {
   return value.getTime();
 }
 
+function validFinalizedSetup(
+  setup: unknown,
+  players: readonly RealtimeStoredPlayerSlot[],
+): setup is FinalizedRoundSetup {
+  if (
+    !isRecord(setup) ||
+    !isJsonValue(setup.config) ||
+    !Array.isArray(setup.participantSlotIds) ||
+    !setup.participantSlotIds.every((slotId) => typeof slotId === "string") ||
+    !Array.isArray(setup.playerOrder) ||
+    !setup.playerOrder.every((slotId) => typeof slotId === "string") ||
+    !Array.isArray(setup.assignments) ||
+    !setup.assignments.every(
+      (entry) =>
+        isRecord(entry) &&
+        typeof entry.slotId === "string" &&
+        (entry.assignment === null || typeof entry.assignment === "string"),
+    )
+  ) {
+    return false;
+  }
+  const typedSetup = setup as unknown as FinalizedRoundSetup;
+  const participants = typedSetup.participantSlotIds;
+  const occupied = new Set(
+    players
+      .filter((player) => player.playerSessionId !== null)
+      .map((player) => player.slotId),
+  );
+  const assignmentSlots = typedSetup.assignments.map((entry) => entry.slotId);
+  return (
+    participants.length > 0 &&
+    new Set(participants).size === participants.length &&
+    participants.every((slotId) => occupied.has(slotId)) &&
+    typedSetup.playerOrder.length === participants.length &&
+    new Set(typedSetup.playerOrder).size === typedSetup.playerOrder.length &&
+    typedSetup.playerOrder.every((slotId) => participants.includes(slotId)) &&
+    assignmentSlots.length === participants.length &&
+    new Set(assignmentSlots).size === assignmentSlots.length &&
+    assignmentSlots.every((slotId) => participants.includes(slotId)) &&
+    typedSetup.assignments.every(
+      (entry) =>
+        entry.assignment === null ||
+        (typeof entry.assignment === "string" && entry.assignment.length > 0),
+    )
+  );
+}
+
+function validRoundSetup(
+  setup: unknown,
+  players: readonly RealtimeStoredPlayerSlot[],
+): setup is RoundSetupCoordinatorState {
+  if (
+    !isRecord(setup) ||
+    !isJsonValue(setup.setupState) ||
+    !isRecord(setup.setupRng) ||
+    !Array.isArray(setup.readySlotIds) ||
+    !setup.readySlotIds.every((slotId) => typeof slotId === "string")
+  ) {
+    return false;
+  }
+  const typedSetup = setup as unknown as RoundSetupCoordinatorState;
+  const slotIds = new Set(players.map((player) => player.slotId));
+  return (
+    typedSetup.schemaVersion === 1 &&
+    Number.isSafeInteger(typedSetup.setupRevision) &&
+    typedSetup.setupRevision >= 0 &&
+    typedSetup.setupRng.algorithm === SETUP_RNG_ALGORITHM_V1 &&
+    typedSetup.setupRng.seed.length > 0 &&
+    Number.isSafeInteger(typedSetup.setupRng.cursor) &&
+    typedSetup.setupRng.cursor >= 0 &&
+    new Set(typedSetup.readySlotIds).size === typedSetup.readySlotIds.length &&
+    typedSetup.readySlotIds.every((slotId) => slotIds.has(slotId)) &&
+    (typedSetup.finalizedSetup === null ||
+      validFinalizedSetup(typedSetup.finalizedSetup, players))
+  );
+}
+
+function validSetupPersistence(room: RealtimeStoredRoom): boolean {
+  if (room.setupProtocol === 5) {
+    return (
+      room.nextRoundSetup === undefined &&
+      room.previousFinalizedSetup === undefined
+    );
+  }
+  if (
+    room.nextRoundSetup !== undefined &&
+    !validRoundSetup(room.nextRoundSetup, room.players)
+  ) {
+    return false;
+  }
+  if (
+    room.previousFinalizedSetup !== undefined &&
+    !validFinalizedSetup(room.previousFinalizedSetup, room.players)
+  ) {
+    return false;
+  }
+  if (room.currentRound === null) {
+    return (
+      room.nextRoundSetup !== undefined &&
+      room.previousFinalizedSetup === undefined
+    );
+  }
+  if (room.previousFinalizedSetup === undefined) return false;
+  return room.currentRound.status === "completed"
+    ? room.nextRoundSetup !== undefined
+    : room.nextRoundSetup === undefined;
+}
+
 function validRoom(room: RealtimeStoredRoom): boolean {
   if (
     room.roomId.length === 0 ||
@@ -128,7 +245,8 @@ function validRoom(room: RealtimeStoredRoom): boolean {
     !setupProtocolGenerationSchema.safeParse(room.setupProtocol).success ||
     !isJsonValue(room.initialConfig) ||
     room.players.length !== 2 ||
-    new Set(room.players.map((player) => player.slotId)).size !== 2
+    new Set(room.players.map((player) => player.slotId)).size !== 2 ||
+    !validSetupPersistence(room)
   )
     return false;
   for (const player of room.players) {
@@ -175,6 +293,14 @@ function rethrow(error: unknown): never {
 function roomRoundColumns(room: RealtimeStoredRoom) {
   const round = room.currentRound;
   return {
+    nextRoundSetup:
+      room.nextRoundSetup === undefined
+        ? null
+        : cloneJson(room.nextRoundSetup as unknown as JsonValue),
+    previousFinalizedSetup:
+      room.previousFinalizedSetup === undefined
+        ? null
+        : cloneJson(room.previousFinalizedSetup as unknown as JsonValue),
     currentRoundNumber: round?.roundNumber ?? null,
     currentReplayId: round?.replayId ?? null,
     currentPlayerOrder: round === null ? null : [...round.playerOrder],
@@ -255,6 +381,17 @@ function roomFromRows(
       reservedUntilMilliseconds: millisecondsFromDate(player.reservedUntil),
     })),
     currentRound,
+    ...(room.nextRoundSetup === null
+      ? {}
+      : {
+          nextRoundSetup: room.nextRoundSetup as RoundSetupCoordinatorState,
+        }),
+    ...(room.previousFinalizedSetup === null
+      ? {}
+      : {
+          previousFinalizedSetup:
+            room.previousFinalizedSetup as FinalizedRoundSetup,
+        }),
     closeReason: room.closeReason as RoomCloseReason | null,
   };
   if (!validRoom(result)) throw new DatabaseError("DATABASE_DATA_INVALID");

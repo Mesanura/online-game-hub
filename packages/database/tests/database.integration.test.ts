@@ -21,6 +21,7 @@ import {
   PostgresMatchArchive,
   PostgresMatchRepository,
   PostgresReplayStore,
+  PostgresRealtimeReplayStore,
   PostgresRealtimeRoomStore,
   PostgresUserRepository,
   applyDatabaseMigrations,
@@ -166,6 +167,26 @@ function realtimeRoomRecord(
       },
     ],
     currentRound: null,
+    ...(setupProtocol === 6
+      ? {
+          nextRoundSetup: {
+            schemaVersion: 1 as const,
+            setupState: {
+              config: { targetScore: 3 },
+              starter: "UNSELECTED",
+              fixedStarterSlotId: null,
+            },
+            setupRevision: 0,
+            setupRng: {
+              algorithm: "fnv1a32-counter-v1" as const,
+              seed: "database-realtime-setup-seed",
+              cursor: 0,
+            },
+            readySlotIds: [],
+            finalizedSetup: null,
+          },
+        }
+      : {}),
     closeReason: null,
   };
 }
@@ -244,6 +265,75 @@ describe.sequential("PostgreSQL + Drizzle persistence", () => {
           : player,
       ),
     });
+    if (v6Room.nextRoundSetup === undefined) {
+      throw new Error("Expected the V6 realtime setup fixture.");
+    }
+    await store.save({
+      ...v6Room,
+      players: v6Room.players.map((player) =>
+        player.slotId === "right"
+          ? { ...player, playerSessionId: "realtime-v6-session-right" }
+          : player,
+      ),
+      nextRoundSetup: {
+        ...v6Room.nextRoundSetup,
+        setupState: {
+          config: { targetScore: 3 },
+          starter: "OWNER",
+          fixedStarterSlotId: null,
+        },
+        setupRevision: 1,
+        readySlotIds: ["left"],
+      },
+    });
+    await expect(store.getByRoomCode("PERS6789")).resolves.toMatchObject({
+      setupProtocol: 6,
+      nextRoundSetup: {
+        setupRevision: 1,
+        readySlotIds: ["left"],
+        setupState: { starter: "OWNER" },
+        setupRng: { seed: "database-realtime-setup-seed", cursor: 0 },
+      },
+    });
+
+    const finalizedSetup = {
+      config: { targetScore: 3 },
+      participantSlotIds: ["left", "right"],
+      playerOrder: ["left", "right"],
+      assignments: [
+        { slotId: "left", assignment: null },
+        { slotId: "right", assignment: null },
+      ],
+    } as const;
+    const realtimeReplayStore = new PostgresRealtimeReplayStore(
+      isolated.client.database,
+    );
+    await realtimeReplayStore.create("database-v6-room-replay", {
+      replayFormatVersion: 1,
+      runtime: "realtime",
+      gameId: "pong",
+      gameVersion: "1.0.0",
+      tickRate: 60,
+      rng: { algorithm: "fnv1a32-counter-v1", seed: "database-gameplay-seed" },
+      initialConfig: { targetScore: 3 },
+      players: [{ slotId: "left" }, { slotId: "right" }],
+    });
+    const setupRoom = await store.getByRoomCode("PERS6789");
+    if (setupRoom === null) throw new Error("Expected the V6 realtime room.");
+    const { nextRoundSetup: _nextRoundSetup, ...roomWithoutNextSetup } =
+      setupRoom;
+    await store.save({
+      ...roomWithoutNextSetup,
+      previousFinalizedSetup: finalizedSetup,
+      currentRound: {
+        roundNumber: 1,
+        replayId: "database-v6-room-replay",
+        playerOrder: ["left", "right"],
+        tick: 0,
+        status: "active",
+        outcome: null,
+      },
+    });
     await expect(
       store.save({ ...v5Room, setupProtocol: 6 }),
     ).rejects.toMatchObject({ code: "DATABASE_OPERATION_ERROR" });
@@ -272,7 +362,14 @@ describe.sequential("PostgreSQL + Drizzle persistence", () => {
       ).resolves.toMatchObject({ setupProtocol: 5 });
       await expect(
         rebuiltStore.getByRoomCode("PERS6789"),
-      ).resolves.toMatchObject({ setupProtocol: 6 });
+      ).resolves.toMatchObject({
+        setupProtocol: 6,
+        previousFinalizedSetup: {
+          config: { targetScore: 3 },
+          playerOrder: ["left", "right"],
+        },
+        currentRound: { roundNumber: 1, status: "active" },
+      });
     } finally {
       await rebuiltClient.close();
     }
@@ -324,7 +421,8 @@ describe.sequential("PostgreSQL + Drizzle persistence", () => {
     await store.create(corrupted);
     await isolated.client.database.execute(sql`
       alter table "realtime_rooms"
-      drop constraint "realtime_rooms_setup_protocol_supported"
+      drop constraint "realtime_rooms_setup_protocol_supported",
+      drop constraint "realtime_rooms_setup_state_consistent"
     `);
     try {
       await isolated.client.database
@@ -345,7 +443,21 @@ describe.sequential("PostgreSQL + Drizzle persistence", () => {
       await isolated.client.database.execute(sql`
         alter table "realtime_rooms"
         add constraint "realtime_rooms_setup_protocol_supported"
-        check ("setup_protocol" in (5, 6))
+        check ("setup_protocol" in (5, 6)),
+        add constraint "realtime_rooms_setup_state_consistent"
+        check (
+          ("setup_protocol" = 5 and "next_round_setup" is null and "previous_finalized_setup" is null)
+          or
+          ("setup_protocol" = 6 and (
+            ("current_round_number" is null and "next_round_setup" is not null and "previous_finalized_setup" is null)
+            or
+            ("current_round_number" is not null and "previous_finalized_setup" is not null and (
+              ("current_status" = 'completed' and "next_round_setup" is not null)
+              or
+              ("current_status" in ('active', 'abandoned') and "next_round_setup" is null)
+            ))
+          ))
+        )
       `);
     }
   });
