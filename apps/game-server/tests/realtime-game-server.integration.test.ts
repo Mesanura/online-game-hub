@@ -242,6 +242,10 @@ describe.sequential("realtime Pong Game Server", () => {
       realtimeSchedulerTimer: schedulerTimer,
       realtimeReconnectGraceMilliseconds: 60_000,
       realtimeTerminalRoomTtlMilliseconds: 300_000,
+      resolveSetupProtocol: (gameId, gameVersion) =>
+        gameId === "pong" && gameVersion === "1.0.0"
+          ? PROTOCOL_VERSION
+          : undefined,
       logger: { write: () => undefined },
     });
     address = await app.start({ port: 0 });
@@ -479,6 +483,21 @@ describe.sequential("realtime Pong Protocol V6 setup", () => {
   const archive = new RecordingRealtimeArchive();
   const gameplaySeeds: string[] = [];
   const setupSeeds: string[] = [];
+  const pongDefinition = resolveRealtimeGameDefinition("pong", "1.0.0");
+  if (pongDefinition === undefined) {
+    throw new Error("Pong realtime definition is unavailable.");
+  }
+  let failNextSimulationStep = false;
+  const v6PongDefinition: typeof pongDefinition = {
+    ...pongDefinition,
+    step(context) {
+      if (failNextSimulationStep) {
+        failNextSimulationStep = false;
+        throw new Error("simulated realtime Core failure");
+      }
+      return pongDefinition.step(context);
+    },
+  };
   let replaySequence = 0;
   const ids: RealtimeRuntimeIdSource = {
     createRoomCode: () => "VSPN2345",
@@ -529,6 +548,12 @@ describe.sequential("realtime Pong Protocol V6 setup", () => {
       realtimeClock: clock as unknown as RealtimeRuntimeClock,
       realtimeIds: ids,
       realtimeSchedulerTimer: schedulerTimer,
+      resolveCurrentRealtimeDefinition: (gameId) =>
+        gameId === "pong" ? v6PongDefinition : undefined,
+      resolveRealtimeDefinition: (gameId, gameVersion) =>
+        gameId === "pong" && gameVersion === "1.0.0"
+          ? v6PongDefinition
+          : undefined,
       resolveSetupProtocol: (gameId, gameVersion) =>
         gameId === "pong" && gameVersion === "1.0.0"
           ? SETUP_PROTOCOL_VERSION
@@ -711,6 +736,44 @@ describe.sequential("realtime Pong Protocol V6 setup", () => {
     expect(archive.created.at(-1)?.currentRound?.replayId).toBe(
       "realtime-v6-replay-2",
     );
+
+    failNextSimulationStep = true;
+    await schedulerTimer.tick();
+    expect(failNextSimulationStep).toBe(false);
+    await waitUntil(async () => {
+      const stored = await roomStore.getByRoomCode("VSPN2345");
+      return stored?.currentRound?.status === "abandoned";
+    });
+    expect(await roomStore.getByRoomCode("VSPN2345")).toMatchObject({
+      currentRound: { roundNumber: 2, status: "abandoned" },
+    });
+    await waitUntil(() =>
+      inboxA.lifecycle.some(
+        (state) =>
+          state.currentRound?.roundNumber === 2 &&
+          state.currentRound.status === "abandoned" &&
+          state.nextRound !== null,
+      ),
+    );
+    expect(inboxA.lifecycle.at(-1)?.nextRound).toMatchObject({
+      roundNumber: 3,
+      setupRevision: 0,
+      setupView: {
+        starter: "FIXED",
+        fixedStarterSlotId: "v6-slot-1",
+      },
+      readiness: { readySlotIds: [] },
+    });
+    expect(await roomStore.getByRoomCode("VSPN2345")).toMatchObject({
+      currentRound: { roundNumber: 2, status: "abandoned" },
+      nextRoundSetup: {
+        setupRevision: 0,
+        setupState: {
+          starter: "FIXED",
+          fixedStarterSlotId: "v6-slot-1",
+        },
+      },
+    });
 
     await roomA.leave(true);
     await roomB.leave(true);

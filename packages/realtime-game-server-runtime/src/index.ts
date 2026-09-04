@@ -2192,8 +2192,22 @@ export function createRealtimeGameRoomClass(
       if (this.#roundStatus === "active") {
         this.#roundStatus = "abandoned";
         this.#ready.clear();
+        this.#pendingRoundPersistence = null;
+        const nextRoundSetup =
+          this.#requireSetupProtocol() === SETUP_PROTOCOL_VERSION
+            ? this.#createNextRoundSetupCandidate()
+            : null;
+        if (nextRoundSetup !== null) {
+          // Keep the in-memory lifecycle schema-valid even when the best-effort
+          // abandoned-round persistence below fails. A later Setup action saves
+          // the same deterministic candidate again.
+          this.#nextRoundSetup = nextRoundSetup;
+          this.#pendingNextRoundSetup = null;
+        }
         try {
-          const stored = this.#storedRoom();
+          const stored = this.#storedRoom(
+            nextRoundSetup === null ? {} : { nextRoundSetup },
+          );
           await archive.saveRound(stored);
           await roomStore.save(stored);
         } catch (persistenceError) {
