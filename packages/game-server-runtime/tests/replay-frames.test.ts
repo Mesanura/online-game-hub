@@ -48,7 +48,11 @@ const definition: UnknownGameDefinition = {
     minPlayers: 2,
     maxPlayers: 2,
     runtime: "turn-based",
-    capabilities: { hiddenInformation: false, deterministicRandomness: false },
+    capabilities: {
+      hiddenInformation: false,
+      deterministicRandomness: false,
+      replay: "player-playback",
+    },
   },
   configSchema: nullSchema,
   actionSchema: addActionSchema,

@@ -24,6 +24,7 @@ export type PlayerSlotId = string & {
   readonly [playerSlotIdBrand]: "PlayerSlotId";
 };
 export type GameRuleErrorCode = string;
+export type ReplayMode = "none" | "record-only" | "player-playback";
 
 const GAME_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 const EXACT_SEMVER_PATTERN =
@@ -130,6 +131,8 @@ export interface GameManifest {
   readonly capabilities: {
     readonly hiddenInformation: boolean;
     readonly deterministicRandomness: boolean;
+    /** Explicit recording/playback support for this exact game version. */
+    readonly replay: ReplayMode;
     readonly playerAssignment?: {
       readonly kind: "camp" | "seat";
       readonly options: readonly string[];

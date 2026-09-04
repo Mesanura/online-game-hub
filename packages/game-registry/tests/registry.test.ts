@@ -8,6 +8,10 @@ import {
   loadRealtimeGameClientModule,
 } from "../src/client.js";
 import {
+  resolveCurrentGameDeployment,
+  resolveGameDeployment,
+} from "../src/deployment.js";
+import {
   resolveCurrentGameDefinition,
   resolveCurrentRealtimeGameDefinition,
   resolveGameDefinition,
@@ -47,6 +51,7 @@ describe("explicit game registry", () => {
     );
 
     for (const manifest of gameCatalog) {
+      expect(manifest.capabilities.replay).toBe("player-playback");
       expect(resolveGameManifest(manifest.id, manifest.gameVersion)).toBe(
         manifest,
       );
@@ -57,6 +62,17 @@ describe("explicit game registry", () => {
       expect(definition?.manifest).toBe(manifest);
       expect(definition?.configSchema.parse(manifest.defaultConfig)).toEqual(
         manifest.defaultConfig,
+      );
+      expect(
+        resolveGameDeployment(manifest.id, manifest.gameVersion),
+      ).toMatchObject({
+        gameId: manifest.id,
+        gameVersion: manifest.gameVersion,
+        setupProtocol: 5,
+        presentation: { kind: "legacy-react" },
+      });
+      expect(resolveCurrentGameDeployment(manifest.id)).toEqual(
+        resolveGameDeployment(manifest.id, manifest.gameVersion),
       );
     }
   });

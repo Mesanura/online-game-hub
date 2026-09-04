@@ -23,7 +23,7 @@ import type { UnknownGameDefinition } from "@online-game-hub/game-sdk";
 import { eraseRealtimeGameDefinition } from "@online-game-hub/realtime-game-sdk";
 import type { UnknownRealtimeGameDefinition } from "@online-game-hub/realtime-game-sdk";
 
-import { gameCatalog } from "./catalog.js";
+import { resolveCurrentGameManifest } from "./catalog.js";
 
 const serverDefinitions = Object.freeze([
   eraseGameDefinition(ticTacToeDefinitionV1_0_0),
@@ -53,8 +53,10 @@ export function resolveGameDefinition(
 export function resolveCurrentGameDefinition(
   gameId: string,
 ): UnknownGameDefinition | undefined {
-  const manifest = gameCatalog.find((candidate) => candidate.id === gameId);
-  return manifest === undefined || manifest.runtime !== "turn-based"
+  const manifest = resolveCurrentGameManifest(gameId);
+  return manifest === undefined ||
+    manifest.runtime !== "turn-based" ||
+    manifest.capabilities.replay === "none"
     ? undefined
     : resolveGameDefinition(manifest.id, manifest.gameVersion);
 }
@@ -79,8 +81,10 @@ export function resolveRealtimeGameDefinition(
 export function resolveCurrentRealtimeGameDefinition(
   gameId: string,
 ): UnknownRealtimeGameDefinition | undefined {
-  const manifest = gameCatalog.find((candidate) => candidate.id === gameId);
-  return manifest === undefined || manifest.runtime !== "realtime"
+  const manifest = resolveCurrentGameManifest(gameId);
+  return manifest === undefined ||
+    manifest.runtime !== "realtime" ||
+    manifest.capabilities.replay === "none"
     ? undefined
     : resolveRealtimeGameDefinition(manifest.id, manifest.gameVersion);
 }

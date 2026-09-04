@@ -1,6 +1,6 @@
 # 系统架构
 
-> 状态：架构基线（Protocol V5、独立 Realtime Protocol V1，M1–M8、逐局先手、多人 assignment、三阶段 Web 与窄版 create-game 已完成）
+> 状态：架构基线（Protocol V5 与 legacy React 仍服务现有房间；Game Surface Bridge V1、Setup Protocol V6 与双轨注册已进入迁移）
 > 本文是系统职责、目录结构、依赖方向和部署基线的权威来源。产品范围见 [PRODUCT.md](./PRODUCT.md)。
 
 ## 1. 架构目标
@@ -18,7 +18,10 @@
 Browser
   ├─ HTTPS ──> Next.js Web
   │              ├─ 首页与游戏页面
-  │              └─ 匿名 session / 短期连接票据
+  │              ├─ 匿名 session / 短期连接票据
+  │              └─ 版本化静态 Game Surface artifact
+  ├─ sandboxed iframe ──> Game Surface
+  │                         └─ projected view / intent only
   └─ HTTPS + WebSocket ──> Colyseus Game Server
                              ├─ 房间与席位
                              ├─ authoritative action pipeline
@@ -37,8 +40,8 @@ Browser
 - 统一首页、游戏目录、游戏页面和房间加入界面；
 - 建立匿名访客 session，并管理用户名+密码账户、可撤销账户 session 和同源认证 API；
 - 签发短期 Game Server 连接票据；
-- 加载具体游戏的 Client Module；
-- 展示服务器发送的 View，提交 Action 与房间控制 intent；
+- 按 exact deployment registration 加载 legacy Client Module 或 sandboxed Game Surface；
+- 把服务器 View 投影、平台状态和 viewport 传给 Surface，并为 Surface intent 补充 command/round/revision/input sequence；
 - 以 server-verified guest 读取私有比赛 metadata。
 
 不负责：
@@ -75,6 +78,8 @@ Browser
 | `game-server-ticket`  | Web issuer 与 Game Server verifier 共用的短期 HMAC-SHA256 ticket authority，实现 Protocol V5 ticket claims       | 浏览器 API、session cookie、房间/游戏规则、testing authority |
 | `game-registry`       | 显式组合游戏 manifest、client loader 和 server definition                                                        | 游戏规则实现、运行时目录扫描                                 |
 | `protocol`            | 跨 Web/Game Server 的 envelope、错误码、票据 claims 和 Zod schema                                                | 具体游戏 Action/State/View 联合类型                          |
+| `game-setup`          | 两种 runtime 共用的纯 Setup definition、reducer/projection/finalize 类型与通用最终结果校验                       | React、DOM、transport、具体游戏规则、数据库                  |
+| `game-surface-bridge` | Surface artifact 与 Bridge V1 的 JSON schema、消息类型及可选 JS helper                                           | React、Next、socket、ticket、具体游戏、权威 State            |
 | `database`            | PostgreSQL/Drizzle client、checked-in migrations、durable replay、Match archive/history 与 User association      | 具体游戏、规则执行、UI、active authoritative State           |
 | `ui`                  | 无业务规则的共享视觉组件与 design tokens                                                                         | 网络、房间、游戏规则和数据库访问                             |
 
@@ -82,14 +87,14 @@ Browser
 
 ## 5. Game Package
 
-每个 `games/<game-id>` 是一个 workspace package，而不是把所有游戏放入一个 package，也不把单个游戏拆成多个 workspace package。
+每个 `games/<game-id>` 是一个权威 TypeScript Core workspace package。其浏览器表现层迁移到独立的 `game-surfaces/<game-id>` workspace；两者可以使用不同依赖与构建链，但通过 JSON-safe View/intent 和 exact version registration 对接。
 
 ```text
 games/<game-id>/
   package.json
   src/
     core/
-    client/
+    client/              # 仅迁移期 legacy adapter
     manifest.ts
   tests/
   GAME_SPEC.md
@@ -99,7 +104,7 @@ games/<game-id>/
 Package export map 提供：
 
 - `/core`：服务器可用的 `GameDefinition` 与公开领域类型；
-- `/client`：React Client Module，仅 Web 构建可加载；
+- `/client`：迁移期 React Client Module，仅 legacy Web 路径可加载；全部 Surface 迁移后退役；
 - `/manifest`：无副作用、可序列化的目录元数据。
 
 默认不创建游戏专属 Colyseus adapter。只有通用 runtime 无法表达、且经过架构评审确认的需求，才允许增加 server extension；扩展仍不得把 Colyseus 引入 Core。
@@ -115,6 +120,7 @@ M8 是已落地的例外：实时游戏不把 tick、持续输入、插值或预
 - `/catalog`：纯 manifest 列表，供首页和工具读取；
 - `/client`：按 `gameId` 懒加载 Client Module，避免首页打包全部游戏；
 - `/server`：按 `gameId + gameVersion` 解析服务端 `GameDefinition`。
+- `/deployment`：按 `gameId + gameVersion` 选择 Setup Protocol generation 与 legacy/surface presentation，并把 `(gameId, gameVersion, mode)` 精确映射到 immutable artifact。
 
 `game-registry` 是唯一允许指向所有具体游戏的 composition package。添加游戏需要新增游戏 package 并显式更新注册表；`tools/create-game` 只自动执行这些可见、可审查的机械步骤，不引入目录扫描或运行时插件发现。
 
@@ -125,6 +131,7 @@ M8 是已落地的例外：实时游戏不把 tick、持续输入、插值或预
 ```text
 games/*/core ───────────────> game-sdk + zod
 games/*/client ─────────────> own public types + game-client-sdk
+game-surfaces/* ─────────────> game-surface-bridge (+ self-owned UI/render stack)
 
 game-client-sdk ────────────> protocol + Colyseus SDK
 game-server-runtime ────────> game-sdk + protocol + Colyseus
@@ -137,6 +144,7 @@ database ───────────────────> game-sdk + p
                               Drizzle ORM + Postgres.js
 
 apps/web ───────────────────> game-registry/client + catalog
+                              game-registry/deployment + game-surface-bridge
                               game-client-sdk + game-server-ticket + database
 
 apps/game-server ───────────> game-registry/server
@@ -148,6 +156,7 @@ Hard Rules：
 - `game-sdk`、`protocol`、`game-server-runtime` 不得依赖 `games/*`。
 - `realtime-game-sdk`、`realtime-game-server-runtime` 和 `realtime-game-client-sdk` 不得依赖回合制 `GameDefinition`、`GameClientModule`、`game-server-runtime` 或具体游戏；realtime runtime 只能依赖明确声明的身份/ticket/lifecycle ports。
 - 一个游戏不得依赖另一个游戏。
+- Game Surface 不得导入 Core、client host、Protocol、ticket 或数据库；它只实现 Bridge JSON 协议。Next 不编译 Surface 源码或其框架依赖。
 - 任一 Game Core（包括 realtime simulation）不得依赖 React、Next.js、DOM、Phaser、Colyseus、WebSocket、ORM、PostgreSQL 或 Redis。
 - `ui` 不得依赖房间、网络或游戏业务模块。
 - 只有 application/composition layer 可以同时看到具体实现和抽象端口。
@@ -160,6 +169,22 @@ Hard Rules：
 `apps/game-server` 仍是唯一 composition root，但必须按 manifest 的 `runtime` 显式选择 turn-based 或 realtime room adapter；不能在现有 authoritative room 中增加 `if (gameId === "pong")` 分支。`apps/web` 也按同一 manifest 选择离散 Client Host 或 realtime Client Host。两个 runtime 可以共享 ticket、room code、stable slot、lifecycle、reconnect 和 Match/账户归属 ports，但 realtime 包不能反向导入回合制 runtime 的实现。
 
 Realtime simulation 使用固定整数单位和单调 server tick；实际 wall clock 只属于 server scheduler，不得进入 Core。服务端按每个 tick 生成规范化 input frame，再调用 Core 一次；客户端只接收 per-viewer projected View snapshot，并在 Phaser canvas 内做显示插值。预测/回滚、共享 ECS 和多实例 ownership 不属于 M8。
+
+### 7.2 Game Surface 与 iframe Host
+
+`game-surfaces/<game-id>` 各自拥有 `dev`、`build`、`test` 与 `contract-test`。构建输出由 `SurfaceArtifactManifestV1` 描述：`schemaVersion`、`gameId`、`supportedGameVersions`、独立 `surfaceVersion`、`bridgeVersion`、Setup/Play/可选 Replay HTML entrypoint、浏览器能力和内容摘要。CI 校验摘要与版本漂移后，把未提交的 `dist` 复制到 `/game-surfaces/<gameId>/<surfaceVersion>/<mode>/`；版本化资源使用 immutable cache，registry 回滚只切换引用，绝不覆盖 artifact。
+
+V1 Host 只创建不含 `allow-same-origin` 的 sandboxed iframe，按能力最小开放 scripts 与 pointer lock。静态路径不读取登录态，并为 opaque origin 模块加载提供 CORS；CSP 默认 `connect-src 'none'`，素材随 artifact 发布。首个 window `postMessage` 仅携带一次性 nonce 并移交 `MessageChannel`，之后双方只监听专用 port。Host 校验 iframe window、nonce、bridge version 和每条 strict schema；10 秒未 ready、Surface crash 或非法消息进入可重试错误态，且不会提交 intent。
+
+Host 只发送 mode、game/version、locale、reduced-motion、最新 projected View、平台连接/只读/round/revision/tick 状态、viewport/fullscreen、intent 结果和 dispose。Surface 只发送 Setup Action、回合制 Action 或 realtime Input intent，以及无敏感数据的 ready/error/diagnostic。Host SDK 才能补充 command ID、round、expected revision、input sequence 和 transport envelope；Surface 不接触 ticket、session、actor、raw State、RNG、canonical replay 或 WebSocket。
+
+### 7.3 Game-defined Round Setup
+
+`game-setup` 定义纯 TypeScript `RoundSetupDefinition`：游戏拥有 Setup State/Action/View schema、纯 transition、per-viewer projection、readiness 与 finalize；Platform 只提供 stable slot 的 occupied/online/owner facts并验证 `FinalizedRoundSetup`。最终结果必须 canonical 地包含 config、参与 slot 集合、实际 playerOrder 和与参与者键集合完全一致的 assignments。
+
+Platform 通用校验只允许已占用 stable slot，强制 manifest 人数范围、playerOrder 是参与者排列、assignment 键完整。Setup accepted action 增加 `setupRevision` 并清空全部 ready；rejected、duplicate、stale 不改变状态或 ready。Setup 随机性使用独立服务端 RNG，finalize 结果先固化后持久化重试，Gameplay 使用新的 seed。Surface 永远看不到二者 seed。
+
+新房间以 manifest `defaultConfig` 初始化首轮 Setup。完成 Round 后，下一轮从上一轮 `FinalizedRoundSetup` 初始化，复用 config、参与者、实际顺序与 assignments，但不复用 State、Outcome、revision/tick、seed、RNG cursor、ready、Match ID 或 replay ID。每位参与者必须分别重新 ready；accepted 设置变更再次清空全部确认。
 
 ## 8. Authoritative Action Pipeline
 
@@ -202,13 +227,15 @@ Room 必须串行处理 Action。任何未来多实例方案都必须维持“�
 - transport 非主动关闭时，host 在 60 秒窗口内以指数退避获取新 ticket 并重新执行 room-code join，生成新的 seat reservation；不使用 SDK reconnection token 证明席位所有权。
 - 井字棋 Client Module 只解析 View 并渲染 3×3 棋盘；四子棋 Client Module 不导入 Core，只解析 View 并渲染 7×6 棋盘；五子棋 Client Module 按 View 的 `boardSize` 渲染 15×15/19×19 棋盘；六贯棋 Client Module 渲染固定 11×11 菱形六边格；黑白棋 Client Module 渲染固定 8×8 View；中国跳棋 Client Module 渲染 73 位六芒星 View、合法跳跃目标和排名。各组件只提交自身普通落子或移动 intent，支持投降的 current modules 另以可选 `createResignAction` 向共用 HUD 提供 strict `RESIGN`，不各自实现投降按钮或确认；按钮禁用与确认仅是 UX，不能代替 authoritative rejection。
 
-### 8.3 Live Room、Round 设置与关闭
+### 8.3 Legacy V5 Live Room、Round 设置与关闭
 
 - live room 属于 Platform，`Match`/canonical replay 属于 Round。房间级 record 只保存 room code、exact game/version、Config、stable slots、`currentRound | null` 和关闭状态；Round 独立保存 `roundNumber`、`playerOrder`、replay ID、State、RNG、revision、status 与 Outcome。
 - 首局和 completed 后续局都进入相同 next-Round setup。房主可在参与者加入前用 `SELECT_STARTER` 选择 OWNER/NON_OWNER/RANDOM；参与者用 `READY_FOR_ROUND`/`CANCEL_ROUND_READY`。支持 assignment 的游戏还要求房主选择精确人数、每个参与者选择唯一 assignment。不同选择清空全部 ready，重复同值不清；断线和 connection takeover 只清对应 session ready，保留 starter/assignment。只有规定 slots 全部分配、参与者在线、starter 已选且全部 ready 时才启动。completed 后任一原玩家也可发送 `START_REMATCH`，在参与者仍在线时复用上一轮实际 playerOrder 立即创建独立新 Round。
 - 成功启动后清除 starter/ready 并取消 completed TTL；Round 完成后立刻为下一轮把 starter 重置为 null。选择或 ready 不延长 5 分钟 completed TTL。completed room 拒绝任何未占原 slot 的新 session，返回 `ROOM_NOT_JOINABLE`。
 - `GameClientHost.selectStarter()`、`readyForRound()`、`cancelRoundReady()`、`startRematch()` 和 `closeRoom()` 只发送 intent。房主权限始终绑定 creator session，不随本轮先后手改变。非房主使用 `leaveRoom()` 执行 consented leave；active 状态下 Web 先确认并把当前 Match 保存为 `abandoned`。首局未开始时关闭/离开不创建 abandoned Match，completed 保留原 Outcome。
 - 关闭先广播带 `OWNER_CLOSED`、`PLAYER_LEFT`、`RECONNECT_TIMEOUT` 或兼容名称 `REMATCH_TIMEOUT` 的 per-viewer lifecycle，再用 25 ms 有界 drain 发送并断开 clients。`GameActionCommand.roundNumber` 与 `MatchSnapshot.roundNumber` 在 Protocol V5 中必填；Host 进入更高 Round 时清除旧 snapshot，completed 等待设置时保留终局 snapshot，并对任何 snapshot/lifecycle 非法顺序 fail closed。Protocol V5 wire 本身不决定 game version；当前规则版本仍使用同一 envelope 和 Replay Format V1。
+
+以上 starter/player-count/assignment/`START_REMATCH` 语义仅属于现有 V5 房间。V6 房间使用游戏 Setup definition 与逐玩家 ready；协议代际在创建时持久化，切换或回滚只影响新房间，已创建房间必须由原代 runtime 完成。
 
 ### 8.4 M5/M7-A 持久化、Identity 与 History
 

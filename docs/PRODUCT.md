@@ -1,6 +1,6 @@
 # 产品目标与范围
 
-> 状态：产品基线（M1–M8 已完成，当前使用 Protocol V5 与独立 Realtime Protocol V1）
+> 状态：产品基线（M1–M8 已完成；独立 Game Surface 与 Setup Protocol V6 正在分阶段迁移，现有房间继续使用 Protocol V5）
 > 本文是产品目标、范围和非目标的权威来源。技术实现边界见 [ARCHITECTURE.md](./ARCHITECTURE.md)。
 
 ## 1. 产品愿景
@@ -12,8 +12,8 @@
 ## 2. 产品原则
 
 1. **统一入口**：所有游戏通过同一网站发现、创建房间和加入对局。
-2. **平台能力复用**：房间、连接、玩家席位、重连、比赛生命周期和 replay 不在每个游戏中重复实现。
-3. **游戏独立演进**：一个 Agent 应能以单个游戏目录为主要上下文完成规则或表现层修改。
+2. **平台能力复用**：身份、房间、连接、稳定席位、ready、重连和比赛生命周期不在每个游戏中重复实现；replay 是否面向玩家开放由游戏版本显式声明。
+3. **游戏独立演进**：Game Core 与 Game Surface 分别拥有清晰边界；表现层可独立选择技术栈、构建、运行和测试，再以版本化 artifact 集成网站。
 4. **公平且可复现**：客户端只提交意图，服务器裁定结果；一场比赛可由版本、配置、seed 和 accepted actions 重建。
 5. **先验证架构**：井字棋打通最小纵向链路，四子棋、五子棋、额外六贯棋与黑白棋已依次验证不同规则类型的扩展成本。
 
@@ -24,24 +24,30 @@
 1. 用户打开统一主页并查看已上线游戏。
 2. 用户进入某个游戏详情或房间入口。
 3. 用户创建私人房间，获得房间码和邀请链接。
-4. 房主为下一局选择“我方先手”、“对方先手”或“随机先手”；该选择可以在另一位用户加入前完成。
+4. 房间进入该游戏定义的 Setup；规则、参与席位、顺序和阵营由 Setup Surface 展示并由 Setup Core 裁定，平台不默认提供先手选择。
 5. 另一位用户通过房间码或邀请链接加入。
-6. 双方都在线并准备后，平台按房主选择创建新一局并开始比赛。
+6. Setup 选中的全部参与者在线、分别 ready 且 Setup 可 finalize 后，平台使用固化的最终设置创建新一局。
 
-每款游戏使用三个可刷新、可深链接的页面阶段：`/games/{gameId}` 只负责创建或加入；`/games/{gameId}/rooms/{roomCode}` 负责 stable slots、先手和 ready/cancel；`/games/{gameId}/rooms/{roomCode}/play` 负责 active/completed 对局。旧 `?roomCode=` 邀请入口必须兼容并规范化到房间路由。页面阶段只根据服务器 `room.lifecycle` 导航，客户端本地路由状态不能创建 Round、伪造身份或覆盖服务器 State/Outcome。
+每款游戏使用三个可刷新、可深链接的页面阶段：`/games/{gameId}` 只负责创建或加入；`/games/{gameId}/rooms/{roomCode}` 负责 stable slots、平台 ready/cancel 与游戏 Setup Surface；`/games/{gameId}/rooms/{roomCode}/play` 负责 active/completed Game Surface。旧 `?roomCode=` 邀请入口必须兼容并规范化到房间路由。页面阶段只根据服务器 `room.lifecycle` 导航，客户端本地路由或 iframe 状态不能创建 Round、伪造身份或覆盖服务器 State/Outcome。
 
 ### 3.2 在线对局
 
 1. 客户端显示当前用户可见的权威游戏视图。
 2. 当前玩家提交一个游戏 Action。
 3. 服务器接受或拒绝该 Action，并同步新的权威视图。
-4. 比赛结束后平台产生结构化 Outcome 和 canonical replay。
-5. 一局结束后，任一在线原玩家可立即以本局相同先手顺序重开；也可回到统一的下一局设置，由房主重新选择先手方和（多人游戏）参与人数，玩家分别选择 assignment 并准备或取消；所有规定参与者都准备且仍在线时，在同一房间和 stable slots 下开始下一局。
-6. 每轮都是独立的 Match、canonical replay 和私有 history 记录，不把多轮合并成一场比赛。
-7. 支持投降的游戏都可从共用 HUD 发起投降；取消确认不产生 Action，确认后由服务器 exact rules 判定并更新胜负或排名。
+4. 比赛结束后平台保存结构化 Outcome；canonical journal 与玩家回放按 exact game version 的 replay 能力处理。
+5. 一局结束后立即以上一局完整最终设置初始化下一轮 Setup，包括 config、参与席位、实际 playerOrder 与 assignments；每位参与者仍必须分别重新确认 ready，任一 accepted 设置变更会清空全部 ready。
+6. 每轮都是独立的 Match、State、RNG、revision/tick、seed、Outcome 和 replay ID；不会复用上一轮权威运行状态。
+7. 投降确认属于平台安全操作，实际投降仍作为游戏 intent 交给 exact Core 裁定；比分、回合、棋子、阵营、排名和 Outcome 表现全部属于 Game Surface。
 8. 房主可以关闭房间，非房主可以主动离开；终止 active 对局前界面必须要求确认。
 
-等待页以复制按钮提供不含身份凭据的邀请 URL，不长期暴露原始 URL；复制需要 loading/success/failure 与可手动选择的后备。实际对局在桌面优先保持浏览器页面本身不滚动；左侧 HUD 底部始终显示房间码、共用投降入口，以及按房主身份选择的关闭或离开操作。投降与终止 active 对局分别确认；投降按钮只生成游戏 Action，不取代服务器合法性判断。大型棋盘只允许在自己的容器中缩放或滚动，并在移动端保留至少 44px 的有效操作目标。
+等待页以复制按钮提供不含身份凭据的邀请 URL，不长期暴露原始 URL；复制需要 loading/success/failure 与可手动选择的后备。实际对局使用占满可用空间的游戏舞台，平台 HUD 是默认收起且不参与舞台尺寸计算的覆盖式抽屉；最小浮动工具条只保留打开 HUD、连接状态和全屏。舞台全屏失败时降级为 `100dvh` focus mode。平台 HUD 只显示房间码、Round、连接、投降确认、关闭/离开和重新对局，不探测游戏 View 中的比分、棋子、阵营、当前回合、排名或 Outcome。大型棋盘或 canvas 的滚动、缩放与响应式布局由各 Surface 负责，并在移动端保留至少 44px 的有效操作目标。
+
+### 3.3 Game Surface 产品边界
+
+Game Surface 在无 Next.js、无登录态、无真实 WebSocket 的工作台中即可独立开发和测试。网站只向 iframe 传递按 viewer 投影的 Setup View 或 Game View、连接/只读状态、Round/revision/tick、viewport 与 intent 结果；Surface 不能访问 ticket、session、actor、raw State、seed、canonical replay 或 socket。Surface 加载、握手或 schema 校验失败时，网站显示可重试错误且不提交任何 intent。
+
+新游戏必须分别声明 Setup、Play 与可选 Replay Surface artifact，以及 `none | record-only | player-playback` replay 能力。简单回合制棋牌建议提供 `player-playback`；实时游戏逐个评估，通常从 `record-only` 开始。脚手架不得静默选择 replay 模式。
 
 ### 3.3 断线恢复
 
@@ -157,6 +163,7 @@ M6 完成后当前仍不实现：
 - 相同 `gameVersion`、配置、seed、玩家席位和 actions 可重建相同结果；
 - 创建房间但尚未开始一局时不产生 Match/history；每轮 Replay header 与 Core 初始化使用完全相同的 `playerOrder`；
 - 模块职责、公开 API 和依赖方向在文档与自动化检查中保持一致。
+- 新游戏表现层不要求修改网站全局 CSS、字段探测 HUD、Next transpile 列表或网站前端技术栈；Surface artifact 可独立构建并按 exact game/surface version 回滚。
 
 M8 完成后还必须满足：相同 realtime game version、Config、seed、玩家顺序及按 server tick 归档的 accepted input 能重建相同结果；浏览器不能提交位置、速度、碰撞、分数、Outcome 或生效 tick；网络抖动下 Phaser 只能用服务端快照插值，不能以本地预测状态覆盖权威结果。
 

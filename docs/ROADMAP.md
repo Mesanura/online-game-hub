@@ -1,6 +1,6 @@
 # 开发路线图
 
-> 状态：M1–M8、Protocol V5 多人中国跳棋、账户身份、密码账户/私有历史、三阶段 Web、窄版 create-game 与通用投降/规则版本增强已完成
+> 状态：M1–M8 已完成；M9 独立 Game Surface、Setup V6 与显示系统正在实施
 > 本文是项目阶段顺序和里程碑退出条件的权威来源。里程碑按依赖排序，不承诺具体日期。
 
 ## 原则
@@ -286,3 +286,61 @@
 后续 realtime 变更仍应以 [REALTIME_RUNTIME_DESIGN.md](./REALTIME_RUNTIME_DESIGN.md) 为权威边界。修改 shared public API、Protocol、Replay Format 或数据库 schema 前，必须完成其中要求的兼容性评估。
 
 M8 结束后再由产品证据选择下一个 M7 候选能力；不要把 OAuth、Lobby、Matchmaking、排行榜、观战、公开 replay、durable active room、Redis 或多实例混入本轮。
+
+## M9：独立 Game Surface、Setup V6 与显示系统
+
+目标：让游戏表现层从 Next/React 布局与构建链中独立，同时保留纯 TypeScript 权威 Core；把逐局规则、参与者、顺序和阵营迁入游戏定义的 Setup，并消除平台 HUD 对游戏舞台的挤压与字段猜测。
+
+### M9-A：契约与兼容骨架
+
+> 实施状态：进行中。
+
+- 新增无 React/Next/具体游戏依赖的 `game-surface-bridge`，定义 artifact schema、Bridge V1、nonce/MessageChannel 与 strict JSON messages；
+- 新增无 transport/DOM 依赖的 `game-setup`，定义 Setup State/Action/View、transition/projection/readiness/finalize 与 `FinalizedRoundSetup` 通用校验；
+- Protocol V6 与 V5 exact schema 并存，Realtime Input/Snapshot Protocol V1 不变；
+- 所有 manifest 显式声明 `none | record-only | player-playback`，现有/历史版本保持 `player-playback`，runtime 对 `none` fail closed；
+- deployment registry 按 exact game/version 固定 V5/V6 与 legacy/surface renderer；五种版本的升级边界写入权威文档。
+
+退出条件：现有游戏行为零变化，contract、全仓 typecheck/lint/test/build/dependency checks 全部通过。
+
+### M9-B：非挤压式游戏页外壳
+
+- HUD 改为默认收起的覆盖式抽屉，最小浮动工具条只保留 HUD、连接状态与全屏；
+- stage 占满可用空间并使用 `min-width/min-height: 0`、`overflow: hidden`；
+- Fullscreen API 被拒绝或不支持时切换 `100dvh` focus mode；ESC、focus trap、ARIA 和 reduced-motion 完整；
+- Platform HUD 删除比分、棋子、阵营、当前回合、排名和 Outcome 猜测；legacy Client Module 通过适配器继续运行。
+
+退出条件：既有游戏无需迁移即可通过桌面/平板/手机 viewport 与现有 E2E。
+
+### M9-C：独立 Surface 工具链与 Host
+
+- `game-surfaces/*` 加入 workspace、Turbo、依赖检查、CI 和 Docker static copy；`dist` 不提交；
+- manifest/digest/version drift 校验后复制到 `/game-surfaces/<gameId>/<surfaceVersion>/<mode>/` 并使用 immutable cache；
+- 实现 sandboxed iframe Host、Bridge handshake、timeout/retry、安全 headers 和生命周期；
+- Surface Workbench 支持任意 dev URL、fixtures、断线/重连/终局/只读/revision/tick/reduced-motion/viewport/fullscreen 模拟；
+- conformance tests 证明 Surface 无需 Next 或 Game Server 即可开发。
+
+### M9-D：Setup V6 与双 runtime
+
+- 两套 runtime 使用同一纯 setup coordinator，RoomStore 保存 versioned Setup State、setupRevision、ready slots、上一局 finalized setup 与协议代际；
+- 实现服务端 actor/schema/权限、stale/idempotency、持久化重试、per-viewer projection 和独立 setup RNG；
+- 等待页保留房间码、邀请、presence、ready、关闭/离开，规则区域挂载 Setup Surface；
+- 重新对局完整复用 finalized setup，但每个参与者分别重新 ready；accepted 设置清空全部确认；
+- 第一轮迁移只复现现有 starter/人数/营地行为，不同时重做交互设计。
+
+### M9-E：井字棋与 Pong 双试点
+
+1. 井字棋以独立 React/Vite Surface 验证 Setup/Play/Replay 与回合制 Bridge；Core、Action、Replay V1 和 gameVersion 不变。
+2. Pong 以 TypeScript + Phaser Surface 验证 realtime input sequence/ack/reconnect/replay；800×400 逻辑场地使用响应式 FIT，`targetScore` 首轮保留默认值。
+
+只有两项试点通过 contract、真实 PostgreSQL、integration 与全 viewport E2E 后才批量迁移。
+
+### M9-F：其余游戏与 legacy 退役
+
+按 Connect Four、Gomoku、Reversi、Hex、Chinese Checkers 迁移表现与 Setup。全部当前/受支持历史版本都有 Surface 后，删除 Web 动态 React Client Module、游戏专属全局 CSS、字段探测 HUD 与 Next 游戏 transpile；V5 房间排空后再删除 legacy setup schema/runtime。
+
+### M9-G：Setup UI 独立设计
+
+架构迁移稳定后，各游戏只通过 `surfaceVersion` 迭代规则解释、预览、参与顺序和 assignment 交互。平台只规定外框、可访问性、loading/error 与 ready 区域，不引入通用表单 DSL。
+
+本里程碑不包含真正 `replay:none` 的数据库语义、外部仓库发布、独立无 Cookie 资源域或 Setup UI 视觉重设计。生产先使用同域静态路径和 opaque iframe origin，后续迁域不改变 Bridge。

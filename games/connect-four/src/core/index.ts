@@ -498,6 +498,7 @@ const connectFourManifestV1_0_0 = Object.freeze({
   capabilities: Object.freeze({
     hiddenInformation: false,
     deterministicRandomness: false,
+    replay: "player-playback",
   }),
 }) satisfies GameManifest;
 

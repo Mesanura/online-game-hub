@@ -1,6 +1,6 @@
 # 测试策略
 
-> 状态：Protocol V5/M7-B 测试策略（多人 assignment、账户 session、私有 replay、可信 UserId、Round 身份快照与 V4 拒绝已纳入）
+> 状态：Protocol V5/V6 双轨、Game Surface Bridge V1、Setup Core 与 replay capability 测试策略
 > 本文是测试层级、职责、最低场景和质量门禁的权威来源。具体业务范围见 [PRODUCT.md](./PRODUCT.md)。
 
 M7-B 私有历史与回放测试覆盖：UserId + matchId 数据库授权、双账户共享同局、游客永久不可见、abandoned/incomplete 拒绝、损坏数据安全错误和跨连接读取；runtime revision 0..N frame reconstruction、exact historical definition、determinism、RNG/Outcome/sequence/actor/payload 篡改、projection 异常及帧数/响应大小上限；五款游戏 historical client module 独立解析和 replay read-only 不提交 Action；Web/API 的 401、not-found、unavailable、私有 headers、帧控制、slider、播放清理、移动端大棋盘容器和无 WebSocket。
@@ -18,6 +18,8 @@ M7-B 私有历史与回放测试覆盖：UserId + matchId 数据库授权、双�
 - PostgreSQL migrations、durable replay、match archive 和身份关联是否保持事务与授权不变量；
 - 两个真实浏览器是否能完成创建、加入、对局和重连；
 - package public API 和依赖方向是否被破坏。
+- Surface 是否能脱离 Next/Game Server 构建测试，且 iframe/Bridge 不泄漏身份或权威数据。
+- Setup accepted/rejected/stale/duplicate、逐玩家 ready 与完整重新对局复用是否保持一致。
 
 优先把规则覆盖放在快速、无网络的 Core tests；只把跨 package、transport 或浏览器行为放入较慢层级。
 
@@ -124,6 +126,26 @@ Golden fixture 只在确认规则或版本策略变化后更新。不能通过�
 - encode/decode round trip 保持稳定字段；
 - Protocol V5 exact schemas 拒绝 V1–V4、缺字段和 extra fields；ticket 覆盖账户/游客 claim、伪造 UserId 与 extra fields；`room.control` 严格区分 starter/人数/assignment/ready/cancel/immediate rematch/close，拒绝非法 starter、人数、assignment 与 identity 字段；`room.lifecycle` 拒绝不一致 current/next Round、ready/closed 状态；Action/snapshot 的 `roundNumber` 必填并拒绝非法值；
 - platform error 与 `gameRuleCode` 的映射不混淆。
+
+Protocol V6 另须覆盖 exact V5/V6 互拒、`game.setup` payload/identity/size、`expectedSetupRevision`、Setup rejection codes、viewer-specific `setupView`、readiness slot 集合与 current/next Round 不变量；确认 Realtime Input/Snapshot Protocol V1 的 schema 和语义未改变。
+
+### 6.1 Game Surface Contract 与安全测试
+
+- artifact 的 game/version/mode 必须 exact 匹配；缺失 entrypoint、重复版本、路径穿越、bridge 不兼容与摘要漂移 fail closed；
+- nonce/source/window 校验、MessageChannel 单次移交、unknown/extra fields、重复 intent、dispose、crash 与 10 秒初始化超时；
+- Host 消息与日志不包含 ticket、session、actor、raw State、seed 或 canonical replay；
+- iframe 没有 `allow-same-origin`、表单、弹窗、下载或顶层导航能力，CSP 禁止直接联网；
+- Surface 加载失败可重试，失败期间不会提交游戏 intent；
+- 每个 Surface 的 conformance suite 无需启动 Next、Game Server 或数据库。
+
+### 6.2 Setup Core 与 runtime 测试
+
+- initialize/transition/project/finalize 的 schema、immutability、serialization、viewer privacy 与独立 seeded determinism；
+- owner/player 权限、服务端 actor 推导、合法/非法 Setup Action、normalization、stale、duplicate、幂等与持久化失败重试；
+- accepted 设置清空全部 ready；rejected/stale/duplicate 不清；只有 selected participant 可 ready；
+- 参与者不完整、断线/重连、席位替换、playerOrder 排列、assignment 键冲突和 setup RNG 重试稳定；
+- 下一轮复用完整 config/participant/playerOrder/assignment，但生成新 gameplay seed/RNG/revision/tick/Match/replay ID，并要求所有玩家分别重新 ready；
+- V5/V6 房间并存、恢复、创建时 generation pinning、注册回滚只影响新房间与 V5 排空策略。
 
 ## 7. Game Server Integration Tests
 
@@ -328,11 +350,15 @@ Harness 为 Web 预留随机 loopback port，并用 `port: 0` 启动正式 ticke
 | Game manifest/client    | registry contract + client component + relevant E2E                   |
 | `game-sdk`              | 全部游戏 Core/replay + public API type tests + dependency checks      |
 | `protocol`              | protocol contract + server integration + multiplayer/E2E smoke        |
+| `game-setup`            | contract/unit + 两套 runtime integration + replay header invariants   |
+| `game-surface-bridge`   | schema/handshake/security contract + Host + Surface conformance       |
+| Surface artifact        | 独立 test/build/contract + digest/copy + viewport E2E                 |
 | `game-server-runtime`   | server integration + multiplayer + replay store tests                 |
 | database/schema         | migrations + real PostgreSQL integration + restart reads + shutdown   |
 | match/history/identity  | PostgreSQL integration + API authorization/privacy + relevant E2E     |
 | session/ticket          | auth contract + join/reconnect + security negative cases              |
 | replay format/version   | reader compatibility + all supported golden replays                   |
+| replay capability       | registry + history/API matrix + exact playback Surface                |
 | build/dependency config | full typecheck/lint/unit + affected build graph                       |
 | `tools/create-game`     | package test/typecheck/build + registry contract + root quality gates |
 

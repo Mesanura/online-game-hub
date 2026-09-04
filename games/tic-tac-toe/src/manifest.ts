@@ -13,5 +13,6 @@ export const ticTacToeManifest = Object.freeze({
   capabilities: Object.freeze({
     hiddenInformation: false,
     deterministicRandomness: false,
+    replay: "player-playback",
   }),
 }) satisfies GameManifest;

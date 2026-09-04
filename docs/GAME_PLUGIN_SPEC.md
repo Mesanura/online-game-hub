@@ -1,7 +1,7 @@
 # Game Plugin 规范
 
-> 状态：V1 回合制规范；M8 realtime/Pong 使用独立契约，不修改本规范
-> 本文是离散 Action 游戏的 Core、Client Module、序列化、版本与随机性契约的权威来源。平台依赖边界见 [ARCHITECTURE.md](./ARCHITECTURE.md)。
+> 状态：V1 权威 Core + Game-defined Setup + 独立 Surface 迁移规范；M8 realtime simulation 保持独立
+> 本文是游戏 Core、Setup、Surface、序列化与版本契约的权威来源。平台依赖边界见 [ARCHITECTURE.md](./ARCHITECTURE.md)。
 
 ## 1. 适用范围
 
@@ -46,6 +46,7 @@ interface GameManifest {
   capabilities: {
     hiddenInformation: boolean;
     deterministicRandomness: boolean;
+    replay: "none" | "record-only" | "player-playback";
     playerAssignment?: {
       kind: "camp" | "seat";
       options: readonly string[];
@@ -61,6 +62,7 @@ interface GameManifest {
 - `title` 是面向玩家的简体中文正式展示名；新游戏加入 registry 前必须由产品确认译名，manifest 与中文文档统一使用该名称。
 - `description` 使用面向玩家的简体中文，不暴露内部架构或协议术语。
 - `defaultConfig` 是通用 Web 创建房间时使用的 JSON-safe 默认 Config，必须已是对应 `configSchema` 接受且不会进一步规范化为不同值的 canonical 数据；它不替代服务端 schema 校验，也不限制其他合法 Config。
+- `capabilities.replay` 对 exact `gameVersion` 必填。`record-only` 保存并验证 canonical journal，但不提供玩家回放；`player-playback` 额外提供 Replay Surface；`none` 已保留类型，但在首轮 runtime 中稳定拒绝注册/启动。
 - 技术标识、代码符号和必要的英文诊断可以保留英文；不得把英文技术标识当作玩家展示名。
 - `PlayerSlotId` 表示比赛中的稳定席位，不是账号、session、connection 或数据库 ID。
 - `game-sdk` 使用 `defineGameId`、`defineGameVersion` 和 `definePlayerSlotId` 构造上述 branded string；brand 只存在于类型系统，wire/replay 中仍是普通字符串。
@@ -216,9 +218,9 @@ type Action = {
 - 骰子 Action 表达 `ROLL`，不携带客户端生成的点数。
 - schema 应拒绝未知或越界字段，并将合法输入规范化后再写入 replay。
 
-## 8. Client Module
+## 8. Legacy Client Module
 
-游戏 Client Module 可以依赖 React 和 `game-client-sdk`，但不得导入服务端 State 或自行实现 authoritative 规则。
+游戏 Client Module 是迁移期兼容路径，可以依赖 React 和 `game-client-sdk`，但不得导入服务端 State 或自行实现 authoritative 规则。新游戏使用下一节的独立 Surface，不再新增 Client Module。
 
 概念契约：
 
@@ -254,7 +256,21 @@ interface GameClientModule<View, Action> {
 
 黑白棋 current `1.1.0` 使用同一 contract 渲染固定 64-cell 公开 View，并提交 `PLACE_DISC(cell)` 或 factory 生成的 `RESIGN`。View 由服务器明确提供 `legalMoves`、`nextTurnSlotId`、BLACK/WHITE 棋子数和 Outcome；客户端不扫描八方向夹线、不计算翻转、不判断是否跳过或终局。对方无合法行动时，Core 在该次 accepted transition 内保持当前行动 slot；没有 `PASS` Action，也不需要 runtime 特例。
 
-## 9. Manifest 与 Export Map
+## 9. Round Setup Definition
+
+游戏可用 `@online-game-hub/game-setup` 声明纯 TypeScript `RoundSetupDefinition<Config, State, Action, View>`。Setup 与 Gameplay Core 一样必须 deterministic、immutable、JSON-serializable，不能依赖 React、DOM、网络、数据库、系统时间或环境 I/O。它接收平台提供的 stable slot facts 与服务端推导的 actor slot，负责规则设置、参与者选择、顺序、阵营和最终配置；不能处理 session、socket、ready、重连或关闭房间。
+
+`FinalizedRoundSetup` 包含 canonical `config`、`participantSlotIds`、实际 `playerOrder` 与逐参与者 assignment。Platform 只验证参与者来自 occupied slots、人数在 manifest 范围、顺序为严格排列、assignment 键集合完整。游戏若需要随机 setup，必须只通过传入的独立 setup RNG，并返回推进后的 RNG；持久化重试复用已固化结果。Gameplay `createInitialState` 只接收 finalize 后的 config、playerOrder、assignment 与新的 gameplay RNG。
+
+首轮 `initialize` 使用 `{ kind: "defaults", config: manifest.defaultConfig }`；重新对局使用 `{ kind: "previous-round", setup }`，完整复用上一局最终设置。平台不会默认生成先手 UI，也不把具体规则字段解释为通用控件。
+
+## 10. Game Surface Artifact
+
+新表现层位于独立 `game-surfaces/<game-id>` workspace，可自行选择 React、Vue、Svelte、Phaser、Canvas、WebGL、WASM 或其他浏览器技术；契约不是 React component。每个 Surface 独立提供 dev/build/test/contract-test，并输出通过 `SurfaceArtifactManifestV1` 校验的静态 artifact：Setup 与 Play entrypoint 必填，Replay entrypoint 只在 `player-playback` 时需要。
+
+Surface 只实现 `@online-game-hub/game-surface-bridge` 的 JSON 消息协议。它解析 projected payload、渲染全部游戏专属信息并发送最小 intent；不得读取 Core、ticket、session、actor、raw State、RNG、canonical replay 或 WebSocket。平台 HUD 不解释比分、棋子、阵营、当前回合、排名或 Outcome。
+
+## 11. Manifest 与 Export Map
 
 `src/manifest.ts` 是单一 manifest 来源，必须无副作用且不导入 client 或 server runtime。避免同时维护 `game.json` 与 TypeScript manifest 造成重复。
 
@@ -272,7 +288,7 @@ interface GameClientModule<View, Action> {
 
 实际构建阶段可以将源码路径替换为 dist 路径，但子路径边界保持不变。Web 不得通过 registry server entry 导入 Core，Game Server 不得导入 `/client`。
 
-## 10. Versioning
+## 12. Versioning
 
 以下变化必须评估并通常提升 `gameVersion`：
 
@@ -282,20 +298,23 @@ interface GameClientModule<View, Action> {
 - RNG 算法、seed 处理或消费顺序变化；
 - 会改变旧 action log 重建结果的 bug fix。
 
-只改变 CSS、动画、无语义文案或等价性能优化，不需要提升 `gameVersion`。
+只改变 CSS、动画、无语义文案或等价性能优化，不需要提升 `gameVersion`，而是提升独立 `surfaceVersion` 并更新 artifact digest。
+
+五种版本互不替代：`gameVersion` 固定规则与 replay 重建；`surfaceVersion` 固定静态表现 artifact；`bridgeVersion` 固定 iframe 消息协议；`protocolVersion` 固定 Web/Game Server envelope；`replayFormatVersion` 固定 canonical record envelope。一次变更只提升实际被破坏的边界。
 
 Registry 必须能够按 exact `gameVersion` 读取旧 replay 所需的 definition。“current”先由 catalog manifest 选定版本，再走同一 exact resolver；不得依赖 definition 登记顺序。旧实现可以在迁移为稳定归档后退役，具体策略见 [REPLAY_DESIGN.md](./REPLAY_DESIGN.md)。
 
-## 11. Plugin Definition of Done
+## 13. Plugin Definition of Done
 
 一个游戏只有满足以下条件才可加入 registry：
 
-- manifest、Core、Client Module、`GAME_SPEC.md` 和局部 `AGENTS.md` 完整；
+- manifest（含显式 replay mode）、Core、Setup definition、Surface artifact、`GAME_SPEC.md` 和局部 `AGENTS.md` 完整；
 - Core 没有禁止依赖和非确定性 API；
 - Config/Action schema 能拒绝不可信输入；
 - 合法、非法、终局、不变性和 replay determinism 测试通过；
 - `projectView` 的信息泄漏测试通过；
 - package 只通过声明的 public subpath exports 被消费。
+- Surface 可在不启动 Next 或 Game Server 时独立构建、运行 fixture、完成 contract test，并通过 artifact digest、Bridge 与 iframe 安全检查。
 
 M6 当时由五子棋证明非 `null` Config 可直接通过既有 create/runtime/replay 契约；为让通用 Web 无游戏分支地取得创建默认值，`GameManifest` 新增必填 `defaultConfig`，并同步迁移所有游戏与消费者。额外六贯棋证明 strict Action union 可同时承载落子与投降、Outcome 可保存变长 canonical path。黑白棋进一步证明一次 transition 可表达多方向翻转、无合法行动、同 slot 续行和非满盘终局；当时无需修改 `GameDefinition`、`GameClientModule`、Protocol V1 或 replay envelope。
 

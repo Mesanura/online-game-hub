@@ -13,6 +13,7 @@ export const chineseCheckersManifest = Object.freeze({
   capabilities: Object.freeze({
     hiddenInformation: false,
     deterministicRandomness: false,
+    replay: "player-playback",
     playerAssignment: Object.freeze({
       kind: "camp",
       options: Object.freeze(["N", "NW", "SW", "S", "SE", "NE"]),

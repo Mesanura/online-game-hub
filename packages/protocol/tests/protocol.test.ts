@@ -4,8 +4,10 @@ import {
   GAME_ACTION_MESSAGE,
   GAME_ROOM_NAME,
   MAX_GAME_ACTION_BYTES,
+  MAX_GAME_SETUP_ACTION_BYTES,
   MAX_REALTIME_INPUT_BYTES,
   PROTOCOL_VERSION,
+  SETUP_PROTOCOL_VERSION,
   REALTIME_INPUT_MESSAGE,
   REALTIME_PROTOCOL_VERSION,
   REALTIME_SERVER_MESSAGE,
@@ -13,8 +15,10 @@ import {
   SERVER_PROTOCOL_MESSAGE,
   commandIdSchema,
   commandRejectedSchema,
+  clientMessageV6Schema,
   createGameRoomRequestSchema,
   gameActionCommandSchema,
+  gameSetupCommandSchema,
   gameServerTicketClaimsSchema,
   joinGameRoomRequestSchema,
   matchSnapshotSchema,
@@ -24,6 +28,7 @@ import {
   realtimeSnapshotSchema,
   roomControlCommandSchema,
   roomLifecycleStateSchema,
+  roomLifecycleStateV6Schema,
   roomConnectedSchema,
   serverMessageSchema,
 } from "../src/index.js";
@@ -63,6 +68,87 @@ describe("transport conventions", () => {
     expect(GAME_ACTION_MESSAGE).toBe("game.action");
     expect(ROOM_CONTROL_MESSAGE).toBe("room.control");
     expect(SERVER_PROTOCOL_MESSAGE).toBe("protocol");
+  });
+});
+
+describe("Protocol V6 game-defined setup", () => {
+  const lifecycle = {
+    type: "room.lifecycle",
+    protocolVersion: SETUP_PROTOCOL_VERSION,
+    isOwner: true,
+    currentRound: { roundNumber: 1, status: "completed" },
+    nextRound: {
+      roundNumber: 2,
+      setupRevision: 3,
+      setupView: { starter: "slot-2", targetScore: 5 },
+      readiness: {
+        canReady: true,
+        selfReady: true,
+        readySlotIds: ["slot-1"],
+        requiredSlotIds: ["slot-1", "slot-2"],
+      },
+    },
+    players: [
+      { slotId: "slot-1", occupied: true, online: true, ready: true },
+      { slotId: "slot-2", occupied: true, online: true, ready: false },
+    ],
+    closed: false,
+    closeReason: null,
+  } as const;
+
+  it("keeps V6 setup separate from exact V5 schemas", () => {
+    expect(SETUP_PROTOCOL_VERSION).toBe(6);
+    expect(roomLifecycleStateV6Schema.parse(lifecycle)).toEqual(lifecycle);
+    expect(roomLifecycleStateSchema.safeParse(lifecycle).success).toBe(false);
+  });
+
+  it("accepts opaque setup intent without identity or authoritative data", () => {
+    const command = {
+      type: "game.setup",
+      protocolVersion: SETUP_PROTOCOL_VERSION,
+      commandId: "setup-1",
+      roundNumber: 2,
+      expectedSetupRevision: 3,
+      action: { type: "SELECT_STARTER", choice: "RANDOM" },
+    } as const;
+    expect(gameSetupCommandSchema.parse(command)).toEqual(command);
+    expect(clientMessageV6Schema.parse(command)).toEqual(command);
+
+    for (const forged of [
+      { actorSlotId: "slot-2" },
+      { state: { secret: true } },
+      { rng: { seed: "secret" } },
+      { outcome: { type: "WIN" } },
+    ]) {
+      expect(
+        gameSetupCommandSchema.safeParse({ ...command, ...forged }).success,
+      ).toBe(false);
+    }
+  });
+
+  it("rejects oversized setup actions and inconsistent readiness", () => {
+    expect(
+      gameSetupCommandSchema.safeParse({
+        type: "game.setup",
+        protocolVersion: SETUP_PROTOCOL_VERSION,
+        commandId: "large-setup",
+        roundNumber: 1,
+        expectedSetupRevision: 0,
+        action: { data: "x".repeat(MAX_GAME_SETUP_ACTION_BYTES + 1) },
+      }).success,
+    ).toBe(false);
+    expect(
+      roomLifecycleStateV6Schema.safeParse({
+        ...lifecycle,
+        nextRound: {
+          ...lifecycle.nextRound,
+          readiness: {
+            ...lifecycle.nextRound.readiness,
+            readySlotIds: ["slot-3"],
+          },
+        },
+      }).success,
+    ).toBe(false);
   });
 });
 

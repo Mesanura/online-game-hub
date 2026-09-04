@@ -31,3 +31,9 @@ export function resolveGameManifest(
       manifest.id === gameId && manifest.gameVersion === gameVersion,
   );
 }
+
+export function resolveCurrentGameManifest(
+  gameId: string,
+): CatalogGameManifest | undefined {
+  return gameCatalog.find((manifest) => manifest.id === gameId);
+}

@@ -37,7 +37,11 @@ const definition: RealtimeGameDefinition<
     minPlayers: 2,
     maxPlayers: 2,
     tickRate: 60,
-    capabilities: { hiddenInformation: false, deterministicRandomness: true },
+    capabilities: {
+      hiddenInformation: false,
+      deterministicRandomness: true,
+      replay: "player-playback",
+    },
   },
   configSchema: z.null(),
   inputSchema: z

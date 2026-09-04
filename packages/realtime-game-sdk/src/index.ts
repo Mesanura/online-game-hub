@@ -3,6 +3,7 @@ import type { ZodType } from "zod";
 export type JsonPrimitive = null | boolean | number | string;
 export type JsonValue =
   JsonPrimitive | readonly JsonValue[] | { readonly [key: string]: JsonValue };
+export type RealtimeReplayMode = "none" | "record-only" | "player-playback";
 
 export type RealtimePlayerSlotId = string & {
   readonly __realtimePlayerSlotId: unique symbol;
@@ -64,6 +65,8 @@ export interface RealtimeGameManifest {
   readonly capabilities: {
     readonly hiddenInformation: false;
     readonly deterministicRandomness: true;
+    /** Explicit recording/playback support for this exact game version. */
+    readonly replay: RealtimeReplayMode;
   };
 }
 

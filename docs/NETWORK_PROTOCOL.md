@@ -1,6 +1,6 @@
 # 网络协议
 
-> 状态：Protocol V5（账户身份、多人营地分配、随机先手、即时重开与统一 Round 准备）与独立 Realtime Protocol V1
+> 状态：Protocol V5/V6 双轨迁移；Realtime Input/Snapshot Protocol V1 保持独立且不变
 > 本文是 Web、Game Server 与浏览器之间身份、房间、消息、revision 和重连语义的权威来源。游戏规则 payload 见 [GAME_PLUGIN_SPEC.md](./GAME_PLUGIN_SPEC.md)。
 
 ## 1. 协议目标
@@ -23,11 +23,11 @@
 
 浏览器直接连接 Game Server。Next.js 不代理 WebSocket，也不保存 authoritative match State。
 
-当前部署使用 Protocol V5。文中提及 V1–V4 的位置描述历史里程碑或兼容拒绝规则；所有现行 request、ticket、message 和 reconnect 语义以 V5 exact schema 为准。
+当前已创建房间继续使用 Protocol V5；部署注册表为每个 exact game version 选择 V5 或 V6，新注册只影响随后创建的房间。文中提及 V1–V4 的位置描述历史里程碑或兼容拒绝规则。任何房间生命周期内都只解析创建时固定的单一代际，不做逐消息猜测。
 
 ## 3. 协议版本
 
-所有 application-level envelope 携带整数 `protocolVersion`。V5 值为 `5`；V1–V4 request、ticket 或 message 由 exact schema 拒绝，不在同一 server 内做兼容猜测。V5 在 V4 账户身份契约上增加多人房间人数与 assignment 控制，因此不静默复用 V4。
+所有 application-level envelope 携带整数 `protocolVersion`。V5 值为 `5`，V6 值为 `6`；V1–V4 request、ticket 或 message 由 exact schema 拒绝。V5 的通用 starter/player-count/assignment 控制保持冻结，仅供 legacy 房间；V6 以 opaque `game.setup` 替代这些通用规则命令。
 
 - 版本表示 wire envelope 兼容性，不等同于 `gameVersion` 或 `replayFormatVersion`。
 - Game Server 在连接或首条消息阶段拒绝不支持的版本。
@@ -279,6 +279,63 @@ interface RoomLifecycleState {
 - Web 只在 active 状态执行关闭/离开前确认；未开局/completed 不弹确认。completed room 拒绝新参与者，并在 5 分钟未开始下一轮时以兼容名称 `REMATCH_TIMEOUT` 关闭。选择或 ready 不延长 TTL；成功启动下一轮时取消 TTL。active/未开局房间的 60 秒 reconnect timeout 以 `RECONNECT_TIMEOUT` 关闭 room，只有 active Round 会产生 abandoned Match。
 - 关闭 lifecycle 先发送，server 经过 25 ms 有界 WebSocket drain 后断开 clients；客户端不能把该时间窗口当成 durable acknowledgment。
 
+### 6.2 Protocol V6 Game-defined Setup
+
+V6 删除 `SELECT_STARTER`、`SELECT_PLAYER_COUNT`、`SELECT_PLAYER_ASSIGNMENT`、`CLEAR_PLAYER_ASSIGNMENT` 和 `START_REMATCH`。平台 `room.control` 只保留 `READY_FOR_ROUND`、`CANCEL_ROUND_READY`、`CLOSE_ROOM` 以及 transport 层 leave；设置由独立 `game.setup` intent 承载：
+
+```ts
+interface GameSetupCommand {
+  type: "game.setup";
+  protocolVersion: 6;
+  commandId: string;
+  roundNumber: number;
+  expectedSetupRevision: number;
+  action: unknown;
+}
+```
+
+服务端从连接推导 actor slot，再以 exact Setup definition 的 schema 解析 opaque Action。Action 最大 16 KiB 且必须 JSON-safe，不得包含 actor、State、Outcome、RNG、seed、session 或 ticket。accepted Action 使 `setupRevision` 恰好增加 1，并清空全部 ready；schema/rule rejected、duplicate、stale 与持久化失败不推进 revision、不改变 Setup State 或 ready。stale 返回 `STALE_SETUP_REVISION`，具体规则拒绝使用 `SETUP_RULE_REJECTED` 与 opaque rule code。
+
+V6 viewer-specific lifecycle 把 Setup View 与 readiness 分离：
+
+```ts
+interface RoomLifecycleStateV6 {
+  type: "room.lifecycle";
+  protocolVersion: 6;
+  isOwner: boolean;
+  currentRound: {
+    roundNumber: number;
+    status: "active" | "completed" | "abandoned";
+  } | null;
+  nextRound: {
+    roundNumber: number;
+    setupRevision: number;
+    setupView: unknown;
+    readiness: {
+      canReady: boolean;
+      selfReady: boolean;
+      readySlotIds: readonly string[];
+      requiredSlotIds: readonly string[];
+    };
+  } | null;
+  players: readonly {
+    slotId: string;
+    occupied: boolean;
+    online: boolean;
+    ready: boolean;
+  }[];
+  closed: boolean;
+  closeReason: RoomCloseReason | null;
+  causedByCommandId?: string;
+}
+```
+
+只有 Setup 选中的参与者可以 ready。全部 required slots 已占用且在线、逐人 ready、Setup 可 finalize 且平台通用校验通过后才启动 Round。Setup 使用独立服务端 RNG；finalized result 在重试前固化，Gameplay 再获得新的 seed。Setup View 与 Surface 消息绝不包含任一 seed。
+
+完成一局后，runtime 立即以上一局完整 `FinalizedRoundSetup` 初始化下一轮，复用 config、参与者、实际 playerOrder 与 assignments；随机顺序不自动重抽。每个参与者点击“重新对局”只等价于自己的 `READY_FOR_ROUND`，不会替其他玩家确认；“调整设置”仅打开 Setup Surface。新局的 State、Outcome、revision/tick、seed、RNG cursor、Match/replay ID 全部重新创建。
+
+V5/V6 generation 与 presentation renderer 一起由 exact deployment registration 决定并写入 live room record。新建房间的配置切换或回滚不会改变已存在房间；只有 V5 房间排空且所有受支持游戏版本迁移完毕后，才能删除旧 schema、控件和 runtime 分支。Realtime Input/Snapshot Protocol 仍为 V1，V6 只替换共享房间与 Setup envelope。
+
 ## 7. Client Action Envelope
 
 V5 transport 名称固定为：Colyseus room name `game`；客户端 custom message type `game.action`；所有 application-level server envelope 通过 custom message type `protocol` 发送，并由 envelope 自身的 `type` 区分 `room.connected`、`match.snapshot` 和 `command.rejected`。
@@ -364,7 +421,7 @@ interface CommandRejected {
 }
 ```
 
-V5 `ProtocolErrorCode` 至少包括：
+V5/V6 `ProtocolErrorCode` 至少包括；Setup 专用代码只会出现在 V6：
 
 | Code                           | 语义                                 | Retryable                        |
 | ------------------------------ | ------------------------------------ | -------------------------------- |
@@ -377,6 +434,10 @@ V5 `ProtocolErrorCode` 至少包括：
 | `STALE_REVISION`               | 客户端基于旧 snapshot 操作           | 收到最新 snapshot 后可重试新意图 |
 | `INVALID_ACTION_PAYLOAD`       | 游戏 Action schema 解析失败          | 否                               |
 | `GAME_RULE_REJECTED`           | Core 拒绝合法形状但违反规则的 Action | 否；附 `gameRuleCode`            |
+| `STALE_SETUP_REVISION`         | Setup intent 基于旧 setup view       | 收到最新 lifecycle 后生成新意图  |
+| `INVALID_SETUP_PAYLOAD`        | Setup Action schema 解析失败         | 否                               |
+| `SETUP_RULE_REJECTED`          | Setup Core 拒绝合法形状的设置意图    | 否；附 opaque rule code          |
+| `SETUP_NOT_READY`              | finalize 或通用参与者约束未满足      | 状态变化后可重试                 |
 | `RATE_LIMITED`                 | 超过平台限额                         | 延迟后可重试                     |
 | `INTERNAL_ERROR`               | 服务端不变量或基础设施故障           | 由服务端策略决定                 |
 
@@ -406,7 +467,7 @@ V5 `ProtocolErrorCode` 至少包括：
 
 - 永远不信任客户端提供的 actor、revision、Action shape、room membership 或 Outcome。
 - 在 rate limit 和 payload size limit 之前不执行昂贵游戏逻辑。
-- Ticket、reconnection token、cookie、session/ticket secret、完整隐藏 State、canonical replay 和 RNG seed 不进入客户端日志、URL、UI 或错误响应。
+- Ticket、reconnection token、cookie、session/ticket secret、完整隐藏 State、canonical replay 和 RNG seed 不进入客户端日志、URL、UI、Game Surface 或错误响应。
 - Canonical replay 可能包含隐藏信息，只能按 [REPLAY_DESIGN.md](./REPLAY_DESIGN.md) 的访问边界处理。
 - 被拒绝命令可以进入安全审计日志，但不得进入 canonical replay。
 

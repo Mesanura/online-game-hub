@@ -19,5 +19,6 @@ export const pongManifest = Object.freeze({
   capabilities: Object.freeze({
     hiddenInformation: false,
     deterministicRandomness: true,
+    replay: "player-playback",
   }),
 }) satisfies RealtimeGameManifest;

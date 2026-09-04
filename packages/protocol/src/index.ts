@@ -1,10 +1,14 @@
 import { z } from "zod";
 
 export const PROTOCOL_VERSION = 5 as const;
+/** Game-defined round setup protocol. V5 remains available during migration. */
+export const SETUP_PROTOCOL_VERSION = 6 as const;
 export const MAX_GAME_ACTION_BYTES = 16_384;
+export const MAX_GAME_SETUP_ACTION_BYTES = 16_384;
 export const GAME_ROOM_NAME = "game" as const;
 export const REALTIME_GAME_ROOM_NAME = "realtime-game" as const;
 export const GAME_ACTION_MESSAGE = "game.action" as const;
+export const GAME_SETUP_MESSAGE = "game.setup" as const;
 export const ROOM_CONTROL_MESSAGE = "room.control" as const;
 export const SERVER_PROTOCOL_MESSAGE = "protocol" as const;
 export const GAME_SERVER_TICKET_AUDIENCE = "game-server" as const;
@@ -107,7 +111,17 @@ function isRealtimeInputPayload(value: unknown): boolean {
   );
 }
 
+function isSetupActionPayload(value: unknown): boolean {
+  if (!isJsonValue(value)) return false;
+  const serialized = JSON.stringify(value);
+  return (
+    serialized !== undefined &&
+    utf8Length(serialized) <= MAX_GAME_SETUP_ACTION_BYTES
+  );
+}
+
 export const protocolVersionSchema = z.literal(PROTOCOL_VERSION);
+export const setupProtocolVersionSchema = z.literal(SETUP_PROTOCOL_VERSION);
 export const revisionSchema = z
   .number()
   .int()
@@ -133,6 +147,13 @@ export const jsonValueSchema = z.custom<unknown>(isJsonValue, {
 export const gameActionPayloadSchema = z.custom<unknown>(isActionPayload, {
   error: "Action must be JSON-serializable and at most 16384 UTF-8 bytes.",
 });
+export const gameSetupActionPayloadSchema = z.custom<unknown>(
+  isSetupActionPayload,
+  {
+    error:
+      "Setup action must be JSON-serializable and at most 16384 UTF-8 bytes.",
+  },
+);
 
 export const viewerSchema = z.discriminatedUnion("kind", [
   z
@@ -337,15 +358,19 @@ export const roomLifecycleStateSchema = z
   });
 export type RoomLifecycleState = z.infer<typeof roomLifecycleStateSchema>;
 
+const gameServerTicketClaimsShape = {
+  issuer: z.string().min(1).max(128),
+  audience: z.literal(GAME_SERVER_TICKET_AUDIENCE),
+  playerSessionId: z.string().min(1).max(128),
+  userId: z.uuid().optional(),
+  issuedAt: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+  expiresAt: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+  ticketId: z.string().min(1).max(128),
+} as const;
+
 export const gameServerTicketClaimsSchema = z
   .object({
-    issuer: z.string().min(1).max(128),
-    audience: z.literal(GAME_SERVER_TICKET_AUDIENCE),
-    playerSessionId: z.string().min(1).max(128),
-    userId: z.uuid().optional(),
-    issuedAt: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
-    expiresAt: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
-    ticketId: z.string().min(1).max(128),
+    ...gameServerTicketClaimsShape,
     protocolVersion: protocolVersionSchema,
   })
   .strict()
@@ -433,6 +458,10 @@ export const protocolErrorCodeSchema = z.enum([
   "STALE_REVISION",
   "INVALID_ACTION_PAYLOAD",
   "GAME_RULE_REJECTED",
+  "STALE_SETUP_REVISION",
+  "INVALID_SETUP_PAYLOAD",
+  "SETUP_RULE_REJECTED",
+  "SETUP_NOT_READY",
   "RATE_LIMITED",
   "INTERNAL_ERROR",
 ]);
@@ -467,6 +496,237 @@ export const serverMessageSchema = z.discriminatedUnion("type", [
 ]);
 export type ClientMessage = z.infer<typeof clientMessageSchema>;
 export type ServerMessage = z.infer<typeof serverMessageSchema>;
+
+const protocolV6BaseSchema = z.object({
+  protocolVersion: setupProtocolVersionSchema,
+});
+
+export const gameActionCommandV6Schema = protocolV6BaseSchema
+  .extend({
+    type: z.literal("game.action"),
+    commandId: commandIdSchema,
+    roundNumber: roundNumberSchema,
+    expectedRevision: revisionSchema,
+    action: gameActionPayloadSchema,
+  })
+  .strict();
+export type GameActionCommandV6 = z.infer<typeof gameActionCommandV6Schema>;
+
+export const gameSetupCommandSchema = protocolV6BaseSchema
+  .extend({
+    type: z.literal("game.setup"),
+    commandId: commandIdSchema,
+    roundNumber: roundNumberSchema,
+    expectedSetupRevision: revisionSchema,
+    action: gameSetupActionPayloadSchema,
+  })
+  .strict();
+export type GameSetupCommand = z.infer<typeof gameSetupCommandSchema>;
+
+const roomControlV6BaseSchema = protocolV6BaseSchema.extend({
+  type: z.literal("room.control"),
+  commandId: commandIdSchema,
+});
+
+export const roomControlCommandV6Schema = z.discriminatedUnion("operation", [
+  roomControlV6BaseSchema
+    .extend({ operation: z.literal("READY_FOR_ROUND") })
+    .strict(),
+  roomControlV6BaseSchema
+    .extend({ operation: z.literal("CANCEL_ROUND_READY") })
+    .strict(),
+  roomControlV6BaseSchema
+    .extend({ operation: z.literal("CLOSE_ROOM") })
+    .strict(),
+]);
+export type RoomControlCommandV6 = z.infer<typeof roomControlCommandV6Schema>;
+
+const lifecyclePlayerV6Schema = z
+  .object({
+    slotId: z.string().min(1),
+    occupied: z.boolean(),
+    online: z.boolean(),
+    ready: z.boolean(),
+  })
+  .strict();
+
+const readinessV6Schema = z
+  .object({
+    canReady: z.boolean(),
+    selfReady: z.boolean(),
+    readySlotIds: z.array(z.string().min(1)).max(6),
+    requiredSlotIds: z.array(z.string().min(1)).min(1).max(6),
+  })
+  .strict()
+  .superRefine((readiness, context) => {
+    if (
+      new Set(readiness.readySlotIds).size !== readiness.readySlotIds.length ||
+      new Set(readiness.requiredSlotIds).size !==
+        readiness.requiredSlotIds.length
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Readiness slot ids must be unique.",
+        path: ["readySlotIds"],
+      });
+    }
+    const required = new Set(readiness.requiredSlotIds);
+    if (readiness.readySlotIds.some((slotId) => !required.has(slotId))) {
+      context.addIssue({
+        code: "custom",
+        message: "Ready slots must be selected round participants.",
+        path: ["readySlotIds"],
+      });
+    }
+    if (!readiness.canReady && readiness.selfReady) {
+      context.addIssue({
+        code: "custom",
+        message: "A viewer that cannot ready cannot be marked ready.",
+        path: ["selfReady"],
+      });
+    }
+  });
+
+const nextRoundLifecycleV6Schema = z
+  .object({
+    roundNumber: roundNumberSchema,
+    setupRevision: revisionSchema,
+    setupView: jsonValueSchema,
+    readiness: readinessV6Schema,
+  })
+  .strict();
+
+export const roomLifecycleStateV6Schema = z
+  .object({
+    type: z.literal("room.lifecycle"),
+    protocolVersion: setupProtocolVersionSchema,
+    isOwner: z.boolean(),
+    currentRound: currentRoundLifecycleSchema.nullable(),
+    nextRound: nextRoundLifecycleV6Schema.nullable(),
+    closed: z.boolean(),
+    closeReason: roomCloseReasonSchema.nullable(),
+    players: z.array(lifecyclePlayerV6Schema).min(1).max(6),
+    causedByCommandId: commandIdSchema.optional(),
+  })
+  .strict()
+  .superRefine((state, context) => {
+    if (state.closed !== (state.closeReason !== null)) {
+      context.addIssue({
+        code: "custom",
+        message: "Closed state and close reason must be consistent.",
+        path: ["closeReason"],
+      });
+    }
+    if (state.closed && state.nextRound !== null) {
+      context.addIssue({
+        code: "custom",
+        message: "A closed room cannot offer a next round.",
+        path: ["nextRound"],
+      });
+    }
+    if (
+      !state.closed &&
+      state.nextRound === null &&
+      state.currentRound?.status !== "active"
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "An open room without an active round needs setup.",
+        path: ["nextRound"],
+      });
+    }
+    if (state.currentRound?.status === "active" && state.nextRound !== null) {
+      context.addIssue({
+        code: "custom",
+        message: "An active round cannot offer setup.",
+        path: ["nextRound"],
+      });
+    }
+    if (
+      state.nextRound !== null &&
+      state.nextRound.roundNumber !== (state.currentRound?.roundNumber ?? 0) + 1
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "The next round number must follow the current round.",
+        path: ["nextRound", "roundNumber"],
+      });
+    }
+  });
+export type RoomLifecycleStateV6 = z.infer<typeof roomLifecycleStateV6Schema>;
+
+export const gameServerTicketClaimsV6Schema = z
+  .object({
+    ...gameServerTicketClaimsShape,
+    protocolVersion: setupProtocolVersionSchema,
+  })
+  .strict()
+  .refine((claims) => claims.expiresAt > claims.issuedAt, {
+    error: "Ticket expiry must be after issue time.",
+    path: ["expiresAt"],
+  });
+export type GameServerTicketClaimsV6 = z.infer<
+  typeof gameServerTicketClaimsV6Schema
+>;
+
+export const createGameRoomRequestV6Schema = createGameRoomRequestSchema
+  .omit({ protocolVersion: true })
+  .extend({ protocolVersion: setupProtocolVersionSchema })
+  .strict();
+export const joinGameRoomRequestV6Schema = joinGameRoomRequestSchema
+  .omit({ protocolVersion: true })
+  .extend({ protocolVersion: setupProtocolVersionSchema })
+  .strict();
+export const gameRoomRequestV6Schema = z.discriminatedUnion("type", [
+  createGameRoomRequestV6Schema,
+  joinGameRoomRequestV6Schema,
+]);
+
+export const roomConnectedV6Schema = roomConnectedSchema
+  .omit({ protocolVersion: true })
+  .extend({ protocolVersion: setupProtocolVersionSchema })
+  .strict();
+
+export const matchSnapshotV6Schema = matchSnapshotSchema
+  .omit({ protocolVersion: true })
+  .extend({ protocolVersion: setupProtocolVersionSchema })
+  .strict();
+type InferredMatchSnapshotV6 = z.infer<typeof matchSnapshotV6Schema>;
+export type MatchSnapshotV6<View = unknown, Outcome = unknown> = Omit<
+  InferredMatchSnapshotV6,
+  "outcome" | "view"
+> & {
+  readonly view: View;
+  readonly outcome: Outcome | null;
+};
+
+export const commandRejectedV6Schema = z
+  .object({
+    type: z.literal("command.rejected"),
+    protocolVersion: setupProtocolVersionSchema,
+    commandId: commandIdSchema.optional(),
+    code: protocolErrorCodeSchema,
+    revision: revisionSchema.optional(),
+    setupRevision: revisionSchema.optional(),
+    gameRuleCode: z.string().min(1).optional(),
+    retryable: z.boolean(),
+    snapshot: matchSnapshotV6Schema.optional(),
+  })
+  .strict();
+
+export const clientMessageV6Schema = z.discriminatedUnion("type", [
+  gameActionCommandV6Schema,
+  gameSetupCommandSchema,
+  roomControlCommandV6Schema,
+]);
+export const serverMessageV6Schema = z.discriminatedUnion("type", [
+  roomConnectedV6Schema,
+  roomLifecycleStateV6Schema,
+  matchSnapshotV6Schema,
+  commandRejectedV6Schema,
+]);
+export type ClientMessageV6 = z.infer<typeof clientMessageV6Schema>;
+export type ServerMessageV6 = z.infer<typeof serverMessageV6Schema>;
 
 export const realtimeProtocolVersionSchema = z.literal(
   REALTIME_PROTOCOL_VERSION,
