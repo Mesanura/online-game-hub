@@ -1,8 +1,8 @@
 # Realtime Runtime 设计基线
 
-> 状态：M8 下一轮范围已确认，尚未实施
+> 状态：M8 已实现（单实例双人 Pong）
 >
-> 本文是“独立 realtime runtime 与 Phaser Pong”下一轮的权威设计边界。现有回合制契约仍以 [GAME_PLUGIN_SPEC.md](./GAME_PLUGIN_SPEC.md)、[NETWORK_PROTOCOL.md](./NETWORK_PROTOCOL.md) 和 [REPLAY_DESIGN.md](./REPLAY_DESIGN.md) 为准。
+> 本文是“独立 realtime runtime 与 Phaser Pong”的权威设计边界。现有回合制契约仍以 [GAME_PLUGIN_SPEC.md](./GAME_PLUGIN_SPEC.md)、[NETWORK_PROTOCOL.md](./NETWORK_PROTOCOL.md) 和 [REPLAY_DESIGN.md](./REPLAY_DESIGN.md) 为准。
 
 ## 1. 目标与范围
 
@@ -30,7 +30,7 @@ Realtime client host 负责 ticket/join、lifecycle、snapshot 顺序、重连�
 
 ## 3. 计划中的 package 边界
 
-以下 package 名称是 M8 的目标，不代表当前仓库已有 public API：
+以下 package 是 M8 当前实现的 public API 边界：
 
 | Package                        | 目标职责                                                                                               | 不得依赖                                                          |
 | ------------------------------ | ------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------- |

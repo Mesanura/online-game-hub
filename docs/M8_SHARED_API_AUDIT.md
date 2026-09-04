@@ -1,6 +1,6 @@
 # M8 Shared Public API 审计
 
-本审计记录 M8 编码前确认的现有边界及所需公共变更。旧回合制游戏继续使用 Protocol V5、Replay Format V1、`GameDefinition`、`GameClientModule`、`game.action`、`match.snapshot` 和 revision pipeline。
+本审计记录 M8 编码前确认的现有边界及所需公共变更，并作为实现后的兼容性证据。旧回合制游戏继续使用 Protocol V5、Replay Format V1、`GameDefinition`、`GameClientModule`、`game.action`、`match.snapshot` 和 revision pipeline。
 
 | 变更                           | 跨 package 价值                                                                                    | 兼容性与迁移                                                                                                                                                                  | Contract tests                                                                                                                       |
 | ------------------------------ | -------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
@@ -11,4 +11,4 @@
 | `realtime-game-client-sdk`     | Web 与 Phaser client 需要无游戏/Phaser依赖的 transport host 与 visual interpolation contract       | 新 package；不依赖 `game-client-sdk`，V5 lifecycle 只作为平台消息复用                                                                                                         | host/interpolation tests 覆盖最小 input、ack、snapshot monotonicity、viewer fail-closed、rejection 与只影响显示的 interpolation      |
 | Pong registry/package exports  | catalog、server composition、Web lazy loader需要显式发现 Pong                                      | 只增加静态登记和 `/manifest`、`/core`、`/client` exports；禁止目录扫描                                                                                                        | registry、Pong Core/client/golden tests                                                                                              |
 
-数据库评估：离散 `replay_actions(sequence, action JSONB)` 无法用列约束表达 realtime tick/runtime，因此不能复用为 opaque realtime payload。完整 M8 持久化应增加专用 realtime replay event 表或等价的显式 `tick`、`runtime`、format 列与 adapter；在该迁移完成前不得声称 realtime PostgreSQL archive 已完成。
+数据库评估已落地：离散 `replay_actions(sequence, action JSONB)` 无法用列约束表达 realtime tick/runtime，因此 realtime 使用专用 `realtime_replays`、`realtime_replay_events`、`realtime_rooms`、`realtime_room_players`、`realtime_matches` 和 `realtime_match_players` 表及对应 adapter。Realtime replay 的 `tick`、runtime、format、seed、outcome 和完成状态均有显式列/约束，并由 exact verifier 在读取端再次校验。

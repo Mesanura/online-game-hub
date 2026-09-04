@@ -1,6 +1,6 @@
 # Replay 设计
 
-> 状态：Replay Format V1（Protocol V5 的账户归属和可选营地 assignment 不改变 replay envelope）；M8 realtime replay 需新增独立格式，尚未实施
+> 状态：Replay Format V1（Protocol V5 的账户归属和可选营地 assignment 不改变 replay envelope）与独立 Realtime Replay Format V1
 > 本文是 canonical replay 内容、确定性重建、版本兼容和存储端口的权威来源。Core 随机性规则见 [GAME_PLUGIN_SPEC.md](./GAME_PLUGIN_SPEC.md)。
 
 ## 1. 目标

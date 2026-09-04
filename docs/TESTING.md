@@ -359,7 +359,7 @@ pnpm test:database
 
 ## 13. M8 Realtime Runtime 测试要求
 
-本节是下一轮已确认、尚未实现的验收矩阵。realtime runtime 或 `games/pong` 的改动至少新增并实际运行：
+本节是 M8 已实现的验收矩阵。realtime runtime 或 `games/pong` 的改动至少新增并实际运行：
 
 - 纯 simulation tests：固定整数 60 Hz tick、输入生效顺序、球拍/边界碰撞、得分/发球、终局/投降、immutability、JSON serialization、viewer projection，以及相同 seed/input log 的逐 tick determinism；
 - realtime replay tests：server-assigned tick 的 input change log 可 exact 重建；tick/sequence gap、错 actor、schema-invalid input、重复或倒退 `inputSequence`、被拒绝 command 和篡改 Outcome 可靠失败；既有 Replay Format V1 golden fixtures 持续通过；

@@ -1,6 +1,6 @@
 # 系统架构
 
-> 状态：架构基线（Protocol V5，M1–M7-B、逐局先手、多人 assignment、三阶段 Web 与窄版 create-game 已完成；M8 realtime runtime 与 Phaser Pong 已确认范围、尚未实施）
+> 状态：架构基线（Protocol V5、独立 Realtime Protocol V1，M1–M8、逐局先手、多人 assignment、三阶段 Web 与窄版 create-game 已完成）
 > 本文是系统职责、目录结构、依赖方向和部署基线的权威来源。产品范围见 [PRODUCT.md](./PRODUCT.md)。
 
 ## 1. 架构目标
@@ -104,7 +104,7 @@ Package export map 提供：
 
 默认不创建游戏专属 Colyseus adapter。只有通用 runtime 无法表达、且经过架构评审确认的需求，才允许增加 server extension；扩展仍不得把 Colyseus 引入 Core。
 
-M8 是已确认的例外：实时游戏不尝试把 tick、持续输入、插值或预测塞入本节的离散 Action runtime，而是引入独立的 realtime runtime family。其边界和尚未实施的公共契约见 [REALTIME_RUNTIME_DESIGN.md](./REALTIME_RUNTIME_DESIGN.md)。
+M8 是已落地的例外：实时游戏不把 tick、持续输入、插值或预测塞入本节的离散 Action runtime，而是使用独立的 realtime runtime family。其边界和公共契约见 [REALTIME_RUNTIME_DESIGN.md](./REALTIME_RUNTIME_DESIGN.md)。
 
 每个游戏目录包含自己的规则说明和简短 `AGENTS.md`。游戏目录的 Agent 文档只补充该游戏特有不变量，不复制根规则。
 
@@ -155,7 +155,7 @@ Hard Rules：
 
 具体 Core API 见 [GAME_PLUGIN_SPEC.md](./GAME_PLUGIN_SPEC.md)，网络 envelope 见 [NETWORK_PROTOCOL.md](./NETWORK_PROTOCOL.md)。
 
-### 7.1 M8 realtime 组合边界（计划）
+### 7.1 M8 realtime 组合边界（已实现）
 
 `apps/game-server` 仍是唯一 composition root，但必须按 manifest 的 `runtime` 显式选择 turn-based 或 realtime room adapter；不能在现有 authoritative room 中增加 `if (gameId === "pong")` 分支。`apps/web` 也按同一 manifest 选择离散 Client Host 或 realtime Client Host。两个 runtime 可以共享 ticket、room code、stable slot、lifecycle、reconnect 和 Match/账户归属 ports，但 realtime 包不能反向导入回合制 runtime 的实现。
 
@@ -292,7 +292,7 @@ Room 必须串行处理 Action。任何未来多实例方案都必须维持“�
 - 用户名+密码账户使用独立 `password_credentials` 与 `account_sessions` 表；session token 只以 SHA-256 hash 存储，Argon2id 负责密码 hash。
 - Protocol V5 ticket 可选携带可信 `userId`。slot 保存 `{ playerSessionId, userId }` 私有快照；Round 开始时写入 `match_players.user_id`，之后不重新查询登录态。
 - 游客可玩但无历史；账户注册/登录不认领旧游客比赛。M7-B replay API 仅允许当前账户参赛且 Match/replay 均 completed，并返回服务端逐帧 `projectView`；浏览器不接收 canonical replay、seed、raw State 或 Actions。
-- M8 realtime runtime 与 Phaser Pong 是下一轮已确认范围；其 realtime protocol、simulation、replay 和 client host 仍未进入当前生产组合，不能把“计划中的包”当作现有 public API。
+- M8 realtime runtime 与 Phaser Pong 已进入当前生产组合；其 realtime protocol、simulation、replay 和 client host 仍与回合制 public API 隔离。
 
 ### 10.2 暂缓
 

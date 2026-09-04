@@ -1,6 +1,6 @@
 # 产品目标与范围
 
-> 状态：产品基线（M1–M7-B 已完成，当前使用 Protocol V5；M8“独立 realtime runtime 与 Phaser Pong”已确认范围、尚未实施）
+> 状态：产品基线（M1–M8 已完成，当前使用 Protocol V5 与独立 Realtime Protocol V1）
 > 本文是产品目标、范围和非目标的权威来源。技术实现边界见 [ARCHITECTURE.md](./ARCHITECTURE.md)。
 
 ## 1. 产品愿景
@@ -130,7 +130,7 @@ M7-A 提供用户名+密码账户。用户名规范化为 lowercase ASCII `[a-z0
 - 卡牌、骰子、隐藏信息和更多玩家数量的游戏；
 - 使用 Phaser 的实时 2D 游戏。
 
-下一轮 M8 已选择双人 Pong 作为实时 2D 验证游戏。它使用固定 tick 的服务端权威模拟、服务器决定的输入生效 tick 和仅含公开视图的快照；Phaser 只负责采集输入、插值和渲染。Realtime runtime 与离散 Action runtime 并列，继续复用目录、身份、ticket、房间码、stable slots、ready/reconnect、Round/Match 生命周期、账户归属和私有 replay 授权边界，但不复用回合制 `GameDefinition`、`game.action`、revision 或客户端 Host。完整范围和不变量以 [REALTIME_RUNTIME_DESIGN.md](./REALTIME_RUNTIME_DESIGN.md) 为准。
+M8 选择双人 Pong 作为实时 2D 验证游戏。它使用固定 tick 的服务端权威模拟、服务器决定的输入生效 tick 和仅含公开视图的快照；Phaser 只负责采集输入、插值和渲染。Realtime runtime 与离散 Action runtime 并列，继续复用目录、身份、ticket、房间码、stable slots、ready/reconnect、Round/Match 生命周期、账户归属和私有 replay 授权边界，但不复用回合制 `GameDefinition`、`game.action`、revision 或客户端 Host。完整范围和不变量以 [REALTIME_RUNTIME_DESIGN.md](./REALTIME_RUNTIME_DESIGN.md) 为准。
 
 ## 7. 当前明确非目标
 

@@ -1,6 +1,6 @@
 # 开发路线图
 
-> 状态：M1–M6、Protocol V5 多人中国跳棋、账户身份、密码账户/私有历史、三阶段 Web、窄版 create-game 与通用投降/规则版本增强已完成；M8 realtime runtime 与 Phaser Pong 已确认范围、尚未实施
+> 状态：M1–M8、Protocol V5 多人中国跳棋、账户身份、密码账户/私有历史、三阶段 Web、窄版 create-game 与通用投降/规则版本增强已完成
 > 本文是项目阶段顺序和里程碑退出条件的权威来源。里程碑按依赖排序，不承诺具体日期。
 
 ## 原则
@@ -260,7 +260,7 @@
 
 ## M8：独立 realtime runtime 与 Phaser Pong
 
-> 实施状态：下一轮已确认，尚未开始。详细运行时契约见 [REALTIME_RUNTIME_DESIGN.md](./REALTIME_RUNTIME_DESIGN.md)。
+> 实施状态：已完成（单实例双人 Pong）。详细运行时契约见 [REALTIME_RUNTIME_DESIGN.md](./REALTIME_RUNTIME_DESIGN.md)。
 
 目标：以一个双人实时 Pong 纵切验证“固定 tick、持续输入、服务器权威物理、快照插值和 Phaser 渲染”可以与现有离散 Action 游戏并列运行，而不污染回合制 Core 或其 wire/runtime 契约。
 
@@ -281,8 +281,8 @@
 - 实时协议、runtime、registry、PostgreSQL archive、私有 replay、Phaser client、两浏览器 E2E 和全仓质量门禁按 [TESTING.md](./TESTING.md) 完成；
 - 不引入 Matchmaking、Lobby、观战、公开 replay、Redis、多实例、durable active-room recovery、客户端预测/回滚、通用 ECS 或第二个 realtime 游戏。
 
-## 下一轮开发提示
+## M8 维护提示
 
-M8 开发应以 [REALTIME_RUNTIME_DESIGN.md](./REALTIME_RUNTIME_DESIGN.md) 为权威起点。实现前必须先阅读 realtime 设计基线，并在任何 shared public API、Protocol、Replay Format 或数据库 schema 修改前完成其中要求的兼容性评估。
+后续 realtime 变更仍应以 [REALTIME_RUNTIME_DESIGN.md](./REALTIME_RUNTIME_DESIGN.md) 为权威边界。修改 shared public API、Protocol、Replay Format 或数据库 schema 前，必须完成其中要求的兼容性评估。
 
 M8 结束后再由产品证据选择下一个 M7 候选能力；不要把 OAuth、Lobby、Matchmaking、排行榜、观战、公开 replay、durable active room、Redis 或多实例混入本轮。

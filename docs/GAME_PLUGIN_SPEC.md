@@ -1,6 +1,6 @@
 # Game Plugin 规范
 
-> 状态：V1 回合制规范；M8 realtime/Pong 使用独立契约，尚未实施
+> 状态：V1 回合制规范；M8 realtime/Pong 使用独立契约，不修改本规范
 > 本文是离散 Action 游戏的 Core、Client Module、序列化、版本与随机性契约的权威来源。平台依赖边界见 [ARCHITECTURE.md](./ARCHITECTURE.md)。
 
 ## 1. 适用范围
