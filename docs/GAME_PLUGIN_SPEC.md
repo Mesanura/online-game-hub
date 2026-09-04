@@ -270,6 +270,8 @@ interface GameClientModule<View, Action> {
 
 Surface 只实现 `@online-game-hub/game-surface-bridge` 的 JSON 消息协议。它解析 projected payload、渲染全部游戏专属信息并发送最小 intent；不得读取 Core、ticket、session、actor、raw State、RNG、canonical replay 或 WebSocket。平台 HUD 不解释比分、棋子、阵营、当前回合、排名或 Outcome。
 
+JavaScript Surface 可选用 `GameSurfaceBridge` helper：实例只接受指定 parent window/origin 的一次 `host.hello`，随后只通过移交的 `MessagePort` 收发 strict message，并在 timeout、非法消息或 dispose 后关闭。平台侧 `SurfaceBridgeHost` 在 ready 前拒绝发消息，负责 timeout/crash/retry 与重复 `clientIntentId` 抑制。两者都是 transport helper，不解释游戏 intent，也不补写 command ID、actor、round、revision 或 input sequence；这些仍只属于平台 Host SDK。
+
 ## 11. Manifest 与 Export Map
 
 `src/manifest.ts` 是单一 manifest 来源，必须无副作用且不导入 client 或 server runtime。避免同时维护 `game.json` 与 TypeScript manifest 造成重复。

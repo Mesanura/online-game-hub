@@ -176,6 +176,8 @@ Realtime simulation 使用固定整数单位和单调 server tick；实际 wall 
 
 V1 Host 只创建不含 `allow-same-origin` 的 sandboxed iframe，按能力最小开放 scripts 与 pointer lock。静态路径不读取登录态，并为 opaque origin 模块加载提供 CORS；CSP 默认 `connect-src 'none'`，素材随 artifact 发布。首个 window `postMessage` 仅携带一次性 nonce 并移交 `MessageChannel`，之后双方只监听专用 port。Host 校验 iframe window、nonce、bridge version 和每条 strict schema；10 秒未 ready、Surface crash 或非法消息进入可重试错误态，且不会提交 intent。
 
+`game-surface-bridge` 的公开 JavaScript helper 由两端组成：平台使用 `SurfaceBridgeHost.start/retry/send/reportSurfaceCrash/dispose` 驱动 `idle → loading → ready | failed → disposed` 生命周期；Surface 使用 `GameSurfaceBridge.start/send/dispose` 接收单次握手并绑定专用 port。握手传输或 port 发送抛错一律 fail closed；失败实例必须由 Host 显式 `retry` 创建新 nonce 和新 channel。非 JavaScript Surface 可直接按同一 strict JSON schema 实现，不依赖 helper。
+
 Host 只发送 mode、game/version、locale、reduced-motion、最新 projected View、平台连接/只读/round/revision/tick 状态、viewport/fullscreen、intent 结果和 dispose。Surface 只发送 Setup Action、回合制 Action 或 realtime Input intent，以及无敏感数据的 ready/error/diagnostic。Host SDK 才能补充 command ID、round、expected revision、input sequence 和 transport envelope；Surface 不接触 ticket、session、actor、raw State、RNG、canonical replay 或 WebSocket。
 
 ### 7.3 Game-defined Round Setup

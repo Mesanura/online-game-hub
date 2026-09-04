@@ -293,7 +293,7 @@ M8 结束后再由产品证据选择下一个 M7 候选能力；不要把 OAuth�
 
 ### M9-A：契约与兼容骨架
 
-> 实施状态：进行中。
+> 实施状态：已完成契约、双轨注册与兼容骨架；现有房间行为保持不变。
 
 - 新增无 React/Next/具体游戏依赖的 `game-surface-bridge`，定义 artifact schema、Bridge V1、nonce/MessageChannel 与 strict JSON messages；
 - 新增无 transport/DOM 依赖的 `game-setup`，定义 Setup State/Action/View、transition/projection/readiness/finalize 与 `FinalizedRoundSetup` 通用校验；
@@ -305,6 +305,8 @@ M8 结束后再由产品证据选择下一个 M7 候选能力；不要把 OAuth�
 
 ### M9-B：非挤压式游戏页外壳
 
+> 实施状态：代码与组件测试已完成，viewport E2E 随 M9-C iframe Host 一并补齐。
+
 - HUD 改为默认收起的覆盖式抽屉，最小浮动工具条只保留 HUD、连接状态与全屏；
 - stage 占满可用空间并使用 `min-width/min-height: 0`、`overflow: hidden`；
 - Fullscreen API 被拒绝或不支持时切换 `100dvh` focus mode；ESC、focus trap、ARIA 和 reduced-motion 完整；
@@ -313,6 +315,8 @@ M8 结束后再由产品证据选择下一个 M7 候选能力；不要把 OAuth�
 退出条件：既有游戏无需迁移即可通过桌面/平板/手机 viewport 与现有 E2E。
 
 ### M9-C：独立 Surface 工具链与 Host
+
+> 实施状态：进行中；Bridge V1 双端运行时已实现，workspace/artifact/Web Host/Workbench 待完成。
 
 - `game-surfaces/*` 加入 workspace、Turbo、依赖检查、CI 和 Docker static copy；`dist` 不提交；
 - manifest/digest/version drift 校验后复制到 `/game-surfaces/<gameId>/<surfaceVersion>/<mode>/` 并使用 immutable cache；

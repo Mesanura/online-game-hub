@@ -96,4 +96,34 @@ describe("Game Surface Bridge V1", () => {
   ])("rejects forged or non-JSON surface messages %#", (candidate) => {
     expect(surfaceHostMessageSchema.safeParse(candidate).success).toBe(false);
   });
+
+  it.each(["ticket", "sessionId", "actorSlotId", "seed", "rngState"])(
+    "rejects projected payloads containing the sensitive key %s",
+    (key) => {
+      expect(
+        hostSurfaceMessageSchema.safeParse({
+          type: "host.state",
+          sequence: 1,
+          connectionState: "connected",
+          readOnly: false,
+          roundNumber: 1,
+          revision: 0,
+          payload: { nested: { [key]: "secret" } },
+        }).success,
+      ).toBe(false);
+    },
+  );
+
+  it.each(["ticket", "sessionId", "actor", "commandId", "inputSequence"])(
+    "rejects Surface intents containing the Host-owned key %s",
+    (key) => {
+      expect(
+        surfaceHostMessageSchema.safeParse({
+          type: "surface.intent",
+          clientIntentId: "intent-1",
+          intent: { type: "ACTION", nested: { [key]: "forged" } },
+        }).success,
+      ).toBe(false);
+    },
+  );
 });
