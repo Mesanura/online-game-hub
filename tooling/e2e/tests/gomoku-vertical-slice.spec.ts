@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import type { Page } from "@playwright/test";
+import type { FrameLocator, Page } from "@playwright/test";
 
 import {
   PostgresReplayStore,
@@ -14,6 +14,10 @@ import { registerE2eAccount } from "../src/account.js";
 import type { E2eHarness } from "../src/harness.js";
 
 let harness: E2eHarness;
+
+function gomokuSurface(page: Page): FrameLocator {
+  return page.frameLocator('[data-testid="game-surface-iframe"]');
+}
 
 test.beforeAll(async () => {
   harness = await startE2eHarness();
@@ -58,7 +62,7 @@ async function playAcceptedStone(
   cell: number,
   revision: number,
 ): Promise<void> {
-  const button = actor.locator(`[data-cell-index="${cell}"]`);
+  const button = gomokuSurface(actor).locator(`[data-cell-index="${cell}"]`);
   await expect(button).toBeEnabled();
   await button.click();
   await expectRevision(viewers, revision);
@@ -76,25 +80,22 @@ async function readHistory(
 }
 
 async function expectDesktopBoardFits(page: Page): Promise<void> {
-  const boardScroll = page.locator(".gomoku-board-scroll");
-  const board = page.locator(".gomoku-board");
+  const board = gomokuSurface(page).locator(".board");
+  const surfaceFrame = page.getByTestId("game-surface-iframe");
   const stage = page.getByTestId("game-stage");
-  await expect(boardScroll).toBeVisible();
   await expect(board).toBeVisible();
-  const scrollSize = await boardScroll.evaluate((element) => ({
-    clientHeight: element.clientHeight,
-    clientWidth: element.clientWidth,
-    scrollHeight: element.scrollHeight,
-    scrollWidth: element.scrollWidth,
-  }));
-  expect(scrollSize.scrollWidth).toBeLessThanOrEqual(scrollSize.clientWidth);
-  expect(scrollSize.scrollHeight).toBeLessThanOrEqual(scrollSize.clientHeight);
-  const [boardBox, stageBox] = await Promise.all([
+  const [boardBox, frameBox, stageBox] = await Promise.all([
     board.boundingBox(),
+    surfaceFrame.boundingBox(),
     stage.boundingBox(),
   ]);
   const viewport = page.viewportSize();
-  if (boardBox === null || stageBox === null || viewport === null) {
+  if (
+    boardBox === null ||
+    frameBox === null ||
+    stageBox === null ||
+    viewport === null
+  ) {
     throw new Error("The default Gomoku board is not inside the game stage.");
   }
   const pageSize = await page.evaluate(() => ({
@@ -103,12 +104,20 @@ async function expectDesktopBoardFits(page: Page): Promise<void> {
   }));
   expect(pageSize.scrollHeight).toBeLessThanOrEqual(pageSize.clientHeight);
   expect(boardBox.height).toBeGreaterThanOrEqual(viewport.height * 0.64);
-  expect(boardBox.x).toBeGreaterThanOrEqual(stageBox.x);
-  expect(boardBox.y).toBeGreaterThanOrEqual(stageBox.y);
+  expect(boardBox.x).toBeGreaterThanOrEqual(frameBox.x);
+  expect(boardBox.y).toBeGreaterThanOrEqual(frameBox.y);
   expect(boardBox.x + boardBox.width).toBeLessThanOrEqual(
-    stageBox.x + stageBox.width,
+    frameBox.x + frameBox.width,
   );
   expect(boardBox.y + boardBox.height).toBeLessThanOrEqual(
+    frameBox.y + frameBox.height,
+  );
+  expect(frameBox.x).toBeGreaterThanOrEqual(stageBox.x);
+  expect(frameBox.y).toBeGreaterThanOrEqual(stageBox.y);
+  expect(frameBox.x + frameBox.width).toBeLessThanOrEqual(
+    stageBox.x + stageBox.width,
+  );
+  expect(frameBox.y + frameBox.height).toBeLessThanOrEqual(
     stageBox.y + stageBox.height,
   );
 }
@@ -123,7 +132,11 @@ async function startActiveRound(
 }> {
   await pageA.goto(`${harness.webUrl}/games/gomoku`);
   await pageA.getByTestId("create-room").click();
-  await pageA.getByTestId("starter-owner").click();
+  await expect(pageA.getByTestId("game-surface-iframe")).toHaveAttribute(
+    "src",
+    "/game-surfaces/gomoku/1.0.0/setup/index.html",
+  );
+  await gomokuSurface(pageA).getByRole("button", { name: "房主先手" }).click();
   const inviteUrl = await pageA.getByTestId("invite-link").getAttribute("href");
   if (inviteUrl === null)
     throw new Error("Gomoku did not expose an invitation URL.");
@@ -133,9 +146,13 @@ async function startActiveRound(
   await pageA.getByTestId("toggle-round-ready").click();
   await pageB.getByTestId("toggle-round-ready").click();
   await Promise.all(
-    [pageA, pageB].map((page) =>
-      expect(page.getByTestId("match-status")).toHaveText("对局进行中"),
-    ),
+    [pageA, pageB].map(async (page) => {
+      await expect(page.getByTestId("match-status")).toHaveText("对局进行中");
+      await expect(page.getByTestId("game-surface-iframe")).toHaveAttribute(
+        "src",
+        "/game-surfaces/gomoku/1.0.0/play/index.html",
+      );
+    }),
   );
   const slotA = (await pageA.getByTestId("player-slot").textContent())?.trim();
   const slotB = (await pageB.getByTestId("player-slot").textContent())?.trim();
@@ -177,7 +194,11 @@ test("two accounts create, join, synchronize, and complete authoritative Gomoku"
     "data-state",
     "waiting",
   );
-  await pageA.getByTestId("starter-owner").click();
+  await expect(pageA.getByTestId("game-surface-iframe")).toHaveAttribute(
+    "src",
+    "/game-surfaces/gomoku/1.0.0/setup/index.html",
+  );
+  await gomokuSurface(pageA).getByRole("button", { name: "房主先手" }).click();
 
   const inviteUrl = await pageA.getByTestId("invite-link").getAttribute("href");
   if (inviteUrl === null)
@@ -205,14 +226,24 @@ test("two accounts create, join, synchronize, and complete authoritative Gomoku"
       );
       await expect(page.getByTestId("match-status")).toHaveText("对局进行中");
       await expect(page.getByTestId("room-code")).toHaveText(roomCode);
+      await expect(page.getByTestId("game-surface-iframe")).toHaveAttribute(
+        "src",
+        "/game-surfaces/gomoku/1.0.0/play/index.html",
+      );
       await expect(
-        page.getByRole("grid", { name: "五子棋棋盘" }),
+        gomokuSurface(page).getByRole("grid", { name: "五子棋棋盘" }),
       ).toBeVisible();
-      await expect(page.locator("[data-cell-index]")).toHaveCount(225);
+      await expect(
+        gomokuSurface(page).locator("[data-cell-index]"),
+      ).toHaveCount(225);
     }),
   );
-  await expect(pageA.getByTestId("player-stone")).toContainText("黑方");
-  await expect(pageB.getByTestId("player-stone")).toContainText("白方");
+  await expect(gomokuSurface(pageA).getByTestId("player-stone")).toContainText(
+    "你执黑棋",
+  );
+  await expect(gomokuSurface(pageB).getByTestId("player-stone")).toContainText(
+    "你执白棋",
+  );
   const slotA = (await pageA.getByTestId("player-slot").textContent())?.trim();
   const slotB = (await pageB.getByTestId("player-slot").textContent())?.trim();
   if (slotA === undefined || slotB === undefined) {
@@ -220,28 +251,8 @@ test("two accounts create, join, synchronize, and complete authoritative Gomoku"
   }
   expect(slotA).not.toBe(slotB);
 
-  const illegalCell = pageB.locator('[data-cell-index="105"]');
+  const illegalCell = gomokuSurface(pageB).locator('[data-cell-index="105"]');
   await expect(illegalCell).toBeDisabled();
-  await illegalCell.evaluate((element) => {
-    const propsKey = Object.keys(element).find((key) =>
-      key.startsWith("__reactProps$"),
-    );
-    if (propsKey === undefined)
-      throw new Error("React cell props unavailable.");
-    const props = (element as unknown as Record<string, unknown>)[propsKey];
-    if (
-      props === null ||
-      typeof props !== "object" ||
-      !("onClick" in props) ||
-      typeof props.onClick !== "function"
-    ) {
-      throw new Error("The Gomoku cell has no intent handler.");
-    }
-    props.onClick();
-  });
-  await expect(pageB.getByTestId("command-rejection")).toContainText(
-    "还没有轮到你",
-  );
   await expectRevision([pageA, pageB], 0);
 
   const winningPlacements = [
@@ -263,13 +274,16 @@ test("two accounts create, join, synchronize, and complete authoritative Gomoku"
       expect(page.getByTestId("match-status")).toHaveText("对局已完成"),
     ),
   );
-  await expect(pageA.getByTestId("turn-status")).toContainText("胜者：你");
-  await expect(pageB.getByTestId("turn-status")).toContainText("胜者：对手");
+  await expect(gomokuSurface(pageA).getByTestId("turn-status")).toHaveText(
+    "你赢了",
+  );
+  await expect(gomokuSurface(pageB).getByTestId("turn-status")).toHaveText(
+    "对手获胜",
+  );
   for (const cell of [105, 106, 107, 108, 109]) {
-    await expect(pageA.locator(`[data-cell-index="${cell}"]`)).toHaveAttribute(
-      "data-stone",
-      "BLACK",
-    );
+    await expect(
+      gomokuSurface(pageA).locator(`[data-cell-index="${cell}"]`),
+    ).toHaveAttribute("data-stone", "BLACK");
   }
 
   const room = await harness.gameServer.roomStore.getByRoomCode(roomCode);
@@ -345,6 +359,18 @@ test("two accounts create, join, synchronize, and complete authoritative Gomoku"
     [pageA, pageB].map((page) =>
       expect(page.getByTestId("room-notice")).toHaveText("房主已关闭房间。"),
     ),
+  );
+  const replayMatchId = String(historyA[0]?.matchId);
+  await pageA.goto(
+    `${harness.webUrl}/account/matches/${encodeURIComponent(replayMatchId)}/replay`,
+  );
+  await expect(pageA.getByTestId("replay-page")).toBeVisible();
+  await expect(pageA.getByTestId("game-surface-iframe")).toHaveAttribute(
+    "src",
+    "/game-surfaces/gomoku/1.0.0/replay/index.html",
+  );
+  await expect(gomokuSurface(pageA).locator("[data-cell-index]")).toHaveCount(
+    225,
   );
   expect(browserErrors).toEqual([]);
   await Promise.all([contextA.close(), contextB.close()]);

@@ -8,6 +8,7 @@ import {
   gomokuDefinition,
   gomokuDefinitionV1_0_0,
 } from "@online-game-hub/gomoku/core";
+import { gomokuSetupDefinition } from "@online-game-hub/gomoku/setup";
 import { hexDefinition } from "@online-game-hub/hex/core";
 import {
   reversiDefinition,
@@ -114,6 +115,11 @@ const roundSetupDefinitions = Object.freeze([
     gameId: connectFourDefinition.manifest.id,
     gameVersion: connectFourDefinition.manifest.gameVersion,
     definition: eraseRoundSetupDefinition(connectFourSetupDefinition),
+  }),
+  Object.freeze({
+    gameId: gomokuDefinition.manifest.id,
+    gameVersion: gomokuDefinition.manifest.gameVersion,
+    definition: eraseRoundSetupDefinition(gomokuSetupDefinition),
   }),
 ]);
 

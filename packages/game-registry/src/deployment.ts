@@ -124,13 +124,43 @@ const connectFourSurface = (
     }),
   });
 
+const gomokuSurfaceArtifactV1 = {
+  schemaVersion: 1,
+  gameId: "gomoku",
+  supportedGameVersions: ["1.0.0", "1.1.0"],
+  surfaceVersion: "1.0.0",
+  bridgeVersion: 1,
+  entrypoints: {
+    setup: "setup/index.html",
+    play: "play/index.html",
+    replay: "replay/index.html",
+  },
+  capabilities: {},
+  contentDigest: "sha256-biPQnbE9J89ABY64swgwc9KgmHWTEhI1etrNnCUTROo=",
+} satisfies SurfaceArtifactManifestV1;
+
+const gomokuSurface = (
+  gameVersion: "1.0.0" | "1.1.0",
+  setupProtocol: SetupProtocolGeneration,
+): GameDeploymentRegistration =>
+  Object.freeze({
+    gameId: "gomoku",
+    gameVersion,
+    setupProtocol,
+    presentation: Object.freeze({
+      kind: "surface-v1",
+      publicBasePath: "/game-surfaces/gomoku/1.0.0",
+      artifact: gomokuSurfaceArtifactV1,
+    }),
+  });
+
 const gameDeployments = Object.freeze([
   legacy("tic-tac-toe", "1.0.0"),
   ticTacToeSurfaceV1,
   connectFourSurface("1.0.0", 5),
   connectFourSurface("1.1.0", 6),
-  legacy("gomoku", "1.0.0"),
-  legacy("gomoku", "1.1.0"),
+  gomokuSurface("1.0.0", 5),
+  gomokuSurface("1.1.0", 6),
   legacy("hex", "1.0.0"),
   legacy("reversi", "1.0.0"),
   legacy("reversi", "1.1.0"),

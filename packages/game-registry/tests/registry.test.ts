@@ -71,7 +71,7 @@ describe("explicit game registry", () => {
       expect(
         resolveGameDeployment(manifest.id, manifest.gameVersion),
       ).toMatchObject(
-        ["tic-tac-toe", "pong", "connect-four"].includes(manifest.id)
+        ["tic-tac-toe", "pong", "connect-four", "gomoku"].includes(manifest.id)
           ? {
               gameId: manifest.id,
               gameVersion: manifest.gameVersion,
@@ -229,6 +229,32 @@ describe("explicit game registry", () => {
         });
       }
     }
+    for (const gameVersion of ["1.0.0", "1.1.0"] as const) {
+      expect(resolveGameDeployment("gomoku", gameVersion)).toMatchObject({
+        setupProtocol: gameVersion === "1.1.0" ? 6 : 5,
+        presentation: {
+          kind: "surface-v1",
+          publicBasePath: "/game-surfaces/gomoku/1.0.0",
+          artifact: {
+            supportedGameVersions: ["1.0.0", "1.1.0"],
+            surfaceVersion: "1.0.0",
+            contentDigest:
+              "sha256-biPQnbE9J89ABY64swgwc9KgmHWTEhI1etrNnCUTROo=",
+          },
+        },
+      });
+      for (const mode of ["setup", "play", "replay"] as const) {
+        expect(
+          resolveGameSurfaceEntrypoint("gomoku", gameVersion, mode),
+        ).toMatchObject({
+          gameId: "gomoku",
+          gameVersion,
+          surfaceVersion: "1.0.0",
+          mode,
+          url: `/game-surfaces/gomoku/1.0.0/${mode}/index.html`,
+        });
+      }
+    }
   });
 
   it("selects each explicitly registered current definition for new rooms", () => {
@@ -255,6 +281,7 @@ describe("explicit game registry", () => {
       ["tic-tac-toe", "1.1.0"],
       ["pong", "1.0.0"],
       ["connect-four", "1.1.0"],
+      ["gomoku", "1.1.0"],
     ] as const) {
       const definition = resolveRoundSetupDefinition(gameId, gameVersion);
       expect(definition).toBeDefined();
@@ -267,6 +294,7 @@ describe("explicit game registry", () => {
     expect(
       resolveRoundSetupDefinition("connect-four", "1.0.0"),
     ).toBeUndefined();
+    expect(resolveRoundSetupDefinition("gomoku", "1.0.0")).toBeUndefined();
     expect(resolveCurrentRoundSetupDefinition("unknown")).toBeUndefined();
   });
 

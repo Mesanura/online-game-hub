@@ -35,6 +35,13 @@ State、Action、View、Outcome 和 Config 都由 strict Zod schema 验证；boa
 
 `MATCH_ALREADY_FINISHED` 与 `NOT_A_PLAYER` 在 `RESIGN` 分支前判断；合法玩家的投降不检查 `NOT_YOUR_TURN`。五子棋不消费 RNG；初始化、accepted transition 和 rejected transition 都保留输入 RNG cursor。
 
+## Round Setup 与 Surface
+
+- current `1.1.0` 新房间使用游戏自有 Setup V6。Setup 保存规范化 Config，由房主选择 OWNER、NON_OWNER 或服务端 RANDOM 先手，并把最终 `playerOrder[0]` 解释为 BLACK。
+- completed 后的下一局 Setup 从上一局 `FinalizedRoundSetup` 复用完整 Config 与实际 player order；不重新随机棋色，双方仍必须分别重新 ready。任何 accepted 设置变更由平台清空全部 ready。
+- 独立 `gomoku@surfaceVersion 1.0.0` artifact 承载 Setup、Play 和 Replay。Play/Replay 同时解析历史 `1.0.0` 与 current `1.1.0` 的 projected View；Surface 只提交最小 `PLACE_STONE` 或 `SELECT_STARTER` intent，不接触 actor、revision、seed、raw State 或 canonical replay。
+- 历史 `1.0.0` live room 仍使用 Protocol V5 Setup；其 Play/Replay presentation 可由同一 exact-version Surface 渲染。Surface 视觉升级不改变 `gameVersion` 或 Replay Format。
+
 ## 版本兼容
 
 - `1.0.0` 只接受 `PLACE_STONE`，State 不含 `resignedSlotId`；其独立 frozen definition 和原 golden fixture 保留不变。

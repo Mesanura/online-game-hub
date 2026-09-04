@@ -168,6 +168,28 @@ importers:
         specifier: 4.1.11
         version: 4.1.11(@types/node@24.13.3)(vite@8.2.2(@types/node@24.13.3)(esbuild@0.28.2)(tsx@4.23.12))
 
+  game-surfaces/gomoku:
+    dependencies:
+      '@online-game-hub/game-surface-bridge':
+        specifier: workspace:*
+        version: link:../../packages/game-surface-bridge
+      zod:
+        specifier: 4.4.3
+        version: 4.4.3
+    devDependencies:
+      '@types/node':
+        specifier: 24.13.3
+        version: 24.13.3
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
+      vite:
+        specifier: 8.2.2
+        version: 8.2.2(@types/node@24.13.3)(esbuild@0.28.2)(tsx@4.23.12)
+      vitest:
+        specifier: 4.1.11
+        version: 4.1.11(@types/node@24.13.3)(vite@8.2.2(@types/node@24.13.3)(esbuild@0.28.2)(tsx@4.23.12))
+
   game-surfaces/pong:
     dependencies:
       '@online-game-hub/game-surface-bridge':
@@ -313,6 +335,9 @@ importers:
       '@online-game-hub/game-sdk':
         specifier: workspace:*
         version: link:../../packages/game-sdk
+      '@online-game-hub/game-setup':
+        specifier: workspace:*
+        version: link:../../packages/game-setup
       zod:
         specifier: 4.4.3
         version: 4.4.3

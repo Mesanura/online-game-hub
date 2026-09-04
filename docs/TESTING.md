@@ -324,10 +324,10 @@ Web E2E 同时验证三阶段 App Router：创建/加入和 canonical 邀请进�
 `tooling/e2e/tests/gomoku-vertical-slice.spec.ts` 使用相同真实 harness，独立验证：
 
 1. 目录卡片、页面标题与棋盘无障碍名称统一显示“五子棋”，URL 为 `/games/gomoku`；
-2. 通用 Web 从 manifest 传递默认 `{ boardSize: 15, winLength: 5 }`，两个 guest 创建/加入、选择先手并 ready 后同步 225-cell View 与不同 stable slots；
-3. 越过 disabled cell 的非当前玩家 intent 被真实 Server 拒绝且 revision/棋盘保持 `0`；
+2. 通用 Web 从 manifest 传递默认 `{ boardSize: 15, winLength: 5 }`，两个 account contexts 创建/加入，在独立 Setup iframe 选择先手并 ready 后切换至独立 225-cell Play iframe 与不同 stable slots；
+3. 非当前玩家在独立 Surface 中只能看到 disabled cell 且 revision/棋盘保持 `0`；伪造 actor、schema-invalid、stale 与 duplicate intent 的权威拒绝继续由 Protocol V6 integration 覆盖；
 4. 双方完成 9-revision 权威横向胜局，浏览器只显示服务器 View；
-5. completed replay 从 PostgreSQL 新 connection 重读并由 exact registry 验证，双方 private history 只返回安全 metadata。
+5. completed replay 从 PostgreSQL 新 connection 重读并由 exact registry 验证，双方 private history 只返回安全 metadata，历史页使用 exact Replay Surface。
 
 `tooling/e2e/tests/hex-vertical-slice.spec.ts` 使用相同真实 harness，独立验证：
 
@@ -409,6 +409,8 @@ pnpm test:database
 - 全仓 `lint`、`typecheck`、`test`、`build`、`deps:check`，以及受影响的 `test:integration`、`test:database` 和 `test:e2e`。Phaser 依赖必须由 legacy `games/pong` client 或独立 `game-surfaces/pong` 明确拥有，Core 和 server runtime 的依赖检查必须继续拒绝 Phaser/DOM。
 
 Connect Four Surface 迁移额外保持 `1.0.0`/`1.1.0` projected View 的同一 artifact contract；current E2E 必须覆盖 Setup iframe、42 格/7 列 Play iframe、完整设置复用的第二局、平台投降和 Replay iframe。历史 `1.0.0` golden replay 继续用 frozen Core exact 验证。
+
+Gomoku Surface 迁移同样以一个 artifact 覆盖 `1.0.0`/`1.1.0` projected View；current E2E 必须覆盖保留 15×15 Config 的 Setup iframe、225 格 Play iframe、桌面尺寸适配、平台投降和 Replay iframe。19×19 Config、长连和历史 `1.0.0` exact 行为继续由 Core、Setup 与 golden tests 覆盖。
 
 所有当前支持 `gameVersion` 的 golden replay：
 
