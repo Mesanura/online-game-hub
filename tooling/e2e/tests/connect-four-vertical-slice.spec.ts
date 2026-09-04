@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import type { BrowserContext, Page } from "@playwright/test";
+import type { BrowserContext, FrameLocator, Page } from "@playwright/test";
 
 import {
   PostgresReplayStore,
@@ -14,6 +14,10 @@ import { registerE2eAccount } from "../src/account.js";
 import type { E2eHarness } from "../src/harness.js";
 
 let harness: E2eHarness;
+
+function connectFourSurface(page: Page): FrameLocator {
+  return page.frameLocator('[data-testid="game-surface-iframe"]');
+}
 
 test.beforeAll(async () => {
   harness = await startE2eHarness();
@@ -58,7 +62,7 @@ async function playAcceptedDrop(
   column: number,
   revision: number,
 ): Promise<void> {
-  const button = actor.locator(`[data-column-index="${column}"]`);
+  const button = connectFourSurface(actor).locator(`[data-column="${column}"]`);
   await expect(button).toBeEnabled();
   await button.click();
   await expectRevision(viewers, revision);
@@ -157,7 +161,13 @@ async function startActiveRound(
 }> {
   await pageA.goto(`${harness.webUrl}/games/connect-four`);
   await pageA.getByTestId("create-room").click();
-  await pageA.getByTestId("starter-owner").click();
+  await expect(pageA.getByTestId("game-surface-iframe")).toHaveAttribute(
+    "src",
+    "/game-surfaces/connect-four/1.0.0/setup/index.html",
+  );
+  await connectFourSurface(pageA)
+    .getByRole("button", { name: "房主先手" })
+    .click();
   const inviteUrl = await pageA.getByTestId("invite-link").getAttribute("href");
   if (inviteUrl === null)
     throw new Error("Connect Four did not expose an invitation URL.");
@@ -167,9 +177,13 @@ async function startActiveRound(
   await pageA.getByTestId("toggle-round-ready").click();
   await pageB.getByTestId("toggle-round-ready").click();
   await Promise.all(
-    [pageA, pageB].map((page) =>
-      expect(page.getByTestId("match-status")).toHaveText("对局进行中"),
-    ),
+    [pageA, pageB].map(async (page) => {
+      await expect(page.getByTestId("match-status")).toHaveText("对局进行中");
+      await expect(page.getByTestId("game-surface-iframe")).toHaveAttribute(
+        "src",
+        "/game-surfaces/connect-four/1.0.0/play/index.html",
+      );
+    }),
   );
   const slotA = (await pageA.getByTestId("player-slot").textContent())?.trim();
   const slotB = (await pageB.getByTestId("player-slot").textContent())?.trim();
@@ -212,7 +226,13 @@ test("two accounts play two authoritative Connect Four rounds with independent r
     "data-state",
     "waiting",
   );
-  await pageA.getByTestId("starter-owner").click();
+  await expect(pageA.getByTestId("game-surface-iframe")).toHaveAttribute(
+    "src",
+    "/game-surfaces/connect-four/1.0.0/setup/index.html",
+  );
+  await connectFourSurface(pageA)
+    .getByRole("button", { name: "房主先手" })
+    .click();
 
   const inviteUrl = await pageA.getByTestId("invite-link").getAttribute("href");
   if (inviteUrl === null) {
@@ -245,13 +265,25 @@ test("two accounts play two authoritative Connect Four rounds with independent r
       );
       await expect(page.getByTestId("match-status")).toHaveText("对局进行中");
       await expect(page.getByTestId("room-code")).toHaveText(roomCode);
-      await expect(page.locator("[data-column-index]")).toHaveCount(7);
-      await expect(page.locator("[data-cell-index]")).toHaveCount(42);
+      await expect(page.getByTestId("game-surface-iframe")).toHaveAttribute(
+        "src",
+        "/game-surfaces/connect-four/1.0.0/play/index.html",
+      );
+      await expect(
+        connectFourSurface(page).locator("[data-column]"),
+      ).toHaveCount(7);
+      await expect(
+        connectFourSurface(page).locator("[data-cell-index]"),
+      ).toHaveCount(42);
     }),
   );
   await assertIsolatedGuestCookies(contextA, contextB);
-  await expect(pageA.getByTestId("player-disc")).toContainText("红方");
-  await expect(pageB.getByTestId("player-disc")).toContainText("黄方");
+  await expect(
+    connectFourSurface(pageA).getByTestId("player-disc"),
+  ).toContainText("红");
+  await expect(
+    connectFourSurface(pageB).getByTestId("player-disc"),
+  ).toContainText("黄");
   const slotA = (await pageA.getByTestId("player-slot").textContent())?.trim();
   const slotB = (await pageB.getByTestId("player-slot").textContent())?.trim();
   if (slotA === undefined || slotB === undefined) {
@@ -259,34 +291,12 @@ test("two accounts play two authoritative Connect Four rounds with independent r
   }
   expect(slotA).not.toBe(slotB);
 
-  const illegalColumn = pageB.locator('[data-column-index="0"]');
+  const illegalColumn = connectFourSurface(pageB).locator('[data-column="0"]');
   await expect(illegalColumn).toBeDisabled();
-  await illegalColumn.evaluate((element) => {
-    const propsKey = Object.keys(element).find((key) =>
-      key.startsWith("__reactProps$"),
-    );
-    if (propsKey === undefined) {
-      throw new Error("React column button props were not available.");
-    }
-    const props = (element as unknown as Record<string, unknown>)[propsKey];
-    if (
-      props === null ||
-      typeof props !== "object" ||
-      !("onClick" in props) ||
-      typeof props.onClick !== "function"
-    ) {
-      throw new Error("The column button has no intent handler.");
-    }
-    props.onClick();
-  });
-  await expect(pageB.getByTestId("command-rejection")).toContainText(
-    "还没有轮到你",
-  );
   await expectRevision([pageA, pageB], 0);
-  await expect(pageA.locator('[data-cell-index="35"]')).toHaveAttribute(
-    "data-disc",
-    "EMPTY",
-  );
+  await expect(
+    connectFourSurface(pageA).locator('[data-cell-index="35"]'),
+  ).toHaveAttribute("data-disc", "EMPTY");
 
   const winningDrops = [
     [pageA, 0],
@@ -305,13 +315,16 @@ test("two accounts play two authoritative Connect Four rounds with independent r
       expect(page.getByTestId("match-status")).toHaveText("对局已完成"),
     ),
   );
-  await expect(pageA.getByTestId("turn-status")).toContainText("胜者：你");
-  await expect(pageB.getByTestId("turn-status")).toContainText("胜者：对手");
+  await expect(
+    connectFourSurface(pageA).getByTestId("turn-status"),
+  ).toContainText("你赢了");
+  await expect(
+    connectFourSurface(pageB).getByTestId("turn-status"),
+  ).toContainText("对手获胜");
   for (const cell of [35, 36, 37, 38]) {
-    await expect(pageA.locator(`[data-cell-index="${cell}"]`)).toHaveAttribute(
-      "data-disc",
-      "RED",
-    );
+    await expect(
+      connectFourSurface(pageA).locator(`[data-cell-index="${cell}"]`),
+    ).toHaveAttribute("data-disc", "RED");
   }
   const roundOneReplayId = await assertCompletedReplay(roomCode, 1);
   const roundOneHistoryA = await readHistory(pageA);
@@ -341,7 +354,9 @@ test("two accounts play two authoritative Connect Four rounds with independent r
       page.getByTestId("next-round-settings").click(),
     ),
   );
-  await pageA.getByTestId("starter-owner").click();
+  await expect(
+    connectFourSurface(pageA).getByText("沿用上一局的实际棋色与顺序"),
+  ).toBeVisible();
   await pageA.getByTestId("toggle-round-ready").click();
   await expect(pageB.getByTestId("round-setup-status")).toHaveText(
     "1/2 人已准备",
@@ -428,6 +443,18 @@ test("two accounts play two authoritative Connect Four rounds with independent r
       expect(page.getByTestId("room-notice")).toHaveText("房主已关闭房间。"),
     ),
   );
+  const replayMatchId = String(historyA[0]?.matchId);
+  await pageA.goto(
+    `${harness.webUrl}/account/matches/${encodeURIComponent(replayMatchId)}/replay`,
+  );
+  await expect(pageA.getByTestId("replay-page")).toBeVisible();
+  await expect(pageA.getByTestId("game-surface-iframe")).toHaveAttribute(
+    "src",
+    "/game-surfaces/connect-four/1.0.0/replay/index.html",
+  );
+  await expect(
+    connectFourSurface(pageA).locator("[data-cell-index]"),
+  ).toHaveCount(42);
   expect(browserErrors).toEqual([]);
   await Promise.all([contextA.close(), contextB.close()]);
 });

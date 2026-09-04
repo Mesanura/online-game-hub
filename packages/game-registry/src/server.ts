@@ -2,6 +2,7 @@ import {
   connectFourDefinition,
   connectFourDefinitionV1_0_0,
 } from "@online-game-hub/connect-four/core";
+import { connectFourSetupDefinition } from "@online-game-hub/connect-four/setup";
 import { chineseCheckersDefinition } from "@online-game-hub/chinese-checkers/core";
 import {
   gomokuDefinition,
@@ -108,6 +109,11 @@ const roundSetupDefinitions = Object.freeze([
     gameId: pongDefinition.manifest.id,
     gameVersion: pongDefinition.manifest.gameVersion,
     definition: eraseRoundSetupDefinition(pongSetupDefinition),
+  }),
+  Object.freeze({
+    gameId: connectFourDefinition.manifest.id,
+    gameVersion: connectFourDefinition.manifest.gameVersion,
+    definition: eraseRoundSetupDefinition(connectFourSetupDefinition),
   }),
 ]);
 

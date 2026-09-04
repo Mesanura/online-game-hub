@@ -71,7 +71,7 @@ describe("explicit game registry", () => {
       expect(
         resolveGameDeployment(manifest.id, manifest.gameVersion),
       ).toMatchObject(
-        manifest.id === "tic-tac-toe" || manifest.id === "pong"
+        ["tic-tac-toe", "pong", "connect-four"].includes(manifest.id)
           ? {
               gameId: manifest.id,
               gameVersion: manifest.gameVersion,
@@ -203,6 +203,32 @@ describe("explicit game registry", () => {
         },
       );
     }
+    for (const gameVersion of ["1.0.0", "1.1.0"] as const) {
+      expect(resolveGameDeployment("connect-four", gameVersion)).toMatchObject({
+        setupProtocol: gameVersion === "1.1.0" ? 6 : 5,
+        presentation: {
+          kind: "surface-v1",
+          publicBasePath: "/game-surfaces/connect-four/1.0.0",
+          artifact: {
+            supportedGameVersions: ["1.0.0", "1.1.0"],
+            surfaceVersion: "1.0.0",
+            contentDigest:
+              "sha256-Ex09w9gaqUosnYdnuZcQhoq8QVWZ3bny8Q0oGD5JwdM=",
+          },
+        },
+      });
+      for (const mode of ["setup", "play", "replay"] as const) {
+        expect(
+          resolveGameSurfaceEntrypoint("connect-four", gameVersion, mode),
+        ).toMatchObject({
+          gameId: "connect-four",
+          gameVersion,
+          surfaceVersion: "1.0.0",
+          mode,
+          url: `/game-surfaces/connect-four/1.0.0/${mode}/index.html`,
+        });
+      }
+    }
   });
 
   it("selects each explicitly registered current definition for new rooms", () => {
@@ -228,6 +254,7 @@ describe("explicit game registry", () => {
     for (const [gameId, gameVersion] of [
       ["tic-tac-toe", "1.1.0"],
       ["pong", "1.0.0"],
+      ["connect-four", "1.1.0"],
     ] as const) {
       const definition = resolveRoundSetupDefinition(gameId, gameVersion);
       expect(definition).toBeDefined();
@@ -237,7 +264,9 @@ describe("explicit game registry", () => {
       ).toBeUndefined();
     }
     expect(resolveRoundSetupDefinition("tic-tac-toe", "1.0.0")).toBeUndefined();
-    expect(resolveCurrentRoundSetupDefinition("connect-four")).toBeUndefined();
+    expect(
+      resolveRoundSetupDefinition("connect-four", "1.0.0"),
+    ).toBeUndefined();
     expect(resolveCurrentRoundSetupDefinition("unknown")).toBeUndefined();
   });
 

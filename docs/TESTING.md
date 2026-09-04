@@ -408,6 +408,8 @@ pnpm test:database
 - Playwright E2E：两个隔离 browser contexts 经过目录、独立 Setup Surface、ready、独立 Phaser Play Surface、完成、reconnect 与只读 Replay Surface；检查 canvas 非空、800×400 逻辑尺寸、视口矩阵下的 2:1 FIT、键盘输入可用、reduced motion 和终局 UI，不以客户端位置推断权威结果；
 - 全仓 `lint`、`typecheck`、`test`、`build`、`deps:check`，以及受影响的 `test:integration`、`test:database` 和 `test:e2e`。Phaser 依赖必须由 legacy `games/pong` client 或独立 `game-surfaces/pong` 明确拥有，Core 和 server runtime 的依赖检查必须继续拒绝 Phaser/DOM。
 
+Connect Four Surface 迁移额外保持 `1.0.0`/`1.1.0` projected View 的同一 artifact contract；current E2E 必须覆盖 Setup iframe、42 格/7 列 Play iframe、完整设置复用的第二局、平台投降和 Replay iframe。历史 `1.0.0` golden replay 继续用 frozen Core exact 验证。
+
 所有当前支持 `gameVersion` 的 golden replay：
 
 ```text

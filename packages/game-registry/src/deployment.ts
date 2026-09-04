@@ -94,11 +94,41 @@ const pongSurfaceV1: GameDeploymentRegistration = Object.freeze({
   }),
 });
 
+const connectFourSurfaceArtifactV1 = {
+  schemaVersion: 1,
+  gameId: "connect-four",
+  supportedGameVersions: ["1.0.0", "1.1.0"],
+  surfaceVersion: "1.0.0",
+  bridgeVersion: 1,
+  entrypoints: {
+    setup: "setup/index.html",
+    play: "play/index.html",
+    replay: "replay/index.html",
+  },
+  capabilities: {},
+  contentDigest: "sha256-Ex09w9gaqUosnYdnuZcQhoq8QVWZ3bny8Q0oGD5JwdM=",
+} satisfies SurfaceArtifactManifestV1;
+
+const connectFourSurface = (
+  gameVersion: "1.0.0" | "1.1.0",
+  setupProtocol: SetupProtocolGeneration,
+): GameDeploymentRegistration =>
+  Object.freeze({
+    gameId: "connect-four",
+    gameVersion,
+    setupProtocol,
+    presentation: Object.freeze({
+      kind: "surface-v1",
+      publicBasePath: "/game-surfaces/connect-four/1.0.0",
+      artifact: connectFourSurfaceArtifactV1,
+    }),
+  });
+
 const gameDeployments = Object.freeze([
   legacy("tic-tac-toe", "1.0.0"),
   ticTacToeSurfaceV1,
-  legacy("connect-four", "1.0.0"),
-  legacy("connect-four", "1.1.0"),
+  connectFourSurface("1.0.0", 5),
+  connectFourSurface("1.1.0", 6),
   legacy("gomoku", "1.0.0"),
   legacy("gomoku", "1.1.0"),
   legacy("hex", "1.0.0"),
