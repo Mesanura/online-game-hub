@@ -1200,7 +1200,7 @@ summary:focus-visible {
   display: block;
   height: calc(100dvh - 6.25rem);
   max-width: 100%;
-  min-height: 30rem;
+  min-height: 0;
   overflow: hidden;
   padding: clamp(0.5rem, 1vw, 1rem);
   position: relative;
@@ -2352,6 +2352,7 @@ summary:focus-visible {
     border: 0;
     border-radius: 0;
     height: 100%;
+    margin-top: 0;
     min-height: 0;
   }
   .play-toolbar {

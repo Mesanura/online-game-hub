@@ -743,3 +743,141 @@ test("the shared HUD cancels and confirms a Tic-Tac-Toe resignation once", async
 
   await Promise.all([contextA.close(), contextB.close()]);
 });
+
+test("the game stage remains non-scrolling and overlay-safe across the viewport matrix", async ({
+  browser,
+}) => {
+  const contextA = await browser.newContext({ reducedMotion: "reduce" });
+  const contextB = await browser.newContext();
+  await contextA.grantPermissions(["clipboard-read", "clipboard-write"], {
+    origin: harness.webUrl,
+  });
+  const pageA = await contextA.newPage();
+  const pageB = await contextB.newPage();
+  await createAndJoinRoom(pageA, pageB);
+
+  const viewports = [
+    { width: 1366, height: 768 },
+    { width: 1440, height: 900 },
+    { width: 1920, height: 1080 },
+    { width: 1024, height: 768 },
+    { width: 768, height: 1024 },
+    { width: 390, height: 844 },
+    { width: 412, height: 915 },
+    { width: 844, height: 390 },
+  ] as const;
+
+  for (const viewport of viewports) {
+    await pageA.setViewportSize(viewport);
+    await pageA.evaluate(
+      () =>
+        new Promise<void>((resolve) => {
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+        }),
+    );
+    await expect(pageA.getByTestId("game-stage")).toBeVisible();
+    const before = await pageA.evaluate(() => {
+      const stage = document.querySelector<HTMLElement>(
+        '[data-testid="game-stage"]',
+      );
+      const toolbar = document.querySelector<HTMLElement>(".play-toolbar");
+      const main = document.querySelector<HTMLElement>("main");
+      const scrollingElement = document.scrollingElement;
+      if (
+        stage === null ||
+        toolbar === null ||
+        main === null ||
+        scrollingElement === null
+      ) {
+        throw new Error("The play surface shell is incomplete.");
+      }
+      const stageRect = stage.getBoundingClientRect();
+      const toolbarRect = toolbar.getBoundingClientRect();
+      return {
+        overflowX: scrollingElement.scrollWidth > scrollingElement.clientWidth,
+        overflowY:
+          scrollingElement.scrollHeight > scrollingElement.clientHeight,
+        stage: {
+          left: stageRect.left,
+          top: stageRect.top,
+          right: stageRect.right,
+          bottom: stageRect.bottom,
+          width: stageRect.width,
+          height: stageRect.height,
+        },
+        toolbar: {
+          left: toolbarRect.left,
+          top: toolbarRect.top,
+          right: toolbarRect.right,
+          bottom: toolbarRect.bottom,
+        },
+        document: {
+          clientHeight: scrollingElement.clientHeight,
+          scrollHeight: scrollingElement.scrollHeight,
+          bodyClientHeight: document.body.clientHeight,
+          bodyScrollHeight: document.body.scrollHeight,
+          mainClientHeight: main.clientHeight,
+          mainScrollHeight: main.scrollHeight,
+        },
+        viewport: { width: window.innerWidth, height: window.innerHeight },
+      };
+    });
+    expect(before.overflowX).toBe(false);
+    expect(
+      before.overflowY,
+      `unexpected vertical page overflow at ${viewport.width}x${viewport.height}: ${JSON.stringify(before.document)}`,
+    ).toBe(false);
+    expect(before.stage.width).toBeGreaterThan(0);
+    expect(before.stage.height).toBeGreaterThan(0);
+    expect(before.stage.left).toBeGreaterThanOrEqual(0);
+    expect(before.stage.top).toBeGreaterThanOrEqual(0);
+    expect(before.stage.right).toBeLessThanOrEqual(before.viewport.width);
+    expect(before.stage.bottom).toBeLessThanOrEqual(before.viewport.height);
+    expect(before.toolbar.left).toBeGreaterThanOrEqual(0);
+    expect(before.toolbar.top).toBeGreaterThanOrEqual(0);
+    expect(before.toolbar.right).toBeLessThanOrEqual(before.viewport.width);
+    expect(before.toolbar.bottom).toBeLessThanOrEqual(before.viewport.height);
+
+    await openGameHud(pageA);
+    const during = await pageA
+      .getByTestId("game-stage")
+      .evaluate((stage) => stage.getBoundingClientRect().toJSON());
+    for (const edge of [
+      "left",
+      "top",
+      "right",
+      "bottom",
+      "width",
+      "height",
+    ] as const) {
+      expect(Math.abs(during[edge] - before.stage[edge])).toBeLessThan(1);
+    }
+    await pageA.getByTestId("close-game-hud").click();
+    await expect(pageA.getByRole("dialog")).toHaveCount(0);
+    await expect(pageA.getByTestId("revision")).toHaveText("0");
+  }
+
+  await pageA.evaluate(() => {
+    Object.defineProperty(document, "fullscreenEnabled", {
+      configurable: true,
+      value: false,
+    });
+  });
+  await pageA.getByTestId("toggle-game-fullscreen").click();
+  await expect(pageA.locator(".play-stage-layout")).toHaveAttribute(
+    "data-focus-mode",
+    "true",
+  );
+  await expect(pageA.getByTestId("toggle-game-fullscreen")).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await pageA.keyboard.press("Escape");
+  await expect(pageA.locator(".play-stage-layout")).toHaveAttribute(
+    "data-focus-mode",
+    "false",
+  );
+
+  await playAcceptedMove(pageA, [pageA, pageB], 0, 1);
+  await Promise.all([contextA.close(), contextB.close()]);
+});
