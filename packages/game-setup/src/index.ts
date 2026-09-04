@@ -19,10 +19,91 @@ export type SetupViewer =
   | { readonly kind: "player"; readonly slotId: string }
   | { readonly kind: "spectator" };
 
+export const SETUP_RNG_ALGORITHM_V1 = "fnv1a32-counter-v1" as const;
+
 export interface SetupRngState {
-  readonly algorithm: "fnv1a32-counter-v1";
+  readonly algorithm: typeof SETUP_RNG_ALGORITHM_V1;
   readonly seed: string;
   readonly cursor: number;
+}
+
+export interface SetupRandomStep<T extends SetupJsonValue> {
+  readonly value: T;
+  readonly next: SetupRngState;
+}
+
+export function createSetupRng(seed: string): SetupRngState {
+  if (seed.length === 0) {
+    throw new TypeError("Setup RNG seed must not be empty.");
+  }
+  return { algorithm: SETUP_RNG_ALGORITHM_V1, seed, cursor: 0 };
+}
+
+function validateSetupRng(rng: Readonly<SetupRngState>): void {
+  if (rng.algorithm !== SETUP_RNG_ALGORITHM_V1) {
+    throw new TypeError(
+      "Unsupported Setup RNG algorithm: " + String(rng.algorithm) + ".",
+    );
+  }
+  if (rng.seed.length === 0) {
+    throw new TypeError("Setup RNG seed must not be empty.");
+  }
+  if (!Number.isSafeInteger(rng.cursor) || rng.cursor < 0) {
+    throw new RangeError(
+      "Setup RNG cursor must be a non-negative safe integer.",
+    );
+  }
+}
+
+function setupCounterHash(seed: string, cursor: number): number {
+  let hash = 0x81_1c_9d_c5;
+  const input = seed + "\u0000" + cursor.toString(10);
+  for (let index = 0; index < input.length; index += 1) {
+    const codeUnit = input.charCodeAt(index);
+    hash = Math.imul(hash ^ (codeUnit & 0xff), 0x01_00_01_93);
+    hash = Math.imul(hash ^ (codeUnit >>> 8), 0x01_00_01_93);
+  }
+  hash ^= hash >>> 16;
+  hash = Math.imul(hash, 0x7f_eb_35_2d);
+  hash ^= hash >>> 15;
+  hash = Math.imul(hash, 0x84_6c_a6_8b);
+  hash ^= hash >>> 16;
+  return hash >>> 0;
+}
+
+export function nextSetupInt(
+  rng: Readonly<SetupRngState>,
+  maxExclusive: number,
+): SetupRandomStep<number> {
+  validateSetupRng(rng);
+  if (
+    !Number.isSafeInteger(maxExclusive) ||
+    maxExclusive <= 0 ||
+    maxExclusive > 0x1_00_00_00_00
+  ) {
+    throw new RangeError("maxExclusive must be an integer between 1 and 2^32.");
+  }
+
+  const uint32Range = 0x1_00_00_00_00;
+  const unbiasedLimit = uint32Range - (uint32Range % maxExclusive);
+  let cursor = rng.cursor;
+  for (;;) {
+    if (cursor >= Number.MAX_SAFE_INTEGER) {
+      throw new RangeError("Setup RNG cursor is exhausted.");
+    }
+    const candidate = setupCounterHash(rng.seed, cursor);
+    cursor += 1;
+    if (candidate < unbiasedLimit) {
+      return {
+        value: candidate % maxExclusive,
+        next: {
+          algorithm: SETUP_RNG_ALGORITHM_V1,
+          seed: rng.seed,
+          cursor,
+        },
+      };
+    }
+  }
 }
 
 export interface FinalizedRoundSetup<
@@ -108,6 +189,24 @@ export interface RoundSetupDefinition<
     slots: readonly SetupSlot[],
   ): SetupReadiness;
   finalize(context: SetupFinalizeContext<State>): SetupFinalization<Config>;
+}
+
+export type UnknownRoundSetupDefinition = RoundSetupDefinition<
+  SetupJsonValue,
+  SetupJsonValue,
+  SetupJsonValue,
+  SetupJsonValue
+>;
+
+export function eraseRoundSetupDefinition<
+  Config extends SetupJsonValue,
+  State extends SetupJsonValue,
+  Action extends SetupJsonValue,
+  View extends SetupJsonValue,
+>(
+  definition: RoundSetupDefinition<Config, State, Action, View>,
+): UnknownRoundSetupDefinition {
+  return definition as unknown as UnknownRoundSetupDefinition;
 }
 
 export type FinalizedSetupValidationCode =

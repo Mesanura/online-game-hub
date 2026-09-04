@@ -16,10 +16,16 @@ import {
   ticTacToeDefinition,
   ticTacToeDefinitionV1_0_0,
 } from "@online-game-hub/tic-tac-toe/core";
+import { ticTacToeSetupDefinition } from "@online-game-hub/tic-tac-toe/setup";
 import { pongDefinition } from "@online-game-hub/pong/core";
+import { pongSetupDefinition } from "@online-game-hub/pong/setup";
 // create-game:server-definition-import
 import { eraseGameDefinition } from "@online-game-hub/game-sdk";
 import type { UnknownGameDefinition } from "@online-game-hub/game-sdk";
+import {
+  eraseRoundSetupDefinition,
+  type UnknownRoundSetupDefinition,
+} from "@online-game-hub/game-setup";
 import { eraseRealtimeGameDefinition } from "@online-game-hub/realtime-game-sdk";
 import type { UnknownRealtimeGameDefinition } from "@online-game-hub/realtime-game-sdk";
 
@@ -91,3 +97,38 @@ export function resolveCurrentRealtimeGameDefinition(
 
 export type RealtimeGameDefinitionResolver =
   typeof resolveRealtimeGameDefinition;
+
+const roundSetupDefinitions = Object.freeze([
+  Object.freeze({
+    gameId: ticTacToeDefinition.manifest.id,
+    gameVersion: ticTacToeDefinition.manifest.gameVersion,
+    definition: eraseRoundSetupDefinition(ticTacToeSetupDefinition),
+  }),
+  Object.freeze({
+    gameId: pongDefinition.manifest.id,
+    gameVersion: pongDefinition.manifest.gameVersion,
+    definition: eraseRoundSetupDefinition(pongSetupDefinition),
+  }),
+]);
+
+export function resolveRoundSetupDefinition(
+  gameId: string,
+  gameVersion: string,
+): UnknownRoundSetupDefinition | undefined {
+  return roundSetupDefinitions.find(
+    (registration) =>
+      registration.gameId === gameId &&
+      registration.gameVersion === gameVersion,
+  )?.definition;
+}
+
+export function resolveCurrentRoundSetupDefinition(
+  gameId: string,
+): UnknownRoundSetupDefinition | undefined {
+  const manifest = resolveCurrentGameManifest(gameId);
+  return manifest === undefined
+    ? undefined
+    : resolveRoundSetupDefinition(manifest.id, manifest.gameVersion);
+}
+
+export type RoundSetupDefinitionResolver = typeof resolveRoundSetupDefinition;

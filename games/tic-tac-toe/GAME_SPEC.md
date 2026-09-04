@@ -22,6 +22,12 @@
 - View 包含 slot/mark 对应关系、board、可行动 slot 与 Outcome；公开棋盘仍只通过 `projectView` 产生。
 - Outcome 为普通连线 `WIN`（winner slot 与 winning cells）、`RESIGNATION` `WIN`（winner 与 resigned slot）或 `DRAW`。
 
+## Round Setup
+
+- 新房间的 Setup 从 `starter: UNSELECTED` 开始，只有 owner 可以提交 strict `SELECT_STARTER(OWNER | NON_OWNER | RANDOM)`；选项未改变时以 `SETUP_UNCHANGED` 拒绝。
+- 两个稳定席位均已占用且先手已选择后才可 finalize。`RANDOM` 只消费独立 Setup RNG，最终仅把实际顺序传给 Gameplay Core；Gameplay seed 和 Replay Format 不变。
+- 下一局从上一局 `FinalizedRoundSetup` 初始化为 `FIXED` 实际先手，完整复用参与者、顺序与 assignment，不自动重新随机。每位参与者的 ready 仍由 Platform 分别收集。
+
 ## 领域拒绝码
 
 - `NOT_A_PLAYER`

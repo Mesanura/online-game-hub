@@ -16,9 +16,11 @@ import {
 } from "../src/deployment.js";
 import {
   resolveCurrentGameDefinition,
+  resolveCurrentRoundSetupDefinition,
   resolveCurrentRealtimeGameDefinition,
   resolveGameDefinition,
   resolveRealtimeGameDefinition,
+  resolveRoundSetupDefinition,
 } from "../src/server.js";
 
 function clientModuleSymbol(gameId: string): string {
@@ -162,6 +164,23 @@ describe("explicit game registry", () => {
       }
     }
     expect(resolveCurrentGameDefinition("unknown")).toBeUndefined();
+  });
+
+  it("resolves game-owned Setup definitions only by exact registered version", () => {
+    for (const [gameId, gameVersion] of [
+      ["tic-tac-toe", "1.1.0"],
+      ["pong", "1.0.0"],
+    ] as const) {
+      const definition = resolveRoundSetupDefinition(gameId, gameVersion);
+      expect(definition).toBeDefined();
+      expect(resolveCurrentRoundSetupDefinition(gameId)).toBe(definition);
+      expect(
+        resolveRoundSetupDefinition(gameId, `${gameVersion}-unknown`),
+      ).toBeUndefined();
+    }
+    expect(resolveRoundSetupDefinition("tic-tac-toe", "1.0.0")).toBeUndefined();
+    expect(resolveCurrentRoundSetupDefinition("connect-four")).toBeUndefined();
+    expect(resolveCurrentRoundSetupDefinition("unknown")).toBeUndefined();
   });
 
   it("keeps exact 1.0.0 definitions frozen and independent from current rules", () => {

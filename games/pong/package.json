@@ -12,6 +12,10 @@
       "types": "./dist/manifest.d.ts",
       "import": "./dist/manifest.js"
     },
+    "./setup": {
+      "types": "./dist/setup/index.d.ts",
+      "import": "./dist/setup/index.js"
+    },
     "./core": {
       "types": "./dist/core/index.d.ts",
       "import": "./dist/core/index.js"
@@ -28,6 +32,7 @@
     "typecheck": "tsc -p tsconfig.json && tsc -p tests/tsconfig.json"
   },
   "dependencies": {
+    "@online-game-hub/game-setup": "workspace:*",
     "@online-game-hub/realtime-game-client-sdk": "workspace:*",
     "@online-game-hub/realtime-game-sdk": "workspace:*",
     "phaser": "3.90.0",

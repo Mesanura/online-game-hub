@@ -35,6 +35,7 @@
     "@online-game-hub/connect-four": "workspace:*",
     "@online-game-hub/game-client-sdk": "workspace:*",
     "@online-game-hub/game-sdk": "workspace:*",
+    "@online-game-hub/game-setup": "workspace:*",
     "@online-game-hub/game-surface-bridge": "workspace:*",
     "@online-game-hub/gomoku": "workspace:*",
     "@online-game-hub/hex": "workspace:*",
