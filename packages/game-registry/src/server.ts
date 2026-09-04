@@ -14,6 +14,7 @@ import {
   reversiDefinition,
   reversiDefinitionV1_0_0,
 } from "@online-game-hub/reversi/core";
+import { reversiSetupDefinition } from "@online-game-hub/reversi/setup";
 import {
   ticTacToeDefinition,
   ticTacToeDefinitionV1_0_0,
@@ -120,6 +121,11 @@ const roundSetupDefinitions = Object.freeze([
     gameId: gomokuDefinition.manifest.id,
     gameVersion: gomokuDefinition.manifest.gameVersion,
     definition: eraseRoundSetupDefinition(gomokuSetupDefinition),
+  }),
+  Object.freeze({
+    gameId: reversiDefinition.manifest.id,
+    gameVersion: reversiDefinition.manifest.gameVersion,
+    definition: eraseRoundSetupDefinition(reversiSetupDefinition),
   }),
 ]);
 

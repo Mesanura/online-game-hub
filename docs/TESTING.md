@@ -340,8 +340,8 @@ Web E2E 同时验证三阶段 App Router：创建/加入和 canonical 邀请进�
 
 `tooling/e2e/tests/reversi-vertical-slice.spec.ts` 使用相同真实 harness，独立验证：
 
-1. 目录卡片、中文标题、`/games/reversi`、8×8 可访问棋盘、本轮 BLACK/WHITE roles、棋子数和服务器合法落点；
-2. 两个隔离 guest 创建/加入真实 room，越过 WHITE 的 disabled UX 提交错回合 intent，服务器拒绝且 revision、棋盘和棋子数保持不变；
+1. 目录卡片、中文标题、`/games/reversi`、独立 Setup/Play iframe、8×8 可访问棋盘、本轮 BLACK/WHITE roles、棋子数和服务器合法落点；
+2. 两个隔离 account contexts 创建/加入真实 V6 room；WHITE 只能看到 disabled 合法落点且 revision、棋盘和棋子数保持不变，伪造 intent 的权威拒绝由 Protocol V6 integration 覆盖；
 3. 两方完成 11-revision 真实对局，验证落子后的权威翻转，以及 WHITE 被清空时仍有 49 个空格的非满盘终局；
 4. completed replay 从新 PostgreSQL connection 重读并通过 exact registry verifier，RNG cursor 为 0；
 5. 双方 private history 只含完全相同的安全 metadata key 集合，不返回 Config、Action、Outcome、seed 或 canonical replay。
@@ -411,6 +411,8 @@ pnpm test:database
 Connect Four Surface 迁移额外保持 `1.0.0`/`1.1.0` projected View 的同一 artifact contract；current E2E 必须覆盖 Setup iframe、42 格/7 列 Play iframe、完整设置复用的第二局、平台投降和 Replay iframe。历史 `1.0.0` golden replay 继续用 frozen Core exact 验证。
 
 Gomoku Surface 迁移同样以一个 artifact 覆盖 `1.0.0`/`1.1.0` projected View；current E2E 必须覆盖保留 15×15 Config 的 Setup iframe、225 格 Play iframe、桌面尺寸适配、平台投降和 Replay iframe。19×19 Config、长连和历史 `1.0.0` exact 行为继续由 Core、Setup 与 golden tests 覆盖。
+
+Reversi Surface 迁移以同一 artifact 覆盖 `1.0.0`/`1.1.0` projected View；current E2E 必须覆盖 Setup iframe、64 格 Play iframe、服务器 `legalMoves`、翻转与非满盘终局、平台投降和 Replay iframe。Surface 不得自行扫描夹线、判断强制跳过或产生 PASS。
 
 所有当前支持 `gameVersion` 的 golden replay：
 

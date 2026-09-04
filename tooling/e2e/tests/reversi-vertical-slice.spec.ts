@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import type { Page } from "@playwright/test";
+import type { FrameLocator, Page } from "@playwright/test";
 
 import {
   PostgresReplayStore,
@@ -14,6 +14,10 @@ import { registerE2eAccount } from "../src/account.js";
 import type { E2eHarness } from "../src/harness.js";
 
 let harness: E2eHarness;
+
+function reversiSurface(page: Page): FrameLocator {
+  return page.frameLocator('[data-testid="game-surface-iframe"]');
+}
 
 test.beforeAll(async () => {
   harness = await startE2eHarness();
@@ -58,7 +62,7 @@ async function playAcceptedDisc(
   cell: number,
   revision: number,
 ): Promise<void> {
-  const button = actor.locator(`[data-cell-index="${cell}"]`);
+  const button = reversiSurface(actor).locator(`[data-cell-index="${cell}"]`);
   await expect(button).toBeEnabled();
   await button.click();
   await expectRevision(viewers, revision);
@@ -86,7 +90,11 @@ async function startActiveRound(
 }> {
   await pageA.goto(`${harness.webUrl}/games/reversi`);
   await pageA.getByTestId("create-room").click();
-  await pageA.getByTestId("starter-owner").click();
+  await expect(pageA.getByTestId("game-surface-iframe")).toHaveAttribute(
+    "src",
+    "/game-surfaces/reversi/1.0.0/setup/index.html",
+  );
+  await reversiSurface(pageA).getByRole("button", { name: "房主先手" }).click();
   const inviteUrl = await pageA.getByTestId("invite-link").getAttribute("href");
   if (inviteUrl === null)
     throw new Error("Reversi did not expose an invitation URL.");
@@ -96,9 +104,13 @@ async function startActiveRound(
   await pageA.getByTestId("toggle-round-ready").click();
   await pageB.getByTestId("toggle-round-ready").click();
   await Promise.all(
-    [pageA, pageB].map((page) =>
-      expect(page.getByTestId("match-status")).toHaveText("对局进行中"),
-    ),
+    [pageA, pageB].map(async (page) => {
+      await expect(page.getByTestId("match-status")).toHaveText("对局进行中");
+      await expect(page.getByTestId("game-surface-iframe")).toHaveAttribute(
+        "src",
+        "/game-surfaces/reversi/1.0.0/play/index.html",
+      );
+    }),
   );
   const slotA = (await pageA.getByTestId("player-slot").textContent())?.trim();
   const slotB = (await pageB.getByTestId("player-slot").textContent())?.trim();
@@ -138,7 +150,11 @@ test("two accounts complete authoritative Reversi with flips and a non-full term
   await expect(pageA.getByTestId("connection-state")).toHaveText("已连接");
   await expect(pageA.getByTestId("game-stage")).toHaveCount(0);
   await expect(pageA.getByTestId("match-status")).toHaveCount(0);
-  await pageA.getByTestId("starter-owner").click();
+  await expect(pageA.getByTestId("game-surface-iframe")).toHaveAttribute(
+    "src",
+    "/game-surfaces/reversi/1.0.0/setup/index.html",
+  );
+  await reversiSurface(pageA).getByRole("button", { name: "房主先手" }).click();
 
   const inviteUrl = await pageA.getByTestId("invite-link").getAttribute("href");
   if (inviteUrl === null) {
@@ -165,17 +181,33 @@ test("two accounts complete authoritative Reversi with flips and a non-full term
       await expect(page.getByTestId("connection-state")).toHaveText("已连接");
       await expect(page.getByTestId("match-status")).toHaveText("对局进行中");
       await expect(page.getByTestId("room-code")).toHaveText(roomCode);
+      await expect(page.getByTestId("game-surface-iframe")).toHaveAttribute(
+        "src",
+        "/game-surfaces/reversi/1.0.0/play/index.html",
+      );
       await expect(
-        page.getByRole("grid", { name: "黑白棋棋盘" }),
+        reversiSurface(page).getByRole("grid", { name: "黑白棋棋盘" }),
       ).toBeVisible();
-      await expect(page.locator("[data-cell-index]")).toHaveCount(64);
-      await expect(page.locator('[data-legal-move="true"]')).toHaveCount(4);
-      await expect(page.getByTestId("black-disc-count")).toHaveText("黑方：2");
-      await expect(page.getByTestId("white-disc-count")).toHaveText("白方：2");
+      await expect(
+        reversiSurface(page).locator("[data-cell-index]"),
+      ).toHaveCount(64);
+      await expect(
+        reversiSurface(page).locator('[data-legal-move="true"]'),
+      ).toHaveCount(4);
+      await expect(
+        reversiSurface(page).getByTestId("black-disc-count"),
+      ).toHaveText("黑方：2");
+      await expect(
+        reversiSurface(page).getByTestId("white-disc-count"),
+      ).toHaveText("白方：2");
     }),
   );
-  await expect(pageA.getByTestId("player-color")).toContainText("黑方");
-  await expect(pageB.getByTestId("player-color")).toContainText("白方");
+  await expect(reversiSurface(pageA).getByTestId("player-color")).toContainText(
+    "黑方",
+  );
+  await expect(reversiSurface(pageB).getByTestId("player-color")).toContainText(
+    "白方",
+  );
   const slotA = (await pageA.getByTestId("player-slot").textContent())?.trim();
   const slotB = (await pageB.getByTestId("player-slot").textContent())?.trim();
   if (slotA === undefined || slotB === undefined) {
@@ -183,36 +215,18 @@ test("two accounts complete authoritative Reversi with flips and a non-full term
   }
   expect(slotA).not.toBe(slotB);
 
-  const illegalCell = pageB.locator('[data-cell-index="37"]');
+  const illegalCell = reversiSurface(pageB).locator('[data-cell-index="37"]');
   await expect(illegalCell).toBeDisabled();
-  await illegalCell.evaluate((element) => {
-    const propsKey = Object.keys(element).find((key) =>
-      key.startsWith("__reactProps$"),
-    );
-    if (propsKey === undefined) {
-      throw new Error("React cell props unavailable.");
-    }
-    const props = (element as unknown as Record<string, unknown>)[propsKey];
-    if (
-      props === null ||
-      typeof props !== "object" ||
-      !("onClick" in props) ||
-      typeof props.onClick !== "function"
-    ) {
-      throw new Error("The Reversi cell has no intent handler.");
-    }
-    props.onClick();
-  });
-  await expect(pageB.getByTestId("command-rejection")).toContainText(
-    "还没有轮到你",
-  );
   await expectRevision([pageA, pageB], 0);
-  await expect(pageA.locator('[data-cell-index="36"]')).toHaveAttribute(
-    "data-disc",
-    "WHITE",
-  );
-  await expect(pageA.getByTestId("black-disc-count")).toHaveText("黑方：2");
-  await expect(pageA.getByTestId("white-disc-count")).toHaveText("白方：2");
+  await expect(
+    reversiSurface(pageA).locator('[data-cell-index="36"]'),
+  ).toHaveAttribute("data-disc", "WHITE");
+  await expect(
+    reversiSurface(pageA).getByTestId("black-disc-count"),
+  ).toHaveText("黑方：2");
+  await expect(
+    reversiSurface(pageA).getByTestId("white-disc-count"),
+  ).toHaveText("白方：2");
 
   const placements = [
     [pageA, 37],
@@ -230,28 +244,47 @@ test("two accounts complete authoritative Reversi with flips and a non-full term
   for (const [index, [actor, cell]] of placements.entries()) {
     await playAcceptedDisc(actor, [pageA, pageB], cell, index + 1);
     if (index === 0) {
-      await expect(pageA.locator('[data-cell-index="36"]')).toHaveAttribute(
-        "data-disc",
-        "BLACK",
-      );
-      await expect(pageA.getByTestId("black-disc-count")).toHaveText("黑方：4");
-      await expect(pageA.getByTestId("white-disc-count")).toHaveText("白方：1");
+      await expect(
+        reversiSurface(pageA).locator('[data-cell-index="36"]'),
+      ).toHaveAttribute("data-disc", "BLACK");
+      await expect(
+        reversiSurface(pageA).getByTestId("black-disc-count"),
+      ).toHaveText("黑方：4");
+      await expect(
+        reversiSurface(pageA).getByTestId("white-disc-count"),
+      ).toHaveText("白方：1");
     }
   }
 
   await Promise.all(
     [pageA, pageB].map(async (page) => {
       await expect(page.getByTestId("match-status")).toHaveText("对局已完成");
-      await expect(page.locator('[data-disc="BLACK"]')).toHaveCount(15);
-      await expect(page.locator('[data-disc="WHITE"]')).toHaveCount(0);
-      await expect(page.locator('[data-disc="EMPTY"]')).toHaveCount(49);
-      await expect(page.locator('[data-legal-move="true"]')).toHaveCount(0);
-      await expect(page.getByTestId("black-disc-count")).toHaveText("黑方：15");
-      await expect(page.getByTestId("white-disc-count")).toHaveText("白方：0");
+      await expect(
+        reversiSurface(page).locator('[data-disc="BLACK"]'),
+      ).toHaveCount(15);
+      await expect(
+        reversiSurface(page).locator('[data-disc="WHITE"]'),
+      ).toHaveCount(0);
+      await expect(
+        reversiSurface(page).locator('[data-disc="EMPTY"]'),
+      ).toHaveCount(49);
+      await expect(
+        reversiSurface(page).locator('[data-legal-move="true"]'),
+      ).toHaveCount(0);
+      await expect(
+        reversiSurface(page).getByTestId("black-disc-count"),
+      ).toHaveText("黑方：15");
+      await expect(
+        reversiSurface(page).getByTestId("white-disc-count"),
+      ).toHaveText("白方：0");
     }),
   );
-  await expect(pageA.getByTestId("turn-status")).toContainText("胜者：你");
-  await expect(pageB.getByTestId("turn-status")).toContainText("胜者：对手");
+  await expect(reversiSurface(pageA).getByTestId("turn-status")).toContainText(
+    "胜者：你",
+  );
+  await expect(reversiSurface(pageB).getByTestId("turn-status")).toContainText(
+    "胜者：对手",
+  );
 
   const room = await harness.gameServer.roomStore.getByRoomCode(roomCode);
   if (room === null) {
@@ -260,6 +293,7 @@ test("two accounts complete authoritative Reversi with flips and a non-full term
   expect(room).toMatchObject({
     gameId: "reversi",
     gameVersion: "1.1.0",
+    setupProtocol: 6,
     initialConfig: null,
     currentRound: { roundNumber: 1, revision: 11, status: "completed" },
     players: [{ slotId: slotA }, { slotId: slotB }],
@@ -360,6 +394,18 @@ test("two accounts complete authoritative Reversi with flips and a non-full term
       expect(page.getByTestId("room-notice")).toHaveText("房主已关闭房间。"),
     ),
   );
+  const replayMatchId = String(historyA[0]?.matchId);
+  await pageA.goto(
+    `${harness.webUrl}/account/matches/${encodeURIComponent(replayMatchId)}/replay`,
+  );
+  await expect(pageA.getByTestId("replay-page")).toBeVisible();
+  await expect(pageA.getByTestId("game-surface-iframe")).toHaveAttribute(
+    "src",
+    "/game-surfaces/reversi/1.0.0/replay/index.html",
+  );
+  await expect(reversiSurface(pageA).locator("[data-cell-index]")).toHaveCount(
+    64,
+  );
   expect(browserErrors).toEqual([]);
   await Promise.all([contextA.close(), contextB.close()]);
 });
@@ -434,6 +480,41 @@ test("the shared HUD cancels and confirms a Reversi resignation once", async ({
       resignedSlotId: resignedRoom.slotB,
     },
   });
+
+  const rebuiltClient = createPostgresDatabaseClient({
+    url: harness.databaseUrl,
+    applicationName: "reversi-resignation-e2e-replay",
+    maxConnections: 2,
+  });
+  try {
+    const rebuiltReplay = await new PostgresReplayStore(
+      rebuiltClient.database,
+    ).get(round.replayId);
+    expect(rebuiltReplay?.header).toMatchObject({
+      replayFormatVersion: 1,
+      gameId: "reversi",
+      gameVersion: "1.1.0",
+      initialConfig: null,
+    });
+    expect(rebuiltReplay?.actions).toEqual([
+      {
+        sequence: 1,
+        actorSlotId: resignedRoom.slotB,
+        action: { type: "RESIGN" },
+      },
+    ]);
+    expect(verifyReplay(rebuiltReplay, resolveGameDefinition)).toMatchObject({
+      status: "verified",
+      outcome: {
+        type: "WIN",
+        reason: "RESIGNATION",
+        winnerSlotId: resignedRoom.slotA,
+        resignedSlotId: resignedRoom.slotB,
+      },
+    });
+  } finally {
+    await rebuiltClient.close();
+  }
 
   await Promise.all([contextA.close(), contextB.close()]);
 });

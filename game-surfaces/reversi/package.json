@@ -1,0 +1,27 @@
+{
+  "name": "@online-game-hub/reversi-surface",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "onlineGameHub": {
+    "surfaceArtifact": true
+  },
+  "scripts": {
+    "artifact:lock": "vite build && node ../../tooling/surface-artifact/src/cli.ts lock .",
+    "build": "vite build && node ../../tooling/surface-artifact/src/cli.ts finalize .",
+    "contract-test": "pnpm build && node ../../tooling/surface-artifact/src/cli.ts verify-workspace . && vitest run tests/contract.test.ts",
+    "dev": "vite --host 127.0.0.1",
+    "test": "vitest run tests/model.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@online-game-hub/game-surface-bridge": "workspace:*",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.3",
+    "typescript": "6.0.3",
+    "vite": "8.2.2",
+    "vitest": "4.1.11"
+  }
+}

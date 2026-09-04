@@ -154,6 +154,36 @@ const gomokuSurface = (
     }),
   });
 
+const reversiSurfaceArtifactV1 = {
+  schemaVersion: 1,
+  gameId: "reversi",
+  supportedGameVersions: ["1.0.0", "1.1.0"],
+  surfaceVersion: "1.0.0",
+  bridgeVersion: 1,
+  entrypoints: {
+    setup: "setup/index.html",
+    play: "play/index.html",
+    replay: "replay/index.html",
+  },
+  capabilities: {},
+  contentDigest: "sha256-vWmHRvGprD+M4dTRzyB6xgygagp9qaCpBzgAQTIvhuM=",
+} satisfies SurfaceArtifactManifestV1;
+
+const reversiSurface = (
+  gameVersion: "1.0.0" | "1.1.0",
+  setupProtocol: SetupProtocolGeneration,
+): GameDeploymentRegistration =>
+  Object.freeze({
+    gameId: "reversi",
+    gameVersion,
+    setupProtocol,
+    presentation: Object.freeze({
+      kind: "surface-v1",
+      publicBasePath: "/game-surfaces/reversi/1.0.0",
+      artifact: reversiSurfaceArtifactV1,
+    }),
+  });
+
 const gameDeployments = Object.freeze([
   legacy("tic-tac-toe", "1.0.0"),
   ticTacToeSurfaceV1,
@@ -162,8 +192,8 @@ const gameDeployments = Object.freeze([
   gomokuSurface("1.0.0", 5),
   gomokuSurface("1.1.0", 6),
   legacy("hex", "1.0.0"),
-  legacy("reversi", "1.0.0"),
-  legacy("reversi", "1.1.0"),
+  reversiSurface("1.0.0", 5),
+  reversiSurface("1.1.0", 6),
   legacy("chinese-checkers", "1.0.0"),
   pongSurfaceV1,
 ]) satisfies readonly GameDeploymentRegistration[];

@@ -71,7 +71,9 @@ describe("explicit game registry", () => {
       expect(
         resolveGameDeployment(manifest.id, manifest.gameVersion),
       ).toMatchObject(
-        ["tic-tac-toe", "pong", "connect-four", "gomoku"].includes(manifest.id)
+        ["tic-tac-toe", "pong", "connect-four", "gomoku", "reversi"].includes(
+          manifest.id,
+        )
           ? {
               gameId: manifest.id,
               gameVersion: manifest.gameVersion,
@@ -255,6 +257,32 @@ describe("explicit game registry", () => {
         });
       }
     }
+    for (const gameVersion of ["1.0.0", "1.1.0"] as const) {
+      expect(resolveGameDeployment("reversi", gameVersion)).toMatchObject({
+        setupProtocol: gameVersion === "1.1.0" ? 6 : 5,
+        presentation: {
+          kind: "surface-v1",
+          publicBasePath: "/game-surfaces/reversi/1.0.0",
+          artifact: {
+            supportedGameVersions: ["1.0.0", "1.1.0"],
+            surfaceVersion: "1.0.0",
+            contentDigest:
+              "sha256-vWmHRvGprD+M4dTRzyB6xgygagp9qaCpBzgAQTIvhuM=",
+          },
+        },
+      });
+      for (const mode of ["setup", "play", "replay"] as const) {
+        expect(
+          resolveGameSurfaceEntrypoint("reversi", gameVersion, mode),
+        ).toMatchObject({
+          gameId: "reversi",
+          gameVersion,
+          surfaceVersion: "1.0.0",
+          mode,
+          url: `/game-surfaces/reversi/1.0.0/${mode}/index.html`,
+        });
+      }
+    }
   });
 
   it("selects each explicitly registered current definition for new rooms", () => {
@@ -282,6 +310,7 @@ describe("explicit game registry", () => {
       ["pong", "1.0.0"],
       ["connect-four", "1.1.0"],
       ["gomoku", "1.1.0"],
+      ["reversi", "1.1.0"],
     ] as const) {
       const definition = resolveRoundSetupDefinition(gameId, gameVersion);
       expect(definition).toBeDefined();
@@ -295,6 +324,7 @@ describe("explicit game registry", () => {
       resolveRoundSetupDefinition("connect-four", "1.0.0"),
     ).toBeUndefined();
     expect(resolveRoundSetupDefinition("gomoku", "1.0.0")).toBeUndefined();
+    expect(resolveRoundSetupDefinition("reversi", "1.0.0")).toBeUndefined();
     expect(resolveCurrentRoundSetupDefinition("unknown")).toBeUndefined();
   });
 
