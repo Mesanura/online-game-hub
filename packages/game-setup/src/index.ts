@@ -209,6 +209,306 @@ export function eraseRoundSetupDefinition<
   return definition as unknown as UnknownRoundSetupDefinition;
 }
 
+export interface RoundSetupCoordinatorState<
+  Config extends SetupJsonValue = SetupJsonValue,
+  State extends SetupJsonValue = SetupJsonValue,
+> {
+  readonly schemaVersion: 1;
+  readonly setupState: State;
+  readonly setupRevision: number;
+  readonly setupRng: SetupRngState;
+  readonly readySlotIds: readonly string[];
+  readonly finalizedSetup: FinalizedRoundSetup<Config> | null;
+}
+
+export interface RoundSetupReadinessView {
+  readonly canFinalize: boolean;
+  readonly canReady: boolean;
+  readonly selfReady: boolean;
+  readonly readySlotIds: readonly string[];
+  readonly requiredSlotIds: readonly string[];
+}
+
+export type RoundSetupActionResult<
+  Config extends SetupJsonValue,
+  State extends SetupJsonValue,
+> =
+  | {
+      readonly status: "accepted";
+      readonly coordinator: RoundSetupCoordinatorState<Config, State>;
+    }
+  | { readonly status: "stale"; readonly setupRevision: number }
+  | { readonly status: "rejected"; readonly code: SetupRuleErrorCode };
+
+export type RoundSetupReadyResult<
+  Config extends SetupJsonValue,
+  State extends SetupJsonValue,
+> =
+  | {
+      readonly status: "accepted" | "unchanged";
+      readonly coordinator: RoundSetupCoordinatorState<Config, State>;
+    }
+  | { readonly status: "rejected"; readonly code: SetupRuleErrorCode };
+
+export type RoundSetupFinalizeResult<
+  Config extends SetupJsonValue,
+  State extends SetupJsonValue,
+> =
+  | {
+      readonly status: "finalized";
+      readonly coordinator: RoundSetupCoordinatorState<Config, State>;
+      readonly setup: FinalizedRoundSetup<Config>;
+    }
+  | { readonly status: "waiting" }
+  | { readonly status: "rejected"; readonly code: SetupRuleErrorCode };
+
+function uniqueSlotIds(slotIds: readonly string[]): readonly string[] {
+  return Object.freeze([...new Set(slotIds)]);
+}
+
+function sameSlotSet(
+  left: readonly string[],
+  right: readonly string[],
+): boolean {
+  return (
+    left.length === right.length &&
+    left.every((slotId) => right.includes(slotId))
+  );
+}
+
+export function initializeRoundSetupCoordinator<
+  Config extends SetupJsonValue,
+  State extends SetupJsonValue,
+  Action extends SetupJsonValue,
+  View extends SetupJsonValue,
+>(
+  definition: RoundSetupDefinition<Config, State, Action, View>,
+  context: SetupInitializationContext<Config>,
+  setupRng: Readonly<SetupRngState>,
+): RoundSetupCoordinatorState<Config, State> {
+  validateSetupRng(setupRng);
+  const setupState = definition.setupStateSchema.parse(
+    definition.initialize(context),
+  );
+  return Object.freeze({
+    schemaVersion: 1,
+    setupState,
+    setupRevision: 0,
+    setupRng: Object.freeze({ ...setupRng }),
+    readySlotIds: Object.freeze([]),
+    finalizedSetup: null,
+  });
+}
+
+export function applyRoundSetupAction<
+  Config extends SetupJsonValue,
+  State extends SetupJsonValue,
+  Action extends SetupJsonValue,
+  View extends SetupJsonValue,
+>(
+  definition: RoundSetupDefinition<Config, State, Action, View>,
+  coordinator: Readonly<RoundSetupCoordinatorState<Config, State>>,
+  input: {
+    readonly action: SetupJsonValue;
+    readonly actorSlotId: string;
+    readonly isOwner: boolean;
+    readonly expectedSetupRevision: number;
+    readonly slots: readonly SetupSlot[];
+  },
+): RoundSetupActionResult<Config, State> {
+  if (input.expectedSetupRevision !== coordinator.setupRevision) {
+    return { status: "stale", setupRevision: coordinator.setupRevision };
+  }
+  if (coordinator.setupRevision >= Number.MAX_SAFE_INTEGER) {
+    return { status: "rejected", code: "SETUP_REVISION_EXHAUSTED" };
+  }
+  const parsedAction = definition.setupActionSchema.safeParse(input.action);
+  if (!parsedAction.success) {
+    return { status: "rejected", code: "INVALID_SETUP_ACTION" };
+  }
+  const transition = definition.transition({
+    state: coordinator.setupState,
+    action: parsedAction.data,
+    actorSlotId: input.actorSlotId,
+    isOwner: input.isOwner,
+    slots: input.slots,
+  });
+  if (transition.status === "rejected") return transition;
+  const setupState = definition.setupStateSchema.safeParse(transition.state);
+  if (!setupState.success) {
+    return { status: "rejected", code: "INVALID_SETUP_STATE" };
+  }
+  return {
+    status: "accepted",
+    coordinator: Object.freeze({
+      ...coordinator,
+      setupState: setupState.data,
+      setupRevision: coordinator.setupRevision + 1,
+      readySlotIds: Object.freeze([]),
+      finalizedSetup: null,
+    }),
+  };
+}
+
+export function projectRoundSetupView<
+  Config extends SetupJsonValue,
+  State extends SetupJsonValue,
+  Action extends SetupJsonValue,
+  View extends SetupJsonValue,
+>(
+  definition: RoundSetupDefinition<Config, State, Action, View>,
+  coordinator: Readonly<RoundSetupCoordinatorState<Config, State>>,
+  slots: readonly SetupSlot[],
+  viewer: SetupViewer,
+): View {
+  return definition.setupViewSchema.parse(
+    definition.projectView({ state: coordinator.setupState, slots, viewer }),
+  );
+}
+
+export function getRoundSetupReadiness<
+  Config extends SetupJsonValue,
+  State extends SetupJsonValue,
+  Action extends SetupJsonValue,
+  View extends SetupJsonValue,
+>(
+  definition: RoundSetupDefinition<Config, State, Action, View>,
+  coordinator: Readonly<RoundSetupCoordinatorState<Config, State>>,
+  slots: readonly SetupSlot[],
+  viewerSlotId?: string,
+): RoundSetupReadinessView {
+  const readiness = definition.getReadiness(coordinator.setupState, slots);
+  const requiredSlotIds = uniqueSlotIds(readiness.participantSlotIds);
+  const readySlotIds = Object.freeze(
+    requiredSlotIds.filter((slotId) =>
+      coordinator.readySlotIds.includes(slotId),
+    ),
+  );
+  const viewerSlot = slots.find((slot) => slot.slotId === viewerSlotId);
+  const canReady =
+    coordinator.finalizedSetup === null &&
+    readiness.canFinalize &&
+    viewerSlot !== undefined &&
+    viewerSlot.occupied &&
+    viewerSlot.online &&
+    requiredSlotIds.includes(viewerSlot.slotId);
+  return Object.freeze({
+    canFinalize: readiness.canFinalize,
+    canReady,
+    selfReady:
+      viewerSlotId !== undefined && readySlotIds.includes(viewerSlotId),
+    readySlotIds,
+    requiredSlotIds,
+  });
+}
+
+export function setRoundSetupReady<
+  Config extends SetupJsonValue,
+  State extends SetupJsonValue,
+  Action extends SetupJsonValue,
+  View extends SetupJsonValue,
+>(
+  definition: RoundSetupDefinition<Config, State, Action, View>,
+  coordinator: Readonly<RoundSetupCoordinatorState<Config, State>>,
+  slots: readonly SetupSlot[],
+  slotId: string,
+  ready: boolean,
+): RoundSetupReadyResult<Config, State> {
+  const readiness = getRoundSetupReadiness(
+    definition,
+    coordinator,
+    slots,
+    slotId,
+  );
+  const wasReady = coordinator.readySlotIds.includes(slotId);
+  if (ready && !readiness.canReady) {
+    return { status: "rejected", code: "SETUP_NOT_READY" };
+  }
+  if (wasReady === ready) {
+    return { status: "unchanged", coordinator };
+  }
+  return {
+    status: "accepted",
+    coordinator: Object.freeze({
+      ...coordinator,
+      readySlotIds: ready
+        ? Object.freeze([...coordinator.readySlotIds, slotId])
+        : Object.freeze(
+            coordinator.readySlotIds.filter(
+              (candidate) => candidate !== slotId,
+            ),
+          ),
+    }),
+  };
+}
+
+export function finalizeRoundSetup<
+  Config extends SetupJsonValue,
+  State extends SetupJsonValue,
+  Action extends SetupJsonValue,
+  View extends SetupJsonValue,
+>(
+  definition: RoundSetupDefinition<Config, State, Action, View>,
+  coordinator: Readonly<RoundSetupCoordinatorState<Config, State>>,
+  slots: readonly SetupSlot[],
+  minimumPlayers: number,
+  maximumPlayers: number,
+): RoundSetupFinalizeResult<Config, State> {
+  if (coordinator.finalizedSetup !== null) {
+    return {
+      status: "finalized",
+      coordinator,
+      setup: coordinator.finalizedSetup,
+    };
+  }
+  const readiness = getRoundSetupReadiness(definition, coordinator, slots);
+  if (
+    !readiness.canFinalize ||
+    readiness.requiredSlotIds.length === 0 ||
+    !readiness.requiredSlotIds.every((slotId) =>
+      readiness.readySlotIds.includes(slotId),
+    ) ||
+    !readiness.requiredSlotIds.every(
+      (slotId) => slots.find((slot) => slot.slotId === slotId)?.online === true,
+    )
+  ) {
+    return { status: "waiting" };
+  }
+  const finalization = definition.finalize({
+    state: coordinator.setupState,
+    slots,
+    rng: coordinator.setupRng,
+  });
+  if (finalization.status === "rejected") return finalization;
+  const validation = validateFinalizedRoundSetup(
+    finalization.setup,
+    slots,
+    minimumPlayers,
+    maximumPlayers,
+  );
+  if (!validation.ok) {
+    return { status: "rejected", code: validation.code };
+  }
+  if (
+    !sameSlotSet(
+      finalization.setup.participantSlotIds,
+      readiness.requiredSlotIds,
+    )
+  ) {
+    return { status: "rejected", code: "SETUP_PARTICIPANT_MISMATCH" };
+  }
+  const nextCoordinator = Object.freeze({
+    ...coordinator,
+    setupRng: Object.freeze({ ...finalization.rng }),
+    finalizedSetup: finalization.setup,
+  });
+  return {
+    status: "finalized",
+    coordinator: nextCoordinator,
+    setup: finalization.setup,
+  };
+}
+
 export type FinalizedSetupValidationCode =
   | "INVALID_PLAYER_COUNT"
   | "UNKNOWN_PARTICIPANT"
