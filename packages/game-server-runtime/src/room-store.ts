@@ -1,5 +1,10 @@
 import { isJsonValue } from "@online-game-hub/game-sdk";
 import type { JsonValue, RngState } from "@online-game-hub/game-sdk";
+import { SETUP_RNG_ALGORITHM_V1 } from "@online-game-hub/game-setup";
+import type {
+  FinalizedRoundSetup,
+  RoundSetupCoordinatorState,
+} from "@online-game-hub/game-setup";
 import {
   setupProtocolGenerationSchema,
   type MatchStatus,
@@ -35,6 +40,10 @@ export interface StoredGameRoom {
   readonly initialConfig: JsonValue;
   readonly players: readonly StoredPlayerSlot[];
   readonly currentRound: StoredGameRound | null;
+  /** Present only while a Protocol V6 room offers setup for its next round. */
+  readonly nextRoundSetup?: RoundSetupCoordinatorState;
+  /** Present after a Protocol V6 room has finalized and started at least one round. */
+  readonly previousFinalizedSetup?: FinalizedRoundSetup;
   readonly closeReason: RoomCloseReason | null;
 }
 
@@ -92,7 +101,93 @@ function cloneRoom(room: StoredGameRoom): StoredGameRoom {
                 ? null
                 : cloneJson(room.currentRound.outcome),
           },
+    ...(room.nextRoundSetup === undefined
+      ? {}
+      : { nextRoundSetup: cloneRoundSetup(room.nextRoundSetup) }),
+    ...(room.previousFinalizedSetup === undefined
+      ? {}
+      : {
+          previousFinalizedSetup: cloneFinalizedSetup(
+            room.previousFinalizedSetup,
+          ),
+        }),
   };
+}
+
+function cloneFinalizedSetup(setup: FinalizedRoundSetup): FinalizedRoundSetup {
+  return {
+    config: cloneJson(setup.config as JsonValue),
+    participantSlotIds: [...setup.participantSlotIds],
+    playerOrder: [...setup.playerOrder],
+    assignments: setup.assignments.map((entry) => ({ ...entry })),
+  };
+}
+
+function cloneRoundSetup(
+  setup: RoundSetupCoordinatorState,
+): RoundSetupCoordinatorState {
+  return {
+    schemaVersion: 1,
+    setupState: cloneJson(setup.setupState as JsonValue),
+    setupRevision: setup.setupRevision,
+    setupRng: { ...setup.setupRng },
+    readySlotIds: [...setup.readySlotIds],
+    finalizedSetup:
+      setup.finalizedSetup === null
+        ? null
+        : cloneFinalizedSetup(setup.finalizedSetup),
+  };
+}
+
+function validFinalizedSetup(
+  setup: FinalizedRoundSetup,
+  slots: readonly StoredPlayerSlot[],
+): boolean {
+  const participantSlotIds = setup.participantSlotIds;
+  const occupiedSlotIds = new Set(
+    slots
+      .filter((slot) => slot.playerSessionId !== null)
+      .map((slot) => slot.slotId),
+  );
+  const assignmentSlotIds = setup.assignments.map((entry) => entry.slotId);
+  return (
+    isJsonValue(setup.config) &&
+    participantSlotIds.length > 0 &&
+    new Set(participantSlotIds).size === participantSlotIds.length &&
+    participantSlotIds.every((slotId) => occupiedSlotIds.has(slotId)) &&
+    setup.playerOrder.length === participantSlotIds.length &&
+    new Set(setup.playerOrder).size === setup.playerOrder.length &&
+    setup.playerOrder.every((slotId) => participantSlotIds.includes(slotId)) &&
+    assignmentSlotIds.length === participantSlotIds.length &&
+    new Set(assignmentSlotIds).size === assignmentSlotIds.length &&
+    assignmentSlotIds.every((slotId) => participantSlotIds.includes(slotId)) &&
+    setup.assignments.every(
+      (entry) =>
+        entry.assignment === null ||
+        (typeof entry.assignment === "string" && entry.assignment.length > 0),
+    )
+  );
+}
+
+function validRoundSetup(
+  setup: RoundSetupCoordinatorState,
+  slots: readonly StoredPlayerSlot[],
+): boolean {
+  const slotIds = new Set(slots.map((slot) => slot.slotId));
+  return (
+    setup.schemaVersion === 1 &&
+    isJsonValue(setup.setupState) &&
+    Number.isSafeInteger(setup.setupRevision) &&
+    setup.setupRevision >= 0 &&
+    setup.setupRng.algorithm === SETUP_RNG_ALGORITHM_V1 &&
+    setup.setupRng.seed.length > 0 &&
+    Number.isSafeInteger(setup.setupRng.cursor) &&
+    setup.setupRng.cursor >= 0 &&
+    new Set(setup.readySlotIds).size === setup.readySlotIds.length &&
+    setup.readySlotIds.every((slotId) => slotIds.has(slotId)) &&
+    (setup.finalizedSetup === null ||
+      validFinalizedSetup(setup.finalizedSetup, slots))
+  );
 }
 
 function validRoom(room: StoredGameRoom): boolean {
@@ -111,6 +206,18 @@ function validRoom(room: StoredGameRoom): boolean {
       round.revision >= 0 &&
       isJsonValue(round.state) &&
       isJsonValue(round.outcome));
+  const validSetup =
+    room.setupProtocol === 5
+      ? room.nextRoundSetup === undefined &&
+        room.previousFinalizedSetup === undefined
+      : (room.nextRoundSetup === undefined ||
+          validRoundSetup(room.nextRoundSetup, room.players)) &&
+        (room.previousFinalizedSetup === undefined ||
+          validFinalizedSetup(room.previousFinalizedSetup, room.players)) &&
+        (room.closeReason !== null || round?.status === "active"
+          ? true
+          : room.nextRoundSetup !== undefined) &&
+        (round === null || room.previousFinalizedSetup !== undefined);
   return (
     room.roomId.length > 0 &&
     /^[A-HJ-NP-Z2-9]{8}$/u.test(room.roomCode) &&
@@ -134,6 +241,7 @@ function validRoom(room: StoredGameRoom): boolean {
     new Set(slots).size === slots.length &&
     isJsonValue(room.initialConfig) &&
     validRound &&
+    validSetup &&
     (room.closeReason === null || typeof room.closeReason === "string")
   );
 }

@@ -75,6 +75,7 @@ function validDate(value: unknown): value is Date {
 function validStoredRoom(room: StoredGameRoom): boolean {
   const round = room.currentRound;
   const assignedSessions = room.players
+    .filter((player) => round?.playerOrder.includes(player.slotId) === true)
     .map((player) => player.playerSessionId)
     .filter((session): session is string => session !== null);
   return (
@@ -107,7 +108,9 @@ function validStoredRoom(room: StoredGameRoom): boolean {
     round.playerOrder.length === assignedSessions.length &&
     new Set(round.playerOrder).size === round.playerOrder.length &&
     round.playerOrder.every((slotId) =>
-      room.players.some((player) => player.slotId === slotId),
+      room.players.some(
+        (player) => player.slotId === slotId && player.playerSessionId !== null,
+      ),
     ) &&
     new Set(assignedSessions).size === assignedSessions.length
   );
@@ -140,7 +143,8 @@ async function assertSameParticipants(
       (
         player,
       ): player is typeof player & { readonly playerSessionId: string } =>
-        player.playerSessionId !== null,
+        player.playerSessionId !== null &&
+        room.currentRound?.playerOrder.includes(player.slotId) === true,
     )
     .map((player) => ({
       playerSlotId: player.slotId,
@@ -170,7 +174,8 @@ async function recordAssignedPlayers(
 ): Promise<void> {
   const assigned = room.players.filter(
     (player): player is typeof player & { readonly playerSessionId: string } =>
-      player.playerSessionId !== null,
+      player.playerSessionId !== null &&
+      room.currentRound?.playerOrder.includes(player.slotId) === true,
   );
   for (const player of assigned) {
     await transaction

@@ -196,6 +196,8 @@ Platform 通用校验只允许已占用 stable slot，强制 manifest 人数范�
 
 新房间以 manifest `defaultConfig` 初始化首轮 Setup。完成 Round 后，下一轮从上一轮 `FinalizedRoundSetup` 初始化，复用 config、参与者、实际顺序与 assignments，但不复用 State、Outcome、revision/tick、seed、RNG cursor、ready、Match ID 或 replay ID。每位参与者必须分别重新 ready；accepted 设置变更再次清空全部确认。
 
+回合制 runtime 已具备 dormant V5/V6 双轨：新建房间按 exact deployment 固定 generation，V6 aggregate/RoomStore 保存 versioned coordinator、ready slot、上一局 finalized setup，并以独立 setup/gameplay seed 启动 Round。Setup Action 与 ready 的候选状态先保存再提交内存；finalize 后的随机结果在 Round archive/replay 创建失败期间保持固化，同一命令可重试而不重新随机。completed setup 阶段的断线会同时清除对应 slot 的 ready 并写回 RoomStore。当前生产 registration 仍全部为 V5；井字棋 Surface/等待页完成前不得切换，realtime V6 adapter 仍属于 M9-D 后续工作。
+
 ### 7.4 房间协议代际固定与发现
 
 Exact deployment registration 只决定新建房间使用 V5 还是 V6；runtime 在创建时把结果写入 room record 的 `setupProtocol`，之后任何 `save` 都不得改变该值。加入已有房间不能读取当前 deployment default，因为注册切换或回滚可能已经发生；Web 先经同源 `/api/room-discovery` 从 Game Server 的 active room store 读取最小 `{ roomCode, gameId, gameVersion, setupProtocol, runtime }`，校验 game/runtime 后才按该 generation 申请 ticket 和 join。

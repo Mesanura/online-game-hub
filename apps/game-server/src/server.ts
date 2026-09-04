@@ -38,6 +38,7 @@ import {
 } from "@online-game-hub/protocol";
 import type {
   ExactGameDefinitionResolver,
+  ExactRoundSetupDefinitionResolver,
   CurrentGameDefinitionResolver,
   MatchArchive,
   MetricsCollector,
@@ -46,6 +47,7 @@ import type {
   RuntimeClock,
   RuntimeIdSource,
   RuntimeLogger,
+  SetupProtocolResolver,
   TicketVerifier,
 } from "@online-game-hub/game-server-runtime";
 import {
@@ -53,7 +55,9 @@ import {
   resolveGameDefinition,
   resolveCurrentRealtimeGameDefinition,
   resolveRealtimeGameDefinition,
+  resolveRoundSetupDefinition,
 } from "@online-game-hub/game-registry/server";
+import { resolveGameDeployment } from "@online-game-hub/game-registry/deployment";
 
 export interface GameServerStartOptions {
   readonly hostname?: string;
@@ -71,6 +75,8 @@ export interface GameServerCompositionOptions {
   readonly ticketVerifier: TicketVerifier;
   readonly resolveCurrentDefinition?: CurrentGameDefinitionResolver;
   readonly resolveDefinition?: ExactGameDefinitionResolver;
+  readonly resolveRoundSetupDefinition?: ExactRoundSetupDefinitionResolver;
+  readonly resolveSetupProtocol?: SetupProtocolResolver;
   readonly roomStore?: RoomStore;
   readonly replayStore?: ReplayStore;
   readonly matchArchive?: MatchArchive;
@@ -169,6 +175,12 @@ export function createGameServer(
     resolveCurrentDefinition:
       options.resolveCurrentDefinition ?? resolveCurrentGameDefinition,
     resolveDefinition: options.resolveDefinition ?? resolveGameDefinition,
+    resolveRoundSetupDefinition:
+      options.resolveRoundSetupDefinition ?? resolveRoundSetupDefinition,
+    resolveSetupProtocol:
+      options.resolveSetupProtocol ??
+      ((gameId, gameVersion) =>
+        resolveGameDeployment(gameId, gameVersion)?.setupProtocol),
     roomStore,
     replayStore,
     ...(options.matchArchive === undefined

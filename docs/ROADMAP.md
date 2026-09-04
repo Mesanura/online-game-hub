@@ -326,6 +326,8 @@ M8 结束后再由产品证据选择下一个 M7 候选能力；不要把 OAuth�
 
 ### M9-D：Setup V6 与双 runtime
 
+> 实施状态：回合制 dormant V5/V6 runtime 与井字棋 Setup integration 已完成；production registration 仍为 V5。Realtime adapter、等待页 Setup Surface 和试点切换尚未完成。
+
 - 两套 runtime 使用同一纯 setup coordinator，RoomStore 保存 versioned Setup State、setupRevision、ready slots、上一局 finalized setup 与协议代际；
 - 实现服务端 actor/schema/权限、stale/idempotency、持久化重试、per-viewer projection 和独立 setup RNG；
 - 等待页保留房间码、邀请、presence、ready、关闭/离开，规则区域挂载 Setup Surface；

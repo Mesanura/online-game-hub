@@ -1,5 +1,5 @@
 import { CloseCode, Room, ServerError } from "@colyseus/core";
-import type { Client } from "@colyseus/core";
+import type { Client, RoomException, RoomMethodName } from "@colyseus/core";
 import { REPLAY_FORMAT_VERSION, type ReplayStore } from "./replay.js";
 import {
   RNG_ALGORITHM_V1,
@@ -14,24 +14,58 @@ import type {
   UnknownGameDefinition,
 } from "@online-game-hub/game-sdk";
 import {
+  applyRoundSetupAction,
+  createSetupRng,
+  finalizeRoundSetup,
+  getRoundSetupReadiness,
+  initializeRoundSetupCoordinator,
+  projectRoundSetupView,
+  setRoundSetupReady,
+} from "@online-game-hub/game-setup";
+import type {
+  FinalizedRoundSetup,
+  RoundSetupCoordinatorState,
+  SetupJsonValue,
+  SetupSlot,
+  UnknownRoundSetupDefinition,
+} from "@online-game-hub/game-setup";
+import {
   GAME_ACTION_MESSAGE,
+  GAME_SETUP_MESSAGE,
   PROTOCOL_VERSION,
   ROOM_CONTROL_MESSAGE,
   SERVER_PROTOCOL_MESSAGE,
+  SETUP_PROTOCOL_VERSION,
   createGameRoomRequestSchema,
+  createGameRoomRequestV6Schema,
   gameActionCommandSchema,
+  gameActionCommandV6Schema,
+  gameRoomRequestV6Schema,
   gameRoomRequestSchema,
+  gameSetupCommandSchema,
   roomControlCommandSchema,
+  roomControlCommandV6Schema,
 } from "@online-game-hub/protocol";
 import type {
   CommandRejected,
+  CommandRejectedV6,
+  CreateGameRoomRequest,
+  CreateGameRoomRequestV6,
+  GameRoomRequest,
+  GameRoomRequestV6,
   MatchSnapshot,
+  MatchSnapshotV6,
   MatchStatus,
   ProtocolErrorCode,
   RoomCloseReason,
   RoomConnected,
+  RoomConnectedV6,
+  RoomControlCommandV6,
   RoomLifecycleState,
+  RoomLifecycleStateV6,
   ServerMessage,
+  ServerMessageV6,
+  SetupProtocolGeneration,
   StarterChoice,
 } from "@online-game-hub/protocol";
 
@@ -61,6 +95,7 @@ import type {
 
 export {
   GAME_ACTION_MESSAGE,
+  GAME_SETUP_MESSAGE,
   GAME_ROOM_NAME,
   ROOM_CONTROL_MESSAGE,
   SERVER_PROTOCOL_MESSAGE,
@@ -75,11 +110,21 @@ export type ExactGameDefinitionResolver = (
   gameId: string,
   gameVersion: string,
 ) => UnknownGameDefinition | undefined;
+export type ExactRoundSetupDefinitionResolver = (
+  gameId: string,
+  gameVersion: string,
+) => UnknownRoundSetupDefinition | undefined;
+export type SetupProtocolResolver = (
+  gameId: string,
+  gameVersion: string,
+) => SetupProtocolGeneration | undefined;
 
 export interface AuthoritativeGameRoomDependencies {
   readonly ticketVerifier: TicketVerifier;
   readonly resolveCurrentDefinition: CurrentGameDefinitionResolver;
   readonly resolveDefinition: ExactGameDefinitionResolver;
+  readonly resolveRoundSetupDefinition: ExactRoundSetupDefinitionResolver;
+  readonly resolveSetupProtocol: SetupProtocolResolver;
   readonly roomStore: RoomStore;
   readonly replayStore: ReplayStore;
   readonly matchArchive?: MatchArchive;
@@ -95,7 +140,7 @@ export interface GameRoomMetadata {
   readonly roomCode: string;
   readonly gameId: string;
   readonly gameVersion: string;
-  readonly setupProtocol: typeof PROTOCOL_VERSION;
+  readonly setupProtocol: SetupProtocolGeneration;
 }
 
 export type AuthoritativeGameRoomClass = new () => Room<{
@@ -113,9 +158,13 @@ interface RuntimeSlot {
 
 interface RuntimeAggregate {
   readonly definition: UnknownGameDefinition;
-  readonly initialConfig: JsonValue;
+  initialConfig: JsonValue;
   readonly roomCode: string;
   readonly slots: RuntimeSlot[];
+  readonly setupProtocol: SetupProtocolGeneration;
+  readonly setupDefinition: UnknownRoundSetupDefinition | null;
+  nextRoundSetup: RoundSetupCoordinatorState | null;
+  previousFinalizedSetup: FinalizedRoundSetup | null;
   targetPlayerCount: number;
   currentRound: RuntimeRound | null;
 }
@@ -135,11 +184,52 @@ interface PendingRound {
   readonly replayId: string;
   readonly roundNumber: number;
   readonly playerOrder: readonly PlayerSlotId[];
+  readonly config: JsonValue;
+  readonly assignments: readonly {
+    readonly slotId: string;
+    readonly assignment: string | null;
+  }[];
+  readonly finalizedSetup: FinalizedRoundSetup | null;
   readonly initialRng: RngState;
   readonly initialized: {
     readonly state: JsonValue;
     readonly rng: RngState;
   } | null;
+}
+
+type RuntimeCommandOutcome =
+  ServerMessage | ServerMessageV6 | RoomLifecycleState | RoomLifecycleStateV6;
+
+type AnyGameRoomRequest = GameRoomRequest | GameRoomRequestV6;
+type AnyCreateGameRoomRequest = CreateGameRoomRequest | CreateGameRoomRequestV6;
+
+function requestedProtocolVersion(input: unknown): unknown {
+  return input !== null &&
+    typeof input === "object" &&
+    "protocolVersion" in input
+    ? (input as { readonly protocolVersion?: unknown }).protocolVersion
+    : undefined;
+}
+
+function parseGameRoomRequest(input: unknown): AnyGameRoomRequest | null {
+  const schema =
+    requestedProtocolVersion(input) === SETUP_PROTOCOL_VERSION
+      ? gameRoomRequestV6Schema
+      : gameRoomRequestSchema;
+  const parsed = schema.safeParse(input);
+  return parsed.success ? parsed.data : null;
+}
+
+function parseCreateGameRoomRequest(
+  input: unknown,
+  setupProtocol: SetupProtocolGeneration,
+): AnyCreateGameRoomRequest | null {
+  const schema =
+    setupProtocol === SETUP_PROTOCOL_VERSION
+      ? createGameRoomRequestV6Schema
+      : createGameRoomRequestSchema;
+  const parsed = schema.safeParse(input);
+  return parsed.success ? parsed.data : null;
 }
 
 interface RuntimeClientData {
@@ -167,7 +257,12 @@ function validReturnedRng(
 }
 
 function retryable(code: ProtocolErrorCode): boolean {
-  return code === "STALE_REVISION" || code === "RATE_LIMITED";
+  return (
+    code === "STALE_REVISION" ||
+    code === "STALE_SETUP_REVISION" ||
+    code === "SETUP_NOT_READY" ||
+    code === "RATE_LIMITED"
+  );
 }
 
 export function createAuthoritativeGameRoomClass(
@@ -209,15 +304,13 @@ export function createAuthoritativeGameRoomClass(
     #creatorSessionId: string | undefined;
     #queue: Promise<void> = Promise.resolve();
     readonly #activeClientBySession = new Map<string, Client>();
-    readonly #commandOutcomes = new Map<
-      string,
-      ServerMessage | RoomLifecycleState
-    >();
+    readonly #commandOutcomes = new Map<string, RuntimeCommandOutcome>();
     readonly #readySessions = new Set<string>();
     #terminalTimeout: CancelTimer | null = null;
     #closedReason: RoomCloseReason | null = null;
     #starterChoice: StarterChoice | null = null;
     #pendingRound: PendingRound | null = null;
+    #pendingNextRoundSetup: RoundSetupCoordinatorState | null = null;
     #rematchOrder: readonly PlayerSlotId[] | null = null;
     #disposed = false;
 
@@ -228,14 +321,12 @@ export function createAuthoritativeGameRoomClass(
       readonly playerSessionId: string;
       readonly userId: string | null;
     }> {
-      const request = gameRoomRequestSchema.safeParse(options);
-      if (!request.success) {
+      const request = parseGameRoomRequest(options);
+      if (request === null) {
+        const requested = requestedProtocolVersion(options);
         const unsupported =
-          options !== null &&
-          typeof options === "object" &&
-          "protocolVersion" in options &&
-          (options as { readonly protocolVersion?: unknown })
-            .protocolVersion !== PROTOCOL_VERSION;
+          requested !== PROTOCOL_VERSION &&
+          requested !== SETUP_PROTOCOL_VERSION;
         throw protocolServerError(
           unsupported
             ? "PROTOCOL_VERSION_UNSUPPORTED"
@@ -243,10 +334,13 @@ export function createAuthoritativeGameRoomClass(
         );
       }
       const verification = await dependencies.ticketVerifier.verify(
-        request.data.ticket,
+        request.ticket,
       );
       if (verification.status === "rejected") {
         throw protocolServerError(verification.protocolCode);
+      }
+      if (verification.claims.protocolVersion !== request.protocolVersion) {
+        throw protocolServerError("PROTOCOL_VERSION_UNSUPPORTED");
       }
       return {
         playerSessionId: verification.playerSessionId,
@@ -255,27 +349,44 @@ export function createAuthoritativeGameRoomClass(
     }
 
     public override async onCreate(options: unknown): Promise<void> {
-      const request = createGameRoomRequestSchema.safeParse(options);
-      if (!request.success || !isJsonValue(request.data.initialConfig)) {
+      const genericRequest = parseGameRoomRequest(options);
+      if (
+        genericRequest === null ||
+        genericRequest.type !== "room.create" ||
+        !isJsonValue(genericRequest.initialConfig)
+      ) {
         throw protocolServerError(
           this.#requestProtocolCode(options, "INVALID_ACTION_PAYLOAD"),
         );
       }
-      const verification = await dependencies.ticketVerifier.verify(
-        request.data.ticket,
-      );
-      if (verification.status === "rejected") {
-        throw protocolServerError(verification.protocolCode);
-      }
-
       const definition = dependencies.resolveCurrentDefinition(
-        request.data.gameId,
+        genericRequest.gameId,
       );
       if (definition === undefined) {
         throw protocolServerError("ROOM_NOT_FOUND");
       }
+      const setupProtocol = dependencies.resolveSetupProtocol(
+        definition.manifest.id,
+        definition.manifest.gameVersion,
+      );
+      if (setupProtocol === undefined) {
+        throw new ServerError(500, "INTERNAL_ERROR");
+      }
+      const request = parseCreateGameRoomRequest(options, setupProtocol);
+      if (request === null || !isJsonValue(request.initialConfig)) {
+        throw protocolServerError("PROTOCOL_VERSION_UNSUPPORTED");
+      }
+      const verification = await dependencies.ticketVerifier.verify(
+        request.ticket,
+      );
+      if (verification.status === "rejected") {
+        throw protocolServerError(verification.protocolCode);
+      }
+      if (verification.claims.protocolVersion !== setupProtocol) {
+        throw protocolServerError("PROTOCOL_VERSION_UNSUPPORTED");
+      }
       const configResult = definition.configSchema.safeParse(
-        request.data.initialConfig,
+        request.initialConfig,
       );
       if (!configResult.success || !isJsonValue(configResult.data)) {
         throw protocolServerError("INVALID_ACTION_PAYLOAD");
@@ -304,6 +415,42 @@ export function createAuthoritativeGameRoomClass(
       if (new Set(slots.map((slot) => slot.slotId)).size !== slots.length) {
         throw new ServerError(500, "INTERNAL_ERROR");
       }
+      const setupDefinition =
+        setupProtocol === SETUP_PROTOCOL_VERSION
+          ? dependencies.resolveRoundSetupDefinition(
+              definition.manifest.id,
+              definition.manifest.gameVersion,
+            )
+          : null;
+      if (
+        setupProtocol === SETUP_PROTOCOL_VERSION &&
+        setupDefinition === undefined
+      ) {
+        throw new ServerError(500, "INTERNAL_ERROR");
+      }
+      let nextRoundSetup: RoundSetupCoordinatorState | null = null;
+      if (setupDefinition !== null && setupDefinition !== undefined) {
+        try {
+          nextRoundSetup = initializeRoundSetupCoordinator(
+            setupDefinition,
+            {
+              source: {
+                kind: "defaults",
+                config: configResult.data as SetupJsonValue,
+              },
+              slots: slots.map((slot) => ({
+                slotId: slot.slotId,
+                occupied: slot.playerSessionId !== null,
+                online: false,
+                isOwner: slot.playerSessionId === verification.playerSessionId,
+              })),
+            },
+            createSetupRng(ids.createRngSeed()),
+          );
+        } catch {
+          throw new ServerError(500, "INTERNAL_ERROR");
+        }
+      }
 
       this.autoDispose = false;
       this.patchRate = null;
@@ -315,6 +462,10 @@ export function createAuthoritativeGameRoomClass(
         initialConfig: configResult.data,
         roomCode,
         slots,
+        setupProtocol,
+        setupDefinition: setupDefinition ?? null,
+        nextRoundSetup,
+        previousFinalizedSetup: null,
         targetPlayerCount: minPlayers,
         currentRound: null,
       };
@@ -325,7 +476,7 @@ export function createAuthoritativeGameRoomClass(
         roomCode,
         gameId: definition.manifest.id,
         gameVersion: definition.manifest.gameVersion,
-        setupProtocol: PROTOCOL_VERSION,
+        setupProtocol,
       });
 
       const labels = this.#labels();
@@ -336,6 +487,11 @@ export function createAuthoritativeGameRoomClass(
       this.onMessage(ROOM_CONTROL_MESSAGE, (client, message: unknown) =>
         this.#enqueue(() => this.#handleControl(client, message)),
       );
+      if (setupProtocol === SETUP_PROTOCOL_VERSION) {
+        this.onMessage(GAME_SETUP_MESSAGE, (client, message: unknown) =>
+          this.#enqueue(() => this.#handleSetup(client, message)),
+        );
+      }
       logger.write({
         event: "room.created",
         roomId: this.roomId,
@@ -356,10 +512,17 @@ export function createAuthoritativeGameRoomClass(
         const aggregate = this.#requireAggregate();
         const playerSessionId = this.#clientSession(client);
         const userId = this.#clientUserId(client);
-        const request = gameRoomRequestSchema.safeParse(options);
-        if (!request.success) {
+        const request = parseGameRoomRequest(options);
+        if (
+          request === null ||
+          request.protocolVersion !== aggregate.setupProtocol
+        ) {
           throw protocolServerError(
-            this.#requestProtocolCode(options, "INVALID_ACTION_PAYLOAD"),
+            this.#requestProtocolCode(
+              options,
+              "INVALID_ACTION_PAYLOAD",
+              aggregate.setupProtocol,
+            ),
           );
         }
         if (
@@ -371,10 +534,10 @@ export function createAuthoritativeGameRoomClass(
           throw protocolServerError("ROOM_NOT_FOUND");
         }
         if (
-          request.data.type === "room.create"
+          request.type === "room.create"
             ? playerSessionId !== this.#creatorSessionId ||
-              request.data.gameId !== aggregate.definition.manifest.id
-            : request.data.roomCode !== aggregate.roomCode
+              request.gameId !== aggregate.definition.manifest.id
+            : request.roomCode !== aggregate.roomCode
         ) {
           throw protocolServerError("NOT_A_PLAYER");
         }
@@ -392,7 +555,7 @@ export function createAuthoritativeGameRoomClass(
           if (aggregate.currentRound?.status === "completed") {
             throw protocolServerError("ROOM_NOT_JOINABLE");
           }
-          if (request.data.type !== "room.join") {
+          if (request.type !== "room.join") {
             throw protocolServerError("NOT_A_PLAYER");
           }
           slot = aggregate.slots.find(
@@ -415,7 +578,7 @@ export function createAuthoritativeGameRoomClass(
         slot.reservedUntilMilliseconds = null;
 
         const previousClient = this.#activeClientBySession.get(playerSessionId);
-        this.#readySessions.delete(playerSessionId);
+        this.#clearReadyForSlot(slot.slotId);
         this.#activeClientBySession.set(playerSessionId, client);
         const clientData: RuntimeClientData = {
           playerSessionId,
@@ -471,7 +634,7 @@ export function createAuthoritativeGameRoomClass(
           return;
         }
         this.#activeClientBySession.delete(clientData.playerSessionId);
-        this.#readySessions.delete(clientData.playerSessionId);
+        const readyChanged = this.#clearReadyForSlot(clientData.slotId);
         const aggregate = this.#requireAggregate();
         if (this.#closedReason !== null || this.#disposed) {
           return;
@@ -483,11 +646,17 @@ export function createAuthoritativeGameRoomClass(
           ) {
             await this.#closeRoom("PLAYER_LEFT");
           } else {
+            if (readyChanged) {
+              await dependencies.roomStore.save(this.#storedRoom());
+            }
             this.#broadcastLifecycle();
           }
           return;
         }
         if (aggregate.currentRound?.status === "completed") {
+          if (readyChanged) {
+            await dependencies.roomStore.save(this.#storedRoom());
+          }
           this.#broadcastLifecycle();
           return;
         }
@@ -535,7 +704,20 @@ export function createAuthoritativeGameRoomClass(
       adjustGauge("active_rooms", -1, this.#labels());
     }
 
-    public override onUncaughtException(): void {
+    public override onUncaughtException(
+      error: RoomException,
+      methodName: RoomMethodName,
+    ): void {
+      if (
+        (methodName === "onAuth" ||
+          methodName === "onCreate" ||
+          methodName === "onJoin") &&
+        error.cause instanceof ServerError &&
+        error.cause.code >= 400 &&
+        error.cause.code < 500
+      ) {
+        return;
+      }
       const aggregate = this.#aggregate;
       metrics.increment(
         "room_crash_total",
@@ -554,11 +736,19 @@ export function createAuthoritativeGameRoomClass(
     }
 
     async #handleAction(client: Client, rawMessage: unknown): Promise<void> {
-      const parsed = gameActionCommandSchema.safeParse(rawMessage);
+      const aggregate = this.#requireAggregate();
+      const parsed =
+        aggregate.setupProtocol === SETUP_PROTOCOL_VERSION
+          ? gameActionCommandV6Schema.safeParse(rawMessage)
+          : gameActionCommandSchema.safeParse(rawMessage);
       if (!parsed.success) {
         this.#sendRejection(
           client,
-          this.#requestProtocolCode(rawMessage, "INVALID_ACTION_PAYLOAD"),
+          this.#requestProtocolCode(
+            rawMessage,
+            "INVALID_ACTION_PAYLOAD",
+            aggregate.setupProtocol,
+          ),
         );
         return;
       }
@@ -578,7 +768,6 @@ export function createAuthoritativeGameRoomClass(
         return;
       }
 
-      const aggregate = this.#requireAggregate();
       const round = aggregate.currentRound;
       if (round === null || round.status !== "active") {
         this.#rejectAndCache(
@@ -604,7 +793,8 @@ export function createAuthoritativeGameRoomClass(
       );
       if (
         slot === undefined ||
-        slot.playerSessionId !== clientData.playerSessionId
+        slot.playerSessionId !== clientData.playerSessionId ||
+        !round.playerOrder.includes(slot.slotId)
       ) {
         this.#rejectAndCache(
           client,
@@ -682,6 +872,18 @@ export function createAuthoritativeGameRoomClass(
       }
 
       const nextRevision = round.revision + 1;
+      let nextRoundSetupCandidate: RoundSetupCoordinatorState | null = null;
+      if (
+        outcome !== null &&
+        aggregate.setupProtocol === SETUP_PROTOCOL_VERSION
+      ) {
+        try {
+          nextRoundSetupCandidate = this.#createNextRoundSetupCandidate();
+        } catch {
+          this.#roomCrash(client, command.commandId);
+          return;
+        }
+      }
       try {
         await dependencies.replayStore.append(round.replayId, round.revision, {
           sequence: nextRevision,
@@ -696,13 +898,21 @@ export function createAuthoritativeGameRoomClass(
             outcome,
           );
         }
-        const storedRoom = this.#storedRoom({
-          state: transitioned.state,
-          rng: transitioned.rng,
-          revision: nextRevision,
-          status: outcome === null ? round.status : "completed",
-          outcome,
-        });
+        const storedRoom = this.#storedRoom(
+          {
+            state: transitioned.state,
+            rng: transitioned.rng,
+            revision: nextRevision,
+            status: outcome === null ? round.status : "completed",
+            outcome,
+          },
+          this.#closedReason,
+          {
+            ...(nextRoundSetupCandidate === null
+              ? {}
+              : { nextRoundSetup: nextRoundSetupCandidate }),
+          },
+        );
         await matchArchive.saveRound(storedRoom);
         await dependencies.roomStore.save(storedRoom);
       } catch {
@@ -722,9 +932,14 @@ export function createAuthoritativeGameRoomClass(
       round.outcome = outcome;
       if (outcome !== null) {
         round.status = "completed";
-        this.#starterChoice = null;
-        this.#rematchOrder = null;
-        this.#readySessions.clear();
+        if (aggregate.setupProtocol === SETUP_PROTOCOL_VERSION) {
+          aggregate.nextRoundSetup = nextRoundSetupCandidate;
+          this.#pendingNextRoundSetup = null;
+        } else {
+          this.#starterChoice = null;
+          this.#rematchOrder = null;
+          this.#readySessions.clear();
+        }
         this.#scheduleTerminalExpiry();
       }
 
@@ -747,12 +962,21 @@ export function createAuthoritativeGameRoomClass(
       });
     }
 
-    async #handleControl(client: Client, rawMessage: unknown): Promise<void> {
-      const parsed = roomControlCommandSchema.safeParse(rawMessage);
+    async #handleSetup(client: Client, rawMessage: unknown): Promise<void> {
+      const aggregate = this.#requireAggregate();
+      if (aggregate.setupProtocol !== SETUP_PROTOCOL_VERSION) {
+        this.#sendRejection(client, "PROTOCOL_VERSION_UNSUPPORTED");
+        return;
+      }
+      const parsed = gameSetupCommandSchema.safeParse(rawMessage);
       if (!parsed.success) {
         this.#sendRejection(
           client,
-          this.#requestProtocolCode(rawMessage, "INVALID_ACTION_PAYLOAD"),
+          this.#requestProtocolCode(
+            rawMessage,
+            "INVALID_SETUP_PAYLOAD",
+            SETUP_PROTOCOL_VERSION,
+          ),
         );
         return;
       }
@@ -772,7 +996,147 @@ export function createAuthoritativeGameRoomClass(
         return;
       }
 
+      const setupDefinition = aggregate.setupDefinition;
+      const coordinator = aggregate.nextRoundSetup;
+      const nextRoundNumber = (aggregate.currentRound?.roundNumber ?? 0) + 1;
+      if (
+        this.#closedReason !== null ||
+        setupDefinition === null ||
+        coordinator === null ||
+        command.roundNumber !== nextRoundNumber
+      ) {
+        this.#rejectSetupAndCache(
+          client,
+          commandKey,
+          "SETUP_NOT_READY",
+          command.commandId,
+          coordinator?.setupRevision,
+        );
+        return;
+      }
+      const slot = aggregate.slots.find(
+        (candidate) => candidate.slotId === clientData.slotId,
+      );
+      if (
+        slot === undefined ||
+        slot.playerSessionId !== clientData.playerSessionId
+      ) {
+        this.#rejectSetupAndCache(
+          client,
+          commandKey,
+          "NOT_A_PLAYER",
+          command.commandId,
+          coordinator.setupRevision,
+        );
+        return;
+      }
+      const parsedAction = setupDefinition.setupActionSchema.safeParse(
+        command.action,
+      );
+      if (!parsedAction.success) {
+        this.#rejectSetupAndCache(
+          client,
+          commandKey,
+          "INVALID_SETUP_PAYLOAD",
+          command.commandId,
+          coordinator.setupRevision,
+        );
+        return;
+      }
+
+      let result: ReturnType<typeof applyRoundSetupAction>;
+      try {
+        result = applyRoundSetupAction(setupDefinition, coordinator, {
+          action: parsedAction.data,
+          actorSlotId: slot.slotId,
+          isOwner: clientData.playerSessionId === this.#creatorSessionId,
+          expectedSetupRevision: command.expectedSetupRevision,
+          slots: this.#setupSlots(),
+        });
+      } catch {
+        this.#roomCrash(client, command.commandId);
+        return;
+      }
+      if (result.status === "stale") {
+        this.#rejectSetupAndCache(
+          client,
+          commandKey,
+          "STALE_SETUP_REVISION",
+          command.commandId,
+          result.setupRevision,
+        );
+        return;
+      }
+      if (result.status === "rejected") {
+        if (
+          result.code === "INVALID_SETUP_ACTION" ||
+          result.code === "INVALID_SETUP_STATE" ||
+          result.code === "SETUP_REVISION_EXHAUSTED"
+        ) {
+          this.#roomCrash(client, command.commandId);
+          return;
+        }
+        this.#rejectSetupAndCache(
+          client,
+          commandKey,
+          "SETUP_RULE_REJECTED",
+          command.commandId,
+          coordinator.setupRevision,
+          result.code,
+        );
+        return;
+      }
+
+      try {
+        await dependencies.roomStore.save(
+          this.#storedRoom({}, this.#closedReason, {
+            nextRoundSetup: result.coordinator,
+          }),
+        );
+      } catch {
+        this.#sendRejection(client, "INTERNAL_ERROR", command.commandId);
+        return;
+      }
+      aggregate.nextRoundSetup = result.coordinator;
+      this.#pendingRound = null;
+      const lifecycle = this.#lifecycleFor(client, command.commandId);
+      this.#commandOutcomes.set(commandKey, lifecycle);
+      this.#broadcastLifecycle(client, command.commandId);
+    }
+
+    async #handleControl(client: Client, rawMessage: unknown): Promise<void> {
       const aggregate = this.#requireAggregate();
+      const parsed =
+        aggregate.setupProtocol === SETUP_PROTOCOL_VERSION
+          ? roomControlCommandV6Schema.safeParse(rawMessage)
+          : roomControlCommandSchema.safeParse(rawMessage);
+      if (!parsed.success) {
+        this.#sendRejection(
+          client,
+          this.#requestProtocolCode(
+            rawMessage,
+            "INVALID_ACTION_PAYLOAD",
+            aggregate.setupProtocol,
+          ),
+        );
+        return;
+      }
+      const command = parsed.data;
+      const clientData = client.userData as RuntimeClientData | undefined;
+      if (
+        clientData === undefined ||
+        this.#activeClientBySession.get(clientData.playerSessionId) !== client
+      ) {
+        this.#sendRejection(client, "NOT_A_PLAYER", command.commandId);
+        return;
+      }
+      const commandKey = `${clientData.playerSessionId}\u0000${command.commandId}`;
+      const duplicate = this.#commandOutcomes.get(commandKey);
+      if (duplicate !== undefined) {
+        this.#sendCommandOutcome(client, duplicate);
+        return;
+      }
+
       if (command.operation === "CLOSE_ROOM") {
         if (clientData.playerSessionId !== this.#creatorSessionId) {
           this.#rejectControlAndCache(
@@ -798,6 +1162,15 @@ export function createAuthoritativeGameRoomClass(
             command.commandId,
           );
         }
+        return;
+      }
+
+      if (aggregate.setupProtocol === SETUP_PROTOCOL_VERSION) {
+        await this.#handleSetupControl(
+          client,
+          command as RoomControlCommandV6,
+          commandKey,
+        );
         return;
       }
 
@@ -1014,13 +1387,148 @@ export function createAuthoritativeGameRoomClass(
       }
     }
 
+    async #handleSetupControl(
+      client: Client,
+      command: RoomControlCommandV6,
+      commandKey: string,
+    ): Promise<void> {
+      const aggregate = this.#requireAggregate();
+      const setupDefinition = aggregate.setupDefinition;
+      const coordinator = aggregate.nextRoundSetup;
+      const clientData = client.userData as RuntimeClientData;
+      if (
+        this.#closedReason !== null ||
+        setupDefinition === null ||
+        coordinator === null ||
+        (aggregate.currentRound !== null &&
+          aggregate.currentRound.status !== "completed")
+      ) {
+        this.#rejectSetupAndCache(
+          client,
+          commandKey,
+          "SETUP_NOT_READY",
+          command.commandId,
+          coordinator?.setupRevision,
+        );
+        return;
+      }
+      const slot = aggregate.slots.find(
+        (candidate) => candidate.slotId === clientData.slotId,
+      );
+      if (
+        slot === undefined ||
+        slot.playerSessionId !== clientData.playerSessionId
+      ) {
+        this.#rejectSetupAndCache(
+          client,
+          commandKey,
+          "NOT_A_PLAYER",
+          command.commandId,
+          coordinator.setupRevision,
+        );
+        return;
+      }
+
+      const setupSlots = this.#setupSlots();
+      const readyResult = setRoundSetupReady(
+        setupDefinition,
+        coordinator,
+        setupSlots,
+        slot.slotId,
+        command.operation === "READY_FOR_ROUND",
+      );
+      if (readyResult.status === "rejected") {
+        this.#rejectSetupAndCache(
+          client,
+          commandKey,
+          "SETUP_NOT_READY",
+          command.commandId,
+          coordinator.setupRevision,
+          readyResult.code,
+        );
+        return;
+      }
+
+      let candidate = readyResult.coordinator;
+      let shouldStart = false;
+      if (command.operation === "READY_FOR_ROUND") {
+        const readiness = getRoundSetupReadiness(
+          setupDefinition,
+          candidate,
+          setupSlots,
+          slot.slotId,
+        );
+        if (
+          readiness.canFinalize &&
+          readiness.requiredSlotIds.every((slotId) =>
+            readiness.readySlotIds.includes(slotId),
+          )
+        ) {
+          const finalized = finalizeRoundSetup(
+            setupDefinition,
+            candidate,
+            setupSlots,
+            aggregate.definition.manifest.minPlayers,
+            aggregate.definition.manifest.maxPlayers,
+          );
+          if (finalized.status === "rejected") {
+            this.#rejectSetupAndCache(
+              client,
+              commandKey,
+              "SETUP_RULE_REJECTED",
+              command.commandId,
+              coordinator.setupRevision,
+              finalized.code,
+            );
+            return;
+          }
+          if (finalized.status === "finalized") {
+            candidate = finalized.coordinator;
+            shouldStart = true;
+          }
+        }
+      }
+
+      if (candidate !== coordinator) {
+        try {
+          await dependencies.roomStore.save(
+            this.#storedRoom({}, this.#closedReason, {
+              nextRoundSetup: candidate,
+            }),
+          );
+        } catch {
+          this.#sendRejection(client, "INTERNAL_ERROR", command.commandId);
+          return;
+        }
+        aggregate.nextRoundSetup = candidate;
+      }
+
+      if (shouldStart) {
+        try {
+          await this.#startRound();
+        } catch {
+          this.#sendRejection(client, "INTERNAL_ERROR", command.commandId);
+          return;
+        }
+      }
+
+      const lifecycle = this.#lifecycleFor(client, command.commandId);
+      this.#commandOutcomes.set(commandKey, lifecycle);
+      this.#broadcastLifecycle(client, command.commandId);
+      if (shouldStart) {
+        this.#broadcastSnapshots();
+      }
+    }
+
     async #startRound(): Promise<void> {
       const aggregate = this.#requireAggregate();
       if (
         (aggregate.currentRound !== null &&
           aggregate.currentRound.status !== "completed") ||
-        this.#starterChoice === null ||
-        !this.#allParticipantsReadyAndConnected()
+        (aggregate.setupProtocol === SETUP_PROTOCOL_VERSION
+          ? !this.#v6SetupReadyToStart()
+          : this.#starterChoice === null ||
+            !this.#allParticipantsReadyAndConnected())
       ) {
         throw new Error("A round cannot start from the current lifecycle.");
       }
@@ -1029,70 +1537,102 @@ export function createAuthoritativeGameRoomClass(
         throw new Error("Room round number is exhausted.");
       }
 
-      const ownerSlot = aggregate.slots.find(
-        (slot) => slot.playerSessionId === this.#creatorSessionId,
-      );
-      const participantSlots = aggregate.slots.filter(
-        (slot) => slot.playerSessionId !== null,
-      );
-      if (
-        ownerSlot === undefined ||
-        participantSlots.length !== aggregate.targetPlayerCount
-      ) {
-        throw new Error("A round requires the selected number of players.");
-      }
       let pending = this.#pendingRound;
       if (pending === null) {
         const initialRng = createRng(ids.createRngSeed());
-        const randomStartsWithOwner = nextInt(initialRng, 2).value === 0;
-        const assignmentCapability =
-          aggregate.definition.manifest.capabilities.playerAssignment;
-        let orderedSlots = participantSlots.map((slot) => slot.slotId);
-        if (assignmentCapability !== undefined) {
-          const order = assignmentCapability.options;
-          if (participantSlots.some((slot) => slot.assignment === null)) {
-            throw new Error("Every player must select an assignment.");
+        let playerOrder: readonly PlayerSlotId[];
+        let config: JsonValue;
+        let assignments: PendingRound["assignments"];
+        let finalizedSetup: FinalizedRoundSetup | null = null;
+        if (aggregate.setupProtocol === SETUP_PROTOCOL_VERSION) {
+          const finalized = aggregate.nextRoundSetup?.finalizedSetup;
+          if (finalized === null || finalized === undefined) {
+            throw new Error("Protocol V6 setup has not been finalized.");
           }
-          orderedSlots = participantSlots
-            .slice()
-            .sort(
-              (left, right) =>
-                order.indexOf(left.assignment as string) -
-                order.indexOf(right.assignment as string),
-            )
-            .map((slot) => slot.slotId);
-        }
-        if (this.#rematchOrder !== null) {
-          orderedSlots = [...this.#rematchOrder];
-        }
-        const firstSlot =
-          this.#starterChoice === "OWNER"
-            ? ownerSlot.slotId
-            : this.#starterChoice === "NON_OWNER"
-              ? (orderedSlots.find((slotId) => slotId !== ownerSlot.slotId) ??
-                ownerSlot.slotId)
-              : randomStartsWithOwner
-                ? ownerSlot.slotId
-                : (orderedSlots.find((slotId) => slotId !== ownerSlot.slotId) ??
-                  ownerSlot.slotId);
-        const firstIndex = orderedSlots.indexOf(firstSlot);
-        const playerOrder: PlayerSlotId[] = [];
-        if (firstIndex === -1) {
-          playerOrder.push(firstSlot, ...orderedSlots);
+          if (!isJsonValue(finalized.config)) {
+            throw new Error("Protocol V6 setup returned invalid config.");
+          }
+          playerOrder = finalized.playerOrder.map(
+            (slotId) => slotId as PlayerSlotId,
+          );
+          config = finalized.config as JsonValue;
+          assignments = finalized.assignments.map((entry) => ({ ...entry }));
+          finalizedSetup = finalized;
         } else {
-          for (let offset = 0; offset < orderedSlots.length; offset += 1) {
-            const slotId =
-              orderedSlots[(firstIndex + offset) % orderedSlots.length];
-            if (slotId === undefined) {
-              throw new Error("The starter slot is not in player order.");
-            }
-            playerOrder.push(slotId);
+          const ownerSlot = aggregate.slots.find(
+            (slot) => slot.playerSessionId === this.#creatorSessionId,
+          );
+          const participantSlots = aggregate.slots.filter(
+            (slot) => slot.playerSessionId !== null,
+          );
+          if (
+            ownerSlot === undefined ||
+            participantSlots.length !== aggregate.targetPlayerCount
+          ) {
+            throw new Error("A round requires the selected number of players.");
           }
+          const randomStartsWithOwner = nextInt(initialRng, 2).value === 0;
+          const assignmentCapability =
+            aggregate.definition.manifest.capabilities.playerAssignment;
+          let orderedSlots = participantSlots.map((slot) => slot.slotId);
+          if (assignmentCapability !== undefined) {
+            const order = assignmentCapability.options;
+            if (participantSlots.some((slot) => slot.assignment === null)) {
+              throw new Error("Every player must select an assignment.");
+            }
+            orderedSlots = participantSlots
+              .slice()
+              .sort(
+                (left, right) =>
+                  order.indexOf(left.assignment as string) -
+                  order.indexOf(right.assignment as string),
+              )
+              .map((slot) => slot.slotId);
+          }
+          if (this.#rematchOrder !== null) {
+            orderedSlots = [...this.#rematchOrder];
+          }
+          const firstSlot =
+            this.#starterChoice === "OWNER"
+              ? ownerSlot.slotId
+              : this.#starterChoice === "NON_OWNER"
+                ? (orderedSlots.find((slotId) => slotId !== ownerSlot.slotId) ??
+                  ownerSlot.slotId)
+                : randomStartsWithOwner
+                  ? ownerSlot.slotId
+                  : (orderedSlots.find(
+                      (slotId) => slotId !== ownerSlot.slotId,
+                    ) ?? ownerSlot.slotId);
+          const firstIndex = orderedSlots.indexOf(firstSlot);
+          const legacyOrder: PlayerSlotId[] = [];
+          if (firstIndex === -1) {
+            legacyOrder.push(firstSlot, ...orderedSlots);
+          } else {
+            for (let offset = 0; offset < orderedSlots.length; offset += 1) {
+              const slotId =
+                orderedSlots[(firstIndex + offset) % orderedSlots.length];
+              if (slotId === undefined) {
+                throw new Error("The starter slot is not in player order.");
+              }
+              legacyOrder.push(slotId);
+            }
+          }
+          playerOrder = legacyOrder;
+          config = aggregate.initialConfig;
+          assignments = legacyOrder.map((slotId) => ({
+            slotId,
+            assignment:
+              aggregate.slots.find((slot) => slot.slotId === slotId)
+                ?.assignment ?? null,
+          }));
         }
         pending = {
           replayId: ids.createReplayId(),
           roundNumber,
           playerOrder,
+          config,
+          assignments,
+          finalizedSetup,
           initialRng,
           initialized: null,
         };
@@ -1105,27 +1645,9 @@ export function createAuthoritativeGameRoomClass(
         >;
         try {
           initialized = aggregate.definition.createInitialState({
-            config: aggregate.initialConfig,
+            config: pending.config,
             players: pending.playerOrder,
-            ...(aggregate.definition.manifest.capabilities.playerAssignment ===
-            undefined
-              ? {}
-              : {
-                  playerAssignments: pending.playerOrder.map((slotId) => {
-                    const slot = aggregate.slots.find(
-                      (candidate) => candidate.slotId === slotId,
-                    );
-                    if (
-                      slot?.assignment === null ||
-                      slot?.assignment === undefined
-                    ) {
-                      throw new Error(
-                        "Every player must select an assignment.",
-                      );
-                    }
-                    return slot.assignment;
-                  }),
-                }),
+            ...this.#playerAssignmentsFor(pending),
             rng: pending.initialRng,
           });
         } catch {
@@ -1160,26 +1682,39 @@ export function createAuthoritativeGameRoomClass(
           algorithm: pending.initialRng.algorithm,
           seed: pending.initialRng.seed,
         },
-        initialConfig: aggregate.initialConfig,
+        initialConfig: pending.config,
         players: pending.playerOrder.map((slotId) => {
-          const slot = aggregate.slots.find(
-            (candidate) => candidate.slotId === slotId,
+          const assignment = pending.assignments.find(
+            (entry) => entry.slotId === slotId,
           );
-          return slot?.assignment === null || slot?.assignment === undefined
+          return assignment?.assignment === null ||
+            assignment?.assignment === undefined
             ? { slotId }
-            : { slotId, assignment: slot.assignment };
+            : { slotId, assignment: assignment.assignment };
         }),
       });
-      const storedRoom = this.#storedRoom({
-        replayId: pending.replayId,
-        roundNumber: pending.roundNumber,
-        playerOrder: pending.playerOrder,
-        state: initialized.state,
-        rng: initialized.rng,
-        revision: 0,
-        status: "active",
-        outcome: null,
-      });
+      const storedRoom = this.#storedRoom(
+        {
+          replayId: pending.replayId,
+          roundNumber: pending.roundNumber,
+          playerOrder: pending.playerOrder,
+          state: initialized.state,
+          rng: initialized.rng,
+          revision: 0,
+          status: "active",
+          outcome: null,
+        },
+        this.#closedReason,
+        {
+          initialConfig: pending.config,
+          ...(aggregate.setupProtocol === SETUP_PROTOCOL_VERSION
+            ? {
+                nextRoundSetup: null,
+                previousFinalizedSetup: pending.finalizedSetup,
+              }
+            : {}),
+        },
+      );
       await matchArchive.createRound(storedRoom);
       await dependencies.roomStore.save(storedRoom);
 
@@ -1193,9 +1728,16 @@ export function createAuthoritativeGameRoomClass(
         status: "active",
         outcome: null,
       };
+      aggregate.initialConfig = pending.config;
+      if (aggregate.setupProtocol === SETUP_PROTOCOL_VERSION) {
+        aggregate.nextRoundSetup = null;
+        aggregate.previousFinalizedSetup = pending.finalizedSetup;
+      }
       this.#pendingRound = null;
-      this.#starterChoice = null;
-      this.#readySessions.clear();
+      if (aggregate.setupProtocol === PROTOCOL_VERSION) {
+        this.#starterChoice = null;
+        this.#readySessions.clear();
+      }
       this.#terminalTimeout?.cancel();
       this.#terminalTimeout = null;
       logger.write({
@@ -1251,6 +1793,9 @@ export function createAuthoritativeGameRoomClass(
       const storedRoom = this.#storedRoom(
         shouldAbandon ? { status: "abandoned", outcome: null } : {},
         reason,
+        aggregate.setupProtocol === SETUP_PROTOCOL_VERSION
+          ? { nextRoundSetup: null }
+          : {},
       );
       if (shouldAbandon) {
         await matchArchive.saveRound(storedRoom);
@@ -1264,6 +1809,10 @@ export function createAuthoritativeGameRoomClass(
       this.#starterChoice = null;
       this.#readySessions.clear();
       this.#pendingRound = null;
+      this.#pendingNextRoundSetup = null;
+      if (aggregate.setupProtocol === SETUP_PROTOCOL_VERSION) {
+        aggregate.nextRoundSetup = null;
+      }
       this.#terminalTimeout?.cancel();
       this.#terminalTimeout = null;
       for (const slot of aggregate.slots) {
@@ -1345,16 +1894,129 @@ export function createAuthoritativeGameRoomClass(
       );
     }
 
+    #setupSlots(): readonly SetupSlot[] {
+      const aggregate = this.#requireAggregate();
+      return aggregate.slots.map((slot) => ({
+        slotId: slot.slotId,
+        occupied: slot.playerSessionId !== null,
+        online:
+          slot.playerSessionId !== null &&
+          this.#activeClientBySession.has(slot.playerSessionId),
+        isOwner: slot.playerSessionId === this.#creatorSessionId,
+      }));
+    }
+
+    #clearReadyForSlot(slotId: string): boolean {
+      const aggregate = this.#requireAggregate();
+      if (
+        aggregate.setupProtocol === SETUP_PROTOCOL_VERSION &&
+        aggregate.setupDefinition !== null &&
+        aggregate.nextRoundSetup !== null
+      ) {
+        const result = setRoundSetupReady(
+          aggregate.setupDefinition,
+          aggregate.nextRoundSetup,
+          this.#setupSlots(),
+          slotId,
+          false,
+        );
+        if (result.status !== "rejected") {
+          const changed = result.coordinator !== aggregate.nextRoundSetup;
+          aggregate.nextRoundSetup = result.coordinator;
+          return changed;
+        }
+        return false;
+      }
+      const slot = aggregate.slots.find(
+        (candidate) => candidate.slotId === slotId,
+      );
+      if (
+        slot?.playerSessionId !== null &&
+        slot?.playerSessionId !== undefined
+      ) {
+        return this.#readySessions.delete(slot.playerSessionId);
+      }
+      return false;
+    }
+
+    #createNextRoundSetupCandidate(): RoundSetupCoordinatorState {
+      if (this.#pendingNextRoundSetup !== null) {
+        return this.#pendingNextRoundSetup;
+      }
+      const aggregate = this.#requireAggregate();
+      if (
+        aggregate.setupDefinition === null ||
+        aggregate.previousFinalizedSetup === null
+      ) {
+        throw new Error("Previous finalized setup is unavailable.");
+      }
+      const candidate = initializeRoundSetupCoordinator(
+        aggregate.setupDefinition,
+        {
+          source: {
+            kind: "previous-round",
+            setup: aggregate.previousFinalizedSetup,
+          },
+          slots: this.#setupSlots(),
+        },
+        createSetupRng(ids.createRngSeed()),
+      );
+      this.#pendingNextRoundSetup = candidate;
+      return candidate;
+    }
+
+    #v6SetupReadyToStart(): boolean {
+      const aggregate = this.#requireAggregate();
+      const definition = aggregate.setupDefinition;
+      const coordinator = aggregate.nextRoundSetup;
+      if (
+        definition === null ||
+        coordinator === null ||
+        coordinator.finalizedSetup === null
+      ) {
+        return false;
+      }
+      const readiness = getRoundSetupReadiness(
+        definition,
+        coordinator,
+        this.#setupSlots(),
+      );
+      return (
+        readiness.canFinalize &&
+        readiness.requiredSlotIds.every((slotId) =>
+          readiness.readySlotIds.includes(slotId),
+        )
+      );
+    }
+
+    #playerAssignmentsFor(pending: PendingRound): {
+      readonly playerAssignments?: readonly string[];
+    } {
+      const assignments = pending.playerOrder.map((slotId) =>
+        pending.assignments.find((entry) => entry.slotId === slotId),
+      );
+      if (assignments.some((entry) => entry === undefined)) {
+        throw new Error("Every player needs an assignment entry.");
+      }
+      const values = assignments.map((entry) => entry?.assignment ?? null);
+      if (values.every((value) => value === null)) {
+        return {};
+      }
+      if (values.some((value) => value === null)) {
+        throw new Error(
+          "Player assignments cannot mix null and string values.",
+        );
+      }
+      return { playerAssignments: values as readonly string[] };
+    }
+
     #enqueue(work: () => void | Promise<void>): Promise<void> {
       const result = this.#queue.then(work, work);
       this.#queue = result.catch(() => undefined);
       return result;
     }
 
-    #sendCommandOutcome(
-      client: Client,
-      outcome: ServerMessage | RoomLifecycleState,
-    ): void {
+    #sendCommandOutcome(client: Client, outcome: RuntimeCommandOutcome): void {
       client.send(
         outcome.type === "room.lifecycle"
           ? ROOM_CONTROL_MESSAGE
@@ -1440,13 +2102,16 @@ export function createAuthoritativeGameRoomClass(
     #requestProtocolCode(
       input: unknown,
       fallback: ProtocolErrorCode,
+      expectedProtocol?: SetupProtocolGeneration,
     ): ProtocolErrorCode {
       if (
         input !== null &&
         typeof input === "object" &&
         "protocolVersion" in input &&
-        (input as { readonly protocolVersion?: unknown }).protocolVersion !==
-          PROTOCOL_VERSION
+        (expectedProtocol === undefined
+          ? requestedProtocolVersion(input) !== PROTOCOL_VERSION &&
+            requestedProtocolVersion(input) !== SETUP_PROTOCOL_VERSION
+          : requestedProtocolVersion(input) !== expectedProtocol)
       ) {
         return "PROTOCOL_VERSION_UNSUPPORTED";
       }
@@ -1458,7 +2123,7 @@ export function createAuthoritativeGameRoomClass(
       commandKey: string,
       code: ProtocolErrorCode,
       commandId: string,
-      snapshot?: MatchSnapshot,
+      snapshot?: MatchSnapshot | MatchSnapshotV6,
       gameRuleCode?: string,
     ): void {
       const rejection = this.#rejection(
@@ -1473,6 +2138,41 @@ export function createAuthoritativeGameRoomClass(
       const clientData = client.userData as RuntimeClientData | undefined;
       logger.write({
         event: "action.rejected",
+        roomId: this.roomId,
+        ...this.#labels(),
+        revision: this.#requireAggregate().currentRound?.revision ?? 0,
+        code,
+        ...(clientData === undefined
+          ? {}
+          : {
+              sessionCorrelationId: correlatePlayerSessionId(
+                clientData.playerSessionId,
+              ),
+            }),
+      });
+    }
+
+    #rejectSetupAndCache(
+      client: Client,
+      commandKey: string,
+      code: ProtocolErrorCode,
+      commandId: string,
+      setupRevision?: number,
+      gameRuleCode?: string,
+    ): void {
+      const rejection = this.#rejection(
+        code,
+        commandId,
+        undefined,
+        gameRuleCode,
+        setupRevision,
+      );
+      this.#commandOutcomes.set(commandKey, rejection);
+      client.send(SERVER_PROTOCOL_MESSAGE, rejection);
+      metrics.increment("actions_rejected_total", this.#labels());
+      const clientData = client.userData as RuntimeClientData | undefined;
+      logger.write({
+        event: "game.setup_rejected",
         roomId: this.roomId,
         ...this.#labels(),
         revision: this.#requireAggregate().currentRound?.revision ?? 0,
@@ -1502,13 +2202,13 @@ export function createAuthoritativeGameRoomClass(
     #rejection(
       code: ProtocolErrorCode,
       commandId?: string,
-      snapshot?: MatchSnapshot,
+      snapshot?: MatchSnapshot | MatchSnapshotV6,
       gameRuleCode?: string,
-    ): CommandRejected {
+      setupRevision?: number,
+    ): CommandRejected | CommandRejectedV6 {
       const aggregate = this.#aggregate;
-      return {
-        type: "command.rejected",
-        protocolVersion: PROTOCOL_VERSION,
+      const shared = {
+        type: "command.rejected" as const,
         ...(commandId === undefined ? {} : { commandId }),
         code,
         ...(aggregate?.currentRound === undefined ||
@@ -1519,18 +2219,32 @@ export function createAuthoritativeGameRoomClass(
         retryable: retryable(code),
         ...(snapshot === undefined ? {} : { snapshot }),
       };
+      if (aggregate?.setupProtocol === SETUP_PROTOCOL_VERSION) {
+        return {
+          ...shared,
+          protocolVersion: SETUP_PROTOCOL_VERSION,
+          ...(setupRevision === undefined ? {} : { setupRevision }),
+        } as CommandRejectedV6;
+      }
+      return {
+        ...shared,
+        protocolVersion: PROTOCOL_VERSION,
+      } as CommandRejected;
     }
 
     #sendConnected(client: Client, slotId: PlayerSlotId): void {
       const aggregate = this.#requireAggregate();
-      const message: RoomConnected = {
-        type: "room.connected",
-        protocolVersion: PROTOCOL_VERSION,
+      const shared = {
+        type: "room.connected" as const,
         roomCode: aggregate.roomCode,
         gameId: aggregate.definition.manifest.id,
         gameVersion: aggregate.definition.manifest.gameVersion,
         playerSlotId: slotId,
       };
+      const message: RoomConnected | RoomConnectedV6 =
+        aggregate.setupProtocol === SETUP_PROTOCOL_VERSION
+          ? { ...shared, protocolVersion: SETUP_PROTOCOL_VERSION }
+          : { ...shared, protocolVersion: PROTOCOL_VERSION };
       client.send(SERVER_PROTOCOL_MESSAGE, message);
     }
 
@@ -1558,7 +2272,7 @@ export function createAuthoritativeGameRoomClass(
     #lifecycleFor(
       client: Client,
       causedByCommandId?: string,
-    ): RoomLifecycleState {
+    ): RoomLifecycleState | RoomLifecycleStateV6 {
       const aggregate = this.#requireAggregate();
       const clientData = client.userData as RuntimeClientData | undefined;
       if (clientData === undefined) {
@@ -1568,6 +2282,71 @@ export function createAuthoritativeGameRoomClass(
       const available =
         this.#closedReason === null &&
         (currentRound === null || currentRound.status === "completed");
+      if (aggregate.setupProtocol === SETUP_PROTOCOL_VERSION) {
+        const definition = aggregate.setupDefinition;
+        const coordinator = aggregate.nextRoundSetup;
+        if (available && (definition === null || coordinator === null)) {
+          throw new ServerError(500, "INTERNAL_ERROR");
+        }
+        let nextRound: RoomLifecycleStateV6["nextRound"] = null;
+        if (available && definition !== null && coordinator !== null) {
+          let setupView: SetupJsonValue;
+          try {
+            setupView = projectRoundSetupView(
+              definition,
+              coordinator,
+              this.#setupSlots(),
+              { kind: "player", slotId: clientData.slotId },
+            );
+          } catch {
+            throw new ServerError(500, "INTERNAL_ERROR");
+          }
+          const readiness = getRoundSetupReadiness(
+            definition,
+            coordinator,
+            this.#setupSlots(),
+            clientData.slotId,
+          );
+          nextRound = {
+            roundNumber: (currentRound?.roundNumber ?? 0) + 1,
+            setupRevision: coordinator.setupRevision,
+            setupView,
+            readiness: {
+              canReady: readiness.canReady,
+              selfReady: readiness.selfReady,
+              readySlotIds: [...readiness.readySlotIds],
+              requiredSlotIds: [...readiness.requiredSlotIds],
+            },
+          };
+        }
+        const readySlotIds = new Set(
+          coordinator?.readySlotIds ?? ([] as readonly string[]),
+        );
+        return {
+          type: "room.lifecycle",
+          protocolVersion: SETUP_PROTOCOL_VERSION,
+          isOwner: clientData.playerSessionId === this.#creatorSessionId,
+          currentRound:
+            currentRound === null
+              ? null
+              : {
+                  roundNumber: currentRound.roundNumber,
+                  status: currentRound.status,
+                },
+          nextRound,
+          players: aggregate.slots.map((slot) => ({
+            slotId: slot.slotId,
+            occupied: slot.playerSessionId !== null,
+            online:
+              slot.playerSessionId !== null &&
+              this.#activeClientBySession.has(slot.playerSessionId),
+            ready: readySlotIds.has(slot.slotId),
+          })),
+          closed: this.#closedReason !== null,
+          closeReason: this.#closedReason,
+          ...(causedByCommandId === undefined ? {} : { causedByCommandId }),
+        };
+      }
       return {
         type: "room.lifecycle",
         protocolVersion: PROTOCOL_VERSION,
@@ -1642,7 +2421,9 @@ export function createAuthoritativeGameRoomClass(
     #snapshotFor(
       client: Client,
       causedByCommandId?: string,
-    ): MatchSnapshot<JsonValue, JsonValue> {
+    ):
+      | MatchSnapshot<JsonValue, JsonValue>
+      | MatchSnapshotV6<JsonValue, JsonValue> {
       const aggregate = this.#requireAggregate();
       const round = aggregate.currentRound;
       if (round === null) {
@@ -1665,9 +2446,8 @@ export function createAuthoritativeGameRoomClass(
       if (!isJsonValue(view)) {
         throw new ServerError(500, "INTERNAL_ERROR");
       }
-      return {
+      const shared = {
         type: "match.snapshot",
-        protocolVersion: PROTOCOL_VERSION,
         gameId: aggregate.definition.manifest.id,
         gameVersion: aggregate.definition.manifest.gameVersion,
         roundNumber: round.roundNumber,
@@ -1678,6 +2458,17 @@ export function createAuthoritativeGameRoomClass(
         outcome: round.outcome,
         ...(causedByCommandId === undefined ? {} : { causedByCommandId }),
       };
+      return aggregate.setupProtocol === SETUP_PROTOCOL_VERSION
+        ? {
+            ...shared,
+            type: "match.snapshot" as const,
+            protocolVersion: SETUP_PROTOCOL_VERSION,
+          }
+        : {
+            ...shared,
+            type: "match.snapshot" as const,
+            protocolVersion: PROTOCOL_VERSION,
+          };
     }
 
     #roomCrash(client: Client, commandId?: string): void {
@@ -1698,6 +2489,11 @@ export function createAuthoritativeGameRoomClass(
     #storedRoom(
       candidate: Partial<StoredGameRound> = {},
       closeReason: RoomCloseReason | null = this.#closedReason,
+      setupOverrides: {
+        readonly initialConfig?: JsonValue;
+        readonly nextRoundSetup?: RoundSetupCoordinatorState | null;
+        readonly previousFinalizedSetup?: FinalizedRoundSetup | null;
+      } = {},
     ): StoredGameRoom {
       const aggregate = this.#requireAggregate();
       const players: StoredPlayerSlot[] = aggregate.slots.map((slot) => ({
@@ -1741,15 +2537,25 @@ export function createAuthoritativeGameRoomClass(
           outcome,
         };
       }
+      const nextRoundSetup =
+        "nextRoundSetup" in setupOverrides
+          ? (setupOverrides.nextRoundSetup ?? null)
+          : aggregate.nextRoundSetup;
+      const previousFinalizedSetup =
+        "previousFinalizedSetup" in setupOverrides
+          ? (setupOverrides.previousFinalizedSetup ?? null)
+          : aggregate.previousFinalizedSetup;
       return {
         roomId: this.roomId,
         roomCode: aggregate.roomCode,
         gameId: aggregate.definition.manifest.id,
         gameVersion: aggregate.definition.manifest.gameVersion,
-        setupProtocol: PROTOCOL_VERSION,
-        initialConfig: aggregate.initialConfig,
+        setupProtocol: aggregate.setupProtocol,
+        initialConfig: setupOverrides.initialConfig ?? aggregate.initialConfig,
         players,
         currentRound,
+        ...(nextRoundSetup === null ? {} : { nextRoundSetup }),
+        ...(previousFinalizedSetup === null ? {} : { previousFinalizedSetup }),
         closeReason,
       };
     }

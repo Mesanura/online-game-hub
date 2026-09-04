@@ -473,6 +473,9 @@ importers:
       '@online-game-hub/game-sdk':
         specifier: workspace:*
         version: link:../game-sdk
+      '@online-game-hub/game-setup':
+        specifier: workspace:*
+        version: link:../game-setup
       '@online-game-hub/protocol':
         specifier: workspace:*
         version: link:../protocol

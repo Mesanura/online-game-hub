@@ -1,4 +1,5 @@
 import { createRng } from "@online-game-hub/game-sdk";
+import { createSetupRng } from "@online-game-hub/game-setup";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -159,6 +160,50 @@ describe("in-memory platform ports", () => {
     await expect(store.getByRoomId(storedRoom.roomId)).resolves.toMatchObject({
       setupProtocol: 5,
     });
+  });
+
+  it("stores Protocol V6 setup state defensively and enforces generation shape", async () => {
+    const store = new InMemoryRoomStore();
+    const v6Room = {
+      ...storedRoom,
+      roomId: "setup-v6",
+      roomCode: "VSET2345",
+      setupProtocol: 6,
+      currentRound: null,
+      nextRoundSetup: {
+        schemaVersion: 1,
+        setupState: { starter: "OWNER" },
+        setupRevision: 2,
+        setupRng: createSetupRng("setup-seed"),
+        readySlotIds: ["slot-1"],
+        finalizedSetup: null,
+      },
+    } as const satisfies StoredGameRoom;
+    await store.create(v6Room);
+    const first = await store.getByRoomId(v6Room.roomId);
+    const second = await store.getByRoomId(v6Room.roomId);
+    expect(first).toEqual(v6Room);
+    expect(first?.nextRoundSetup).not.toBe(second?.nextRoundSetup);
+    expect(first?.nextRoundSetup?.setupState).not.toBe(
+      second?.nextRoundSetup?.setupState,
+    );
+    const { nextRoundSetup: omittedSetup, ...v6RoomWithoutSetup } = v6Room;
+    expect(omittedSetup).toBeDefined();
+    await expect(
+      store.create({
+        ...v6RoomWithoutSetup,
+        roomId: "setup-v6-missing",
+        roomCode: "VSET6789",
+      }),
+    ).rejects.toMatchObject({ code: "INVALID_ROOM" });
+    await expect(
+      store.create({
+        ...storedRoom,
+        roomId: "legacy-with-setup",
+        roomCode: "LEGA2345",
+        nextRoundSetup: v6Room.nextRoundSetup,
+      }),
+    ).rejects.toMatchObject({ code: "INVALID_ROOM" });
   });
 
   it("collects metrics and exposes only session correlations", () => {

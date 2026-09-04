@@ -386,7 +386,6 @@ export function getRoundSetupReadiness<
   );
   const viewerSlot = slots.find((slot) => slot.slotId === viewerSlotId);
   const canReady =
-    coordinator.finalizedSetup === null &&
     readiness.canFinalize &&
     viewerSlot !== undefined &&
     viewerSlot.occupied &&

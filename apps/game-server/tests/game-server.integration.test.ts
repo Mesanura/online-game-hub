@@ -3,6 +3,7 @@ import type { Room as ClientRoom } from "@colyseus/sdk";
 import {
   GAME_ACTION_MESSAGE,
   GAME_ROOM_NAME,
+  GAME_SETUP_MESSAGE,
   InMemoryMetricsCollector,
   InMemoryReplayStore,
   InMemoryRoomStore,
@@ -24,19 +25,31 @@ import {
   TestTicketAuthority,
   createDeterministicRuntimeIdSource,
 } from "@online-game-hub/game-server-runtime/testing";
-import { resolveGameDefinition } from "@online-game-hub/game-registry/server";
+import {
+  resolveGameDefinition,
+  resolveRoundSetupDefinition,
+} from "@online-game-hub/game-registry/server";
 import {
   PROTOCOL_VERSION,
+  SETUP_PROTOCOL_VERSION,
   roomLifecycleStateSchema,
+  roomLifecycleStateV6Schema,
   serverMessageSchema,
+  serverMessageV6Schema,
 } from "@online-game-hub/protocol";
 import type {
   GameActionCommand,
+  GameActionCommandV6,
+  GameSetupCommand,
   MatchSnapshot,
+  MatchSnapshotV6,
   RoomControlCommand,
+  RoomControlCommandV6,
   RoomControlOperation,
   RoomLifecycleState,
+  RoomLifecycleStateV6,
   ServerMessage,
+  ServerMessageV6,
   StarterChoice,
 } from "@online-game-hub/protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -103,6 +116,18 @@ class ControlledMatchArchive implements MatchArchive {
   public saveRound(room: StoredGameRoom): Promise<void> {
     void room;
     return Promise.resolve();
+  }
+}
+
+class ControlledRoomStore extends InMemoryRoomStore {
+  public failNextSave = false;
+
+  public override save(room: StoredGameRoom): Promise<void> {
+    if (this.failNextSave) {
+      this.failNextSave = false;
+      return Promise.reject(new Error("injected room save failure"));
+    }
+    return super.save(room);
   }
 }
 
@@ -212,8 +237,158 @@ class LifecycleInbox {
   }
 }
 
+class V6MessageInbox {
+  readonly #messages: ServerMessageV6[] = [];
+  readonly #waiters: {
+    readonly predicate: (message: ServerMessageV6) => boolean;
+    readonly resolve: (message: ServerMessageV6) => void;
+  }[] = [];
+
+  public constructor(room: ClientRoom) {
+    room.onMessage<unknown>(SERVER_PROTOCOL_MESSAGE, (raw) => {
+      const parsed = serverMessageV6Schema.safeParse(raw);
+      if (!parsed.success) {
+        throw new Error("Server emitted an invalid Protocol V6 message.");
+      }
+      const message = parsed.data;
+      const waiterIndex = this.#waiters.findIndex((waiter) =>
+        waiter.predicate(message),
+      );
+      if (waiterIndex === -1) {
+        this.#messages.push(message);
+        return;
+      }
+      const [waiter] = this.#waiters.splice(waiterIndex, 1);
+      waiter?.resolve(message);
+    });
+  }
+
+  public next(
+    predicate: (message: ServerMessageV6) => boolean,
+    timeoutMilliseconds = 3000,
+  ): Promise<ServerMessageV6> {
+    const messageIndex = this.#messages.findIndex(predicate);
+    if (messageIndex !== -1) {
+      const [message] = this.#messages.splice(messageIndex, 1);
+      if (message !== undefined) return Promise.resolve(message);
+    }
+    return new Promise((resolve, reject) => {
+      const waiter = { predicate, resolve };
+      this.#waiters.push(waiter);
+      const timeout = setTimeout(() => {
+        const index = this.#waiters.indexOf(waiter);
+        if (index !== -1) this.#waiters.splice(index, 1);
+        reject(new Error("Timed out waiting for a Protocol V6 message."));
+      }, timeoutMilliseconds);
+      waiter.resolve = (message) => {
+        clearTimeout(timeout);
+        resolve(message);
+      };
+    });
+  }
+}
+
+class V6LifecycleInbox {
+  readonly #messages: RoomLifecycleStateV6[] = [];
+  readonly #waiters: {
+    readonly predicate: (message: RoomLifecycleStateV6) => boolean;
+    readonly resolve: (message: RoomLifecycleStateV6) => void;
+  }[] = [];
+
+  public constructor(room: ClientRoom) {
+    room.onMessage<unknown>(ROOM_CONTROL_MESSAGE, (raw) => {
+      const parsed = roomLifecycleStateV6Schema.safeParse(raw);
+      if (!parsed.success) {
+        throw new Error("Server emitted an invalid Protocol V6 lifecycle.");
+      }
+      const message = parsed.data;
+      const waiterIndex = this.#waiters.findIndex((waiter) =>
+        waiter.predicate(message),
+      );
+      if (waiterIndex === -1) {
+        this.#messages.push(message);
+        return;
+      }
+      const [waiter] = this.#waiters.splice(waiterIndex, 1);
+      waiter?.resolve(message);
+    });
+  }
+
+  public next(
+    predicate: (message: RoomLifecycleStateV6) => boolean,
+    timeoutMilliseconds = 3000,
+  ): Promise<RoomLifecycleStateV6> {
+    const messageIndex = this.#messages.findIndex(predicate);
+    if (messageIndex !== -1) {
+      const [message] = this.#messages.splice(messageIndex, 1);
+      if (message !== undefined) return Promise.resolve(message);
+    }
+    return new Promise((resolve, reject) => {
+      const waiter = { predicate, resolve };
+      this.#waiters.push(waiter);
+      const timeout = setTimeout(() => {
+        const index = this.#waiters.indexOf(waiter);
+        if (index !== -1) this.#waiters.splice(index, 1);
+        reject(new Error("Timed out waiting for a Protocol V6 lifecycle."));
+      }, timeoutMilliseconds);
+      waiter.resolve = (message) => {
+        clearTimeout(timeout);
+        resolve(message);
+      };
+    });
+  }
+}
+
 function isSnapshot(message: ServerMessage): message is MatchSnapshot {
   return message.type === "match.snapshot";
+}
+
+function isV6Snapshot(message: ServerMessageV6): message is MatchSnapshotV6 {
+  return message.type === "match.snapshot";
+}
+
+function v6ActionCommand(
+  commandId: string,
+  expectedRevision: number,
+  action: unknown,
+  roundNumber = 1,
+): GameActionCommandV6 {
+  return {
+    type: "game.action",
+    protocolVersion: SETUP_PROTOCOL_VERSION,
+    commandId,
+    roundNumber,
+    expectedRevision,
+    action,
+  };
+}
+
+function v6SetupCommand(
+  commandId: string,
+  expectedSetupRevision: number,
+  action: unknown,
+  roundNumber = 1,
+): GameSetupCommand {
+  return {
+    type: "game.setup",
+    protocolVersion: SETUP_PROTOCOL_VERSION,
+    commandId,
+    roundNumber,
+    expectedSetupRevision,
+    action,
+  };
+}
+
+function v6ControlCommand(
+  commandId: string,
+  operation: RoomControlCommandV6["operation"],
+): RoomControlCommandV6 {
+  return {
+    type: "room.control",
+    protocolVersion: SETUP_PROTOCOL_VERSION,
+    commandId,
+    operation,
+  };
 }
 
 function command(
@@ -3433,6 +3608,484 @@ describe.sequential("authoritative Colyseus Game Server", () => {
       secondRoom.leave(true),
       thirdRoom.leave(true),
     ]);
+  });
+});
+
+describe.sequential("turn-based Protocol V6 setup runtime", () => {
+  const clock = new FakeRuntimeClock(2_000_000);
+  const authority = new TestTicketAuthority({
+    issuer: "setup-v6-integration-web",
+    secret: "setup-v6-integration-secret-at-least-16-characters",
+    clock,
+    lifetimeSeconds: 600,
+  });
+  const roomStore = new ControlledRoomStore();
+  const matchArchive = new ControlledMatchArchive();
+  let app: GameServerApplication;
+  let address: GameServerAddress;
+
+  beforeAll(async () => {
+    app = createGameServer({
+      ticketVerifier: authority,
+      roomStore,
+      matchArchive,
+      clock,
+      ids: createDeterministicRuntimeIdSource(["VSET2345"]),
+      resolveSetupProtocol: (gameId, gameVersion) =>
+        gameId === "tic-tac-toe" && gameVersion === "1.1.0" ? 6 : 5,
+      resolveRoundSetupDefinition,
+    });
+    address = await app.start({ port: 0 });
+  });
+
+  afterAll(async () => {
+    if (app !== undefined) await app.stop();
+  });
+
+  it("pins V6, applies game-defined setup, and reuses the full finalized setup", async () => {
+    const mismatchedClient = new ColyseusClient(address.httpUrl);
+    await expect(
+      mismatchedClient.create(GAME_ROOM_NAME, {
+        type: "room.create",
+        protocolVersion: SETUP_PROTOCOL_VERSION,
+        ticket: authority.issue("v6-mismatch"),
+        gameId: "tic-tac-toe",
+        initialConfig: null,
+      }),
+    ).rejects.toBeDefined();
+
+    const ownerClient = new ColyseusClient(address.httpUrl);
+    let ownerRoom = await ownerClient.create(GAME_ROOM_NAME, {
+      type: "room.create",
+      protocolVersion: SETUP_PROTOCOL_VERSION,
+      ticket: authority.issue("v6-owner", {
+        protocolVersion: SETUP_PROTOCOL_VERSION,
+      }),
+      gameId: "tic-tac-toe",
+      initialConfig: null,
+    });
+    let ownerMessages = new V6MessageInbox(ownerRoom);
+    let ownerLifecycle = new V6LifecycleInbox(ownerRoom);
+    const ownerConnected = await ownerMessages.next(
+      (message) => message.type === "room.connected",
+    );
+    if (ownerConnected.type !== "room.connected") {
+      throw new Error("Expected Protocol V6 room connection.");
+    }
+    expect(ownerConnected).toMatchObject({
+      protocolVersion: SETUP_PROTOCOL_VERSION,
+      roomCode: "VSET2345",
+      gameId: "tic-tac-toe",
+      gameVersion: "1.1.0",
+      playerSlotId: "slot-1",
+    });
+    const discovery = await fetch(
+      `${address.httpUrl}/room-discovery?gameId=tic-tac-toe&roomCode=vset2345`,
+    );
+    expect(discovery.status).toBe(200);
+    await expect(discovery.json()).resolves.toEqual({
+      roomCode: "VSET2345",
+      gameId: "tic-tac-toe",
+      gameVersion: "1.1.0",
+      setupProtocol: 6,
+      runtime: "turn-based",
+    });
+    const wrongGenerationJoiner = new ColyseusClient(address.httpUrl);
+    await expect(
+      wrongGenerationJoiner.join(GAME_ROOM_NAME, {
+        type: "room.join",
+        protocolVersion: PROTOCOL_VERSION,
+        ticket: authority.issue("v6-wrong-generation"),
+        roomCode: ownerConnected.roomCode,
+      }),
+    ).rejects.toBeDefined();
+    expect(
+      app.metrics
+        .snapshot()
+        .find((sample) => sample.name === "room_crash_total")?.value ?? 0,
+    ).toBe(0);
+
+    const guestClient = new ColyseusClient(address.httpUrl);
+    const guestRoom = await guestClient.join(GAME_ROOM_NAME, {
+      type: "room.join",
+      protocolVersion: SETUP_PROTOCOL_VERSION,
+      ticket: authority.issue("v6-guest", {
+        protocolVersion: SETUP_PROTOCOL_VERSION,
+      }),
+      roomCode: ownerConnected.roomCode,
+    });
+    const guestMessages = new V6MessageInbox(guestRoom);
+    const guestLifecycle = new V6LifecycleInbox(guestRoom);
+    await guestMessages.next((message) => message.type === "room.connected");
+    const initialSetup = await ownerLifecycle.next(
+      (message) =>
+        message.nextRound?.setupRevision === 0 &&
+        message.players.filter((player) => player.occupied).length === 2,
+    );
+    expect(initialSetup.nextRound).toMatchObject({
+      roundNumber: 1,
+      setupRevision: 0,
+      setupView: {
+        starter: "UNSELECTED",
+        fixedStarterSlotId: null,
+        participantSlotIds: ["slot-1", "slot-2"],
+        canEdit: true,
+      },
+      readiness: {
+        canReady: false,
+        selfReady: false,
+        readySlotIds: [],
+        requiredSlotIds: ["slot-1", "slot-2"],
+      },
+    });
+
+    guestRoom.send(
+      GAME_SETUP_MESSAGE,
+      v6SetupCommand("v6-non-owner-setup", 0, {
+        type: "SELECT_STARTER",
+        starter: "OWNER",
+      }),
+    );
+    await expect(
+      guestMessages.next(
+        (message) =>
+          message.type === "command.rejected" &&
+          message.commandId === "v6-non-owner-setup",
+      ),
+    ).resolves.toMatchObject({
+      code: "SETUP_RULE_REJECTED",
+      setupRevision: 0,
+      gameRuleCode: "NOT_OWNER",
+      retryable: false,
+    });
+
+    ownerRoom.send(
+      GAME_SETUP_MESSAGE,
+      v6SetupCommand("v6-forged-setup", 0, {
+        type: "SELECT_STARTER",
+        starter: "OWNER",
+        actorSlotId: "slot-2",
+        state: {},
+        rng: { seed: "forged" },
+        outcome: { type: "WIN" },
+      }),
+    );
+    await expect(
+      ownerMessages.next(
+        (message) =>
+          message.type === "command.rejected" &&
+          message.commandId === "v6-forged-setup",
+      ),
+    ).resolves.toMatchObject({
+      code: "INVALID_SETUP_PAYLOAD",
+      setupRevision: 0,
+    });
+
+    roomStore.failNextSave = true;
+    ownerRoom.send(
+      GAME_SETUP_MESSAGE,
+      v6SetupCommand("v6-select-owner", 0, {
+        type: "SELECT_STARTER",
+        starter: "OWNER",
+      }),
+    );
+    await expect(
+      ownerMessages.next(
+        (message) =>
+          message.type === "command.rejected" &&
+          message.commandId === "v6-select-owner",
+      ),
+    ).resolves.toMatchObject({ code: "INTERNAL_ERROR" });
+    expect(
+      (await roomStore.getByRoomCode("VSET2345"))?.nextRoundSetup,
+    ).toMatchObject({ setupRevision: 0, readySlotIds: [] });
+
+    ownerRoom.send(
+      GAME_SETUP_MESSAGE,
+      v6SetupCommand("v6-select-owner", 0, {
+        type: "SELECT_STARTER",
+        starter: "OWNER",
+      }),
+    );
+    await ownerLifecycle.next(
+      (message) =>
+        message.causedByCommandId === "v6-select-owner" &&
+        message.nextRound?.setupRevision === 1,
+    );
+    ownerRoom.send(
+      ROOM_CONTROL_MESSAGE,
+      v6ControlCommand("v6-owner-ready-1", "READY_FOR_ROUND"),
+    );
+    const ownerReady = await ownerLifecycle.next(
+      (message) =>
+        message.causedByCommandId === "v6-owner-ready-1" &&
+        message.nextRound?.readiness.selfReady === true,
+    );
+    expect(ownerReady.nextRound?.readiness.readySlotIds).toEqual(["slot-1"]);
+
+    ownerRoom.send(
+      GAME_SETUP_MESSAGE,
+      v6SetupCommand("v6-stale-setup", 0, {
+        type: "SELECT_STARTER",
+        starter: "NON_OWNER",
+      }),
+    );
+    await expect(
+      ownerMessages.next(
+        (message) =>
+          message.type === "command.rejected" &&
+          message.commandId === "v6-stale-setup",
+      ),
+    ).resolves.toMatchObject({
+      code: "STALE_SETUP_REVISION",
+      setupRevision: 1,
+      retryable: true,
+    });
+    expect(
+      (await roomStore.getByRoomCode("VSET2345"))?.nextRoundSetup?.readySlotIds,
+    ).toEqual(["slot-1"]);
+
+    ownerRoom.send(
+      ROOM_CONTROL_MESSAGE,
+      v6ControlCommand("v6-owner-ready-1", "READY_FOR_ROUND"),
+    );
+    const duplicateReady = await ownerLifecycle.next(
+      (message) => message.causedByCommandId === "v6-owner-ready-1",
+    );
+    expect(duplicateReady.nextRound?.readiness.readySlotIds).toEqual([
+      "slot-1",
+    ]);
+
+    ownerRoom.send(
+      GAME_SETUP_MESSAGE,
+      v6SetupCommand("v6-select-random", 1, {
+        type: "SELECT_STARTER",
+        starter: "RANDOM",
+      }),
+    );
+    const changedSetup = await ownerLifecycle.next(
+      (message) =>
+        message.causedByCommandId === "v6-select-random" &&
+        message.nextRound?.setupRevision === 2,
+    );
+    expect(changedSetup.nextRound?.readiness.readySlotIds).toEqual([]);
+
+    ownerRoom.send(
+      ROOM_CONTROL_MESSAGE,
+      v6ControlCommand("v6-owner-ready-2", "READY_FOR_ROUND"),
+    );
+    await ownerLifecycle.next(
+      (message) => message.causedByCommandId === "v6-owner-ready-2",
+    );
+    matchArchive.failNextCreate = true;
+    guestRoom.send(
+      ROOM_CONTROL_MESSAGE,
+      v6ControlCommand("v6-guest-ready-1", "READY_FOR_ROUND"),
+    );
+    await expect(
+      guestMessages.next(
+        (message) =>
+          message.type === "command.rejected" &&
+          message.commandId === "v6-guest-ready-1",
+      ),
+    ).resolves.toMatchObject({ code: "INTERNAL_ERROR", retryable: false });
+    const failedStart = await roomStore.getByRoomCode("VSET2345");
+    expect(failedStart?.currentRound).toBeNull();
+    expect(failedStart?.nextRoundSetup).toMatchObject({
+      readySlotIds: ["slot-1", "slot-2"],
+      finalizedSetup: { participantSlotIds: ["slot-1", "slot-2"] },
+    });
+    const roundOneOrder =
+      failedStart?.nextRoundSetup?.finalizedSetup?.playerOrder;
+    if (roundOneOrder === undefined) {
+      throw new Error(
+        "V6 setup was not finalized before the injected failure.",
+      );
+    }
+    const roundOneStarter = roundOneOrder[0];
+    if (roundOneStarter === undefined) {
+      throw new Error("V6 setup finalized an empty player order.");
+    }
+    expect(new Set(roundOneOrder)).toEqual(new Set(["slot-1", "slot-2"]));
+    expect(matchArchive.createAttempts).toHaveLength(1);
+
+    guestRoom.send(
+      ROOM_CONTROL_MESSAGE,
+      v6ControlCommand("v6-guest-ready-1", "READY_FOR_ROUND"),
+    );
+    const [roundOneOwner, roundOneGuest] = await Promise.all([
+      ownerMessages.next(
+        (message) =>
+          isV6Snapshot(message) &&
+          message.roundNumber === 1 &&
+          message.revision === 0,
+      ),
+      guestMessages.next(
+        (message) =>
+          isV6Snapshot(message) &&
+          message.roundNumber === 1 &&
+          message.revision === 0,
+      ),
+    ]);
+    expect(roundOneOwner).toMatchObject({
+      protocolVersion: 6,
+      status: "active",
+    });
+    expect(roundOneGuest).toMatchObject({
+      protocolVersion: 6,
+      status: "active",
+    });
+    expect(matchArchive.createAttempts).toEqual([
+      matchArchive.createAttempts[0],
+      matchArchive.createAttempts[0],
+    ]);
+    await guestLifecycle.next(
+      (message) => message.currentRound?.status === "active",
+    );
+    const storedRoundOne = await roomStore.getByRoomCode("VSET2345");
+    expect(storedRoundOne).toMatchObject({
+      setupProtocol: 6,
+      previousFinalizedSetup: {
+        participantSlotIds: ["slot-1", "slot-2"],
+        playerOrder: roundOneOrder,
+        assignments: [
+          { slotId: "slot-1", assignment: null },
+          { slotId: "slot-2", assignment: null },
+        ],
+      },
+      currentRound: { roundNumber: 1, revision: 0, status: "active" },
+    });
+    expect(storedRoundOne?.nextRoundSetup).toBeUndefined();
+    const roundOneReplayId = storedRoundOne?.currentRound?.replayId;
+    if (roundOneReplayId === undefined) throw new Error("Missing round one.");
+
+    ownerRoom.send(
+      GAME_ACTION_MESSAGE,
+      v6ActionCommand("v6-round-one-resign", 0, { type: "RESIGN" }),
+    );
+    await ownerMessages.next(
+      (message) =>
+        isV6Snapshot(message) &&
+        message.roundNumber === 1 &&
+        message.status === "completed",
+    );
+    const nextRound = await ownerLifecycle.next(
+      (message) =>
+        message.currentRound?.status === "completed" &&
+        message.nextRound?.roundNumber === 2,
+    );
+    expect(nextRound.nextRound).toMatchObject({
+      setupRevision: 0,
+      setupView: {
+        starter: "FIXED",
+        fixedStarterSlotId: roundOneStarter,
+        participantSlotIds: ["slot-1", "slot-2"],
+      },
+      readiness: { readySlotIds: [], requiredSlotIds: ["slot-1", "slot-2"] },
+    });
+    await guestLifecycle.next(
+      (message) =>
+        message.currentRound?.status === "completed" &&
+        message.nextRound?.roundNumber === 2,
+    );
+
+    ownerRoom.send(
+      ROOM_CONTROL_MESSAGE,
+      v6ControlCommand("v6-owner-rematch-ready", "READY_FOR_ROUND"),
+    );
+    await Promise.all([
+      ownerLifecycle.next(
+        (message) => message.causedByCommandId === "v6-owner-rematch-ready",
+      ),
+      guestLifecycle.next(
+        (message) =>
+          message.currentRound?.status === "completed" &&
+          message.nextRound?.readiness.readySlotIds.length === 1 &&
+          message.nextRound.readiness.readySlotIds[0] === "slot-1",
+      ),
+    ]);
+    expect(
+      (await roomStore.getByRoomCode("VSET2345"))?.currentRound?.roundNumber,
+    ).toBe(1);
+    const readyClearedAfterDisconnect = guestLifecycle.next(
+      (message) =>
+        message.currentRound?.status === "completed" &&
+        message.nextRound?.readiness.readySlotIds.length === 0 &&
+        message.players.find((player) => player.slotId === "slot-1")?.online ===
+          false,
+    );
+    await ownerRoom.leave(false);
+    await readyClearedAfterDisconnect;
+    expect(
+      (await roomStore.getByRoomCode("VSET2345"))?.nextRoundSetup?.readySlotIds,
+    ).toEqual([]);
+
+    ownerRoom = await new ColyseusClient(address.httpUrl).join(GAME_ROOM_NAME, {
+      type: "room.join",
+      protocolVersion: SETUP_PROTOCOL_VERSION,
+      ticket: authority.issue("v6-owner", {
+        protocolVersion: SETUP_PROTOCOL_VERSION,
+      }),
+      roomCode: "VSET2345",
+    });
+    ownerMessages = new V6MessageInbox(ownerRoom);
+    ownerLifecycle = new V6LifecycleInbox(ownerRoom);
+    await ownerMessages.next((message) => message.type === "room.connected");
+    ownerRoom.send(
+      ROOM_CONTROL_MESSAGE,
+      v6ControlCommand(
+        "v6-owner-rematch-ready-after-reconnect",
+        "READY_FOR_ROUND",
+      ),
+    );
+    await ownerLifecycle.next(
+      (message) =>
+        message.causedByCommandId === "v6-owner-rematch-ready-after-reconnect",
+    );
+    guestRoom.send(
+      ROOM_CONTROL_MESSAGE,
+      v6ControlCommand("v6-guest-rematch-ready", "READY_FOR_ROUND"),
+    );
+    await ownerMessages.next(
+      (message) =>
+        isV6Snapshot(message) &&
+        message.roundNumber === 2 &&
+        message.revision === 0,
+    );
+
+    const storedRoundTwo = await roomStore.getByRoomCode("VSET2345");
+    expect(storedRoundTwo).toMatchObject({
+      setupProtocol: 6,
+      previousFinalizedSetup: storedRoundOne?.previousFinalizedSetup,
+      currentRound: {
+        roundNumber: 2,
+        playerOrder: roundOneOrder,
+        revision: 0,
+        status: "active",
+      },
+    });
+    const roundTwoReplayId = storedRoundTwo?.currentRound?.replayId;
+    if (roundTwoReplayId === undefined) throw new Error("Missing round two.");
+    expect(roundTwoReplayId).not.toBe(roundOneReplayId);
+    const [roundOneReplay, roundTwoReplay] = await Promise.all([
+      app.replayStore.get(roundOneReplayId),
+      app.replayStore.get(roundTwoReplayId),
+    ]);
+    expect(roundOneReplay?.header.players).toEqual(
+      roundOneOrder.map((slotId) => ({ slotId })),
+    );
+    expect(roundTwoReplay?.header.players).toEqual(
+      roundOneReplay?.header.players,
+    );
+    expect(roundTwoReplay?.header.initialConfig).toEqual(
+      roundOneReplay?.header.initialConfig,
+    );
+    expect(roundTwoReplay?.header.rng.seed).not.toBe(
+      roundOneReplay?.header.rng.seed,
+    );
+
+    await ownerRoom.leave(true);
+    await guestRoom.leave(true);
   });
 });
 

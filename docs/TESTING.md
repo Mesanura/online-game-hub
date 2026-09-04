@@ -201,6 +201,8 @@ Multiplayer integration 使用两个独立客户端连接同一真实 room，验
 
 真实 integration cases 覆盖：health/metrics 与 Protocol V5 ticket trust boundary；井字棋、四子棋、五子棋、六贯棋、黑白棋和中国跳棋 stable slots、无 snapshot setup、active/completed、invalid/rule-rejected commands、per-viewer snapshot 与 verified canonical replay；replay append failure 不确认/不提交；新 ticket + 新 reservation 的 reconnect、connection takeover、错误 session theft 和 fake-clock 60 秒 abandoned；逐局 starter/ready/cancel、随机 starter、复用 playerOrder 的 immediate rematch、跨轮 duplicate/错轮防护、terminal outsider、房主关闭、非房主 active leave 和 terminal TTL。中国跳棋额外覆盖 2–6 人人数控制、唯一营地权限、多人 playerOrder、排名和 assignment replay metadata。ticket verifier、ports、composition logger 另有无 transport 的 contract/unit tests。
 
+独立的 dormant Protocol V6 turn-based integration fixture 使用 V6 ticket/create/join/connected/lifecycle/Action 全链路，覆盖非 owner、伪造敏感字段、schema invalid、stale setup revision、duplicate ready、accepted 设置清 ready、Setup RoomStore 保存失败同 command 重试、finalized RANDOM setup 在 archive 失败后的原 command 重试、revision 0 active snapshot，以及第二局完整复用 config/order/assignments但生成独立 gameplay seed/replay。该 fixture 不改变 production deployment 的 V5 默认值。
+
 黑白棋 integration 额外覆盖本轮 BLACK/WHITE role、schema-invalid/伪造 actor、错回合与无翻转拒绝不推进 revision/replay、权威翻转、revision 18 后 WHITE 强制连续行动、25-action 非满盘终局、PASS-free canonical replay，以及同房间第二轮 revision 重置、独立 Match/replay 与 11-action 非满盘终局。
 
 四个 current `1.1.0` 游戏另以 table 覆盖一个正常 accepted Action 后同 actor off-turn `RESIGN`：revision 只加到 `2`、比赛 completed、对手 `RESIGNATION` WIN、replay 恰有一条 `RESIGN` 且 exact verification 通过。六贯棋连接轮使用必须经过 `(+1,-1)` 邻格的 21-action BLUE canonical path，并覆盖终局拒绝；Core 另以 accepted Action 同时回归 BLUE/RED 两个第三轴方向。

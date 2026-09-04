@@ -362,6 +362,8 @@ interface RoomLifecycleStateV6 {
 
 完成一局后，runtime 立即以上一局完整 `FinalizedRoundSetup` 初始化下一轮，复用 config、参与者、实际 playerOrder 与 assignments；随机顺序不自动重抽。每个参与者点击“重新对局”只等价于自己的 `READY_FOR_ROUND`，不会替其他玩家确认；“调整设置”仅打开 Setup Surface。新局的 State、Outcome、revision/tick、seed、RNG cursor、Match/replay ID 全部重新创建。
 
+回合制 V6 runtime 对 Setup Action/ready 使用与 gameplay 相同的单 writer queue。accepted Setup Action 先保存 coordinator candidate 再递增内存 `setupRevision`；保存失败返回 `INTERNAL_ERROR` 且不缓存命令，因此同一 command ID 可安全重试。最后一名玩家 ready 后，finalized setup（含随机实际顺序）先写入 RoomStore，再创建 replay/Match/active Round；后续 port 失败保留相同 finalized setup、replay ID 和 gameplay seed。若玩家在该失败窗口取消并再次 ready，继续复用已固化结果，不重新抽取随机顺序。
+
 V5/V6 generation 与 presentation renderer 一起由 exact deployment registration 决定并写入 live room record。新建房间的配置切换或回滚不会改变已存在房间；只有 V5 房间排空且所有受支持游戏版本迁移完毕后，才能删除旧 schema、控件和 runtime 分支。Realtime Input/Snapshot Protocol 仍为 V1，V6 只替换共享房间与 Setup envelope。
 
 ## 7. Client Action Envelope
@@ -509,6 +511,8 @@ V5 内存 collector 暴露的最小指标：
 - `actions_accepted_total`、`actions_rejected_total`；
 - `reconnect_attempt_total`、`reconnect_success_total`、`reconnect_timeout_total`；
 - `replay_append_failure_total`、`room_crash_total`。
+
+预期的认证、创建、加入协议拒绝（包括房间固定代际不匹配）属于客户端请求错误，不计入 `room_crash_total`，也不记录为 `room.crashed`；只有未按稳定拒绝路径处理的 runtime 异常或 Core 契约破坏才计为房间崩溃。
 
 样本可带 `gameId`/`gameVersion` labels；日志至少使用 `roomId`、game/version、revision、错误码、lifecycle status 和不可逆的 session correlation id 中与事件相关的字段。
 

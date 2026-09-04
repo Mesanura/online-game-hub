@@ -237,7 +237,35 @@ describe("round setup coordinator", () => {
         slots,
         "slot-1",
       ).canReady,
-    ).toBe(false);
+    ).toBe(true);
+    const cancelled = setRoundSetupReady(
+      coordinatorDefinition,
+      finalized.coordinator,
+      slots,
+      "slot-1",
+      false,
+    );
+    if (cancelled.status === "rejected") throw new Error("expected cancel");
+    const readyAgain = setRoundSetupReady(
+      coordinatorDefinition,
+      cancelled.coordinator,
+      slots,
+      "slot-1",
+      true,
+    );
+    if (readyAgain.status === "rejected") throw new Error("expected ready");
+    expect(
+      finalizeRoundSetup(
+        coordinatorDefinition,
+        readyAgain.coordinator,
+        slots,
+        2,
+        2,
+      ),
+    ).toMatchObject({
+      status: "finalized",
+      setup: finalized.setup,
+    });
   });
 
   it("projects viewer-safe setup views and blocks non-participants", () => {
