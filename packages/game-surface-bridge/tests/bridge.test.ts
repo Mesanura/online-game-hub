@@ -114,7 +114,15 @@ describe("Game Surface Bridge V1", () => {
     },
   );
 
-  it.each(["ticket", "sessionId", "actor", "commandId", "inputSequence"])(
+  it.each([
+    "ticket",
+    "sessionId",
+    "actor",
+    "commandId",
+    "roundNumber",
+    "expectedRevision",
+    "inputSequence",
+  ])(
     "rejects Surface intents containing the Host-owned key %s",
     (key) => {
       expect(
