@@ -3,6 +3,7 @@ import { createHmac } from "node:crypto";
 import {
   GAME_SERVER_TICKET_AUDIENCE,
   PROTOCOL_VERSION,
+  SETUP_PROTOCOL_VERSION,
 } from "@online-game-hub/protocol";
 import { describe, expect, it } from "vitest";
 
@@ -54,6 +55,19 @@ describe("HMAC Game Server ticket authority", () => {
         playerSessionId: "session-b",
         userId: "11111111-1111-4111-8111-111111111111",
         protocolVersion: PROTOCOL_VERSION,
+      },
+    });
+
+    const setupTicket = authority.issue(
+      "session-c",
+      undefined,
+      SETUP_PROTOCOL_VERSION,
+    );
+    expect(authority.verify(setupTicket)).toMatchObject({
+      status: "verified",
+      claims: {
+        playerSessionId: "session-c",
+        protocolVersion: SETUP_PROTOCOL_VERSION,
       },
     });
   });

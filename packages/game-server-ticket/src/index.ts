@@ -3,9 +3,15 @@ import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import {
   GAME_SERVER_TICKET_AUDIENCE,
   PROTOCOL_VERSION,
+  anyGameServerTicketClaimsSchema,
   gameServerTicketClaimsSchema,
+  gameServerTicketClaimsV6Schema,
+  setupProtocolGenerationSchema,
 } from "@online-game-hub/protocol";
-import type { GameServerTicketClaims } from "@online-game-hub/protocol";
+import type {
+  AnyGameServerTicketClaims,
+  SetupProtocolGeneration,
+} from "@online-game-hub/protocol";
 
 const MINIMUM_SECRET_BYTES = 32;
 const MAXIMUM_TICKET_BYTES = 4096;
@@ -46,7 +52,7 @@ export type GameServerTicketVerificationFailureCode =
 export type GameServerTicketVerificationResult =
   | {
       readonly status: "verified";
-      readonly claims: GameServerTicketClaims;
+      readonly claims: AnyGameServerTicketClaims;
     }
   | {
       readonly status: "rejected";
@@ -54,7 +60,11 @@ export type GameServerTicketVerificationResult =
     };
 
 export interface GameServerTicketAuthority {
-  issue(playerSessionId: string, userId?: string): string;
+  issue(
+    playerSessionId: string,
+    userId?: string,
+    protocolVersion?: SetupProtocolGeneration,
+  ): string;
   verify(ticket: unknown): GameServerTicketVerificationResult;
 }
 
@@ -104,7 +114,7 @@ export function createHmacGameServerTicketAuthority(
   ): GameServerTicketVerificationResult => ({ status: "rejected", code });
 
   return {
-    issue(playerSessionId, userId) {
+    issue(playerSessionId, userId, protocolVersion = PROTOCOL_VERSION) {
       if (playerSessionId.length === 0 || playerSessionId.length > 128) {
         throw new TypeError(
           "Player session id must contain between 1 and 128 characters.",
@@ -116,7 +126,11 @@ export function createHmacGameServerTicketAuthority(
           "Ticket time source returned an invalid timestamp.",
         );
       }
-      const claims = gameServerTicketClaimsSchema.parse({
+      const claimsSchema =
+        protocolVersion === PROTOCOL_VERSION
+          ? gameServerTicketClaimsSchema
+          : gameServerTicketClaimsV6Schema;
+      const claims = claimsSchema.parse({
         issuer: options.issuer,
         audience: GAME_SERVER_TICKET_AUDIENCE,
         playerSessionId,
@@ -124,7 +138,7 @@ export function createHmacGameServerTicketAuthority(
         issuedAt,
         expiresAt: issuedAt + lifetimeSeconds,
         ticketId: ids.createTicketId(),
-        protocolVersion: PROTOCOL_VERSION,
+        protocolVersion: setupProtocolGenerationSchema.parse(protocolVersion),
       });
       const payload = Buffer.from(JSON.stringify(claims), "utf8").toString(
         "base64url",
@@ -172,7 +186,10 @@ export function createHmacGameServerTicketAuthority(
         return reject("INVALID_TICKET");
       }
       const candidate = rawClaims as Record<string, unknown>;
-      if (candidate.protocolVersion !== PROTOCOL_VERSION) {
+      if (
+        !setupProtocolGenerationSchema.safeParse(candidate.protocolVersion)
+          .success
+      ) {
         return reject("PROTOCOL_VERSION_UNSUPPORTED");
       }
       if (candidate.audience !== GAME_SERVER_TICKET_AUDIENCE) {
@@ -181,7 +198,7 @@ export function createHmacGameServerTicketAuthority(
       if (candidate.issuer !== options.issuer) {
         return reject("WRONG_ISSUER");
       }
-      const parsed = gameServerTicketClaimsSchema.safeParse(candidate);
+      const parsed = anyGameServerTicketClaimsSchema.safeParse(candidate);
       if (!parsed.success) {
         return reject("INVALID_TICKET");
       }

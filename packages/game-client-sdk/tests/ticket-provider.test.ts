@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { SETUP_PROTOCOL_VERSION } from "@online-game-hub/protocol";
 
 import {
   TicketRequestError,
@@ -19,7 +20,35 @@ describe("HTTP Game Server ticket provider", () => {
       method: "POST",
       credentials: "same-origin",
       cache: "no-store",
-      headers: { accept: "application/json" },
+      headers: {
+        accept: "application/json",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ protocolVersion: 5 }),
+    });
+  });
+
+  it("requests the exact Setup V6 ticket generation", async () => {
+    const fetchImplementation = vi.fn<typeof fetch>(async () =>
+      Response.json({ ticket: "opaque-v6-ticket" }),
+    );
+    const provider = createHttpTicketProvider(
+      "/api/game-ticket",
+      fetchImplementation,
+    );
+
+    await expect(provider(SETUP_PROTOCOL_VERSION)).resolves.toBe(
+      "opaque-v6-ticket",
+    );
+    expect(fetchImplementation).toHaveBeenCalledWith("/api/game-ticket", {
+      method: "POST",
+      credentials: "same-origin",
+      cache: "no-store",
+      headers: {
+        accept: "application/json",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ protocolVersion: SETUP_PROTOCOL_VERSION }),
     });
   });
 

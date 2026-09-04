@@ -1,7 +1,14 @@
-import { gameServerTicketSchema } from "@online-game-hub/protocol";
+import {
+  PROTOCOL_VERSION,
+  gameServerTicketSchema,
+  setupProtocolGenerationSchema,
+} from "@online-game-hub/protocol";
+import type { SetupProtocolGeneration } from "@online-game-hub/protocol";
 
 /** A browser-side provider for short-lived Game Server tickets. */
-export type RealtimeTicketProvider = () => Promise<string>;
+export type RealtimeTicketProvider = (
+  protocolVersion?: SetupProtocolGeneration,
+) => Promise<string>;
 
 export class RealtimeTicketRequestError extends Error {
   public constructor() {
@@ -19,13 +26,18 @@ export function createRealtimeHttpTicketProvider(
   endpoint = "/api/game-ticket",
   fetchImplementation: typeof fetch = globalThis.fetch,
 ): RealtimeTicketProvider {
-  return async () => {
+  return async (protocolVersion = PROTOCOL_VERSION) => {
     try {
+      const generation = setupProtocolGenerationSchema.parse(protocolVersion);
       const response = await fetchImplementation(endpoint, {
         method: "POST",
         credentials: "same-origin",
         cache: "no-store",
-        headers: { accept: "application/json" },
+        headers: {
+          accept: "application/json",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ protocolVersion: generation }),
       });
       if (!response.ok) throw new RealtimeTicketRequestError();
       const payload = (await response.json()) as unknown;

@@ -75,7 +75,7 @@ Browser
 | `game-sdk`            | 离散 Action 游戏的纯类型契约、deterministic RNG、通用 slot/viewer/outcome 类型                                   | React、Next.js、DOM、Colyseus、WebSocket、数据库、具体游戏   |
 | `game-client-sdk`     | Client Module contract、ticket provider、Colyseus client/room lifecycle、snapshot/command/control/reconnect host | authoritative 规则、服务端 State、具体游戏类型、数据库       |
 | `game-server-runtime` | ticket/clock/store/observability ports、通用 Colyseus room、Action pipeline、多轮/关闭、比赛 lifecycle/reconnect | 具体游戏规则或对 `games/*` 的直接依赖                        |
-| `game-server-ticket`  | Web issuer 与 Game Server verifier 共用的短期 HMAC-SHA256 ticket authority，实现 Protocol V5 ticket claims       | 浏览器 API、session cookie、房间/游戏规则、testing authority |
+| `game-server-ticket`  | Web issuer 与 Game Server verifier 共用的短期 HMAC-SHA256 ticket authority，实现 exact V5/V6 ticket claims       | 浏览器 API、session cookie、房间/游戏规则、testing authority |
 | `game-registry`       | 显式组合游戏 manifest、client loader 和 server definition                                                        | 游戏规则实现、运行时目录扫描                                 |
 | `protocol`            | 跨 Web/Game Server 的 envelope、错误码、票据 claims 和 Zod schema                                                | 具体游戏 Action/State/View 联合类型                          |
 | `game-setup`          | 两种 runtime 共用的纯 Setup definition、reducer/projection/finalize 类型与通用最终结果校验                       | React、DOM、transport、具体游戏规则、数据库                  |

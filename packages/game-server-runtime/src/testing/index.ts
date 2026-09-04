@@ -3,9 +3,10 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import {
   GAME_SERVER_TICKET_AUDIENCE,
   PROTOCOL_VERSION,
-  gameServerTicketClaimsSchema,
+  anyGameServerTicketClaimsSchema,
+  setupProtocolGenerationSchema,
 } from "@online-game-hub/protocol";
-import type { GameServerTicketClaims } from "@online-game-hub/protocol";
+import type { AnyGameServerTicketClaims } from "@online-game-hub/protocol";
 
 import { definePlayerSessionId } from "../auth.js";
 import type { TicketVerificationResult, TicketVerifier } from "../auth.js";
@@ -190,7 +191,10 @@ export class TestTicketAuthority implements TicketVerifier {
       return this.#reject("INVALID_TICKET");
     }
     const candidate = rawClaims as Record<string, unknown>;
-    if (candidate.protocolVersion !== PROTOCOL_VERSION) {
+    if (
+      !setupProtocolGenerationSchema.safeParse(candidate.protocolVersion)
+        .success
+    ) {
       return this.#reject("PROTOCOL_VERSION_UNSUPPORTED");
     }
     if (candidate.audience !== GAME_SERVER_TICKET_AUDIENCE) {
@@ -200,7 +204,7 @@ export class TestTicketAuthority implements TicketVerifier {
       return this.#reject("WRONG_ISSUER");
     }
 
-    const parsed = gameServerTicketClaimsSchema.safeParse(candidate);
+    const parsed = anyGameServerTicketClaimsSchema.safeParse(candidate);
     if (!parsed.success) {
       return this.#reject("INVALID_TICKET");
     }
@@ -215,7 +219,7 @@ export class TestTicketAuthority implements TicketVerifier {
       status: "verified",
       playerSessionId: definePlayerSessionId(parsed.data.playerSessionId),
       userId: parsed.data.userId ?? null,
-      claims: parsed.data satisfies GameServerTicketClaims,
+      claims: parsed.data satisfies AnyGameServerTicketClaims,
     };
   }
 

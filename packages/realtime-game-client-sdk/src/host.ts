@@ -416,7 +416,7 @@ export class RealtimeGameClientHost<View = unknown, Outcome = unknown> {
     let ticket: string;
     try {
       ticket = gameServerTicketSchema.parse(
-        await this.#options.ticketProvider(),
+        await this.#options.ticketProvider(this.#options.setupProtocol),
       );
     } catch {
       if (generation === this.#generation) this.#fail("TICKET_ERROR");
@@ -776,7 +776,7 @@ export class RealtimeGameClientHost<View = unknown, Outcome = unknown> {
     ) {
       try {
         const ticket = gameServerTicketSchema.parse(
-          await this.#options.ticketProvider(),
+          await this.#options.ticketProvider(this.#options.setupProtocol),
         );
         const client = this.#options.transport.createClient(
           this.#options.gameServerUrl,

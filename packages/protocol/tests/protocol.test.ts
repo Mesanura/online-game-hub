@@ -13,6 +13,7 @@ import {
   REALTIME_SERVER_MESSAGE,
   ROOM_CONTROL_MESSAGE,
   SERVER_PROTOCOL_MESSAGE,
+  anyGameServerTicketClaimsSchema,
   commandIdSchema,
   commandRejectedSchema,
   clientMessageV6Schema,
@@ -20,6 +21,7 @@ import {
   gameActionCommandSchema,
   gameSetupCommandSchema,
   gameServerTicketClaimsSchema,
+  gameServerTicketClaimsV6Schema,
   joinGameRoomRequestSchema,
   matchSnapshotSchema,
   realtimeInputCommandSchema,
@@ -521,6 +523,19 @@ describe("ticket and room matchmaking contracts", () => {
 
   it("parses strict ticket claims and rejects incompatible claims", () => {
     expect(gameServerTicketClaimsSchema.parse(claims)).toEqual(claims);
+    const claimsV6 = {
+      ...claims,
+      protocolVersion: SETUP_PROTOCOL_VERSION,
+    } as const;
+    expect(gameServerTicketClaimsV6Schema.parse(claimsV6)).toEqual(claimsV6);
+    expect(anyGameServerTicketClaimsSchema.parse(claims)).toEqual(claims);
+    expect(anyGameServerTicketClaimsSchema.parse(claimsV6)).toEqual(claimsV6);
+    expect(gameServerTicketClaimsSchema.safeParse(claimsV6).success).toBe(
+      false,
+    );
+    expect(gameServerTicketClaimsV6Schema.safeParse(claims).success).toBe(
+      false,
+    );
     expect(
       gameServerTicketClaimsSchema.parse({
         ...claims,

@@ -2,6 +2,11 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
 import { createHmacGameServerTicketAuthority } from "@online-game-hub/game-server-ticket";
+import {
+  PROTOCOL_VERSION,
+  setupProtocolGenerationSchema,
+} from "@online-game-hub/protocol";
+import type { SetupProtocolGeneration } from "@online-game-hub/protocol";
 
 import {
   GUEST_SESSION_COOKIE_NAME,
@@ -16,8 +21,44 @@ import { getWebServerConfig } from "../../../server/runtime-config";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
+async function requestedProtocolGeneration(
+  request: NextRequest,
+): Promise<SetupProtocolGeneration | null> {
+  const text = await request.text();
+  if (text.trim().length === 0) return PROTOCOL_VERSION;
+  let value: unknown;
+  try {
+    value = JSON.parse(text) as unknown;
+  } catch {
+    return null;
+  }
+  if (
+    value === null ||
+    typeof value !== "object" ||
+    Array.isArray(value) ||
+    Object.keys(value).length !== 1 ||
+    !("protocolVersion" in value)
+  ) {
+    return null;
+  }
+  const parsed = setupProtocolGenerationSchema.safeParse(
+    (value as { readonly protocolVersion?: unknown }).protocolVersion,
+  );
+  return parsed.success ? parsed.data : null;
+}
+
 export async function POST(request: NextRequest) {
   try {
+    const protocolVersion = await requestedProtocolGeneration(request);
+    if (protocolVersion === null) {
+      return NextResponse.json(
+        { code: "INVALID_TICKET_REQUEST" },
+        {
+          status: 400,
+          headers: { "cache-control": "no-store, private" },
+        },
+      );
+    }
     const config = getWebServerConfig();
     const guestAuthority = createGuestSessionAuthority({
       secret: config.guestSessionSecret,
@@ -42,7 +83,11 @@ export async function POST(request: NextRequest) {
     });
     const response = NextResponse.json(
       {
-        ticket: ticketAuthority.issue(playerSessionId, account?.userId),
+        ticket: ticketAuthority.issue(
+          playerSessionId,
+          account?.userId,
+          protocolVersion,
+        ),
       },
       { headers: { "cache-control": "no-store, private" } },
     );

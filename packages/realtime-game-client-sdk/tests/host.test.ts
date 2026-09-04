@@ -202,9 +202,13 @@ describe("RealtimeGameClientHost", () => {
       },
     };
     let command = 0;
+    const ticketGenerations: unknown[] = [];
     const host = new RealtimeGameClientHost<{ readonly tick: number }>({
       gameServerUrl: "http://127.0.0.1:2567",
-      ticketProvider: async () => "ticket",
+      ticketProvider: async (generation) => {
+        ticketGenerations.push(generation);
+        return "ticket";
+      },
       transport: { createClient: () => client },
       setupProtocol: SETUP_PROTOCOL_VERSION,
       commandIds: { createCommandId: () => `command-${++command}` },
@@ -213,6 +217,7 @@ describe("RealtimeGameClientHost", () => {
     expect(requests[0]).toMatchObject({
       protocolVersion: SETUP_PROTOCOL_VERSION,
     });
+    expect(ticketGenerations).toEqual([SETUP_PROTOCOL_VERSION]);
     room.emit(SERVER_PROTOCOL_MESSAGE, connectedV6());
     room.emit(ROOM_CONTROL_MESSAGE, lifecycleV6(false));
 

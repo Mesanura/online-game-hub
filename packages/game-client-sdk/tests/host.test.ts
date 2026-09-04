@@ -320,9 +320,13 @@ describe("GameClientHost", () => {
     const transport = new FakeTransport([room]);
     const ids = ["setup-1", "ready-1", "action-1"];
     let idIndex = 0;
+    const ticketGenerations: unknown[] = [];
     const host = new GameClientHost({
       gameServerUrl: "http://127.0.0.1:1234",
-      ticketProvider: async () => "ticket-1",
+      ticketProvider: async (generation) => {
+        ticketGenerations.push(generation);
+        return "ticket-1";
+      },
       transport,
       setupProtocol: SETUP_PROTOCOL_VERSION,
       commandIds: { createCommandId: () => ids[idIndex++] ?? "unexpected" },
@@ -333,6 +337,7 @@ describe("GameClientHost", () => {
       type: "room.create",
       protocolVersion: SETUP_PROTOCOL_VERSION,
     });
+    expect(ticketGenerations).toEqual([SETUP_PROTOCOL_VERSION]);
     room.emit(connectedV6);
     room.emitLifecycle(lifecycleV6(null));
 

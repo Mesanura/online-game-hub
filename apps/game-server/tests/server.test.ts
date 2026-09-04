@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { createHmacGameServerTicketAuthority } from "@online-game-hub/game-server-ticket";
+import { SETUP_PROTOCOL_VERSION } from "@online-game-hub/protocol";
 
 import {
   createConsoleRuntimeLogger,
@@ -54,6 +55,15 @@ describe("game-server composition helpers", () => {
       playerSessionId: "session-a",
       userId: null,
       claims: { issuer: "web-production", protocolVersion: 5 },
+    });
+    await expect(
+      verifier.verify(
+        authority.issue("session-v6", undefined, SETUP_PROTOCOL_VERSION),
+      ),
+    ).resolves.toMatchObject({
+      status: "verified",
+      playerSessionId: "session-v6",
+      claims: { protocolVersion: SETUP_PROTOCOL_VERSION },
     });
     await expect(verifier.verify("tampered-ticket")).resolves.toEqual({
       status: "rejected",

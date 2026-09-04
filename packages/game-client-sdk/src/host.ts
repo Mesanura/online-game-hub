@@ -537,7 +537,7 @@ export class GameClientHost<View = unknown, Outcome = unknown> {
     let ticket: string;
     try {
       ticket = gameServerTicketSchema.parse(
-        await this.#options.ticketProvider(),
+        await this.#options.ticketProvider(this.#options.setupProtocol),
       );
     } catch {
       this.#fail("TICKET_ERROR", "A Game Server ticket could not be obtained.");
@@ -809,7 +809,7 @@ export class GameClientHost<View = unknown, Outcome = unknown> {
     ) {
       try {
         const ticket = gameServerTicketSchema.parse(
-          await this.#options.ticketProvider(),
+          await this.#options.ticketProvider(this.#options.setupProtocol),
         );
         const client = this.#options.transport.createClient(
           this.#options.gameServerUrl,

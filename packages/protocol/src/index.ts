@@ -122,6 +122,13 @@ function isSetupActionPayload(value: unknown): boolean {
 
 export const protocolVersionSchema = z.literal(PROTOCOL_VERSION);
 export const setupProtocolVersionSchema = z.literal(SETUP_PROTOCOL_VERSION);
+export const setupProtocolGenerationSchema = z.union([
+  protocolVersionSchema,
+  setupProtocolVersionSchema,
+]);
+export type SetupProtocolGeneration = z.infer<
+  typeof setupProtocolGenerationSchema
+>;
 export const revisionSchema = z
   .number()
   .int()
@@ -667,6 +674,13 @@ export const gameServerTicketClaimsV6Schema = z
   });
 export type GameServerTicketClaimsV6 = z.infer<
   typeof gameServerTicketClaimsV6Schema
+>;
+export const anyGameServerTicketClaimsSchema = z.discriminatedUnion(
+  "protocolVersion",
+  [gameServerTicketClaimsSchema, gameServerTicketClaimsV6Schema],
+);
+export type AnyGameServerTicketClaims = z.infer<
+  typeof anyGameServerTicketClaimsSchema
 >;
 
 export const createGameRoomRequestV6Schema = createGameRoomRequestSchema

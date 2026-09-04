@@ -62,26 +62,32 @@ interface GameServerTicketClaims {
   issuedAt: number;
   expiresAt: number;
   ticketId: string;
-  protocolVersion: 5;
+  protocolVersion: 5 | 6;
 }
 ```
 
 - `@online-game-hub/game-server-ticket` 使用两个 canonical base64url segments（JSON claims 与 HMAC-SHA256 signature），secret 至少 32 UTF-8 bytes。默认 lifetime 为 30 秒，可配置范围为 1–300 秒。
-- Issuer 生成服务器控制的 `ticketId`、`issuedAt`、`expiresAt`、audience 和 `protocolVersion`；浏览器只取得完整 bearer ticket，不能选择 `PlayerSessionId` 或修改 claims。
-- Verifier 在建立身份前以 timing-safe comparison 验证 signature，并严格验证 Protocol V5 claims schema、配置的 issuer、固定 audience、`issuedAt <= now` 和 `expiresAt > now`。缺失、超大、非 canonical、篡改、过期、未来签发或版本错误 ticket 都被拒绝。
+- Issuer 生成服务器控制的 `ticketId`、`issuedAt`、`expiresAt` 与 audience；Host 只声明当前房间要求的 V5/V6 generation，浏览器只取得完整 bearer ticket，不能选择 `PlayerSessionId`、`UserId` 或修改 claims。
+- Verifier 在建立身份前以 timing-safe comparison 验证 signature，并按 `protocolVersion` 严格验证 exact V5 或 V6 claims schema、配置的 issuer、固定 audience、`issuedAt <= now` 和 `expiresAt > now`。缺失、超大、非 canonical、篡改、过期、未来签发或其他版本 ticket 都被拒绝；room runtime 还必须验证 ticket generation 与 create/join request 及固定房间 generation 一致。
 - Web 与 Game Server 通过环境注入完全一致的 issuer/ticket secret；guest session secret 必须独立。只有可信账户 session 才能让 Web 签入 `userId`；浏览器不能提交或修改它。Game Server 将 verifier 返回的账户身份保存在 slot 私有字段，lifecycle/snapshot/View/日志均不发送。生产 `apps/game-server` adapter 不导入 testing subpath，`TestTicketAuthority` 只供 contract/integration tests。
 - Ticket 可以短暂存在于 `GameClientHost` 的调用栈以完成 Colyseus reservation，但不得持久化到 URL、local/session storage、UI、日志或错误响应；secret 永远不进入客户端 bundle。
 - M4 不实现 key management 或 rotation infrastructure；变更共享 secret 需要协调两个进程重启。
 
 ### 4.3 HTTP Ticket API
 
-`POST /api/game-ticket` 使用 same-origin guest cookie，无 request body。成功响应为：
+`POST /api/game-ticket` 使用 same-origin guest cookie，请求体只允许声明 ticket generation：
+
+```json
+{ "protocolVersion": 5 }
+```
+
+值只能是 `5 | 6`；无请求体仅作为 legacy V5 兼容。成功响应为：
 
 ```json
 { "ticket": "<short-lived bearer ticket>" }
 ```
 
-成功响应为 `200`，配置或签发失败只返回 `503 { "code": "TICKET_UNAVAILABLE" }`；两者都设置 `Cache-Control: no-store, private`。route 只从 HttpOnly cookie 解析 session，不接受浏览器提交的 `PlayerSessionId`，且不在响应或错误中返回 cookie/secret。
+成功响应为 `200`，非法 generation/body 返回 `400 { "code": "INVALID_TICKET_REQUEST" }`，配置或签发失败只返回 `503 { "code": "TICKET_UNAVAILABLE" }`；所有响应都设置 `Cache-Control: no-store, private`。route 只从 HttpOnly cookie 解析 session，不接受浏览器提交的 `PlayerSessionId` 或 `UserId`，且不在响应或错误中返回 cookie/secret。
 
 ### 4.4 Private Match History API
 
