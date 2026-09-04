@@ -5,17 +5,18 @@ import {
   ArrowRight,
   Check,
   CheckCircle,
+  CornersIn,
+  CornersOut,
   Copy,
   Crown,
   GameController,
   House,
   Link as LinkIcon,
+  List,
   LockKeyOpen,
   SignOut,
-  Sparkle,
   ArrowsClockwise,
   Shuffle,
-  Trophy,
   UserCircle,
   UserPlus,
   UsersThree,
@@ -24,7 +25,8 @@ import {
   X,
 } from "@phosphor-icons/react";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from "react";
 
 import {
   connectionLabels,
@@ -699,94 +701,363 @@ function RoomView({ title }: Pick<GameRoomPageProps, "title">) {
   );
 }
 
-function scalarLabel(value: unknown): string {
-  if (typeof value !== "string") return "";
-  const labels: Record<string, string> = {
-    BLACK: "黑方",
-    WHITE: "白方",
-    RED: "红方",
-    YELLOW: "黄方",
-    BLUE: "蓝方",
-    N: "北营地",
-    NE: "东北营地",
-    SE: "东南营地",
-    S: "南营地",
-    SW: "西南营地",
-    NW: "西北营地",
-  };
-  return labels[value] ?? value;
-}
-
-function markerClass(value: unknown, index: number): string {
-  if (typeof value === "string") {
-    const normalized = value.toLowerCase().replace(/[^a-z0-9-]/gu, "");
-    if (normalized.length > 0) return `stone-${normalized}`;
-  }
-  return index === 1 ? "stone-black" : "stone-white";
-}
-
-function viewSummary(view: unknown) {
-  if (view === null || typeof view !== "object") {
-    return { players: [], current: "等待同步", counts: [], result: null };
-  }
-  const record = view as Record<string, unknown>;
-  const players = Array.isArray(record.players)
-    ? record.players.map((player, index) => {
-        const item = player as Record<string, unknown>;
-        const marker =
-          item.stone ?? item.disc ?? item.color ?? item.mark ?? item.camp;
-        return {
-          index: index + 1,
-          slotId: item.slotId,
-          marker: scalarLabel(marker),
-          markerKey: typeof marker === "string" ? marker : null,
-        };
-      })
-    : [];
-  const board = Array.isArray(record.board) ? record.board : [];
-  const counts = players.map((player) => ({
-    ...player,
-    count: board.filter((cell) => cell === player.slotId).length,
-  }));
-  const current =
-    players.find((player) => player.slotId === record.nextTurnSlotId)?.marker ??
-    "等待同步";
-  const outcome = record.outcome;
-  let result: string | null = null;
-  if (outcome !== null && typeof outcome === "object") {
-    const outcomeRecord = outcome as Record<string, unknown>;
-    if (outcomeRecord.type === "DRAW") result = "平局";
-    if (outcomeRecord.type === "WIN") {
-      const winner = players.find(
-        (player) => player.slotId === outcomeRecord.winnerSlotId,
-      );
-      result = winner === undefined ? "对局完成" : `玩家 ${winner.index} 胜利`;
-    }
-    if (
-      outcomeRecord.type === "RANKING" &&
-      Array.isArray(outcomeRecord.rankings)
-    ) {
-      const first = outcomeRecord.rankings[0];
-      const winner =
-        first !== null && typeof first === "object"
-          ? players.find(
-              (player) =>
-                player.slotId === (first as Record<string, unknown>).slotId,
-            )
-          : undefined;
-      result =
-        winner === undefined ? "排名已确定" : `第 1 名：玩家 ${winner.index}`;
-    }
-  }
-  return { players, current, counts, result };
-}
-
 function LoadingView({ label }: { readonly label: string }) {
   return (
     <div className="page-shell loading-page">
       <div className="clay-spinner" aria-hidden="true" />
       <p>{label}</p>
       <PageAlerts />
+    </div>
+  );
+}
+
+const PLAY_DRAWER_ID = "platform-play-drawer";
+const PLAY_DRAWER_HEADING_ID = "platform-play-drawer-heading";
+const FOCUSABLE_SELECTOR =
+  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+interface PlaySurfaceShellProps {
+  readonly title: string;
+  readonly modeLabel: string;
+  readonly roomCode: string;
+  readonly roundNumber: number;
+  readonly playerSlotId: string;
+  readonly revision: number;
+  readonly completed: boolean;
+  readonly owner: boolean;
+  readonly busy: boolean;
+  readonly resignPending: boolean;
+  readonly canResign: boolean;
+  readonly state: WebRoomHostState;
+  readonly stage: ReactNode;
+  readonly errorMessage: string | undefined;
+  readonly statusProbes?: ReactNode;
+  readonly overlays?: ReactNode;
+  readonly onResign: () => void;
+  readonly onCloseRoom: () => void;
+  readonly onLeaveRoom: () => void;
+  readonly onRematch: () => void;
+  readonly onAdjustSettings: () => void;
+}
+
+export function PlaySurfaceShell({
+  title,
+  modeLabel,
+  roomCode,
+  roundNumber,
+  playerSlotId,
+  revision,
+  completed,
+  owner,
+  busy,
+  resignPending,
+  canResign,
+  state,
+  stage,
+  errorMessage,
+  statusProbes,
+  overlays,
+  onResign,
+  onCloseRoom,
+  onLeaveRoom,
+  onRematch,
+  onAdjustSettings,
+}: PlaySurfaceShellProps) {
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [focusMode, setFocusMode] = useState(false);
+  const [fullscreen, setFullscreen] = useState(false);
+  const stageShellRef = useRef<HTMLElement>(null);
+  const drawerCloseRef = useRef<HTMLButtonElement>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
+
+  const closeDrawer = (): void => {
+    setDrawerOpen(false);
+    queueMicrotask(() => previousFocusRef.current?.focus());
+  };
+
+  const openDrawer = (): void => {
+    previousFocusRef.current =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+    setDrawerOpen(true);
+  };
+
+  useEffect(() => {
+    if (drawerOpen) drawerCloseRef.current?.focus();
+  }, [drawerOpen]);
+
+  useEffect(() => {
+    const updateFullscreen = (): void => {
+      setFullscreen(document.fullscreenElement === stageShellRef.current);
+    };
+    document.addEventListener("fullscreenchange", updateFullscreen);
+    return () =>
+      document.removeEventListener("fullscreenchange", updateFullscreen);
+  }, []);
+
+  useEffect(() => {
+    const handleEscape = (event: KeyboardEvent): void => {
+      if (event.key === "Escape" && focusMode && !drawerOpen) {
+        setFocusMode(false);
+      }
+    };
+    document.addEventListener("keydown", handleEscape);
+    return () => document.removeEventListener("keydown", handleEscape);
+  }, [drawerOpen, focusMode]);
+
+  const handleDrawerKeyDown = (
+    event: ReactKeyboardEvent<HTMLElement>,
+  ): void => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      closeDrawer();
+      return;
+    }
+    if (event.key !== "Tab") return;
+    const focusable = Array.from(
+      event.currentTarget.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR),
+    ).filter((element) => element.tabIndex >= 0);
+    if (focusable.length === 0) {
+      event.preventDefault();
+      return;
+    }
+    const first = focusable[0];
+    const last = focusable.at(-1);
+    if (first === undefined || last === undefined) return;
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  };
+
+  const toggleFullscreen = async (): Promise<void> => {
+    if (focusMode) {
+      setFocusMode(false);
+      return;
+    }
+    if (document.fullscreenElement === stageShellRef.current) {
+      try {
+        await document.exitFullscreen();
+      } finally {
+        setFullscreen(false);
+      }
+      return;
+    }
+    const stageShell = stageShellRef.current;
+    if (
+      stageShell === null ||
+      document.fullscreenEnabled === false ||
+      typeof stageShell.requestFullscreen !== "function"
+    ) {
+      setFocusMode(true);
+      return;
+    }
+    try {
+      await stageShell.requestFullscreen();
+      setFullscreen(true);
+    } catch {
+      setFocusMode(true);
+    }
+  };
+
+  const expanded = fullscreen || focusMode;
+  return (
+    <div className="page-shell console-page play-page">
+      <main
+        className={`play-stage-layout ${focusMode ? "is-focus-mode" : ""}`}
+        data-focus-mode={focusMode ? "true" : "false"}
+        ref={stageShellRef}
+      >
+        <div className="play-toolbar clay-surface" aria-label="对局工具栏">
+          <button
+            aria-controls={PLAY_DRAWER_ID}
+            aria-expanded={drawerOpen}
+            aria-label="打开对局信息"
+            className="play-toolbar-button"
+            data-testid="toggle-game-hud"
+            onClick={openDrawer}
+            type="button"
+          >
+            <List size={21} weight="bold" aria-hidden="true" />
+          </button>
+          <ConnectionBadge state={state} testId="connection-state" />
+          <button
+            aria-label={expanded ? "退出全屏显示" : "全屏显示游戏"}
+            aria-pressed={expanded}
+            className="play-toolbar-button"
+            data-testid="toggle-game-fullscreen"
+            onClick={() => void toggleFullscreen()}
+            type="button"
+          >
+            {expanded ? (
+              <CornersIn size={21} weight="bold" aria-hidden="true" />
+            ) : (
+              <CornersOut size={21} weight="bold" aria-hidden="true" />
+            )}
+          </button>
+        </div>
+
+        <div className="game-stage" data-testid="game-stage">
+          {stage}
+        </div>
+        {errorMessage === undefined ? null : (
+          <p className="error-banner play-stage-error" role="alert">
+            {errorMessage}
+          </p>
+        )}
+
+        {drawerOpen ? (
+          <div
+            className="play-drawer-layer"
+            onMouseDown={(event) => {
+              if (event.target === event.currentTarget) closeDrawer();
+            }}
+            role="presentation"
+          >
+            <aside
+              aria-labelledby={PLAY_DRAWER_HEADING_ID}
+              aria-modal="true"
+              className="play-drawer clay-surface"
+              id={PLAY_DRAWER_ID}
+              onKeyDown={handleDrawerKeyDown}
+              role="dialog"
+            >
+              <header className="play-drawer-header">
+                <div>
+                  <p className="eyebrow">{modeLabel}</p>
+                  <h1 id={PLAY_DRAWER_HEADING_ID}>{title}</h1>
+                </div>
+                <button
+                  aria-label="关闭对局信息"
+                  className="play-toolbar-button"
+                  data-testid="close-game-hud"
+                  onClick={closeDrawer}
+                  ref={drawerCloseRef}
+                  type="button"
+                >
+                  <X size={21} weight="bold" aria-hidden="true" />
+                </button>
+              </header>
+              <dl className="play-platform-meta">
+                <div>
+                  <dt>房间码</dt>
+                  <dd>{roomCode}</dd>
+                </div>
+                <div>
+                  <dt>局数</dt>
+                  <dd>第 {roundNumber} 局</dd>
+                </div>
+                <div>
+                  <dt>连接</dt>
+                  <dd>
+                    <ConnectionBadge state={state} />
+                  </dd>
+                </div>
+                {completed ? (
+                  <div>
+                    <dt>状态</dt>
+                    <dd>对局已完成</dd>
+                  </div>
+                ) : null}
+              </dl>
+              <div className="play-room-controls">
+                {canResign ? (
+                  <button
+                    className="clay-button clay-button-resign"
+                    data-testid="resign-game"
+                    disabled={
+                      busy ||
+                      resignPending ||
+                      state.connectionState !== "connected"
+                    }
+                    onClick={onResign}
+                    type="button"
+                  >
+                    <WarningCircle size={18} weight="bold" aria-hidden="true" />
+                    {resignPending ? "正在投降…" : "投降"}
+                  </button>
+                ) : null}
+                {completed ? (
+                  <>
+                    <button
+                      className="clay-button clay-button-primary"
+                      data-testid="rematch-game"
+                      disabled={busy || state.connectionState !== "connected"}
+                      onClick={onRematch}
+                      type="button"
+                    >
+                      <ArrowsClockwise
+                        size={20}
+                        weight="bold"
+                        aria-hidden="true"
+                      />
+                      重新对局
+                    </button>
+                    <button
+                      className="clay-button clay-button-secondary"
+                      data-testid="next-round-settings"
+                      onClick={onAdjustSettings}
+                      type="button"
+                    >
+                      调整设置
+                      <ArrowRight size={20} weight="bold" aria-hidden="true" />
+                    </button>
+                  </>
+                ) : null}
+                {owner ? (
+                  <button
+                    className="clay-button clay-button-danger"
+                    data-testid="close-room"
+                    disabled={busy || resignPending}
+                    onClick={onCloseRoom}
+                    type="button"
+                  >
+                    <X size={18} weight="bold" aria-hidden="true" /> 关闭房间
+                  </button>
+                ) : (
+                  <button
+                    className="clay-button clay-button-danger"
+                    data-testid="leave-room"
+                    disabled={busy || resignPending}
+                    onClick={onLeaveRoom}
+                    type="button"
+                  >
+                    <SignOut size={18} weight="bold" aria-hidden="true" />
+                    离开房间
+                  </button>
+                )}
+              </div>
+            </aside>
+          </div>
+        ) : null}
+
+        <span className="sr-only" data-testid="room-code">
+          {roomCode}
+        </span>
+        <span className="sr-only" data-testid="round-number">
+          第 {roundNumber} 局
+        </span>
+        <span className="sr-only" data-testid="player-slot">
+          {playerSlotId}
+        </span>
+        <span className="sr-only" data-testid="revision">
+          {revision}
+        </span>
+        <span
+          className="sr-only"
+          data-status={completed ? "completed" : "active"}
+          data-testid="match-status"
+        >
+          {completed ? "对局已完成" : "对局进行中"}
+        </span>
+        {statusProbes}
+        {overlays}
+      </main>
     </div>
   );
 }
@@ -828,7 +1099,6 @@ function TurnBasedPlayView({ title }: Pick<GameRoomPageProps, "title">) {
     return <LoadingView label="正在同步对局…" />;
   }
   const GameComponent = clientModule.Component;
-  const summary = viewSummary(parsedView);
   const isCompleted = snapshot.status === "completed";
   const canResign =
     snapshot.status === "active" &&
@@ -849,142 +1119,40 @@ function TurnBasedPlayView({ title }: Pick<GameRoomPageProps, "title">) {
     }
   };
   return (
-    <div className="page-shell console-page play-page">
-      <aside className="game-rail play-rail clay-surface">
-        <div className="game-mark game-mark-large" aria-hidden="true">
-          <GameController size={32} weight="duotone" />
-        </div>
-        <div className="game-rail-copy">
-          <p className="eyebrow">实际对局</p>
-          <h1>{title}</h1>
-          <span data-testid="round-number">第 {snapshot.roundNumber} 局</span>
-        </div>
-        <div className="rail-player-list">
-          {summary.players.map((player) => (
-            <div className="hud-player" key={player.index}>
-              <span
-                className={`stone ${markerClass(player.markerKey, player.index)}`}
-                aria-hidden="true"
-              />
-              <span>玩家 {player.index}</span>
-              <strong>{player.marker}</strong>
-              <small>{summary.counts[player.index - 1]?.count ?? 0} 子</small>
-            </div>
-          ))}
-        </div>
-        <div className="turn-pill">
-          <Sparkle size={17} weight="fill" aria-hidden="true" />
-          <span>{isCompleted ? "对局已完成" : `当前：${summary.current}`}</span>
-        </div>
-        <ConnectionBadge state={state} testId="connection-state" />
-        <div className="play-room-controls">
-          <div className="rail-meta">
-            <span>房间码</span>
-            <strong data-testid="room-code">{room.roomCode}</strong>
-          </div>
-          {canResign ? (
-            <button
-              className="clay-button clay-button-resign"
-              data-testid="resign-game"
-              disabled={
-                busy || resignPending || state.connectionState !== "connected"
-              }
-              onClick={() => void resign()}
-              type="button"
-            >
-              <WarningCircle size={18} weight="bold" aria-hidden="true" />{" "}
-              {resignPending ? "正在投降…" : "投降"}
-            </button>
-          ) : null}
-          {lifecycle.isOwner ? (
-            <button
-              className="clay-button clay-button-danger"
-              data-testid="close-room"
-              disabled={busy || resignPending}
-              onClick={() => void closeRoom()}
-              type="button"
-            >
-              <X size={18} weight="bold" aria-hidden="true" /> 关闭房间
-            </button>
-          ) : (
-            <button
-              className="clay-button clay-button-danger"
-              data-testid="leave-room"
-              disabled={busy || resignPending}
-              onClick={() => void leaveRoom()}
-              type="button"
-            >
-              <SignOut size={18} weight="bold" aria-hidden="true" /> 离开房间
-            </button>
-          )}
-        </div>
-        <span className="sr-only" data-testid="player-slot">
-          {room.playerSlotId}
-        </span>
-        <span className="sr-only" data-testid="revision">
-          {snapshot.revision}
-        </span>
-        <span
-          className="sr-only"
-          data-status={snapshot.status}
-          data-testid="match-status"
-        >
-          {snapshot.status === "completed" ? "对局已完成" : "对局进行中"}
-        </span>
-      </aside>
-      <main className="play-stage-layout">
-        <div className="game-stage" data-testid="game-stage">
-          <GameComponent
-            connectionState={state.connectionState}
-            revision={snapshot.revision}
-            submitAction={(action) => host.submitAction(action)}
-            view={parsedView}
-          />
-        </div>
-        {viewError ? (
-          <p className="error-banner" role="alert">
-            服务器返回的游戏视图无效。
-          </p>
-        ) : null}
-        {isCompleted ? (
-          <section
-            aria-labelledby="result-heading"
-            className="result-dock clay-surface"
-          >
-            <div className="result-icon" aria-hidden="true">
-              <Trophy size={30} weight="fill" />
-            </div>
-            <div>
-              <p className="eyebrow">本局结果</p>
-              <h2 id="result-heading">{summary.result ?? "对局已完成"}</h2>
-            </div>
-            <div className="result-actions">
-              <button
-                className="clay-button clay-button-primary"
-                data-testid="rematch-game"
-                disabled={busy || state.connectionState !== "connected"}
-                onClick={() => void startRematch()}
-                type="button"
-              >
-                <ArrowsClockwise size={20} weight="bold" aria-hidden="true" />
-                重新对局
-              </button>
-              <button
-                className="clay-button clay-button-secondary"
-                data-testid="next-round-settings"
-                onClick={() => void openNextRoundSetup()}
-                type="button"
-              >
-                设置规则
-                <ArrowRight size={20} weight="bold" aria-hidden="true" />
-              </button>
-            </div>
-          </section>
-        ) : null}
-      </main>
-      <PageAlerts />
-      <RoomToast />
-    </div>
+    <PlaySurfaceShell
+      busy={busy}
+      canResign={canResign}
+      completed={isCompleted}
+      errorMessage={viewError ? "服务器返回的游戏视图无效。" : undefined}
+      modeLabel="实际对局"
+      onAdjustSettings={() => void openNextRoundSetup()}
+      onCloseRoom={() => void closeRoom()}
+      onLeaveRoom={() => void leaveRoom()}
+      onRematch={() => void startRematch()}
+      onResign={() => void resign()}
+      owner={lifecycle.isOwner}
+      overlays={
+        <>
+          <PageAlerts />
+          <RoomToast />
+        </>
+      }
+      playerSlotId={room.playerSlotId}
+      resignPending={resignPending}
+      revision={snapshot.revision}
+      roomCode={room.roomCode}
+      roundNumber={snapshot.roundNumber}
+      stage={
+        <GameComponent
+          connectionState={state.connectionState}
+          revision={snapshot.revision}
+          submitAction={(action) => host.submitAction(action)}
+          view={parsedView}
+        />
+      }
+      state={state}
+      title={title}
+    />
   );
 }
 
@@ -1041,15 +1209,6 @@ function RealtimePlayView({ title }: Pick<GameRoomPageProps, "title">) {
   }
 
   const GameComponent = realtimeClientModule.Component;
-  const viewRecord =
-    parsedView !== null && typeof parsedView === "object"
-      ? (parsedView as Record<string, unknown>)
-      : null;
-  const scores =
-    viewRecord !== null && Array.isArray(viewRecord.scores)
-      ? viewRecord.scores
-      : [0, 0];
-  const outcome = viewRecord?.outcome ?? snapshot.outcome;
   const isCompleted = snapshot.status === "completed";
   const canResign =
     snapshot.status === "active" &&
@@ -1068,168 +1227,55 @@ function RealtimePlayView({ title }: Pick<GameRoomPageProps, "title">) {
       setResignPending(false);
     }
   };
-  const resultLabel =
-    outcome !== null && typeof outcome === "object"
-      ? (outcome as Record<string, unknown>).winnerSlotId === room.playerSlotId
-        ? "你赢了"
-        : "对手获胜"
-      : "对局已完成";
-
   return (
-    <div className="page-shell console-page play-page realtime-play-page">
-      <aside className="game-rail play-rail clay-surface">
-        <div className="game-mark game-mark-large" aria-hidden="true">
-          <GameController size={32} weight="duotone" />
-        </div>
-        <div className="game-rail-copy">
-          <p className="eyebrow">实时对局</p>
-          <h1>{title}</h1>
-          <span data-testid="round-number">第 {snapshot.roundNumber} 局</span>
-        </div>
-        <div className="rail-player-list">
-          <div className="hud-player">
-            <span className="stone stone-red" aria-hidden="true" />
-            <span>玩家 1</span>
-            <strong>{String(scores[0] ?? 0)}</strong>
-          </div>
-          <div className="hud-player">
-            <span className="stone stone-blue" aria-hidden="true" />
-            <span>玩家 2</span>
-            <strong>{String(scores[1] ?? 0)}</strong>
-          </div>
-        </div>
-        <div className="turn-pill">
-          <Sparkle size={17} weight="fill" aria-hidden="true" />
-          <span>{isCompleted ? resultLabel : "实时进行中"}</span>
-        </div>
-        <ConnectionBadge state={state} testId="connection-state" />
-        <div className="play-room-controls">
-          <div className="rail-meta">
-            <span>房间码</span>
-            <strong data-testid="room-code">{room.roomCode}</strong>
-          </div>
-          {canResign ? (
-            <button
-              className="clay-button clay-button-resign"
-              data-testid="resign-game"
-              disabled={
-                busy || resignPending || state.connectionState !== "connected"
-              }
-              onClick={() => void resign()}
-              type="button"
-            >
-              <WarningCircle size={18} weight="bold" aria-hidden="true" />
-              {resignPending ? "正在投降…" : "投降"}
-            </button>
-          ) : null}
-          {lifecycle.isOwner ? (
-            <button
-              className="clay-button clay-button-danger"
-              data-testid="close-room"
-              disabled={busy || resignPending}
-              onClick={() => void closeRoom()}
-              type="button"
-            >
-              <X size={18} weight="bold" aria-hidden="true" /> 关闭房间
-            </button>
-          ) : (
-            <button
-              className="clay-button clay-button-danger"
-              data-testid="leave-room"
-              disabled={busy || resignPending}
-              onClick={() => void leaveRoom()}
-              type="button"
-            >
-              <SignOut size={18} weight="bold" aria-hidden="true" /> 离开房间
-            </button>
-          )}
-        </div>
-        <span className="sr-only" data-testid="player-slot">
-          {room.playerSlotId}
-        </span>
-        <span className="sr-only" data-testid="revision">
-          {snapshot.revision}
-        </span>
-        <span
-          className="sr-only"
-          data-status={snapshot.status}
-          data-testid="match-status"
-        >
-          {isCompleted ? "对局已完成" : "对局进行中"}
-        </span>
-        <span className="sr-only" data-testid="server-tick">
-          {snapshot.tick ?? snapshot.revision}
-        </span>
-        <span className="sr-only" data-testid="acknowledged-input-sequence">
-          {snapshot.acknowledgedInputSequence ?? 0}
-        </span>
-        <span className="sr-only" data-testid="score-left">
-          {String(scores[0] ?? 0)}
-        </span>
-        <span className="sr-only" data-testid="score-right">
-          {String(scores[1] ?? 0)}
-        </span>
-        <span className="sr-only" data-testid="pong-outcome">
-          {outcome === null ? "" : JSON.stringify(outcome)}
-        </span>
-      </aside>
-      <main className="play-stage-layout">
-        <div className="game-stage" data-testid="game-stage">
-          <GameComponent
-            acknowledgedInputSequence={snapshot.acknowledgedInputSequence ?? 0}
-            connectionState={state.connectionState}
-            previousView={parsedPreviousView as Readonly<unknown> | null}
-            readOnly={isCompleted}
-            reducedMotion={reducedMotion}
-            serverTick={snapshot.tick ?? snapshot.revision}
-            submitInput={(input) => host.submitInput(input)}
-            view={parsedView as Readonly<unknown>}
-          />
-        </div>
-        {viewError ? (
-          <p className="error-banner" role="alert">
-            服务器返回的实时游戏视图无效。
-          </p>
-        ) : null}
-        {isCompleted ? (
-          <section
-            aria-labelledby="result-heading"
-            className="result-dock clay-surface"
-          >
-            <div className="result-icon" aria-hidden="true">
-              <Trophy size={30} weight="fill" />
-            </div>
-            <div>
-              <p className="eyebrow">本局结果</p>
-              <h2 id="result-heading">{resultLabel}</h2>
-            </div>
-            <div className="result-actions">
-              <button
-                className="clay-button clay-button-primary"
-                data-testid="rematch-game"
-                disabled={busy || state.connectionState !== "connected"}
-                onClick={() => void startRematch()}
-                type="button"
-              >
-                <ArrowsClockwise size={20} weight="bold" aria-hidden="true" />
-                重新对局
-              </button>
-              <button
-                className="clay-button clay-button-secondary"
-                data-testid="next-round-settings"
-                onClick={() => void openNextRoundSetup()}
-                type="button"
-              >
-                设置规则{" "}
-                <ArrowRight size={20} weight="bold" aria-hidden="true" />
-              </button>
-            </div>
-          </section>
-        ) : null}
-      </main>
-      <PageAlerts />
-      <RoomToast />
-    </div>
+    <PlaySurfaceShell
+      busy={busy}
+      canResign={canResign}
+      completed={isCompleted}
+      errorMessage={viewError ? "服务器返回的实时游戏视图无效。" : undefined}
+      modeLabel="实时对局"
+      onAdjustSettings={() => void openNextRoundSetup()}
+      onCloseRoom={() => void closeRoom()}
+      onLeaveRoom={() => void leaveRoom()}
+      onRematch={() => void startRematch()}
+      onResign={() => void resign()}
+      owner={lifecycle.isOwner}
+      overlays={
+        <>
+          <PageAlerts />
+          <RoomToast />
+        </>
+      }
+      playerSlotId={room.playerSlotId}
+      resignPending={resignPending}
+      revision={snapshot.revision}
+      roomCode={room.roomCode}
+      roundNumber={snapshot.roundNumber}
+      stage={
+        <GameComponent
+          acknowledgedInputSequence={snapshot.acknowledgedInputSequence ?? 0}
+          connectionState={state.connectionState}
+          previousView={parsedPreviousView as Readonly<unknown> | null}
+          readOnly={isCompleted}
+          reducedMotion={reducedMotion}
+          serverTick={snapshot.tick ?? snapshot.revision}
+          submitInput={(input) => host.submitInput(input)}
+          view={parsedView as Readonly<unknown>}
+        />
+      }
+      state={state}
+      statusProbes={
+        <>
+          <span className="sr-only" data-testid="server-tick">
+            {snapshot.tick ?? snapshot.revision}
+          </span>
+          <span className="sr-only" data-testid="acknowledged-input-sequence">
+            {snapshot.acknowledgedInputSequence ?? 0}
+          </span>
+        </>
+      }
+      title={title}
+    />
   );
 }
 

@@ -298,6 +298,15 @@ export function PongClient(
             : "正在恢复比赛"
           : winnerText(props.view)}
       </p>
+      <span className="sr-only" data-testid="score-left">
+        {props.view.scores[0]}
+      </span>
+      <span className="sr-only" data-testid="score-right">
+        {props.view.scores[1]}
+      </span>
+      <span className="sr-only" data-testid="pong-outcome">
+        {props.view.outcome === null ? "" : JSON.stringify(props.view.outcome)}
+      </span>
       <div
         aria-label="乒乓对战画布"
         className="pong-canvas"
