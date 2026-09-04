@@ -416,7 +416,7 @@ describe("real PostgreSQL authoritative persistence", () => {
     }
   }, 120_000);
 
-  it("persists two Connect Four rounds and rebuilds exact replays plus safe history from a new connection", async () => {
+  it("persists two legacy V5 Connect Four rounds and rebuilds exact replays plus safe history from a new connection", async () => {
     const isolated = await createIsolatedTestDatabase(
       requireTestDatabaseUrl(process.env),
     );
@@ -442,6 +442,7 @@ describe("real PostgreSQL authoritative persistence", () => {
       {
         ids: createDeterministicRuntimeIdSource(["CFDB2345", "CFAB2345"]),
         logger: { write: () => undefined },
+        resolveSetupProtocol: () => PROTOCOL_VERSION,
       },
     );
     let roomA: ClientRoom | undefined;
