@@ -405,8 +405,8 @@ pnpm test:database
 - realtime replay tests：server-assigned tick 的 input change log 可 exact 重建；tick/sequence gap、错 actor、schema-invalid input、重复或倒退 `inputSequence`、被拒绝 command 和篡改 Outcome 可靠失败；既有 Replay Format V1 golden fixtures 持续通过；
 - realtime protocol/runtime integration：真实 Colyseus WebSocket + fake monotonic scheduler 验证 forged state/tick/score 拒绝、input rate/size 限制、单 writer ordering、快照顺序、viewer input acknowledgement、takeover reconnect 和 60 秒 abandonment；
 - PostgreSQL integration：realtime Match、input replay 和账户归属可由新 connection 重读并验证；私有 replay 授权不泄漏 raw State、seed、input log 或其他玩家数据；按数据库规则使用临时 Docker PostgreSQL；
-- Playwright E2E：两个隔离 browser contexts 经过目录、创建/加入、ready、Phaser 对局、完成、reconnect 与只读 replay；检查 canvas 非空、尺寸稳定、键盘输入可用、reduced motion 和终局 UI，不以客户端位置推断权威结果；
-- 全仓 `lint`、`typecheck`、`test`、`build`、`deps:check`，以及受影响的 `test:integration`、`test:database` 和 `test:e2e`。Phaser 依赖必须由 `games/pong` client 明确拥有，Core 和 server runtime 的依赖检查必须继续拒绝 Phaser/DOM。
+- Playwright E2E：两个隔离 browser contexts 经过目录、独立 Setup Surface、ready、独立 Phaser Play Surface、完成、reconnect 与只读 Replay Surface；检查 canvas 非空、800×400 逻辑尺寸、视口矩阵下的 2:1 FIT、键盘输入可用、reduced motion 和终局 UI，不以客户端位置推断权威结果；
+- 全仓 `lint`、`typecheck`、`test`、`build`、`deps:check`，以及受影响的 `test:integration`、`test:database` 和 `test:e2e`。Phaser 依赖必须由 legacy `games/pong` client 或独立 `game-surfaces/pong` 明确拥有，Core 和 server runtime 的依赖检查必须继续拒绝 Phaser/DOM。
 
 所有当前支持 `gameVersion` 的 golden replay：
 

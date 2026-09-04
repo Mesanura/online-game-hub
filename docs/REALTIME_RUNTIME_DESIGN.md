@@ -1,6 +1,6 @@
 # Realtime Runtime 设计基线
 
-> 状态：M8 已实现（单实例双人 Pong）
+> 状态：M8 已实现（单实例双人 Pong）；M9 已接入 Setup V6 与独立 Phaser Surface
 >
 > 本文是“独立 realtime runtime 与 Phaser Pong”的权威设计边界。现有回合制契约仍以 [GAME_PLUGIN_SPEC.md](./GAME_PLUGIN_SPEC.md)、[NETWORK_PROTOCOL.md](./NETWORK_PROTOCOL.md) 和 [REPLAY_DESIGN.md](./REPLAY_DESIGN.md) 为准。
 
@@ -32,12 +32,13 @@ Realtime client host 负责 ticket/join、lifecycle、snapshot 顺序、重连�
 
 以下 package 是 M8 当前实现的 public API 边界：
 
-| Package                        | 目标职责                                                                                               | 不得依赖                                                          |
-| ------------------------------ | ------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------- |
-| `realtime-game-sdk`            | realtime manifest、simulation definition、tick/input/view/outcome 类型与纯 replay runner               | React、Phaser、DOM、Colyseus、WebSocket、数据库、`GameDefinition` |
-| `realtime-game-server-runtime` | 固定 tick、input queue、单 writer、snapshot/rejection、reconnect adapter 与 realtime replay port       | `game-server-runtime`、具体游戏、Phaser、DOM                      |
-| `realtime-game-client-sdk`     | realtime ticket/room host、snapshot interpolation clock、input sender 与 Phaser 无关的 client contract | `game-client-sdk` 的 turn-based host、具体游戏、数据库            |
-| `games/pong`                   | Pong simulation、manifest、Phaser client、规则说明、golden/unit/client tests                           | 其他游戏；simulation 依赖 realtime SDK，client 可依赖 Phaser      |
+| Package                        | 目标职责                                                                                               | 不得依赖                                                               |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------- |
+| `realtime-game-sdk`            | realtime manifest、simulation definition、tick/input/view/outcome 类型与纯 replay runner               | React、Phaser、DOM、Colyseus、WebSocket、数据库、`GameDefinition`      |
+| `realtime-game-server-runtime` | 固定 tick、input queue、单 writer、snapshot/rejection、reconnect adapter 与 realtime replay port       | `game-server-runtime`、具体游戏、Phaser、DOM                           |
+| `realtime-game-client-sdk`     | realtime ticket/room host、snapshot interpolation clock、input sender 与 Phaser 无关的 client contract | `game-client-sdk` 的 turn-based host、具体游戏、数据库                 |
+| `games/pong`                   | Pong simulation、manifest、legacy Phaser client、Setup Core、规则说明与 golden/unit tests              | 其他游戏；simulation 依赖 realtime SDK，Core 不依赖 Phaser             |
+| `game-surfaces/pong`           | 独立 TypeScript + Phaser Setup/Play/Replay 表现层，只消费 Bridge projected View                        | Pong Core、React、Next、Protocol、WebSocket、ticket、seed 与 raw State |
 
 只有 composition layer 可以同时看到 manifest、registry、两个 runtime 和 Platform ports。若复用身份/lifecycle 代码，先提取不含游戏规则、tick 和 transport 的最小 port，并同步更新依赖检查；不要以 `packages/shared` 或“未来通用”接口承载未经证明的抽象。
 

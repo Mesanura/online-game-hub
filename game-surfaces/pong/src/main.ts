@@ -205,7 +205,7 @@ function ensureGame(): void {
     onDirection: (direction) => submitIntent(createDirectionIntent(direction)),
   });
   game = new Phaser.Game({
-    type: Phaser.AUTO,
+    type: Phaser.CANVAS,
     parent,
     width: 800,
     height: 400,
@@ -277,6 +277,9 @@ function renderPlay(hostState: HostState, view: PongPlayView): string {
       : `你在${view.yourSide === "LEFT" ? "左" : "右"}侧`;
   return `<main class="play-surface"><section class="pong-shell" aria-labelledby="pong-title">
     <header class="pong-header"><div><div class="eyebrow">${runtime.mode === "replay" ? "对局回放" : "Pong"}</div><h1 id="pong-title">${status}</h1></div><span class="side-chip" id="pong-side">${role}</span></header>
+    <span class="sr-only" data-testid="score-left" id="score-left">${view.scores[0]}</span>
+    <span class="sr-only" data-testid="score-right" id="score-right">${view.scores[1]}</span>
+    <span class="sr-only" data-testid="pong-outcome" id="pong-outcome">${view.outcome === null ? "" : view.outcome.reason}</span>
     <div aria-label="Pong 逻辑场地" class="pong-canvas" id="pong-canvas" tabindex="0"></div>
     <div class="pong-footer"><span>方向键或 W / S 控制</span><div class="surface-meta" id="pong-meta" aria-live="polite">${renderStatus(hostState)}</div></div>
   </section></main>`;
@@ -303,6 +306,12 @@ function updatePlayChrome(hostState: HostState, view: PongPlayView): void {
   }
   const meta = document.getElementById("pong-meta");
   if (meta !== null) meta.innerHTML = renderStatus(hostState);
+  const scoreLeft = document.getElementById("score-left");
+  if (scoreLeft !== null) scoreLeft.textContent = String(view.scores[0]);
+  const scoreRight = document.getElementById("score-right");
+  if (scoreRight !== null) scoreRight.textContent = String(view.scores[1]);
+  const outcome = document.getElementById("pong-outcome");
+  if (outcome !== null) outcome.textContent = view.outcome?.reason ?? "";
 }
 
 function bindSetupControls(): void {

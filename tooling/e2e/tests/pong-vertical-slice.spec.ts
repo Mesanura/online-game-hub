@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import type { BrowserContext, Page } from "@playwright/test";
+import type { BrowserContext, FrameLocator, Page } from "@playwright/test";
 
 import {
   PostgresRealtimeReplayStore,
@@ -14,6 +14,10 @@ import { startE2eHarness } from "../src/harness.js";
 import type { E2eHarness } from "../src/harness.js";
 
 let harness: E2eHarness;
+
+function pongSurface(page: Page): FrameLocator {
+  return page.frameLocator('[data-testid="game-surface-iframe"]');
+}
 
 test.beforeAll(async () => {
   harness = await startE2eHarness();
@@ -35,17 +39,29 @@ async function activePongRound(
   await pageA.goto(`${harness.webUrl}/games/pong`);
   await pageA.getByTestId("create-room").click();
   await expect(pageA.getByTestId("connection-state")).toHaveText("已连接");
-  await pageA.getByTestId("starter-owner").click();
+  await expect(pageA.getByTestId("game-surface-iframe")).toHaveAttribute(
+    "src",
+    "/game-surfaces/pong/1.0.1/setup/index.html",
+  );
+  await pongSurface(pageA).getByRole("button", { name: "房主发球" }).click();
   const inviteUrl = await pageA.getByTestId("invite-link").getAttribute("href");
   if (inviteUrl === null) throw new Error("Pong invite link was not rendered.");
   await pageB.goto(inviteUrl);
   await expect(pageB.getByTestId("connection-state")).toHaveText("已连接");
+  await expect(pageB.getByTestId("game-surface-iframe")).toHaveAttribute(
+    "src",
+    "/game-surfaces/pong/1.0.1/setup/index.html",
+  );
   await pageA.getByTestId("toggle-round-ready").click();
   await pageB.getByTestId("toggle-round-ready").click();
   await Promise.all(
-    [pageA, pageB].map((page) =>
-      expect(page.getByTestId("match-status")).toHaveText("对局进行中"),
-    ),
+    [pageA, pageB].map(async (page) => {
+      await expect(page.getByTestId("match-status")).toHaveText("对局进行中");
+      await expect(page.getByTestId("game-surface-iframe")).toHaveAttribute(
+        "src",
+        "/game-surfaces/pong/1.0.1/play/index.html",
+      );
+    }),
   );
   const slotA = (await pageA.getByTestId("player-slot").textContent())?.trim();
   const slotB = (await pageB.getByTestId("player-slot").textContent())?.trim();
@@ -61,7 +77,7 @@ async function activePongRound(
 }
 
 async function expectNonBlankCanvas(page: Page): Promise<void> {
-  const canvas = page.getByTestId("pong-canvas").locator("canvas");
+  const canvas = pongSurface(page).locator("#pong-canvas canvas");
   await expect(canvas).toHaveCount(1);
   await expect
     .poll(
@@ -98,10 +114,69 @@ async function expectNonBlankCanvas(page: Page): Promise<void> {
   expect(dimensions).toEqual({ width: 800, height: 400 });
 }
 
+async function expectResponsivePongStage(page: Page): Promise<void> {
+  for (const viewport of [
+    { width: 1366, height: 768 },
+    { width: 1440, height: 900 },
+    { width: 1920, height: 1080 },
+    { width: 1024, height: 768 },
+    { width: 768, height: 1024 },
+    { width: 390, height: 844 },
+    { width: 412, height: 915 },
+    { width: 844, height: 390 },
+  ]) {
+    await page.setViewportSize(viewport);
+    const iframe = page.getByTestId("game-surface-iframe");
+    const canvas = pongSurface(page).locator("#pong-canvas canvas");
+    await expect
+      .poll(async () => {
+        const [iframeBox, canvasBox, pageFits] = await Promise.all([
+          iframe.boundingBox(),
+          canvas.boundingBox(),
+          page.evaluate(
+            () =>
+              document.documentElement.scrollWidth <=
+                document.documentElement.clientWidth &&
+              document.documentElement.scrollHeight <=
+                document.documentElement.clientHeight,
+          ),
+        ]);
+        if (iframeBox === null || canvasBox === null) return false;
+        return (
+          canvasBox.width > 0 &&
+          canvasBox.height > 0 &&
+          Math.abs(canvasBox.width / canvasBox.height - 2) < 0.03 &&
+          canvasBox.x >= iframeBox.x - 1 &&
+          canvasBox.y >= iframeBox.y - 1 &&
+          canvasBox.x + canvasBox.width <= iframeBox.x + iframeBox.width + 1 &&
+          canvasBox.y + canvasBox.height <=
+            iframeBox.y + iframeBox.height + 1 &&
+          pageFits
+        );
+      })
+      .toBe(true);
+    await expect(page.getByTestId("match-status")).toHaveText("对局进行中");
+  }
+  await page.setViewportSize({ width: 1280, height: 720 });
+  let previousBox = "";
+  await expect
+    .poll(async () => {
+      const box = await pongSurface(page)
+        .locator("#pong-canvas canvas")
+        .boundingBox();
+      if (box === null) return false;
+      const currentBox = JSON.stringify(box);
+      const stable = currentBox === previousBox;
+      previousBox = currentBox;
+      return stable;
+    })
+    .toBe(true);
+}
+
 async function readScore(page: Page): Promise<readonly [number, number]> {
   const [left, right] = await Promise.all([
-    page.getByTestId("score-left").textContent(),
-    page.getByTestId("score-right").textContent(),
+    pongSurface(page).getByTestId("score-left").textContent(),
+    pongSurface(page).getByTestId("score-right").textContent(),
   ]);
   return [Number(left), Number(right)];
 }
@@ -137,12 +212,19 @@ test("two isolated browsers control authoritative Pong, reconnect, and read priv
       expectNonBlankCanvas(pageA),
       expectNonBlankCanvas(pageB),
     ]);
+    await expect(pongSurface(pageA).locator("html")).toHaveAttribute(
+      "data-reduced-motion",
+      "true",
+    );
+    await expectResponsivePongStage(pageA);
 
     const initialCanvasBox = await pageA
-      .getByTestId("pong-canvas")
+      .frameLocator('[data-testid="game-surface-iframe"]')
+      .locator("#pong-canvas")
       .locator("canvas")
       .boundingBox();
     expect(initialCanvasBox).not.toBeNull();
+    await pongSurface(pageA).locator("#pong-canvas").click();
     await pageA.keyboard.down("ArrowUp");
     await expect(
       pageA.getByTestId("acknowledged-input-sequence"),
@@ -157,7 +239,8 @@ test("two isolated browsers control authoritative Pong, reconnect, and read priv
       )
       .toBeGreaterThan(1);
     const afterInputCanvasBox = await pageA
-      .getByTestId("pong-canvas")
+      .frameLocator('[data-testid="game-surface-iframe"]')
+      .locator("#pong-canvas")
       .locator("canvas")
       .boundingBox();
     expect(afterInputCanvasBox).toEqual(initialCanvasBox);
@@ -203,9 +286,9 @@ test("two isolated browsers control authoritative Pong, reconnect, and read priv
         }),
       ),
     );
-    await expect(reconnected.getByTestId("pong-outcome")).toContainText(
-      '"reason":"SCORE"',
-    );
+    await expect(
+      pongSurface(reconnected).getByTestId("pong-outcome"),
+    ).toHaveText("SCORE");
     const finalScore = await readScore(reconnected);
     expect(Math.max(...finalScore)).toBe(3);
     await expect.poll(() => readScore(pageB)).toEqual(finalScore);
@@ -262,8 +345,50 @@ test("two isolated browsers control authoritative Pong, reconnect, and read priv
     expect(replayPayload.frames.length - 1).toBe(
       replayPayload.match.finalRevision,
     );
-    expect(JSON.stringify(replayPayload)).not.toContain("rngSeed");
-    expect(JSON.stringify(replayPayload)).not.toContain("canonicalInputLog");
+    expect(replayPayload.frames[0]?.tick).toBe(0);
+    expect(replayPayload.frames.at(-1)?.tick).toBe(
+      replayPayload.match.finalRevision,
+    );
+    expect(
+      replayPayload.frames.every((frame, index, frames) => {
+        const previous = frames[index - 1];
+        return (
+          index === 0 || (previous !== undefined && frame.tick > previous.tick)
+        );
+      }),
+    ).toBe(true);
+    expect(replayPayload.frames.at(-1)?.view).toMatchObject({
+      field: { width: 800_000, height: 400_000 },
+      scores: finalScore,
+      outcome: { reason: "SCORE" },
+    });
+    expect(JSON.stringify(replayPayload)).not.toMatch(
+      /canonicalInputLog|rawState|rngSeed|session|ticket/u,
+    );
+
+    await reconnected.goto(
+      `${harness.webUrl}/account/matches/${encodeURIComponent(match.matchId)}/replay`,
+    );
+    await expect(reconnected.getByTestId("replay-page")).toBeVisible();
+    await expect(
+      reconnected.getByTestId("game-surface-iframe"),
+    ).toHaveAttribute("src", "/game-surfaces/pong/1.0.1/replay/index.html");
+    await expectNonBlankCanvas(reconnected);
+    const replayFrameCount = replayPayload.frames.length;
+    await reconnected.getByTestId("replay-last").click();
+    await expect(reconnected.getByTestId("replay-frame-count")).toHaveText(
+      `${replayFrameCount} / ${replayFrameCount}`,
+    );
+    await expect.poll(() => readScore(reconnected)).toEqual(finalScore);
+    await reconnected.getByTestId("replay-first").click();
+    await expect(reconnected.getByTestId("replay-frame-count")).toHaveText(
+      `1 / ${replayFrameCount}`,
+    );
+    await expect.poll(() => readScore(reconnected)).toEqual([0, 0]);
+    await reconnected.getByTestId("replay-next").click();
+    await expect(reconnected.getByTestId("replay-frame-count")).toHaveText(
+      `2 / ${replayFrameCount}`,
+    );
   } finally {
     await database.close();
     await closeContexts(contextA, contextB);

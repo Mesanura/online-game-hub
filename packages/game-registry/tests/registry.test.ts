@@ -71,7 +71,7 @@ describe("explicit game registry", () => {
       expect(
         resolveGameDeployment(manifest.id, manifest.gameVersion),
       ).toMatchObject(
-        manifest.id === "tic-tac-toe"
+        manifest.id === "tic-tac-toe" || manifest.id === "pong"
           ? {
               gameId: manifest.id,
               gameVersion: manifest.gameVersion,
@@ -179,6 +179,29 @@ describe("explicit game registry", () => {
         mode,
         url: `/game-surfaces/tic-tac-toe/1.0.0/${mode}/index.html`,
       });
+    }
+    expect(resolveGameDeployment("pong", "1.0.0")).toMatchObject({
+      setupProtocol: 6,
+      presentation: {
+        kind: "surface-v1",
+        publicBasePath: "/game-surfaces/pong/1.0.1",
+        artifact: {
+          supportedGameVersions: ["1.0.0"],
+          surfaceVersion: "1.0.1",
+          contentDigest: "sha256-g2kTdu4LNPwONnh7iGDI37TVeHZce+nZzNf6N4yYtCY=",
+        },
+      },
+    });
+    for (const mode of ["setup", "play", "replay"] as const) {
+      expect(resolveGameSurfaceEntrypoint("pong", "1.0.0", mode)).toMatchObject(
+        {
+          gameId: "pong",
+          gameVersion: "1.0.0",
+          surfaceVersion: "1.0.1",
+          mode,
+          url: `/game-surfaces/pong/1.0.1/${mode}/index.html`,
+        },
+      );
     }
   });
 
