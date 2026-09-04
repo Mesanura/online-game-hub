@@ -322,6 +322,7 @@ describe.sequential("PostgreSQL + Drizzle persistence", () => {
     if (setupRoom === null) throw new Error("Expected the V6 realtime room.");
     const { nextRoundSetup: _nextRoundSetup, ...roomWithoutNextSetup } =
       setupRoom;
+    expect(_nextRoundSetup).not.toBeNull();
     await store.save({
       ...roomWithoutNextSetup,
       previousFinalizedSetup: finalizedSetup,
