@@ -78,6 +78,21 @@ export function createSurfaceSandbox(pointerLock = false): string {
   return pointerLock ? "allow-scripts allow-pointer-lock" : "allow-scripts";
 }
 
+const HOST_OWNED_INTENT_KEYS = new Set(["expectedRevision", "roundNumber"]);
+
+function containsHostOwnedIntentKey(value: unknown): boolean {
+  if (Array.isArray(value)) {
+    return value.some((entry) => containsHostOwnedIntentKey(entry));
+  }
+  if (value !== null && typeof value === "object") {
+    return Object.entries(value).some(
+      ([key, child]) =>
+        HOST_OWNED_INTENT_KEYS.has(key) || containsHostOwnedIntentKey(child),
+    );
+  }
+  return false;
+}
+
 export class SurfaceBridgeHost {
   readonly #options: SurfaceBridgeHostOptions;
   #status: SurfaceBridgeHostStatus = { state: "idle" };
@@ -229,6 +244,13 @@ export class SurfaceBridgeHost {
       return;
     }
     const message = parsed.data;
+    if (
+      message.type === "surface.intent" &&
+      containsHostOwnedIntentKey(message.intent)
+    ) {
+      this.#fail("INVALID_MESSAGE");
+      return;
+    }
     if (message.type === "surface.intent") {
       if (this.#intentIds.has(message.clientIntentId)) {
         this.send({

@@ -212,6 +212,51 @@ describe("SurfaceBridgeHost", () => {
     });
   });
 
+  it.each(["roundNumber", "expectedRevision"])(
+    "fails closed when a Surface intent forges Host-owned %s",
+    async (key) => {
+      let surfacePort: MessagePort | undefined;
+      const onIntent = vi.fn();
+      const host = new SurfaceBridgeHost({
+        frameWindow: () => ({
+          postMessage(_message, _targetOrigin, transfer) {
+            surfacePort = transfer?.[0] as MessagePort | undefined;
+          },
+        }),
+        mode: "play",
+        init: {
+          gameId: "tic-tac-toe",
+          gameVersion: "1.1.0",
+          locale: "zh-CN",
+          reducedMotion: false,
+        },
+        createNonce: () => "n".repeat(32),
+        onIntent,
+      });
+
+      host.start();
+      surfacePort?.postMessage({
+        type: "surface.ready",
+        bridgeVersion: 1,
+        nonce: "n".repeat(32),
+      });
+      await vi.waitFor(() => expect(host.status.state).toBe("ready"));
+      surfacePort?.postMessage({
+        type: "surface.intent",
+        clientIntentId: `forged-${key}`,
+        intent: { type: "PLACE_MARK", nested: { [key]: 1 } },
+      });
+      await vi.waitFor(() =>
+        expect(host.status).toMatchObject({
+          state: "failed",
+          code: "INVALID_MESSAGE",
+        }),
+      );
+      expect(onIntent).not.toHaveBeenCalled();
+      host.dispose();
+    },
+  );
+
   it("uses a high-entropy nonce and a minimal iframe sandbox", () => {
     const left = createSurfaceNonce();
     const right = createSurfaceNonce();
