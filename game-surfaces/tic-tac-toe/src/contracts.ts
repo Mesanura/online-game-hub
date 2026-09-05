@@ -68,23 +68,38 @@ const resignationOutcomeSchema = z
     resignedSlotId: stableSlotIdSchema,
   })
   .strict();
+const drawOutcomeSchema = z.object({ type: z.literal("DRAW") }).strict();
+const historicalOutcomeSchema = z.union([
+  boardWinOutcomeSchema,
+  drawOutcomeSchema,
+]);
+const currentOutcomeSchema = z.union([
+  boardWinOutcomeSchema,
+  resignationOutcomeSchema,
+  drawOutcomeSchema,
+]);
+
+const playViewShape = {
+  players: z.tuple([
+    z.object({ slotId: stableSlotIdSchema, mark: z.literal("X") }).strict(),
+    z.object({ slotId: stableSlotIdSchema, mark: z.literal("O") }).strict(),
+  ]),
+  board: boardSchema,
+  nextTurnSlotId: stableSlotIdSchema.nullable(),
+  yourMark: z.enum(["X", "O"]).nullable(),
+} as const;
+
+export const ticTacToeHistoricalPlayViewSchema = z
+  .object({
+    ...playViewShape,
+    outcome: historicalOutcomeSchema.nullable(),
+  })
+  .strict();
 
 export const ticTacToePlayViewSchema = z
   .object({
-    players: z.tuple([
-      z.object({ slotId: stableSlotIdSchema, mark: z.literal("X") }).strict(),
-      z.object({ slotId: stableSlotIdSchema, mark: z.literal("O") }).strict(),
-    ]),
-    board: boardSchema,
-    nextTurnSlotId: stableSlotIdSchema.nullable(),
-    outcome: z
-      .union([
-        boardWinOutcomeSchema,
-        resignationOutcomeSchema,
-        z.object({ type: z.literal("DRAW") }).strict(),
-      ])
-      .nullable(),
-    yourMark: z.enum(["X", "O"]).nullable(),
+    ...playViewShape,
+    outcome: currentOutcomeSchema.nullable(),
   })
   .strict();
 export type TicTacToePlayView = z.infer<typeof ticTacToePlayViewSchema>;

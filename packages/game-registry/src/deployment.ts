@@ -31,22 +31,11 @@ export interface ResolvedSurfaceEntrypoint {
   readonly artifact: SurfaceArtifactManifestV1;
 }
 
-const legacy = (
-  gameId: string,
-  gameVersion: string,
-): GameDeploymentRegistration =>
-  Object.freeze({
-    gameId,
-    gameVersion,
-    setupProtocol: 5,
-    presentation: Object.freeze({ kind: "legacy-react" }),
-  });
-
 const ticTacToeSurfaceArtifactV1 = {
   schemaVersion: 1,
   gameId: "tic-tac-toe",
-  supportedGameVersions: ["1.1.0"],
-  surfaceVersion: "1.0.0",
+  supportedGameVersions: ["1.0.0", "1.1.0"],
+  surfaceVersion: "1.0.1",
   bridgeVersion: 1,
   entrypoints: {
     setup: "setup/index.html",
@@ -54,19 +43,23 @@ const ticTacToeSurfaceArtifactV1 = {
     replay: "replay/index.html",
   },
   capabilities: {},
-  contentDigest: "sha256-kP7B2210ENPCKROxkYKZde3AVYDOJpHtGtNx1QC6yow=",
+  contentDigest: "sha256-Y3c/gg/u03Q4RfhkP+O5rMkMO5pfJs4pwE9GUGncJlo=",
 } satisfies SurfaceArtifactManifestV1;
 
-const ticTacToeSurfaceV1: GameDeploymentRegistration = Object.freeze({
-  gameId: "tic-tac-toe",
-  gameVersion: "1.1.0",
-  setupProtocol: 6,
-  presentation: Object.freeze({
-    kind: "surface-v1",
-    publicBasePath: "/game-surfaces/tic-tac-toe/1.0.0",
-    artifact: ticTacToeSurfaceArtifactV1,
-  }),
-});
+const ticTacToeSurface = (
+  gameVersion: "1.0.0" | "1.1.0",
+  setupProtocol: SetupProtocolGeneration,
+): GameDeploymentRegistration =>
+  Object.freeze({
+    gameId: "tic-tac-toe",
+    gameVersion,
+    setupProtocol,
+    presentation: Object.freeze({
+      kind: "surface-v1",
+      publicBasePath: "/game-surfaces/tic-tac-toe/1.0.1",
+      artifact: ticTacToeSurfaceArtifactV1,
+    }),
+  });
 
 const pongSurfaceArtifactV1 = {
   schemaVersion: 1,
@@ -237,8 +230,8 @@ const chineseCheckersSurfaceV1: GameDeploymentRegistration = Object.freeze({
 });
 
 const gameDeployments = Object.freeze([
-  legacy("tic-tac-toe", "1.0.0"),
-  ticTacToeSurfaceV1,
+  ticTacToeSurface("1.0.0", 5),
+  ticTacToeSurface("1.1.0", 6),
   connectFourSurface("1.0.0", 5),
   connectFourSurface("1.1.0", 6),
   gomokuSurface("1.0.0", 5),

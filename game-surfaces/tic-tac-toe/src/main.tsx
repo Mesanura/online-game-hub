@@ -8,6 +8,7 @@ import {
 } from "@online-game-hub/game-surface-bridge";
 
 import {
+  ticTacToeHistoricalPlayViewSchema,
   ticTacToePlayViewSchema,
   ticTacToeSetupViewSchema,
   type TicTacToeCellIndex,
@@ -72,8 +73,11 @@ function reportSurfaceError(code: string, message: string): void {
 }
 
 function parsePayload(message: HostState): SurfacePayload {
-  return runtime.mode === "setup"
-    ? ticTacToeSetupViewSchema.parse(message.payload)
+  if (runtime.mode === "setup") {
+    return ticTacToeSetupViewSchema.parse(message.payload);
+  }
+  return runtime.init?.gameVersion === "1.0.0"
+    ? ticTacToeHistoricalPlayViewSchema.parse(message.payload)
     : ticTacToePlayViewSchema.parse(message.payload);
 }
 
@@ -81,7 +85,7 @@ function handleHostMessage(message: HostSurfaceMessage): void {
   if (message.type === "host.init") {
     if (
       message.gameId !== "tic-tac-toe" ||
-      message.gameVersion !== "1.1.0" ||
+      (message.gameVersion !== "1.0.0" && message.gameVersion !== "1.1.0") ||
       message.mode !== runtime.mode
     ) {
       reportSurfaceError(

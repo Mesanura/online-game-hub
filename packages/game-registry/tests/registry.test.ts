@@ -159,34 +159,31 @@ describe("explicit game registry", () => {
         "play",
       ),
     ).toBeUndefined();
-    expect(resolveGameDeployment("tic-tac-toe", "1.0.0")).toMatchObject({
-      setupProtocol: 5,
-      presentation: { kind: "legacy-react" },
-    });
-    expect(
-      resolveGameSurfaceEntrypoint("tic-tac-toe", "1.0.0", "play"),
-    ).toBeUndefined();
-    expect(resolveGameDeployment("tic-tac-toe", "1.1.0")).toMatchObject({
-      setupProtocol: 6,
-      presentation: {
-        kind: "surface-v1",
-        publicBasePath: "/game-surfaces/tic-tac-toe/1.0.0",
-        artifact: {
-          surfaceVersion: "1.0.0",
-          contentDigest: "sha256-kP7B2210ENPCKROxkYKZde3AVYDOJpHtGtNx1QC6yow=",
+    for (const gameVersion of ["1.0.0", "1.1.0"] as const) {
+      expect(resolveGameDeployment("tic-tac-toe", gameVersion)).toMatchObject({
+        setupProtocol: gameVersion === "1.1.0" ? 6 : 5,
+        presentation: {
+          kind: "surface-v1",
+          publicBasePath: "/game-surfaces/tic-tac-toe/1.0.1",
+          artifact: {
+            supportedGameVersions: ["1.0.0", "1.1.0"],
+            surfaceVersion: "1.0.1",
+            contentDigest:
+              "sha256-Y3c/gg/u03Q4RfhkP+O5rMkMO5pfJs4pwE9GUGncJlo=",
+          },
         },
-      },
-    });
-    for (const mode of ["setup", "play", "replay"] as const) {
-      expect(
-        resolveGameSurfaceEntrypoint("tic-tac-toe", "1.1.0", mode),
-      ).toMatchObject({
-        gameId: "tic-tac-toe",
-        gameVersion: "1.1.0",
-        surfaceVersion: "1.0.0",
-        mode,
-        url: `/game-surfaces/tic-tac-toe/1.0.0/${mode}/index.html`,
       });
+      for (const mode of ["setup", "play", "replay"] as const) {
+        expect(
+          resolveGameSurfaceEntrypoint("tic-tac-toe", gameVersion, mode),
+        ).toMatchObject({
+          gameId: "tic-tac-toe",
+          gameVersion,
+          surfaceVersion: "1.0.1",
+          mode,
+          url: `/game-surfaces/tic-tac-toe/1.0.1/${mode}/index.html`,
+        });
+      }
     }
     expect(resolveGameDeployment("pong", "1.0.0")).toMatchObject({
       setupProtocol: 6,

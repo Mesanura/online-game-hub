@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { surfaceHostMessageSchema } from "@online-game-hub/game-surface-bridge";
 
 import {
+  ticTacToeHistoricalPlayViewSchema,
   ticTacToePlayIntentSchema,
   ticTacToePlayViewSchema,
   ticTacToeSetupIntentSchema,
@@ -65,6 +66,21 @@ describe("Tic-Tac-Toe Surface model", () => {
       },
     });
     expect(playStatusLabel(won)).toBe("你赢了");
+    expect(ticTacToeHistoricalPlayViewSchema.safeParse(won).success).toBe(true);
+    const resigned = {
+      ...playView,
+      nextTurnSlotId: null,
+      outcome: {
+        type: "WIN",
+        reason: "RESIGNATION",
+        winnerSlotId: "slot-a",
+        resignedSlotId: "slot-b",
+      },
+    } as const;
+    expect(ticTacToePlayViewSchema.safeParse(resigned).success).toBe(true);
+    expect(ticTacToeHistoricalPlayViewSchema.safeParse(resigned).success).toBe(
+      false,
+    );
     expect(
       surfaceHostMessageSchema.safeParse({
         type: "surface.intent",

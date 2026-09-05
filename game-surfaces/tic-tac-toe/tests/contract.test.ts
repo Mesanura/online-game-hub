@@ -20,8 +20,8 @@ describe("Tic-Tac-Toe Surface artifact contract", () => {
     expect(manifest).toMatchObject({
       schemaVersion: 1,
       gameId: "tic-tac-toe",
-      supportedGameVersions: ["1.1.0"],
-      surfaceVersion: "1.0.0",
+      supportedGameVersions: ["1.0.0", "1.1.0"],
+      surfaceVersion: "1.0.1",
       bridgeVersion: 1,
       entrypoints: {
         setup: "setup/index.html",
