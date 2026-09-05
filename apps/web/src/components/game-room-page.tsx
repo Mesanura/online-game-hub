@@ -15,6 +15,7 @@ import {
   List,
   LockKeyOpen,
   SignOut,
+  Trophy,
   ArrowsClockwise,
   Shuffle,
   UserCircle,
@@ -29,6 +30,7 @@ import { useEffect, useRef, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from "react";
 
 import { resolveGameSurfaceEntrypoint } from "@online-game-hub/game-registry/deployment";
+import type { SurfaceResultSummaryV2 } from "@online-game-hub/game-surface-bridge";
 
 import {
   connectionLabels,
@@ -798,6 +800,12 @@ interface PlaySurfaceShellProps {
   readonly playerSlotId: string;
   readonly revision: number;
   readonly completed: boolean;
+  readonly resultSummary: SurfaceResultSummaryV2 | null;
+  readonly protocolVersion: 5 | 6;
+  readonly selfReady: boolean;
+  readonly readyPlayerCount: number;
+  readonly requiredPlayerCount: number;
+  readonly canReady: boolean;
   readonly owner: boolean;
   readonly busy: boolean;
   readonly resignPending: boolean;
@@ -810,7 +818,7 @@ interface PlaySurfaceShellProps {
   readonly onResign: () => void;
   readonly onCloseRoom: () => void;
   readonly onLeaveRoom: () => void;
-  readonly onRematch: () => void;
+  readonly onRematch: () => Promise<void>;
   readonly onAdjustSettings: () => void;
 }
 
@@ -822,6 +830,12 @@ export function PlaySurfaceShell({
   playerSlotId,
   revision,
   completed,
+  resultSummary,
+  protocolVersion,
+  selfReady,
+  readyPlayerCount,
+  requiredPlayerCount,
+  canReady,
   owner,
   busy,
   resignPending,
@@ -840,6 +854,9 @@ export function PlaySurfaceShell({
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [focusMode, setFocusMode] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
+  const [rematchPending, setRematchPending] = useState<
+    "confirm" | "cancel" | null
+  >(null);
   const stageShellRef = useRef<HTMLElement>(null);
   const drawerCloseRef = useRef<HTMLButtonElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
@@ -940,6 +957,32 @@ export function PlaySurfaceShell({
   };
 
   const expanded = fullscreen || focusMode;
+  const remainingPlayers = Math.max(0, requiredPlayerCount - readyPlayerCount);
+  const rematchLabel =
+    rematchPending === "confirm"
+      ? "正在确认…"
+      : rematchPending === "cancel"
+        ? "正在取消…"
+        : protocolVersion === 6 && selfReady
+          ? remainingPlayers === 0
+            ? "正在开始下一局…"
+            : `等待其余 ${remainingPlayers} 名玩家确认`
+          : "重新对局";
+  const rematchAriaLabel =
+    protocolVersion === 6 && selfReady && remainingPlayers > 0
+      ? `取消重新对局确认，当前还需 ${remainingPlayers} 名玩家确认`
+      : rematchLabel;
+  const submitRematch = async (): Promise<void> => {
+    if (rematchPending !== null) return;
+    setRematchPending(
+      protocolVersion === 6 && selfReady ? "cancel" : "confirm",
+    );
+    try {
+      await onRematch();
+    } finally {
+      setRematchPending(null);
+    }
+  };
   return (
     <div className="page-shell console-page play-page">
       <main
@@ -947,34 +990,33 @@ export function PlaySurfaceShell({
         data-focus-mode={focusMode ? "true" : "false"}
         ref={stageShellRef}
       >
-        <div className="play-toolbar clay-surface" aria-label="对局工具栏">
+        {!drawerOpen ? (
           <button
             aria-controls={PLAY_DRAWER_ID}
             aria-expanded={drawerOpen}
             aria-label="打开对局信息"
-            className="play-toolbar-button"
+            className="play-toolbar-button play-drawer-toggle clay-surface"
             data-testid="toggle-game-hud"
             onClick={openDrawer}
             type="button"
           >
             <List size={21} weight="bold" aria-hidden="true" />
           </button>
-          <ConnectionBadge state={state} testId="connection-state" />
-          <button
-            aria-label={expanded ? "退出全屏显示" : "全屏显示游戏"}
-            aria-pressed={expanded}
-            className="play-toolbar-button"
-            data-testid="toggle-game-fullscreen"
-            onClick={() => void toggleFullscreen()}
-            type="button"
-          >
-            {expanded ? (
-              <CornersIn size={21} weight="bold" aria-hidden="true" />
-            ) : (
-              <CornersOut size={21} weight="bold" aria-hidden="true" />
-            )}
-          </button>
-        </div>
+        ) : null}
+        <button
+          aria-label={expanded ? "退出全屏显示" : "全屏显示游戏"}
+          aria-pressed={expanded}
+          className="play-toolbar-button play-fullscreen-toggle clay-surface"
+          data-testid="toggle-game-fullscreen"
+          onClick={() => void toggleFullscreen()}
+          type="button"
+        >
+          {expanded ? (
+            <CornersIn size={21} weight="bold" aria-hidden="true" />
+          ) : (
+            <CornersOut size={21} weight="bold" aria-hidden="true" />
+          )}
+        </button>
 
         <div className="game-stage" data-testid="game-stage">
           {stage}
@@ -984,6 +1026,68 @@ export function PlaySurfaceShell({
             {errorMessage}
           </p>
         )}
+
+        {completed ? (
+          <aside
+            aria-label="本局结果"
+            className="play-result-hud clay-surface"
+            data-result-tone={resultSummary?.tone ?? "neutral"}
+            data-testid="game-result-hud"
+          >
+            <div className="play-result-heading">
+              <span className="play-result-icon" aria-hidden="true">
+                <Trophy size={25} weight="duotone" />
+              </span>
+              <div>
+                <p className="eyebrow">本局结果</p>
+                <h2>{resultSummary?.headline ?? "本局已结束"}</h2>
+              </div>
+            </div>
+            {resultSummary?.details === undefined ? null : (
+              <ul className="play-result-details">
+                {resultSummary.details.map((detail, index) => (
+                  <li key={`${index}-${detail}`}>{detail}</li>
+                ))}
+              </ul>
+            )}
+            <div className="play-result-actions">
+              <button
+                aria-label={rematchAriaLabel}
+                className="clay-button clay-button-primary"
+                data-testid="rematch-game"
+                disabled={
+                  busy ||
+                  rematchPending !== null ||
+                  state.connectionState !== "connected" ||
+                  (protocolVersion === 6 && !selfReady && !canReady)
+                }
+                onClick={() => void submitRematch()}
+                type="button"
+              >
+                <ArrowsClockwise size={20} weight="bold" aria-hidden="true" />
+                {rematchLabel}
+              </button>
+              <button
+                className="clay-button clay-button-secondary"
+                data-testid="next-round-settings"
+                onClick={onAdjustSettings}
+                type="button"
+              >
+                调整设置
+                <ArrowRight size={20} weight="bold" aria-hidden="true" />
+              </button>
+            </div>
+          </aside>
+        ) : null}
+        <span className="sr-only" aria-live="polite">
+          {completed
+            ? resultSummary?.headline === undefined
+              ? "本局已结束"
+              : [resultSummary.headline, ...(resultSummary.details ?? [])].join(
+                  "，",
+                )
+            : ""}
+        </span>
 
         {drawerOpen ? (
           <div
@@ -1002,12 +1106,10 @@ export function PlaySurfaceShell({
               role="dialog"
             >
               <header className="play-drawer-header">
-                <div>
-                  <p className="eyebrow">{modeLabel}</p>
-                  <h1 id={PLAY_DRAWER_HEADING_ID}>{title}</h1>
-                </div>
                 <button
-                  aria-label="关闭对局信息"
+                  aria-controls={PLAY_DRAWER_ID}
+                  aria-expanded="true"
+                  aria-label="收起对局信息"
                   className="play-toolbar-button"
                   data-testid="close-game-hud"
                   onClick={closeDrawer}
@@ -1016,6 +1118,10 @@ export function PlaySurfaceShell({
                 >
                   <X size={21} weight="bold" aria-hidden="true" />
                 </button>
+                <div>
+                  <p className="eyebrow">{modeLabel}</p>
+                  <h1 id={PLAY_DRAWER_HEADING_ID}>{title}</h1>
+                </div>
               </header>
               <dl className="play-platform-meta">
                 <div>
@@ -1032,12 +1138,6 @@ export function PlaySurfaceShell({
                     <ConnectionBadge state={state} />
                   </dd>
                 </div>
-                {completed ? (
-                  <div>
-                    <dt>状态</dt>
-                    <dd>对局已完成</dd>
-                  </div>
-                ) : null}
               </dl>
               <div className="play-room-controls">
                 {canResign ? (
@@ -1055,33 +1155,6 @@ export function PlaySurfaceShell({
                     <WarningCircle size={18} weight="bold" aria-hidden="true" />
                     {resignPending ? "正在投降…" : "投降"}
                   </button>
-                ) : null}
-                {completed ? (
-                  <>
-                    <button
-                      className="clay-button clay-button-primary"
-                      data-testid="rematch-game"
-                      disabled={busy || state.connectionState !== "connected"}
-                      onClick={onRematch}
-                      type="button"
-                    >
-                      <ArrowsClockwise
-                        size={20}
-                        weight="bold"
-                        aria-hidden="true"
-                      />
-                      重新对局
-                    </button>
-                    <button
-                      className="clay-button clay-button-secondary"
-                      data-testid="next-round-settings"
-                      onClick={onAdjustSettings}
-                      type="button"
-                    >
-                      调整设置
-                      <ArrowRight size={20} weight="bold" aria-hidden="true" />
-                    </button>
-                  </>
                 ) : null}
                 {owner ? (
                   <button
@@ -1122,6 +1195,9 @@ export function PlaySurfaceShell({
         <span className="sr-only" data-testid="revision">
           {revision}
         </span>
+        <span className="sr-only" data-testid="connection-state">
+          {connectionLabels[state.connectionState]}
+        </span>
         <span
           className="sr-only"
           data-status={completed ? "completed" : "active"}
@@ -1139,6 +1215,8 @@ export function PlaySurfaceShell({
 function TurnBasedPlayView({ title }: Pick<GameRoomPageProps, "title">) {
   const [resignPending, setResignPending] = useState(false);
   const [resignError, setResignError] = useState<string | null>(null);
+  const [resultSummary, setResultSummary] =
+    useState<SurfaceResultSummaryV2 | null>(null);
   const surfaceRef = useRef<GameSurfaceFrameHandle>(null);
   const reducedMotion = useReducedMotionPreference();
   const locale =
@@ -1151,6 +1229,7 @@ function TurnBasedPlayView({ title }: Pick<GameRoomPageProps, "title">) {
     openNextRoundSetup,
     startRematch,
     state,
+    toggleRoundReady,
   } = useGameRoomHost();
   const snapshot = state.snapshot;
   const lifecycle = state.roomLifecycle;
@@ -1159,11 +1238,15 @@ function TurnBasedPlayView({ title }: Pick<GameRoomPageProps, "title">) {
     room === null
       ? undefined
       : resolveGameSurfaceEntrypoint(room.gameId, room.gameVersion, "play");
+  useEffect(() => {
+    setResultSummary(null);
+  }, [snapshot?.roundNumber, surfaceEntrypoint?.url]);
   if (room === null || lifecycle === null || snapshot === null) {
     return <LoadingView label="正在同步对局…" />;
   }
   if (surfaceEntrypoint === undefined) return <SurfaceUnavailableView />;
   const isCompleted = snapshot.status === "completed";
+  const nextRound = lifecycle.nextRound;
   const canResign =
     snapshot.status === "active" &&
     snapshot.viewer.kind === "player" &&
@@ -1189,6 +1272,7 @@ function TurnBasedPlayView({ title }: Pick<GameRoomPageProps, "title">) {
   return (
     <PlaySurfaceShell
       busy={busy}
+      canReady={nextRound?.canReady ?? true}
       canResign={canResign}
       completed={isCompleted}
       errorMessage={resignError ?? undefined}
@@ -1196,9 +1280,12 @@ function TurnBasedPlayView({ title }: Pick<GameRoomPageProps, "title">) {
       onAdjustSettings={() => void openNextRoundSetup()}
       onCloseRoom={() => void closeRoom()}
       onLeaveRoom={() => void leaveRoom()}
-      onRematch={() => void startRematch()}
+      onRematch={() =>
+        lifecycle.protocolVersion === 6 ? toggleRoundReady() : startRematch()
+      }
       onResign={() => void resign()}
       owner={lifecycle.isOwner}
+      protocolVersion={lifecycle.protocolVersion}
       overlays={
         <>
           <PageAlerts />
@@ -1207,6 +1294,9 @@ function TurnBasedPlayView({ title }: Pick<GameRoomPageProps, "title">) {
       }
       playerSlotId={room.playerSlotId}
       resignPending={resignPending}
+      resultSummary={resultSummary}
+      readyPlayerCount={nextRound?.readyPlayerCount ?? 0}
+      requiredPlayerCount={nextRound?.requiredPlayerCount ?? 2}
       revision={snapshot.revision}
       roomCode={room.roomCode}
       roundNumber={snapshot.roundNumber}
@@ -1223,6 +1313,7 @@ function TurnBasedPlayView({ title }: Pick<GameRoomPageProps, "title">) {
               return { status: "rejected", code: "HOST_REJECTED" };
             }
           }}
+          onResultSummary={setResultSummary}
           outcome={snapshot.outcome}
           payload={snapshot.view}
           readOnly={isCompleted}
@@ -1233,6 +1324,7 @@ function TurnBasedPlayView({ title }: Pick<GameRoomPageProps, "title">) {
         />
       }
       state={state}
+      selfReady={nextRound?.selfReady ?? false}
       title={title}
     />
   );
@@ -1241,6 +1333,8 @@ function TurnBasedPlayView({ title }: Pick<GameRoomPageProps, "title">) {
 function RealtimePlayView({ title }: Pick<GameRoomPageProps, "title">) {
   const [resignPending, setResignPending] = useState(false);
   const [resignError, setResignError] = useState<string | null>(null);
+  const [resultSummary, setResultSummary] =
+    useState<SurfaceResultSummaryV2 | null>(null);
   const surfaceRef = useRef<GameSurfaceFrameHandle>(null);
   const reducedMotion = useReducedMotionPreference();
   const locale =
@@ -1253,6 +1347,7 @@ function RealtimePlayView({ title }: Pick<GameRoomPageProps, "title">) {
     openNextRoundSetup,
     startRematch,
     state,
+    toggleRoundReady,
   } = useGameRoomHost();
   const snapshot = state.snapshot;
   const lifecycle = state.roomLifecycle;
@@ -1261,12 +1356,16 @@ function RealtimePlayView({ title }: Pick<GameRoomPageProps, "title">) {
     room === null
       ? undefined
       : resolveGameSurfaceEntrypoint(room.gameId, room.gameVersion, "play");
+  useEffect(() => {
+    setResultSummary(null);
+  }, [snapshot?.roundNumber, surfaceEntrypoint?.url]);
 
   if (room === null || lifecycle === null || snapshot === null) {
     return <LoadingView label="正在同步实时对局…" />;
   }
   if (surfaceEntrypoint === undefined) return <SurfaceUnavailableView />;
   const isCompleted = snapshot.status === "completed";
+  const nextRound = lifecycle.nextRound;
   const canResign =
     snapshot.status === "active" &&
     snapshot.viewer.kind === "player" &&
@@ -1291,6 +1390,7 @@ function RealtimePlayView({ title }: Pick<GameRoomPageProps, "title">) {
   return (
     <PlaySurfaceShell
       busy={busy}
+      canReady={nextRound?.canReady ?? true}
       canResign={canResign}
       completed={isCompleted}
       errorMessage={resignError ?? undefined}
@@ -1298,9 +1398,12 @@ function RealtimePlayView({ title }: Pick<GameRoomPageProps, "title">) {
       onAdjustSettings={() => void openNextRoundSetup()}
       onCloseRoom={() => void closeRoom()}
       onLeaveRoom={() => void leaveRoom()}
-      onRematch={() => void startRematch()}
+      onRematch={() =>
+        lifecycle.protocolVersion === 6 ? toggleRoundReady() : startRematch()
+      }
       onResign={() => void resign()}
       owner={lifecycle.isOwner}
+      protocolVersion={lifecycle.protocolVersion}
       overlays={
         <>
           <PageAlerts />
@@ -1309,6 +1412,9 @@ function RealtimePlayView({ title }: Pick<GameRoomPageProps, "title">) {
       }
       playerSlotId={room.playerSlotId}
       resignPending={resignPending}
+      resultSummary={resultSummary}
+      readyPlayerCount={nextRound?.readyPlayerCount ?? 0}
+      requiredPlayerCount={nextRound?.requiredPlayerCount ?? 2}
       revision={snapshot.revision}
       roomCode={room.roomCode}
       roundNumber={snapshot.roundNumber}
@@ -1325,6 +1431,7 @@ function RealtimePlayView({ title }: Pick<GameRoomPageProps, "title">) {
               return { status: "rejected", code: "HOST_REJECTED" };
             }
           }}
+          onResultSummary={setResultSummary}
           outcome={snapshot.outcome}
           payload={snapshot.view}
           readOnly={isCompleted}
@@ -1335,6 +1442,7 @@ function RealtimePlayView({ title }: Pick<GameRoomPageProps, "title">) {
         />
       }
       state={state}
+      selfReady={nextRound?.selfReady ?? false}
       statusProbes={
         <>
           <span className="sr-only" data-testid="server-tick">

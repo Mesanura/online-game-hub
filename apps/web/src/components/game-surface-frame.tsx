@@ -13,6 +13,7 @@ import {
   SurfaceBridgeHost,
   createSurfaceSandbox,
   type SurfaceBridgeHostStatus,
+  type SurfaceResultSummaryV2,
 } from "@online-game-hub/game-surface-bridge";
 import type { ResolvedSurfaceEntrypoint } from "@online-game-hub/game-registry/deployment";
 
@@ -43,6 +44,7 @@ export interface GameSurfaceFrameProps {
   readonly onDiagnostic?: (
     event: Readonly<{ name: string; value?: string | number | boolean }>,
   ) => void;
+  readonly onResultSummary?: (summary: SurfaceResultSummaryV2 | null) => void;
 }
 
 function statusLabel(status: SurfaceBridgeHostStatus): string {
@@ -160,10 +162,12 @@ export const GameSurfaceFrame = forwardRef<
 
   useEffect(() => {
     let active = true;
+    latestPropsRef.current.onResultSummary?.(null);
     stateSequenceRef.current = 0;
     pendingIntentIdsRef.current.clear();
     expiredCommandIdsRef.current.clear();
     const bridge = new SurfaceBridgeHost({
+      bridgeVersion: props.entrypoint.artifact.bridgeVersion,
       frameWindow: () => iframeRef.current?.contentWindow ?? null,
       mode: props.entrypoint.mode,
       init: {
@@ -225,10 +229,24 @@ export const GameSurfaceFrame = forwardRef<
           ...(message.value === undefined ? {} : { value: message.value }),
         });
       },
+      onResultSummary: (message) => {
+        const latest = latestPropsRef.current;
+        if (
+          message.stateSequence !== stateSequenceRef.current ||
+          latest.entrypoint.mode !== "play" ||
+          !latest.readOnly ||
+          latest.outcome === null ||
+          latest.outcome === undefined
+        ) {
+          return;
+        }
+        latest.onResultSummary?.(message);
+      },
       onStatusChange: (nextStatus) => {
         if (!active) return;
         setStatus(nextStatus);
         if (nextStatus.state === "failed" || nextStatus.state === "disposed") {
+          latestPropsRef.current.onResultSummary?.(null);
           abortPendingCommands("SURFACE_COMMAND_ABORTED");
         }
       },
@@ -245,6 +263,7 @@ export const GameSurfaceFrame = forwardRef<
     generation,
     props.entrypoint.gameId,
     props.entrypoint.gameVersion,
+    props.entrypoint.artifact.bridgeVersion,
     props.entrypoint.mode,
     props.entrypoint.url,
     props.locale,
