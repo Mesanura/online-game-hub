@@ -175,22 +175,20 @@ function exportTargetHasSource(
     return false;
   }
 
-  const directTarget = path.resolve(workspacePackage.rootDir, target);
-  if (existsSync(directTarget)) {
-    return true;
-  }
-
   if (!target.startsWith("./dist/")) {
-    return false;
+    return existsSync(path.resolve(workspacePackage.rootDir, target));
   }
 
-  const sourceStem = target
-    .replace(/^\.\/dist\//u, "./src/")
+  const emittedStem = target
+    .replace(/^\.\/dist\//u, "")
     .replace(/\.d\.(?:c|m)?ts$/u, "")
     .replace(/\.(?:c|m)?js$/u, "");
-  return [".ts", ".tsx", ".cts", ".mts"].some((extension) =>
-    existsSync(
-      path.resolve(workspacePackage.rootDir, `${sourceStem}${extension}`),
+  const sourceStems = new Set([path.join("src", emittedStem), emittedStem]);
+  return [...sourceStems].some((sourceStem) =>
+    [".ts", ".tsx", ".cts", ".mts"].some((extension) =>
+      existsSync(
+        path.resolve(workspacePackage.rootDir, `${sourceStem}${extension}`),
+      ),
     ),
   );
 }

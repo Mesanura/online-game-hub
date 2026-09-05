@@ -128,3 +128,67 @@ test("framework and browser-test generated directories are not source", async ()
     await rm(fixtureRoot, { recursive: true, force: true });
   }
 });
+
+test("package export checks derive source paths without trusting stale dist files", async () => {
+  const fixtureRoot = await mkdtemp(join(tmpdir(), "ogh-repository-check-"));
+  try {
+    const validPackageRoot = join(fixtureRoot, "tooling", "valid-export");
+    const stalePackageRoot = join(fixtureRoot, "tooling", "stale-export");
+    await Promise.all([
+      mkdir(join(validPackageRoot, "src"), { recursive: true }),
+      mkdir(join(stalePackageRoot, "dist", "src"), { recursive: true }),
+    ]);
+    await Promise.all([
+      writeFile(
+        join(validPackageRoot, "package.json"),
+        JSON.stringify({
+          name: "@fixture/valid-export",
+          private: true,
+          exports: {
+            ".": {
+              types: "./dist/src/artifact.d.ts",
+              import: "./dist/src/artifact.js",
+            },
+          },
+        }),
+      ),
+      writeFile(
+        join(validPackageRoot, "src", "artifact.ts"),
+        "export const artifact = true;\n",
+      ),
+      writeFile(
+        join(stalePackageRoot, "package.json"),
+        JSON.stringify({
+          name: "@fixture/stale-export",
+          private: true,
+          exports: {
+            ".": "./dist/src/missing.js",
+          },
+        }),
+      ),
+      writeFile(
+        join(stalePackageRoot, "dist", "src", "missing.js"),
+        "export const stale = true;\n",
+      ),
+    ]);
+
+    const result = await checkDependencies(fixtureRoot);
+    assert.deepEqual(
+      result.violations.map(({ code, file, message }) => ({
+        code,
+        file,
+        message,
+      })),
+      [
+        {
+          code: "INVALID_PACKAGE_EXPORT",
+          file: "tooling/stale-export/package.json",
+          message:
+            'Public export target "./dist/src/missing.js" has no corresponding source file.',
+        },
+      ],
+    );
+  } finally {
+    await rm(fixtureRoot, { recursive: true, force: true });
+  }
+});
