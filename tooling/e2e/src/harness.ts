@@ -119,10 +119,62 @@ export interface E2eHarness {
   readonly databaseUrl: string;
   readonly gameServer: GameServerApplication;
   readonly webUrl: string;
+  advanceRealtimeTicks(count: number): void;
   stop(): Promise<void>;
 }
 
-export async function startE2eHarness(): Promise<E2eHarness> {
+export interface E2eHarnessOptions {
+  readonly manualRealtimeScheduler?: boolean;
+}
+
+interface ManualRealtimeSchedulerHandle {
+  readonly callback: () => void;
+  active: boolean;
+}
+
+class ManualRealtimeSchedulerTimer {
+  readonly #handles = new Set<ManualRealtimeSchedulerHandle>();
+
+  public setInterval(callback: () => void, milliseconds: number): unknown {
+    if (!Number.isFinite(milliseconds) || milliseconds <= 0) {
+      throw new RangeError("Realtime scheduler interval must be positive.");
+    }
+    const handle: ManualRealtimeSchedulerHandle = { callback, active: true };
+    this.#handles.add(handle);
+    return handle;
+  }
+
+  public clearInterval(handle: unknown): void {
+    if (
+      typeof handle !== "object" ||
+      handle === null ||
+      !("callback" in handle) ||
+      !("active" in handle)
+    ) {
+      return;
+    }
+    const candidate = handle as ManualRealtimeSchedulerHandle;
+    candidate.active = false;
+    this.#handles.delete(candidate);
+  }
+
+  public advance(count: number): void {
+    if (!Number.isSafeInteger(count) || count < 0) {
+      throw new RangeError(
+        "Realtime tick count must be a non-negative integer.",
+      );
+    }
+    for (let tick = 0; tick < count; tick += 1) {
+      for (const handle of [...this.#handles]) {
+        if (handle.active) handle.callback();
+      }
+    }
+  }
+}
+
+export async function startE2eHarness(
+  options: E2eHarnessOptions = {},
+): Promise<E2eHarness> {
   const database: IsolatedTestDatabase = await createIsolatedTestDatabase(
     requireTestDatabaseUrl(process.env),
   );
@@ -131,6 +183,9 @@ export async function startE2eHarness(): Promise<E2eHarness> {
   const ticketIssuer = `e2e-web-${randomUUID()}`;
   const ticketSecret = randomBytes(32).toString("base64url");
   const clock = new FakeRuntimeClock(Date.now());
+  const realtimeSchedulerTimer = options.manualRealtimeScheduler
+    ? new ManualRealtimeSchedulerTimer()
+    : null;
   const gameServer = createProductionGameServer(
     {
       applicationEnvironment: "test",
@@ -155,6 +210,7 @@ export async function startE2eHarness(): Promise<E2eHarness> {
         "PANG2346",
       ]),
       logger: { write: () => undefined },
+      ...(realtimeSchedulerTimer === null ? {} : { realtimeSchedulerTimer }),
     },
   );
   let gameAddress;
@@ -188,6 +244,12 @@ export async function startE2eHarness(): Promise<E2eHarness> {
     databaseUrl: database.url,
     gameServer,
     webUrl,
+    advanceRealtimeTicks(count) {
+      if (realtimeSchedulerTimer === null) {
+        throw new Error("This E2E harness uses the system realtime scheduler.");
+      }
+      realtimeSchedulerTimer.advance(count);
+    },
     async stop() {
       if (stopped) return;
       stopped = true;

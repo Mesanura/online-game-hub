@@ -20,7 +20,7 @@ function pongSurface(page: Page): FrameLocator {
 }
 
 test.beforeAll(async () => {
-  harness = await startE2eHarness();
+  harness = await startE2eHarness({ manualRealtimeScheduler: true });
 });
 
 test.afterAll(async () => {
@@ -187,6 +187,50 @@ async function readScore(page: Page): Promise<readonly [number, number]> {
   return [Number(left), Number(right)];
 }
 
+async function readServerTick(page: Page): Promise<number> {
+  return Number(await page.getByTestId("server-tick").textContent());
+}
+
+async function advanceRealtimeTicksAndWait(
+  page: Page,
+  count: number,
+): Promise<void> {
+  const initialTick = await readServerTick(page);
+  harness.advanceRealtimeTicks(count);
+  await expect
+    .poll(async () => {
+      const status = await page
+        .getByTestId("match-status")
+        .getAttribute("data-status");
+      return status === "completed"
+        ? true
+        : (await readServerTick(page)) >= initialTick + count;
+    })
+    .toBe(true);
+}
+
+async function advanceUntilScore(
+  page: Page,
+): Promise<readonly [number, number]> {
+  for (let batch = 0; batch < 80; batch += 1) {
+    await advanceRealtimeTicksAndWait(page, 10);
+    const score = await readScore(page);
+    if (score[0] + score[1] > 0) return score;
+  }
+  throw new Error("Pong did not score within 800 controlled ticks.");
+}
+
+async function advanceUntilCompleted(page: Page): Promise<void> {
+  for (let batch = 0; batch < 80; batch += 1) {
+    const status = await page
+      .getByTestId("match-status")
+      .getAttribute("data-status");
+    if (status === "completed") return;
+    await advanceRealtimeTicksAndWait(page, 10);
+  }
+  throw new Error("Pong did not complete within 800 controlled ticks.");
+}
+
 async function closeContexts(
   contextA: BrowserContext,
   contextB: BrowserContext,
@@ -232,17 +276,21 @@ test("two isolated browsers control authoritative Pong, reconnect, and read priv
     expect(initialCanvasBox).not.toBeNull();
     await pongSurface(pageA).locator("#pong-canvas").click();
     await pageA.keyboard.down("ArrowUp");
-    await expect(
-      pageA.getByTestId("acknowledged-input-sequence"),
-    ).not.toHaveText("0");
+    await expect
+      .poll(async () => {
+        harness.advanceRealtimeTicks(1);
+        return pageA.getByTestId("acknowledged-input-sequence").textContent();
+      })
+      .not.toBe("0");
     await pageA.keyboard.up("ArrowUp");
     await expect
-      .poll(() =>
-        pageA
+      .poll(async () => {
+        harness.advanceRealtimeTicks(1);
+        return pageA
           .getByTestId("server-tick")
           .textContent()
-          .then((value) => Number(value)),
-      )
+          .then((value) => Number(value));
+      })
       .toBeGreaterThan(1);
     const afterInputCanvasBox = await pageA
       .frameLocator('[data-testid="game-surface-iframe"]')
@@ -254,22 +302,14 @@ test("two isolated browsers control authoritative Pong, reconnect, and read priv
     await expect
       .poll(
         async () => {
+          harness.advanceRealtimeTicks(1);
           const stored = await roomStore.getByRoomCode(round.roomCode);
           return stored?.currentRound?.tick ?? 0;
         },
         { timeout: 10_000 },
       )
       .toBeGreaterThan(1);
-    await expect
-      .poll(
-        async () => {
-          const [left, right] = await readScore(pageA);
-          return left + right;
-        },
-        { timeout: 10_000 },
-      )
-      .toBeGreaterThan(0);
-    const scoredSnapshot = await readScore(pageA);
+    const scoredSnapshot = await advanceUntilScore(pageA);
     await expect.poll(() => readScore(pageB)).toEqual(scoredSnapshot);
 
     await pageA.close();
@@ -285,11 +325,10 @@ test("two isolated browsers control authoritative Pong, reconnect, and read priv
     await expect(pageB.getByTestId("player-slot")).toHaveText(round.slotB);
     await expectNonBlankCanvas(reconnected);
 
+    await advanceUntilCompleted(reconnected);
     await Promise.all(
       [reconnected, pageB].map((page) =>
-        expect(page.getByTestId("match-status")).toHaveText("对局已完成", {
-          timeout: 20_000,
-        }),
+        expect(page.getByTestId("match-status")).toHaveText("对局已完成"),
       ),
     );
     await expect(

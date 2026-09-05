@@ -19,6 +19,12 @@ function chineseCheckersSurface(page: Page): FrameLocator {
   return page.frameLocator('[data-testid="game-surface-iframe"]');
 }
 
+async function expectSetupIntentSettled(surface: FrameLocator): Promise<void> {
+  await expect(surface.locator(".surface-meta")).not.toContainText(
+    "正在确认操作…",
+  );
+}
+
 test.beforeAll(async () => {
   harness = await startE2eHarness();
 });
@@ -101,11 +107,14 @@ test("three accounts configure camps in the independent Surface, rematch with co
 
   const setupA = chineseCheckersSurface(pageA);
   await setupA.locator("[data-player-count]").selectOption("3");
-  await setupA.locator('[data-camp-option="N"]').click();
-  await setupA.locator('[data-starter="OWNER"]').click();
   await expect(setupA.getByTestId("setup-status")).toContainText(
     "等待 3 位玩家",
   );
+  await expectSetupIntentSettled(setupA);
+  await setupA.locator('[data-camp-option="N"]').click();
+  await expectSetupIntentSettled(setupA);
+  await setupA.locator('[data-starter="OWNER"]').click();
+  await expectSetupIntentSettled(setupA);
 
   const inviteUrl = await pageA.getByTestId("invite-link").getAttribute("href");
   if (inviteUrl === null) {
