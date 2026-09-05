@@ -134,7 +134,7 @@ async function startActiveRound(
   await pageA.getByTestId("create-room").click();
   await expect(pageA.getByTestId("game-surface-iframe")).toHaveAttribute(
     "src",
-    "/game-surfaces/gomoku/1.0.0/setup/index.html",
+    "/game-surfaces/gomoku/1.0.1/setup/index.html",
   );
   await gomokuSurface(pageA).getByRole("button", { name: "房主先手" }).click();
   const inviteUrl = await pageA.getByTestId("invite-link").getAttribute("href");
@@ -150,7 +150,7 @@ async function startActiveRound(
       await expect(page.getByTestId("match-status")).toHaveText("对局进行中");
       await expect(page.getByTestId("game-surface-iframe")).toHaveAttribute(
         "src",
-        "/game-surfaces/gomoku/1.0.0/play/index.html",
+        "/game-surfaces/gomoku/1.0.1/play/index.html",
       );
     }),
   );
@@ -196,7 +196,7 @@ test("two accounts create, join, synchronize, and complete authoritative Gomoku"
   );
   await expect(pageA.getByTestId("game-surface-iframe")).toHaveAttribute(
     "src",
-    "/game-surfaces/gomoku/1.0.0/setup/index.html",
+    "/game-surfaces/gomoku/1.0.1/setup/index.html",
   );
   await gomokuSurface(pageA).getByRole("button", { name: "房主先手" }).click();
 
@@ -228,7 +228,7 @@ test("two accounts create, join, synchronize, and complete authoritative Gomoku"
       await expect(page.getByTestId("room-code")).toHaveText(roomCode);
       await expect(page.getByTestId("game-surface-iframe")).toHaveAttribute(
         "src",
-        "/game-surfaces/gomoku/1.0.0/play/index.html",
+        "/game-surfaces/gomoku/1.0.1/play/index.html",
       );
       await expect(
         gomokuSurface(page).getByRole("grid", { name: "五子棋棋盘" }),
@@ -367,7 +367,7 @@ test("two accounts create, join, synchronize, and complete authoritative Gomoku"
   await expect(pageA.getByTestId("replay-page")).toBeVisible();
   await expect(pageA.getByTestId("game-surface-iframe")).toHaveAttribute(
     "src",
-    "/game-surfaces/gomoku/1.0.0/replay/index.html",
+    "/game-surfaces/gomoku/1.0.1/replay/index.html",
   );
   await expect(gomokuSurface(pageA).locator("[data-cell-index]")).toHaveCount(
     225,

@@ -96,7 +96,7 @@ test("three accounts configure camps in the independent Surface, rematch with co
   await expect(pageA.getByTestId("match-status")).toHaveCount(0);
   await expect(pageA.getByTestId("game-surface-iframe")).toHaveAttribute(
     "src",
-    "/game-surfaces/chinese-checkers/1.0.0/setup/index.html",
+    "/game-surfaces/chinese-checkers/1.0.1/setup/index.html",
   );
 
   const setupA = chineseCheckersSurface(pageA);
@@ -180,7 +180,7 @@ test("three accounts configure camps in the independent Surface, rematch with co
     await expect(page.getByTestId("room-code")).toHaveText(roomCode);
     await expect(page.getByTestId("game-surface-iframe")).toHaveAttribute(
       "src",
-      "/game-surfaces/chinese-checkers/1.0.0/play/index.html",
+      "/game-surfaces/chinese-checkers/1.0.1/play/index.html",
     );
     const surface = chineseCheckersSurface(page);
     await expect(
@@ -294,7 +294,7 @@ test("three accounts configure camps in the independent Surface, rematch with co
       await expect(page.getByTestId("revision")).toHaveText("0");
       await expect(page.getByTestId("game-surface-iframe")).toHaveAttribute(
         "src",
-        "/game-surfaces/chinese-checkers/1.0.0/play/index.html",
+        "/game-surfaces/chinese-checkers/1.0.1/play/index.html",
       );
       await expect(
         chineseCheckersSurface(page).locator('[data-occupied="true"]'),
@@ -416,7 +416,7 @@ test("three accounts configure camps in the independent Surface, rematch with co
   await expect(pageA.getByTestId("replay-page")).toBeVisible();
   await expect(pageA.getByTestId("game-surface-iframe")).toHaveAttribute(
     "src",
-    "/game-surfaces/chinese-checkers/1.0.0/replay/index.html",
+    "/game-surfaces/chinese-checkers/1.0.1/replay/index.html",
   );
   const replaySurface = chineseCheckersSurface(pageA);
   await expect(replaySurface.locator("[data-cell-index]")).toHaveCount(73);

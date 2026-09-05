@@ -92,7 +92,7 @@ async function startActiveRound(
   await pageA.getByTestId("create-room").click();
   await expect(pageA.getByTestId("game-surface-iframe")).toHaveAttribute(
     "src",
-    "/game-surfaces/reversi/1.0.0/setup/index.html",
+    "/game-surfaces/reversi/1.0.1/setup/index.html",
   );
   await reversiSurface(pageA).getByRole("button", { name: "房主先手" }).click();
   const inviteUrl = await pageA.getByTestId("invite-link").getAttribute("href");
@@ -108,7 +108,7 @@ async function startActiveRound(
       await expect(page.getByTestId("match-status")).toHaveText("对局进行中");
       await expect(page.getByTestId("game-surface-iframe")).toHaveAttribute(
         "src",
-        "/game-surfaces/reversi/1.0.0/play/index.html",
+        "/game-surfaces/reversi/1.0.1/play/index.html",
       );
     }),
   );
@@ -152,7 +152,7 @@ test("two accounts complete authoritative Reversi with flips and a non-full term
   await expect(pageA.getByTestId("match-status")).toHaveCount(0);
   await expect(pageA.getByTestId("game-surface-iframe")).toHaveAttribute(
     "src",
-    "/game-surfaces/reversi/1.0.0/setup/index.html",
+    "/game-surfaces/reversi/1.0.1/setup/index.html",
   );
   await reversiSurface(pageA).getByRole("button", { name: "房主先手" }).click();
 
@@ -183,7 +183,7 @@ test("two accounts complete authoritative Reversi with flips and a non-full term
       await expect(page.getByTestId("room-code")).toHaveText(roomCode);
       await expect(page.getByTestId("game-surface-iframe")).toHaveAttribute(
         "src",
-        "/game-surfaces/reversi/1.0.0/play/index.html",
+        "/game-surfaces/reversi/1.0.1/play/index.html",
       );
       await expect(
         reversiSurface(page).getByRole("grid", { name: "黑白棋棋盘" }),
@@ -401,7 +401,7 @@ test("two accounts complete authoritative Reversi with flips and a non-full term
   await expect(pageA.getByTestId("replay-page")).toBeVisible();
   await expect(pageA.getByTestId("game-surface-iframe")).toHaveAttribute(
     "src",
-    "/game-surfaces/reversi/1.0.0/replay/index.html",
+    "/game-surfaces/reversi/1.0.1/replay/index.html",
   );
   await expect(reversiSurface(pageA).locator("[data-cell-index]")).toHaveCount(
     64,

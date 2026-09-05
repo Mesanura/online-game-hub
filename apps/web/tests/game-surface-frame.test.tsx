@@ -8,15 +8,15 @@ import { GameSurfaceFrame } from "../src/components/game-surface-frame";
 const entrypoint: ResolvedSurfaceEntrypoint = {
   gameId: "tic-tac-toe",
   gameVersion: "1.1.0",
-  surfaceVersion: "1.0.0",
+  surfaceVersion: "1.0.2",
   mode: "play",
   platformControls: ["RESIGN"],
-  url: "/game-surfaces/tic-tac-toe/1.0.0/play/index.html",
+  url: "/game-surfaces/tic-tac-toe/1.0.2/play/index.html",
   artifact: {
     schemaVersion: 1,
     gameId: "tic-tac-toe",
-    supportedGameVersions: ["1.1.0"],
-    surfaceVersion: "1.0.0",
+    supportedGameVersions: ["1.0.0", "1.1.0"],
+    surfaceVersion: "1.0.2",
     bridgeVersion: 1,
     entrypoints: {
       setup: "setup/index.html",
