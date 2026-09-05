@@ -17,6 +17,7 @@ import {
   createCampIntent,
   createMovePieceIntent,
   createPlayerCountIntent,
+  createResignIntent,
   createStarterIntent,
   legalTargetsForSelection,
   outcomeLabel,
@@ -89,6 +90,9 @@ describe("Chinese Checkers Surface model", () => {
     expect(
       chineseCheckersPlayIntentSchema.parse(createMovePieceIntent(from, to)),
     ).toEqual({ type: "MOVE_PIECE", from, to });
+    expect(chineseCheckersPlayIntentSchema.parse(createResignIntent())).toEqual(
+      { type: "RESIGN" },
+    );
     expect(
       surfaceHostMessageSchema.safeParse({
         type: "surface.intent",

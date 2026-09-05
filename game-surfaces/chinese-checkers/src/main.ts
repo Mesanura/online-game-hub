@@ -19,6 +19,7 @@ import {
   createCampIntent,
   createMovePieceIntent,
   createPlayerCountIntent,
+  createResignIntent,
   createStarterIntent,
   layoutForCell,
   legalTargetsForSelection,
@@ -159,6 +160,23 @@ function handleHostMessage(message: HostSurfaceMessage): void {
     document.documentElement.dataset.fullscreen = String(message.fullscreen);
     return;
   }
+  if (message.type === "host.command") {
+    const view = runtime.payload as ChineseCheckersPlayView | null;
+    if (
+      runtime.mode !== "play" ||
+      runtime.hostState?.connectionState !== "connected" ||
+      runtime.hostState?.readOnly !== false ||
+      view?.outcome !== null
+    ) {
+      reportSurfaceError(
+        "PLATFORM_CONTROL_NOT_ALLOWED",
+        "当前游戏状态不允许执行平台控制。",
+      );
+      return;
+    }
+    submitIntent(createResignIntent(), message.clientIntentId);
+    return;
+  }
   if (message.type === "host.intent-result") {
     if (message.clientIntentId !== runtime.pendingIntentId) return;
     const notice =
@@ -179,10 +197,12 @@ function handleHostMessage(message: HostSurfaceMessage): void {
 
 function submitIntent(
   intent: ChineseCheckersSetupIntent | ChineseCheckersPlayIntent,
+  requestedIntentId?: string,
 ): void {
   if (bridge === null || runtime.pendingIntentId !== null) return;
-  intentSequence += 1;
-  const clientIntentId = `chinese-checkers-${runtime.mode}-${intentSequence}`;
+  if (requestedIntentId === undefined) intentSequence += 1;
+  const clientIntentId =
+    requestedIntentId ?? `chinese-checkers-${runtime.mode}-${intentSequence}`;
   if (bridge.send({ type: "surface.intent", clientIntentId, intent })) {
     updateRuntime({ pendingIntentId: clientIntentId, notice: null });
   } else {

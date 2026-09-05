@@ -167,6 +167,10 @@ export function createMovePieceIntent(
   return { type: "MOVE_PIECE", from, to };
 }
 
+export function createResignIntent(): ChineseCheckersPlayIntent {
+  return { type: "RESIGN" };
+}
+
 export function legalTargetsForSelection(
   legalMoves: readonly { readonly from: number; readonly to: number }[],
   selectedCell: number | null,

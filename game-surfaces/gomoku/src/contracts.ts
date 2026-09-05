@@ -96,10 +96,14 @@ export const gomokuSetupIntentSchema = z
   .strict();
 export type GomokuSetupIntent = z.infer<typeof gomokuSetupIntentSchema>;
 
-export const gomokuPlayIntentSchema = z
+export const gomokuHistoricalPlayIntentSchema = z
   .object({
     type: z.literal("PLACE_STONE"),
     cell: z.number().int().nonnegative(),
   })
   .strict();
+export const gomokuPlayIntentSchema = z.union([
+  gomokuHistoricalPlayIntentSchema,
+  z.object({ type: z.literal("RESIGN") }).strict(),
+]);
 export type GomokuPlayIntent = z.infer<typeof gomokuPlayIntentSchema>;

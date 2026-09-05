@@ -215,9 +215,12 @@ export type ChineseCheckersSetupIntent = z.infer<
   typeof chineseCheckersSetupIntentSchema
 >;
 
-export const chineseCheckersPlayIntentSchema = z
-  .object({ type: z.literal("MOVE_PIECE"), from: cellSchema, to: cellSchema })
-  .strict();
+export const chineseCheckersPlayIntentSchema = z.union([
+  z
+    .object({ type: z.literal("MOVE_PIECE"), from: cellSchema, to: cellSchema })
+    .strict(),
+  z.object({ type: z.literal("RESIGN") }).strict(),
+]);
 export type ChineseCheckersPlayIntent = z.infer<
   typeof chineseCheckersPlayIntentSchema
 >;

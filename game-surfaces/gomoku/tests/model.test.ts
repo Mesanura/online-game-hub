@@ -4,12 +4,14 @@ import { surfaceHostMessageSchema } from "@online-game-hub/game-surface-bridge";
 
 import {
   gomokuPlayIntentSchema,
+  gomokuHistoricalPlayIntentSchema,
   gomokuPlayViewSchema,
   gomokuSetupIntentSchema,
   gomokuSetupViewSchema,
 } from "../src/contracts";
 import {
   createPlaceStoneIntent,
+  createResignIntent,
   createSetupIntent,
   outcomeLabel,
   setupStatusLabel,
@@ -38,6 +40,12 @@ describe("Gomoku Surface model", () => {
       type: "PLACE_STONE",
       cell: 105,
     });
+    expect(gomokuPlayIntentSchema.parse(createResignIntent())).toEqual({
+      type: "RESIGN",
+    });
+    expect(
+      gomokuHistoricalPlayIntentSchema.safeParse(createResignIntent()).success,
+    ).toBe(false);
     expect(
       gomokuPlayIntentSchema.safeParse({
         ...createPlaceStoneIntent(105),

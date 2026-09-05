@@ -112,10 +112,14 @@ export const ticTacToeSetupIntentSchema = z
   .strict();
 export type TicTacToeSetupIntent = z.infer<typeof ticTacToeSetupIntentSchema>;
 
-export const ticTacToePlayIntentSchema = z
+export const ticTacToeHistoricalPlayIntentSchema = z
   .object({
     type: z.literal("PLACE_MARK"),
     cell: ticTacToeCellIndexSchema,
   })
   .strict();
+export const ticTacToePlayIntentSchema = z.union([
+  ticTacToeHistoricalPlayIntentSchema,
+  z.object({ type: z.literal("RESIGN") }).strict(),
+]);
 export type TicTacToePlayIntent = z.infer<typeof ticTacToePlayIntentSchema>;

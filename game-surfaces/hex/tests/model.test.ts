@@ -12,6 +12,7 @@ import {
 import {
   coordinateLabel,
   createPlaceStoneIntent,
+  createResignIntent,
   createSetupIntent,
   layoutForCell,
   outcomeLabel,
@@ -46,6 +47,9 @@ describe("Hex Surface model", () => {
     expect(hexPlayIntentSchema.parse(createPlaceStoneIntent(55))).toEqual({
       type: "PLACE_STONE",
       cell: 55,
+    });
+    expect(hexPlayIntentSchema.parse(createResignIntent())).toEqual({
+      type: "RESIGN",
     });
     expect(
       surfaceHostMessageSchema.safeParse({

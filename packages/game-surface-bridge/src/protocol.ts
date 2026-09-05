@@ -88,6 +88,11 @@ export const surfaceProjectedValueSchema = surfaceSafeValueSchema;
 export const surfaceModeSchema = z.enum(["setup", "play", "replay"]);
 export type SurfaceMode = z.infer<typeof surfaceModeSchema>;
 
+export const surfacePlatformControlSchema = z.enum(["RESIGN"]);
+export type SurfacePlatformControl = z.infer<
+  typeof surfacePlatformControlSchema
+>;
+
 export const surfaceArtifactManifestV1Schema = z
   .object({
     schemaVersion: z.literal(SURFACE_ARTIFACT_SCHEMA_VERSION),
@@ -206,6 +211,13 @@ export const hostSurfaceMessageSchema = z.discriminatedUnion("type", [
       clientIntentId: z.string().min(1).max(128),
       status: z.enum(["accepted", "rejected", "stale"]),
       code: z.string().min(1).max(128).optional(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("host.command"),
+      clientIntentId: z.string().min(1).max(128),
+      control: surfacePlatformControlSchema,
     })
     .strict(),
   z.object({ type: z.literal("host.dispose") }).strict(),

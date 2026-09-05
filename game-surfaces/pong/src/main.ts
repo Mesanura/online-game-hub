@@ -15,6 +15,7 @@ import {
 } from "./contracts";
 import {
   createDirectionIntent,
+  createResignIntent,
   createSetupIntent,
   setupStatusLabel,
   winnerText,
@@ -143,6 +144,23 @@ function handleHostMessage(message: HostSurfaceMessage): void {
     game?.scale.refresh();
     return;
   }
+  if (message.type === "host.command") {
+    const view = runtime.payload as PongPlayView | null;
+    if (
+      runtime.mode !== "play" ||
+      runtime.hostState?.connectionState !== "connected" ||
+      runtime.hostState?.readOnly !== false ||
+      view?.outcome !== null
+    ) {
+      reportSurfaceError(
+        "PLATFORM_CONTROL_NOT_ALLOWED",
+        "当前游戏状态不允许执行平台控制。",
+      );
+      return;
+    }
+    submitIntent(createResignIntent(), message.clientIntentId);
+    return;
+  }
   if (message.type === "host.intent-result") {
     if (message.clientIntentId !== runtime.pendingIntentId) return;
     const notice =
@@ -161,7 +179,11 @@ function handleHostMessage(message: HostSurfaceMessage): void {
 }
 
 function submitIntent(
-  intent: PongSetupIntent | ReturnType<typeof createDirectionIntent>,
+  intent:
+    | PongSetupIntent
+    | ReturnType<typeof createDirectionIntent>
+    | ReturnType<typeof createResignIntent>,
+  requestedIntentId?: string,
 ): void {
   if (
     bridge === null ||
@@ -169,8 +191,9 @@ function submitIntent(
   ) {
     return;
   }
-  intentSequence += 1;
-  const clientIntentId = `pong-${runtime.mode}-${intentSequence}`;
+  if (requestedIntentId === undefined) intentSequence += 1;
+  const clientIntentId =
+    requestedIntentId ?? `pong-${runtime.mode}-${intentSequence}`;
   if (bridge.send({ type: "surface.intent", clientIntentId, intent })) {
     updateRuntime({ pendingIntentId: clientIntentId, notice: null });
   } else {

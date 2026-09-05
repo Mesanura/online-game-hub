@@ -16,6 +16,10 @@ export function createPlaceStoneIntent(cell: number): HexPlayIntent {
   return { type: "PLACE_STONE", cell };
 }
 
+export function createResignIntent(): HexPlayIntent {
+  return { type: "RESIGN" };
+}
+
 export function coordinateLabel(cell: number): string {
   const row = Math.floor(cell / HEX_BOARD_SIZE);
   const column = cell % HEX_BOARD_SIZE;

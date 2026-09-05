@@ -18,6 +18,10 @@ export function createPlayIntent(
   return { type: "PLACE_MARK", cell };
 }
 
+export function createResignIntent(): TicTacToePlayIntent {
+  return { type: "RESIGN" };
+}
+
 export function markForSlot(
   view: Readonly<TicTacToePlayView>,
   slotId: string | null,

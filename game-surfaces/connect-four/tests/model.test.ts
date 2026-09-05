@@ -4,12 +4,14 @@ import { surfaceHostMessageSchema } from "@online-game-hub/game-surface-bridge";
 
 import {
   connectFourPlayIntentSchema,
+  connectFourHistoricalPlayIntentSchema,
   connectFourPlayViewSchema,
   connectFourSetupIntentSchema,
   connectFourSetupViewSchema,
 } from "../src/contracts";
 import {
   createDropDiscIntent,
+  createResignIntent,
   createSetupIntent,
   landingCell,
   outcomeLabel,
@@ -45,6 +47,13 @@ describe("Connect Four Surface model", () => {
     const filled = [...emptyBoard];
     for (const cell of [3, 10, 17, 24, 31, 38]) filled[cell] = "slot-a";
     expect(landingCell(filled, 3)).toBeNull();
+    expect(connectFourPlayIntentSchema.parse(createResignIntent())).toEqual({
+      type: "RESIGN",
+    });
+    expect(
+      connectFourHistoricalPlayIntentSchema.safeParse(createResignIntent())
+        .success,
+    ).toBe(false);
     expect(
       surfaceHostMessageSchema.safeParse({
         type: "surface.intent",

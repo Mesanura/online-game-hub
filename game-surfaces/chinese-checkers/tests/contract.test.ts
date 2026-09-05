@@ -21,7 +21,7 @@ describe("Chinese Checkers Surface artifact contract", () => {
       schemaVersion: 1,
       gameId: "chinese-checkers",
       supportedGameVersions: ["1.0.0"],
-      surfaceVersion: "1.0.0",
+      surfaceVersion: "1.0.1",
       bridgeVersion: 1,
       entrypoints: {
         setup: "setup/index.html",

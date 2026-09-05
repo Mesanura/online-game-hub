@@ -10,6 +10,7 @@ const entrypoint: ResolvedSurfaceEntrypoint = {
   gameVersion: "1.1.0",
   surfaceVersion: "1.0.0",
   mode: "play",
+  platformControls: ["RESIGN"],
   url: "/game-surfaces/tic-tac-toe/1.0.0/play/index.html",
   artifact: {
     schemaVersion: 1,

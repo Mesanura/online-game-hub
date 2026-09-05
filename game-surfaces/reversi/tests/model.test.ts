@@ -4,6 +4,7 @@ import { surfaceHostMessageSchema } from "@online-game-hub/game-surface-bridge";
 
 import {
   reversiPlayIntentSchema,
+  reversiHistoricalPlayIntentSchema,
   reversiPlayViewSchema,
   reversiSetupIntentSchema,
   reversiSetupViewSchema,
@@ -11,6 +12,7 @@ import {
 import {
   coordinateLabel,
   createPlaceDiscIntent,
+  createResignIntent,
   createSetupIntent,
   outcomeLabel,
   setupStatusLabel,
@@ -46,6 +48,12 @@ describe("Reversi Surface model", () => {
       type: "PLACE_DISC",
       cell: 19,
     });
+    expect(reversiPlayIntentSchema.parse(createResignIntent())).toEqual({
+      type: "RESIGN",
+    });
+    expect(
+      reversiHistoricalPlayIntentSchema.safeParse(createResignIntent()).success,
+    ).toBe(false);
     expect(
       surfaceHostMessageSchema.safeParse({
         type: "surface.intent",

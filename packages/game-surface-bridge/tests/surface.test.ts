@@ -89,7 +89,29 @@ describe("GameSurfaceBridge", () => {
       locale: "zh-CN",
       reducedMotion: false,
     });
-    await vi.waitFor(() => expect(hostMessages).toHaveLength(1));
+    channel.port1.postMessage({
+      type: "host.command",
+      clientIntentId: "platform-resign-1",
+      control: "RESIGN",
+    });
+    await vi.waitFor(() =>
+      expect(hostMessages).toEqual([
+        {
+          type: "host.init",
+          bridgeVersion: 1,
+          mode: "play",
+          gameId: "tic-tac-toe",
+          gameVersion: "1.1.0",
+          locale: "zh-CN",
+          reducedMotion: false,
+        },
+        {
+          type: "host.command",
+          clientIntentId: "platform-resign-1",
+          control: "RESIGN",
+        },
+      ]),
+    );
     bridge.dispose();
   });
 

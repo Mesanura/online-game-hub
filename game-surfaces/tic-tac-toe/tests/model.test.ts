@@ -4,6 +4,7 @@ import { surfaceHostMessageSchema } from "@online-game-hub/game-surface-bridge";
 
 import {
   ticTacToeHistoricalPlayViewSchema,
+  ticTacToeHistoricalPlayIntentSchema,
   ticTacToePlayIntentSchema,
   ticTacToePlayViewSchema,
   ticTacToeSetupIntentSchema,
@@ -11,6 +12,7 @@ import {
 } from "../src/contracts";
 import {
   createPlayIntent,
+  createResignIntent,
   createSetupIntent,
   markForSlot,
   playStatusLabel,
@@ -53,6 +55,13 @@ describe("Tic-Tac-Toe Surface model", () => {
       type: "PLACE_MARK",
       cell: 8,
     });
+    expect(ticTacToePlayIntentSchema.parse(createResignIntent())).toEqual({
+      type: "RESIGN",
+    });
+    expect(
+      ticTacToeHistoricalPlayIntentSchema.safeParse(createResignIntent())
+        .success,
+    ).toBe(false);
   });
 
   it("renders terminal labels without receiving raw state or actor fields", () => {

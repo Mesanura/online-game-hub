@@ -21,7 +21,7 @@ describe("Reversi Surface artifact contract", () => {
       schemaVersion: 1,
       gameId: "reversi",
       supportedGameVersions: ["1.0.0", "1.1.0"],
-      surfaceVersion: "1.0.0",
+      surfaceVersion: "1.0.1",
       bridgeVersion: 1,
       entrypoints: {
         setup: "setup/index.html",

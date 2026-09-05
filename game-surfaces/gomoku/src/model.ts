@@ -15,6 +15,10 @@ export function createPlaceStoneIntent(cell: number): GomokuPlayIntent {
   return { type: "PLACE_STONE", cell };
 }
 
+export function createResignIntent(): GomokuPlayIntent {
+  return { type: "RESIGN" };
+}
+
 export function setupStatusLabel(view: Readonly<GomokuSetupView>): string {
   if (view.participantSlotIds.length < 2) return "等待另一位玩家加入";
   if (view.starter === "UNSELECTED") return "请选择本局先手";

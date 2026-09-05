@@ -86,10 +86,14 @@ export type ConnectFourSetupIntent = z.infer<
   typeof connectFourSetupIntentSchema
 >;
 
-export const connectFourPlayIntentSchema = z
+export const connectFourHistoricalPlayIntentSchema = z
   .object({
     type: z.literal("DROP_DISC"),
     column: z.number().int().min(0).max(6),
   })
   .strict();
+export const connectFourPlayIntentSchema = z.union([
+  connectFourHistoricalPlayIntentSchema,
+  z.object({ type: z.literal("RESIGN") }).strict(),
+]);
 export type ConnectFourPlayIntent = z.infer<typeof connectFourPlayIntentSchema>;

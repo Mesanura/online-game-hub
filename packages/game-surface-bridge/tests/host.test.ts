@@ -54,6 +54,11 @@ describe("SurfaceBridgeHost", () => {
             revision: 0,
             payload: { board: [] },
           });
+          host.send({
+            type: "host.command",
+            clientIntentId: "platform-resign-1",
+            control: "RESIGN",
+          });
         }
       },
     });
@@ -75,7 +80,7 @@ describe("SurfaceBridgeHost", () => {
     });
     await vi.waitFor(() => expect(host.status.state).toBe("ready"));
     await vi.waitFor(() =>
-      expect(hostMessages.slice(0, 2)).toEqual([
+      expect(hostMessages.slice(0, 3)).toEqual([
         {
           type: "host.init",
           bridgeVersion: 1,
@@ -93,6 +98,11 @@ describe("SurfaceBridgeHost", () => {
           roundNumber: 1,
           revision: 0,
           payload: { board: [] },
+        },
+        {
+          type: "host.command",
+          clientIntentId: "platform-resign-1",
+          control: "RESIGN",
         },
       ]),
     );

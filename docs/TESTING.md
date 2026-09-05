@@ -134,6 +134,7 @@ Protocol V6 另须覆盖 exact V5/V6 互拒、`game.setup` payload/identity/size
 
 - artifact 的 game/version/mode 必须 exact 匹配；缺失 entrypoint、重复版本、路径穿越、bridge 不兼容与摘要漂移 fail closed；
 - nonce/source/window 校验、MessageChannel 单次移交、unknown/extra fields、重复 intent、dispose、crash 与 10 秒初始化超时；
+- `host.command/RESIGN` 只在 exact deployment capability 允许时发送，命令不含 Action/Input payload 或 identity；Surface 以同一 `clientIntentId` 产生普通 intent，历史不支持投降的版本必须拒绝该能力；
 - Host 消息与日志不包含 ticket、session、actor、raw State、seed 或 canonical replay；
 - iframe 没有 `allow-same-origin`、表单、弹窗、下载或顶层导航能力，CSP 禁止直接联网；
 - Surface 加载失败可重试，失败期间不会提交游戏 intent；
@@ -382,7 +383,7 @@ Surface 包的独立契约门禁由 `pnpm contract-test` 进入 Turbo graph。�
 
 Web iframe Host 的组件测试至少验证 sandbox 不含 same-origin/form/popup/top-navigation 权限，静态路径具备 immutable/CORS/CSP headers 且绕过 session proxy；Web production build 必须实际加载 `next.config.ts`，防止只在测试对象中成立而部署配置无效。握手、nonce、非法消息、重复 intent、timeout、retry 与 dispose 继续由 `game-surface-bridge` 的 fake-channel contract tests 覆盖。
 
-Tic-Tac-Toe Surface 以 `surfaceVersion 1.0.1` 同时覆盖 `gameVersion 1.0.0`/`1.1.0`；contract/model tests 必须证明历史版本只接受普通 WIN/DRAW，而 current 版本另可显示 `RESIGNATION` WIN。历史版本仍保留 V5 Setup/lifecycle 与 frozen Core/golden replay，不得因表现层共用而放宽 Action 或 Outcome。
+Tic-Tac-Toe Surface 以 `surfaceVersion 1.0.2` 同时覆盖 `gameVersion 1.0.0`/`1.1.0`；contract/model tests 必须证明历史版本只接受普通 WIN/DRAW 与落子 intent，而 current 版本另可显示 `RESIGNATION` WIN 并响应平台投降命令。历史版本仍保留 V5 Setup/lifecycle 与 frozen Core/golden replay，不得因表现层共用而放宽 Action 或 Outcome。
 
 Workbench contract tests必须覆盖 Setup/Play/Replay mode、active/terminal projected payload 的 strict Bridge parse、敏感 key 扫描、完整 viewport 矩阵及 `surfaceArtifact: false`/唯一 workspace dependency。其 `test`、`typecheck`、`build` 与 `contract-test` 均可在不启动 Next 或 Game Server 时独立运行。
 

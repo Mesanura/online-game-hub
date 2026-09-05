@@ -13,6 +13,7 @@ import {
 } from "./contracts";
 import {
   createPlaceStoneIntent,
+  createResignIntent,
   createSetupIntent,
   outcomeLabel,
   setupStatusLabel,
@@ -120,6 +121,24 @@ function handleHostMessage(message: HostSurfaceMessage): void {
     document.documentElement.dataset.fullscreen = String(message.fullscreen);
     return;
   }
+  if (message.type === "host.command") {
+    const view = runtime.payload as GomokuPlayView | null;
+    if (
+      runtime.mode !== "play" ||
+      runtime.init?.gameVersion !== "1.1.0" ||
+      runtime.hostState?.connectionState !== "connected" ||
+      runtime.hostState?.readOnly !== false ||
+      view?.outcome !== null
+    ) {
+      reportSurfaceError(
+        "PLATFORM_CONTROL_NOT_ALLOWED",
+        "当前游戏状态不允许执行平台控制。",
+      );
+      return;
+    }
+    submitIntent(createResignIntent(), message.clientIntentId);
+    return;
+  }
   if (message.type === "host.intent-result") {
     if (message.clientIntentId !== runtime.pendingIntentId) return;
     const notice =
@@ -135,11 +154,16 @@ function handleHostMessage(message: HostSurfaceMessage): void {
 }
 
 function submitIntent(
-  intent: GomokuSetupIntent | ReturnType<typeof createPlaceStoneIntent>,
+  intent:
+    | GomokuSetupIntent
+    | ReturnType<typeof createPlaceStoneIntent>
+    | ReturnType<typeof createResignIntent>,
+  requestedIntentId?: string,
 ): void {
   if (bridge === null || runtime.pendingIntentId !== null) return;
-  intentSequence += 1;
-  const clientIntentId = `gomoku-${runtime.mode}-${intentSequence}`;
+  if (requestedIntentId === undefined) intentSequence += 1;
+  const clientIntentId =
+    requestedIntentId ?? `gomoku-${runtime.mode}-${intentSequence}`;
   if (bridge.send({ type: "surface.intent", clientIntentId, intent })) {
     updateRuntime({ pendingIntentId: clientIntentId, notice: null });
   } else {

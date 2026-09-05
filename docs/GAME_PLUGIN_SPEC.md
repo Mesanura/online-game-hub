@@ -270,9 +270,9 @@ interface GameClientModule<View, Action> {
 
 发布型 Surface 在 package manifest 中声明 `onlineGameHub.surfaceArtifact: true`，提交 `surface.config.json` 与 `surface.lock.json`，并把 `surface.manifest.json`、`setup/`、`play/`、可选 `replay/` 输出到 `dist`。仓库级 artifact CLI 负责 build 收尾和显式锁更新，不能成为 Surface 的 workspace 依赖。普通 build 不改锁，只有先提升 `surfaceVersion` 后才能显式更新内容摘要。`pnpm surface:verify` 检查 schema、gameId、mode 目录、entrypoint、锁和 canonical digest；`pnpm surface:publish` 只把校验通过的内容幂等复制到 Web 静态目录，并拒绝同一 `surfaceVersion` 的内容漂移。Workbench 等不发布 artifact 的 workspace 必须显式声明 `false`，不能靠缺失 manifest 被静默跳过。
 
-Surface 只实现 `@online-game-hub/game-surface-bridge` 的 JSON 消息协议。它解析 projected payload、渲染全部游戏专属信息并发送最小 intent；不得读取 Core、ticket、session、actor、raw State、RNG、canonical replay 或 WebSocket。平台 HUD 不解释比分、棋子、阵营、当前回合、排名或 Outcome。
+Surface 只实现 `@online-game-hub/game-surface-bridge` 的 JSON 消息协议。它解析 projected payload、渲染全部游戏专属信息并发送最小 intent；不得读取 Core、ticket、session、actor、raw State、RNG、canonical replay 或 WebSocket。平台 HUD 不解释比分、棋子、阵营、当前回合、排名或 Outcome。需要由平台统一呈现的控制必须在 exact deployment 的 `platformControls` 显式声明；未声明时平台不得猜测游戏能力。
 
-JavaScript Surface 可选用 `GameSurfaceBridge` helper：实例只接受指定 parent window/origin 的一次 `host.hello`，随后只通过移交的 `MessagePort` 收发 strict message，并在 timeout、非法消息或 dispose 后关闭。平台侧 `SurfaceBridgeHost` 在 ready 前拒绝发消息，负责 timeout/crash/retry 与重复 `clientIntentId` 抑制。两者都是 transport helper，不解释游戏 intent，也不补写 command ID、actor、round、revision 或 input sequence；这些仍只属于平台 Host SDK。
+JavaScript Surface 可选用 `GameSurfaceBridge` helper：实例只接受指定 parent window/origin 的一次 `host.hello`，随后只通过移交的 `MessagePort` 收发 strict message，并在 timeout、非法消息或 dispose 后关闭。平台侧 `SurfaceBridgeHost` 在 ready 前拒绝发消息，负责 timeout/crash/retry 与重复 `clientIntentId` 抑制。两者都是 transport helper，不解释游戏 intent，也不补写 command ID、actor、round、revision 或 input sequence；这些仍只属于平台 Host SDK。Bridge V1 的 `host.command/RESIGN` 只是无游戏 payload 的 UX 触发：Surface 必须按 exact `gameVersion` 决定是否生成自己的 `RESIGN` Action/Input，并以命令携带的 `clientIntentId` 发送普通 `surface.intent`。历史 Core 不支持投降时，deployment 不得声明该控制。
 
 Web 按 deployment registry 的 exact game/version/mode 解析静态 entrypoint，不导入 Surface workspace。`GameSurfaceFrame` 负责 opaque sandbox、握手状态、projected state、viewport/fullscreen、intent result 和 dispose；游戏只需在自己的 artifact 中实现 Bridge。未迁移 registration 保持 `legacy-react`，因此可以逐个版本启用或回滚 Surface，而不改变已存在房间的 Core 或协议代际。
 

@@ -17,6 +17,10 @@ export function createDropDiscIntent(column: number): ConnectFourPlayIntent {
   return { type: "DROP_DISC", column };
 }
 
+export function createResignIntent(): ConnectFourPlayIntent {
+  return { type: "RESIGN" };
+}
+
 export function landingCell(
   board: ConnectFourPlayView["board"],
   column: number,

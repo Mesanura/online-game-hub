@@ -180,7 +180,8 @@ export const hexSetupIntentSchema = z
   .strict();
 export type HexSetupIntent = z.infer<typeof hexSetupIntentSchema>;
 
-export const hexPlayIntentSchema = z
-  .object({ type: z.literal("PLACE_STONE"), cell: cellSchema })
-  .strict();
+export const hexPlayIntentSchema = z.union([
+  z.object({ type: z.literal("PLACE_STONE"), cell: cellSchema }).strict(),
+  z.object({ type: z.literal("RESIGN") }).strict(),
+]);
 export type HexPlayIntent = z.infer<typeof hexPlayIntentSchema>;

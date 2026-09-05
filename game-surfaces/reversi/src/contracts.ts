@@ -174,7 +174,11 @@ export const reversiSetupIntentSchema = z
   .strict();
 export type ReversiSetupIntent = z.infer<typeof reversiSetupIntentSchema>;
 
-export const reversiPlayIntentSchema = z
+export const reversiHistoricalPlayIntentSchema = z
   .object({ type: z.literal("PLACE_DISC"), cell: cellSchema })
   .strict();
+export const reversiPlayIntentSchema = z.union([
+  reversiHistoricalPlayIntentSchema,
+  z.object({ type: z.literal("RESIGN") }).strict(),
+]);
 export type ReversiPlayIntent = z.infer<typeof reversiPlayIntentSchema>;

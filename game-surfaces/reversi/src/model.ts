@@ -15,6 +15,10 @@ export function createPlaceDiscIntent(cell: number): ReversiPlayIntent {
   return { type: "PLACE_DISC", cell };
 }
 
+export function createResignIntent(): ReversiPlayIntent {
+  return { type: "RESIGN" };
+}
+
 export function coordinateLabel(cell: number): string {
   return `${String.fromCharCode(65 + (cell % 8))}${Math.floor(cell / 8) + 1}`;
 }

@@ -73,6 +73,24 @@ describe("Game Surface Bridge V1", () => {
         intent: { type: "PLACE_MARK", cell: 4 },
       }),
     ).toMatchObject({ type: "surface.intent" });
+    expect(
+      hostSurfaceMessageSchema.parse({
+        type: "host.command",
+        clientIntentId: "platform-resign-1",
+        control: "RESIGN",
+      }),
+    ).toEqual({
+      type: "host.command",
+      clientIntentId: "platform-resign-1",
+      control: "RESIGN",
+    });
+    expect(
+      hostSurfaceMessageSchema.safeParse({
+        type: "host.command",
+        clientIntentId: "platform-command-2",
+        control: "UNKNOWN",
+      }).success,
+    ).toBe(false);
   });
 
   it.each([
