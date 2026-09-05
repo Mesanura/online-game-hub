@@ -24,6 +24,7 @@ import {
   layoutForCell,
   legalTargetsForSelection,
   outcomeLabel,
+  resultSummary,
   setupStatusLabel,
   type ChineseCheckersCamp,
 } from "./model";
@@ -143,6 +144,16 @@ function handleHostMessage(message: HostSurfaceMessage): void {
         selectedCell,
         error: null,
       });
+      if (runtime.mode === "play") {
+        const summary = resultSummary(payload as ChineseCheckersPlayView);
+        if (summary !== null) {
+          bridge?.send({
+            type: "surface.result-summary",
+            stateSequence: message.sequence,
+            ...summary,
+          });
+        }
+      }
     } catch {
       reportSurfaceError("INVALID_PROJECTED_VIEW", "服务器视图格式无效。");
     }

@@ -1,3 +1,5 @@
+import type { SurfaceResultSummaryV2 } from "@online-game-hub/game-surface-bridge";
+
 import type {
   PongPlayIntent,
   PongPlayView,
@@ -50,4 +52,23 @@ export function winnerText(view: Readonly<PongPlayView>): string {
   );
   if (yourPlayer === undefined) return "比赛结束";
   return outcome.winnerSlotId === yourPlayer.slotId ? "你赢了" : "对手获胜";
+}
+
+export function resultSummary(
+  view: Readonly<PongPlayView>,
+): Omit<SurfaceResultSummaryV2, "type" | "stateSequence"> | null {
+  const outcome = view.outcome;
+  if (outcome === null) return null;
+  const ownSlot = view.players.find(
+    (player) => player.side === view.yourSide,
+  )?.slotId;
+  const won = ownSlot !== undefined && outcome.winnerSlotId === ownSlot;
+  return {
+    tone: ownSlot === undefined ? "neutral" : won ? "win" : "loss",
+    headline: ownSlot === undefined ? "比赛结束" : won ? "你获胜" : "对手获胜",
+    details: [
+      `左侧 ${outcome.scores[0]} : ${outcome.scores[1]} 右侧`,
+      outcome.reason === "RESIGNATION" ? "本局因投降结束" : "率先达到目标分数",
+    ],
+  };
 }

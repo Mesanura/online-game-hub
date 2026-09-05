@@ -35,5 +35,5 @@
 ## Setup 与独立 Surface
 
 - current `hex@1.0.0` 使用 Protocol V6 的游戏自有 Setup。首局由房主选择 OWNER、NON_OWNER 或服务端 setup RNG 的 RANDOM；finalized `playerOrder[0]` 获得 BLUE。上一局完成后默认固定复用上一局实际 BLUE/RED 顺序、null Config、参与席位和 null assignments，双方仍需分别重新确认准备。
-- `game-surfaces/hex` 是独立构建的 Setup/Play/Replay Surface。它只消费按 viewer 投影的 Setup View 或 Hex View，只发送 `SELECT_STARTER` / `PLACE_STONE` intent；平台继续拥有 ready、投降确认、关闭/离开、连接和 replay 生命周期。
+- `hex@surfaceVersion 1.0.2` 是独立构建的 Bridge V2 Setup/Play/Replay Surface。它只消费按 viewer 投影的 Setup View 或 Hex View，只发送 `SELECT_STARTER` / `PLACE_STONE` intent；平台继续拥有 ready、投降确认、关闭/离开、连接和 replay 生命周期。
 - Surface 只显示服务器给出的 `winningPath`，不得导入 Core、重跑 BFS、推断连接胜者或构造 Outcome。Core 与 Replay Format V1 未改变，因此本次表现层迁移不提升 `gameVersion`。

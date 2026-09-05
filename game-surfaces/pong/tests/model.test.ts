@@ -14,6 +14,7 @@ import {
   createSetupIntent,
   interpolationAlpha,
   lerp,
+  resultSummary,
   setupStatusLabel,
   winnerText,
 } from "../src/model";
@@ -88,5 +89,10 @@ describe("Pong Surface model", () => {
       },
     });
     expect(winnerText(won)).toBe("你赢了");
+    expect(resultSummary(won)).toEqual({
+      tone: "win",
+      headline: "你获胜",
+      details: ["左侧 3 : 2 右侧", "率先达到目标分数"],
+    });
   });
 });

@@ -2,6 +2,7 @@ import "./styles.css";
 
 import {
   SurfaceBridgeHost,
+  SURFACE_BRIDGE_V2,
   createSurfaceSandbox,
   type SurfaceBridgeHostStatus,
 } from "@online-game-hub/game-surface-bridge";
@@ -138,6 +139,7 @@ function loadSurface(): void {
   nextFrame.sandbox.value = createSurfaceSandbox(true);
   nextFrame.title = `${simulation.fixture.label} Surface`;
   const host = new SurfaceBridgeHost({
+    bridgeVersion: SURFACE_BRIDGE_V2,
     frameWindow: () => nextFrame.contentWindow,
     mode: simulation.fixture.mode,
     init: {
@@ -180,6 +182,13 @@ function loadSurface(): void {
       host.reportSurfaceCrash();
     },
     onDiagnostic: (message) => logEvent("surface.diagnostic", message),
+    onResultSummary: (message) =>
+      logEvent("surface.result-summary", {
+        stateSequence: message.stateSequence,
+        tone: message.tone,
+        headline: message.headline,
+        details: message.details,
+      }),
     onStatusChange: (status) => {
       renderStatus(status);
       if (status.state === "ready") {

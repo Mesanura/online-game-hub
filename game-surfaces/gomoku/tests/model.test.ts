@@ -14,6 +14,7 @@ import {
   createResignIntent,
   createSetupIntent,
   outcomeLabel,
+  resultSummary,
   setupStatusLabel,
 } from "../src/model";
 
@@ -79,6 +80,7 @@ describe("Gomoku Surface model", () => {
       yourStone: "BLACK",
     });
     expect(outcomeLabel(view)).toBe("你赢了");
+    expect(resultSummary(view)).toEqual({ tone: "win", headline: "你获胜" });
     expect(
       gomokuPlayViewSchema.safeParse({ ...view, rawState: {} }).success,
     ).toBe(false);

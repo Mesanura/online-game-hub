@@ -2,7 +2,10 @@ import { readFileSync } from "node:fs";
 
 import { describe, expect, it } from "vitest";
 
-import { hostSurfaceMessageSchema } from "@online-game-hub/game-surface-bridge";
+import {
+  hostSurfaceMessageSchema,
+  surfaceHostMessageV2Schema,
+} from "@online-game-hub/game-surface-bridge";
 
 import { WORKBENCH_FIXTURES } from "../src/fixtures";
 import {
@@ -66,6 +69,22 @@ describe("Surface Workbench Bridge conformance", () => {
       "412x915",
       "844x390",
     ]);
+  });
+
+  it("accepts a bounded Bridge V2 terminal result summary", () => {
+    expect(
+      surfaceHostMessageV2Schema.parse({
+        type: "surface.result-summary",
+        stateSequence: 7,
+        tone: "win",
+        headline: "你获胜",
+        details: ["黑方 35 · 白方 29"],
+      }),
+    ).toMatchObject({
+      type: "surface.result-summary",
+      stateSequence: 7,
+      tone: "win",
+    });
   });
 
   it("remains a non-published workspace with no Platform runtime dependency", () => {

@@ -7,3 +7,5 @@
 任一玩家可提交严格 `{ "type": "RESIGN" }` 投降输入。比分达标产生 `SCORE` 胜局，投降产生 `RESIGNATION` 胜局；终局不再推进 simulation。公开 View 只含场地、球拍、球、比分、tick、玩家方位与 Outcome，不含 RNG seed 或 authoritative input log。
 
 Round Setup 由 Pong 自己定义：新房间必须由 owner 选择 `OWNER | NON_OWNER | RANDOM` 先手/方位顺序，`targetScore` 首阶段仍取当前默认值而不开放编辑。`RANDOM` 只消费独立 Setup RNG；Gameplay 继续获得新的独立 seed。下一局从上一局完整 finalized setup 初始化，复用实际 LEFT/RIGHT 顺序和 `targetScore`，不重新随机，并由两位玩家分别重新 ready。
+
+独立 `pong@surfaceVersion 1.0.3` 使用 Bridge V2 承载 Setup、Phaser Play 与 Replay；completed Play View 的结果摘要只包含 viewer 胜负、最终比分和终局原因。

@@ -16,6 +16,7 @@ import {
   createResignIntent,
   createSetupIntent,
   outcomeLabel,
+  resultSummary,
   setupStatusLabel,
 } from "./model";
 import "./styles.css";
@@ -99,11 +100,22 @@ function handleHostMessage(message: HostSurfaceMessage): void {
       return;
     }
     try {
+      const payload = parsePayload(message);
       updateRuntime({
         hostState: message,
-        payload: parsePayload(message),
+        payload,
         error: null,
       });
+      if (runtime.mode === "play") {
+        const summary = resultSummary(payload as GomokuPlayView);
+        if (summary !== null) {
+          bridge?.send({
+            type: "surface.result-summary",
+            stateSequence: message.sequence,
+            ...summary,
+          });
+        }
+      }
     } catch {
       reportSurfaceError("INVALID_PROJECTED_VIEW", "服务器视图格式无效。");
     }
@@ -251,12 +263,14 @@ function renderPlay(hostState: HostState, view: GomokuPlayView): string {
       const disabled = !movable || slotId !== null;
       const row = Math.floor(cell / view.boardSize) + 1;
       const column = (cell % view.boardSize) + 1;
-      return `<button aria-label="第 ${row} 行第 ${column} 列${stone === "EMPTY" ? "空位" : stone === "BLACK" ? "黑棋" : "白棋"}" class="board-cell" data-cell-index="${cell}" data-stone="${stone}" data-winning="${String(winningCells.has(cell))}" ${disabled ? "disabled" : ""} role="gridcell" type="button"><span></span></button>`;
+      const previewStone =
+        !disabled && stone === "EMPTY" ? (view.yourStone ?? "NONE") : "NONE";
+      return `<button aria-label="第 ${row} 行第 ${column} 列${stone === "EMPTY" ? "空位" : stone === "BLACK" ? "黑棋" : "白棋"}" class="board-cell" data-cell-index="${cell}" data-preview-stone="${previewStone}" data-stone="${stone}" data-winning="${String(winningCells.has(cell))}" ${disabled ? "disabled" : ""} role="gridcell" type="button"><span></span></button>`;
     })
     .join("");
   return `<main class="play-surface"><section class="game-card" aria-labelledby="game-title">
     <header><div><div class="eyebrow">${runtime.mode === "replay" ? "Replay" : "Gomoku"}</div><h1 data-testid="turn-status" id="game-title">${title}</h1></div><span class="role-chip" data-testid="player-stone">${role}</span></header>
-    <div aria-label="五子棋棋盘" class="board" role="grid" style="--board-size: ${view.boardSize}">${cells}</div>
+    <div class="board-shell"><div aria-label="五子棋棋盘" class="board" role="grid" style="--board-size: ${view.boardSize}">${cells}</div></div>
     <div class="surface-meta" aria-live="polite">${renderStatus(hostState)}</div>
   </section></main>`;
 }

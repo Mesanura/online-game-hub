@@ -15,6 +15,7 @@ import {
   createSetupIntent,
   landingCell,
   outcomeLabel,
+  resultSummary,
   setupStatusLabel,
 } from "../src/model";
 
@@ -79,6 +80,7 @@ describe("Connect Four Surface model", () => {
       yourDisc: "RED",
     });
     expect(outcomeLabel(view)).toBe("你赢了");
+    expect(resultSummary(view)).toEqual({ tone: "win", headline: "你获胜" });
     expect(
       connectFourPlayViewSchema.safeParse({ ...view, rngSeed: "secret" })
         .success,

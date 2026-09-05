@@ -1,3 +1,5 @@
+import type { SurfaceResultSummaryV2 } from "@online-game-hub/game-surface-bridge";
+
 import {
   HEX_BOARD_SIZE,
   type HexPlayIntent,
@@ -77,4 +79,23 @@ export function outcomeLabel(view: Readonly<HexPlayView>): string {
   return outcome.reason === "CONNECTION"
     ? `胜者：${winner}，已连通对应两边`
     : `胜者：${winner}，对手投降`;
+}
+
+export function resultSummary(
+  view: Readonly<HexPlayView>,
+): Omit<SurfaceResultSummaryV2, "type" | "stateSequence"> | null {
+  const outcome = view.outcome;
+  if (outcome === null) return null;
+  const ownSlot = view.players.find(
+    (player) => player.color === view.yourColor,
+  )?.slotId;
+  const won = ownSlot !== undefined && outcome.winnerSlotId === ownSlot;
+  return {
+    tone: ownSlot === undefined ? "neutral" : won ? "win" : "loss",
+    headline:
+      ownSlot === undefined ? "本局已分出胜负" : won ? "你获胜" : "对手获胜",
+    details: [
+      outcome.reason === "CONNECTION" ? "胜方已连通对应两边" : "本局因投降结束",
+    ],
+  };
 }

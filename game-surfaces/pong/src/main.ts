@@ -19,6 +19,7 @@ import {
   createSetupIntent,
   setupStatusLabel,
   winnerText,
+  resultSummary,
 } from "./model";
 import { PongScene, type PongRenderState } from "./pong-scene";
 import "./styles.css";
@@ -126,6 +127,16 @@ function handleHostMessage(message: HostSurfaceMessage): void {
         error: null,
       });
       if (shouldResyncDirection) pongScene?.syncDirection();
+      if (runtime.mode === "play") {
+        const summary = resultSummary(payload as PongPlayView);
+        if (summary !== null) {
+          bridge?.send({
+            type: "surface.result-summary",
+            stateSequence: message.sequence,
+            ...summary,
+          });
+        }
+      }
     } catch {
       reportSurfaceError("INVALID_PROJECTED_VIEW", "服务器视图格式无效。");
     }

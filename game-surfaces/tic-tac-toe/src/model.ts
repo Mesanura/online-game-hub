@@ -1,3 +1,5 @@
+import type { SurfaceResultSummaryV2 } from "@online-game-hub/game-surface-bridge";
+
 import type {
   TicTacToeCellIndex,
   TicTacToePlayIntent,
@@ -41,6 +43,28 @@ export function playStatusLabel(view: Readonly<TicTacToePlayView>): string {
   if (nextMark === null) return "等待服务器同步回合";
   if (view.yourMark === nextMark) return "轮到你落子";
   return `等待 ${nextMark} 落子`;
+}
+
+export function resultSummary(
+  view: Readonly<TicTacToePlayView>,
+): Omit<SurfaceResultSummaryV2, "type" | "stateSequence"> | null {
+  const outcome = view.outcome;
+  if (outcome === null) return null;
+  if (outcome.type === "DRAW") {
+    return { tone: "draw", headline: "平局" };
+  }
+  const ownSlot = view.players.find(
+    (player) => player.mark === view.yourMark,
+  )?.slotId;
+  const won = ownSlot !== undefined && outcome.winnerSlotId === ownSlot;
+  return {
+    tone: ownSlot === undefined ? "neutral" : won ? "win" : "loss",
+    headline:
+      ownSlot === undefined ? "本局已分出胜负" : won ? "你获胜" : "对手获胜",
+    ...("reason" in outcome && outcome.reason === "RESIGNATION"
+      ? { details: ["本局因投降结束"] }
+      : {}),
+  };
 }
 
 export function setupStatusLabel(view: Readonly<TicTacToeSetupView>): string {

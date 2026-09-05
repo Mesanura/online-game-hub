@@ -40,6 +40,7 @@
 
 ## 版本兼容
 
+- 独立 `tic-tac-toe@surfaceVersion 1.0.3` 使用 Bridge V2 承载 Setup、Play 与 Replay，并在 completed Play View 后发送 viewer-specific 纯文本结果摘要。
 - `1.0.0` 只接受 `PLACE_MARK`，State 不含 `resignedSlotId`；其独立 frozen definition 和原 golden fixture 保留不变。
 - `1.1.0` 增加 off-turn `RESIGN`、`state.resignedSlotId` 和 `RESIGNATION` WIN；普通落子、连线与平局规则不变。
 - Replay Format 仍为 V1。任何进一步改变规则结果、slot 解释、Action/Config schema 或 RNG 消费的修改都必须评估新的 `gameVersion`。

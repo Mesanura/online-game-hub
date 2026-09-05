@@ -16,6 +16,7 @@ import {
   createSetupIntent,
   markForSlot,
   playStatusLabel,
+  resultSummary,
   setupStatusLabel,
 } from "../src/model";
 
@@ -75,6 +76,7 @@ describe("Tic-Tac-Toe Surface model", () => {
       },
     });
     expect(playStatusLabel(won)).toBe("你赢了");
+    expect(resultSummary(won)).toEqual({ tone: "win", headline: "你获胜" });
     expect(ticTacToeHistoricalPlayViewSchema.safeParse(won).success).toBe(true);
     const resigned = {
       ...playView,
@@ -87,6 +89,11 @@ describe("Tic-Tac-Toe Surface model", () => {
       },
     } as const;
     expect(ticTacToePlayViewSchema.safeParse(resigned).success).toBe(true);
+    expect(resultSummary(resigned)).toEqual({
+      tone: "win",
+      headline: "你获胜",
+      details: ["本局因投降结束"],
+    });
     expect(ticTacToeHistoricalPlayViewSchema.safeParse(resigned).success).toBe(
       false,
     );

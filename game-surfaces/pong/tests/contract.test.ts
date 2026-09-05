@@ -21,8 +21,8 @@ describe("Pong Surface artifact contract", () => {
       schemaVersion: 1,
       gameId: "pong",
       supportedGameVersions: ["1.0.0"],
-      surfaceVersion: "1.0.2",
-      bridgeVersion: 1,
+      surfaceVersion: "1.0.3",
+      bridgeVersion: 2,
       entrypoints: {
         setup: "setup/index.html",
         play: "play/index.html",

@@ -1,3 +1,5 @@
+import type { SurfaceResultSummaryV2 } from "@online-game-hub/game-surface-bridge";
+
 import type {
   ReversiPlayIntent,
   ReversiPlayView,
@@ -61,4 +63,28 @@ export function outcomeLabel(view: Readonly<ReversiPlayView>): string {
   if (view.yourDisc === null)
     return `胜者：${discLabel(winnerDisc)}（${score}）`;
   return `胜者：${view.yourDisc === winnerDisc ? "你" : "对手"}（${discLabel(winnerDisc)}，${score}）`;
+}
+
+export function resultSummary(
+  view: Readonly<ReversiPlayView>,
+): Omit<SurfaceResultSummaryV2, "type" | "stateSequence"> | null {
+  const outcome = view.outcome;
+  if (outcome === null) return null;
+  const score = `黑方 ${view.discCounts.BLACK} · 白方 ${view.discCounts.WHITE}`;
+  if (outcome.type === "DRAW") {
+    return { tone: "draw", headline: "平局", details: [score] };
+  }
+  const ownSlot = view.players.find(
+    (player) => player.disc === view.yourDisc,
+  )?.slotId;
+  const won = ownSlot !== undefined && outcome.winnerSlotId === ownSlot;
+  return {
+    tone: ownSlot === undefined ? "neutral" : won ? "win" : "loss",
+    headline:
+      ownSlot === undefined ? "本局已分出胜负" : won ? "你获胜" : "对手获胜",
+    details:
+      "reason" in outcome && outcome.reason === "RESIGNATION"
+        ? ["本局因投降结束"]
+        : [score],
+  };
 }

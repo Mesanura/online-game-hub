@@ -18,6 +18,7 @@ import {
   createSetupIntent,
   discForSlot,
   outcomeLabel,
+  resultSummary,
   setupStatusLabel,
 } from "./model";
 import "./styles.css";
@@ -101,11 +102,22 @@ function handleHostMessage(message: HostSurfaceMessage): void {
       return;
     }
     try {
+      const payload = parsePayload(message);
       updateRuntime({
         hostState: message,
-        payload: parsePayload(message),
+        payload,
         error: null,
       });
+      if (runtime.mode === "play") {
+        const summary = resultSummary(payload as ReversiPlayView);
+        if (summary !== null) {
+          bridge?.send({
+            type: "surface.result-summary",
+            stateSequence: message.sequence,
+            ...summary,
+          });
+        }
+      }
     } catch {
       reportSurfaceError("INVALID_PROJECTED_VIEW", "服务器视图格式无效。");
     }
@@ -261,7 +273,7 @@ function renderPlay(hostState: HostState, view: ReversiPlayView): string {
   return `<main class="play-surface"><section class="game-card" aria-labelledby="game-title">
     <header><div><div class="eyebrow">${runtime.mode === "replay" ? "Replay" : "Reversi"}</div><h1 data-testid="turn-status" id="game-title">${title}</h1></div><span class="role-chip" data-testid="player-color">${role}</span></header>
     <div aria-label="棋子数量" class="score" role="group"><span data-testid="black-disc-count"><i data-color="BLACK"></i>黑方：${view.discCounts.BLACK}</span><span data-testid="white-disc-count"><i data-color="WHITE"></i>白方：${view.discCounts.WHITE}</span></div>
-    <div aria-colcount="8" aria-label="黑白棋棋盘" aria-rowcount="8" class="board" role="grid">${cells}</div>
+    <div class="board-shell"><div aria-colcount="8" aria-label="黑白棋棋盘" aria-rowcount="8" class="board" role="grid">${cells}</div></div>
     <div class="surface-meta" aria-live="polite">${renderStatus(hostState)}</div>
   </section></main>`;
 }

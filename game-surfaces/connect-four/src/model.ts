@@ -1,3 +1,5 @@
+import type { SurfaceResultSummaryV2 } from "@online-game-hub/game-surface-bridge";
+
 import {
   CONNECT_FOUR_COLUMNS,
   CONNECT_FOUR_ROWS,
@@ -56,4 +58,24 @@ export function outcomeLabel(view: Readonly<ConnectFourPlayView>): string {
   )?.slotId;
   if (ownSlot === undefined) return "本局已结束";
   return view.outcome.winnerSlotId === ownSlot ? "你赢了" : "对手获胜";
+}
+
+export function resultSummary(
+  view: Readonly<ConnectFourPlayView>,
+): Omit<SurfaceResultSummaryV2, "type" | "stateSequence"> | null {
+  const outcome = view.outcome;
+  if (outcome === null) return null;
+  if (outcome.type === "DRAW") return { tone: "draw", headline: "平局" };
+  const ownSlot = view.players.find(
+    (player) => player.disc === view.yourDisc,
+  )?.slotId;
+  const won = ownSlot !== undefined && outcome.winnerSlotId === ownSlot;
+  return {
+    tone: ownSlot === undefined ? "neutral" : won ? "win" : "loss",
+    headline:
+      ownSlot === undefined ? "本局已分出胜负" : won ? "你获胜" : "对手获胜",
+    ...("reason" in outcome && outcome.reason === "RESIGNATION"
+      ? { details: ["本局因投降结束"] }
+      : {}),
+  };
 }

@@ -16,6 +16,7 @@ import {
   createSetupIntent,
   layoutForCell,
   outcomeLabel,
+  resultSummary,
   setupStatusLabel,
 } from "../src/model";
 
@@ -77,6 +78,11 @@ describe("Hex Surface model", () => {
       yourColor: "BLUE",
     });
     expect(outcomeLabel(view)).toContain("胜者：你");
+    expect(resultSummary(view)).toEqual({
+      tone: "win",
+      headline: "你获胜",
+      details: ["胜方已连通对应两边"],
+    });
     expect(hexPlayViewSchema.safeParse({ ...view, rawState: {} }).success).toBe(
       false,
     );

@@ -33,7 +33,7 @@
 
 - current `1.1.0` 新房间使用游戏自有 Setup V6。房主选择 OWNER、NON_OWNER 或服务端 RANDOM 先手，最终 `playerOrder[0]` 直接成为 BLACK；Setup 不自行解释落子、翻转或跳过。
 - completed 后的下一局 Setup 从上一局 `FinalizedRoundSetup` 复用实际 player order，因此默认保留 BLACK/WHITE；双方必须分别重新 ready，accepted 设置变更由平台清空全部 ready。
-- 独立 `reversi@surfaceVersion 1.0.0` artifact 承载 Setup、Play 与 Replay，并同时解析历史 `1.0.0` 和 current `1.1.0` projected View。Surface 只启用服务器给出的 `legalMoves`，提交最小 `PLACE_DISC` intent，不自行扫描夹线或计算 Outcome。
+- 独立 `reversi@surfaceVersion 1.0.2` Bridge V2 artifact 承载 Setup、Play 与 Replay，并同时解析历史 `1.0.0` 和 current `1.1.0` projected View。Surface 使用暖木 Clay 棋盘和 teal 合法落点，只启用服务器给出的 `legalMoves`，提交最小 `PLACE_DISC` intent，不自行扫描夹线或计算 Outcome。
 - 历史 `1.0.0` live room 仍使用 Protocol V5 Setup；同一 exact-version Surface 可渲染其 Play/Replay。Surface 视觉升级不改变 `gameVersion` 或 Replay Format。
 
 ## 版本兼容

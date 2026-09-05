@@ -193,6 +193,30 @@ h2 {
   --camp-color: #c8649c;
 }
 
+[data-piece-camp="N"] {
+  --piece-color: #e96f6a;
+}
+
+[data-piece-camp="NE"] {
+  --piece-color: #e0aa32;
+}
+
+[data-piece-camp="SE"] {
+  --piece-color: #69a94e;
+}
+
+[data-piece-camp="S"] {
+  --piece-color: #469ec0;
+}
+
+[data-piece-camp="SW"] {
+  --piece-color: #846bc5;
+}
+
+[data-piece-camp="NW"] {
+  --piece-color: #c8649c;
+}
+
 .camp-option[aria-pressed="true"],
 .starter-options button[aria-pressed="true"] {
   border-color: #296f8b;
@@ -306,6 +330,7 @@ h2 {
 }
 
 .board-shell {
+  container-type: size;
   position: relative;
   display: grid;
   min-width: 0;
@@ -316,9 +341,8 @@ h2 {
 
 .chinese-checkers-board {
   position: relative;
-  width: min(100%, calc((100dvh - 7rem) * 1.3125));
-  max-height: 100%;
-  aspect-ratio: 42 / 32;
+  width: min(100cqw, 86.60254cqh);
+  aspect-ratio: 0.8660254 / 1;
 }
 
 .chinese-checkers-cell {
@@ -367,7 +391,7 @@ h2 {
   display: block;
   inset: 12%;
   border-radius: 50%;
-  background: var(--camp-color);
+  background: var(--piece-color, #c3b6aa);
   box-shadow:
     inset 0 0.2rem 0.25rem rgb(255 255 255 / 45%),
     0 0.14rem 0.22rem rgb(45 32 22 / 30%);
@@ -465,9 +489,5 @@ html[data-reduced-motion="true"] *::after {
   .game-header .eyebrow,
   .surface-meta {
     font-size: 0.65rem;
-  }
-
-  .chinese-checkers-board {
-    width: min(100%, calc((100dvh - 4.8rem) * 1.3125));
   }
 }

@@ -22,6 +22,7 @@ import {
   createSetupIntent,
   markForSlot,
   playStatusLabel,
+  resultSummary,
   setupStatusLabel,
 } from "./model";
 import "./styles.css";
@@ -108,11 +109,22 @@ function handleHostMessage(message: HostSurfaceMessage): void {
       return;
     }
     try {
+      const payload = parsePayload(message);
       updateRuntime({
         hostState: message,
-        payload: parsePayload(message),
+        payload,
         error: null,
       });
+      if (runtime.mode === "play") {
+        const summary = resultSummary(payload as TicTacToePlayView);
+        if (summary !== null) {
+          bridge?.send({
+            type: "surface.result-summary",
+            stateSequence: message.sequence,
+            ...summary,
+          });
+        }
+      }
     } catch {
       reportSurfaceError("INVALID_PROJECTED_VIEW", "服务器视图格式无效。");
     }

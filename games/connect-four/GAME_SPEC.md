@@ -29,7 +29,7 @@ State、Action、View 和 Outcome 都由 strict Zod schema 验证；board 中的
 
 - `connect-four@1.1.0` 新房使用游戏自有 Setup V6。房主必须选择 OWNER、NON_OWNER 或 RANDOM 先手；finalize 后 `playerOrder[0]` 使用 RED，`playerOrder[1]` 使用 YELLOW。
 - RANDOM 只消费独立 setup RNG，不改变 gameplay RNG。重新对局从上一局 `FinalizedRoundSetup` 恢复实际顺序并显示为 FIXED；双方仍须分别重新准备，任何 accepted 设置变更都会清空 ready。
-- 独立 `game-surfaces/connect-four` artifact 同时支持 `1.0.0` 与 `1.1.0` 的 Play/Replay projected View；Setup entrypoint 只由 V6 房间使用。Surface 不导入 Core，也不接触 actor、State、seed、ticket、session 或 canonical replay。
+- 独立 `connect-four@surfaceVersion 1.0.2` Bridge V2 artifact 同时支持 `1.0.0` 与 `1.1.0` 的 Play/Replay projected View；Setup entrypoint 只由 V6 房间使用。Surface 不导入 Core，也不接触 actor、State、seed、ticket、session 或 canonical replay。
 
 ## 领域拒绝码
 

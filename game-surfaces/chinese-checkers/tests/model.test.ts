@@ -19,8 +19,10 @@ import {
   createPlayerCountIntent,
   createResignIntent,
   createStarterIntent,
+  layoutForCell,
   legalTargetsForSelection,
   outcomeLabel,
+  resultSummary,
   setupStatusLabel,
 } from "../src/model";
 
@@ -64,6 +66,46 @@ describe("Chinese Checkers Surface model", () => {
           (cell) => campForCell(cell) === camp,
         ),
       ).toBe(true);
+      const rows = CHINESE_CHECKERS_CAMP_CELLS[camp].reduce<
+        Record<number, number>
+      >((counts, cell) => {
+        const coordinate = CHINESE_CHECKERS_COORDINATES[cell];
+        if (coordinate === undefined)
+          throw new Error("Missing camp coordinate.");
+        const distance = Math.max(
+          Math.abs(coordinate.q),
+          Math.abs(coordinate.r),
+          Math.abs(-coordinate.q - coordinate.r),
+        );
+        counts[distance] = (counts[distance] ?? 0) + 1;
+        return counts;
+      }, {});
+      expect(rows).toEqual({ 4: 3, 5: 2, 6: 1 });
+    }
+
+    const tipCoordinates = [
+      { q: 0, r: -6, x: 50, y: 5 },
+      { q: 6, r: -6, x: 95, y: 27.5 },
+      { q: 6, r: 0, x: 95, y: 72.5 },
+      { q: 0, r: 6, x: 50, y: 95 },
+      { q: -6, r: 6, x: 5, y: 72.5 },
+      { q: -6, r: 0, x: 5, y: 27.5 },
+    ];
+    for (const tip of tipCoordinates) {
+      const cell = CHINESE_CHECKERS_COORDINATES.findIndex(
+        ({ q, r }) => q === tip.q && r === tip.r,
+      );
+      expect(layoutForCell(cell)).toMatchObject({ x: tip.x, y: tip.y });
+    }
+
+    for (const [cell, coordinate] of CHINESE_CHECKERS_COORDINATES.entries()) {
+      const opposite = CHINESE_CHECKERS_COORDINATES.findIndex(
+        ({ q, r }) => q === -coordinate.q && r === -coordinate.r,
+      );
+      const position = layoutForCell(cell);
+      const oppositePosition = layoutForCell(opposite);
+      expect(position.x + oppositePosition.x).toBeCloseTo(100);
+      expect(position.y + oppositePosition.y).toBeCloseTo(100);
     }
   });
 
@@ -139,23 +181,30 @@ describe("Chinese Checkers Surface model", () => {
         yourCamp: "NE",
       }).success,
     ).toBe(false);
-    expect(
-      outcomeLabel({
-        ...view,
-        nextTurnSlotId: null,
-        legalMoves: [],
+    const terminal = chineseCheckersPlayViewSchema.parse({
+      ...view,
+      nextTurnSlotId: null,
+      legalMoves: [],
+      rankings: [
+        { slotId: "slot-1", rank: 1, reason: "LAST_REMAINING" },
+        { slotId: "slot-2", rank: 2, reason: "RESIGNATION" },
+      ],
+      outcome: {
+        type: "RANKING",
         rankings: [
           { slotId: "slot-1", rank: 1, reason: "LAST_REMAINING" },
           { slotId: "slot-2", rank: 2, reason: "RESIGNATION" },
         ],
-        outcome: {
-          type: "RANKING",
-          rankings: [
-            { slotId: "slot-1", rank: 1, reason: "LAST_REMAINING" },
-            { slotId: "slot-2", rank: 2, reason: "RESIGNATION" },
-          ],
-        },
-      }),
-    ).toBe("第一名：北营地");
+      },
+    });
+    expect(outcomeLabel(terminal)).toBe("第一名：北营地");
+    expect(resultSummary(terminal)).toEqual({
+      tone: "win",
+      headline: "你获得第 1 名",
+      details: [
+        "第 1 名：北营地（最后一名未排名玩家）",
+        "第 2 名：南营地（投降）",
+      ],
+    });
   });
 });

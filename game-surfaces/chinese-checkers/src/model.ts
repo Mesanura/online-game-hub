@@ -1,3 +1,5 @@
+import type { SurfaceResultSummaryV2 } from "@online-game-hub/game-surface-bridge";
+
 import {
   CHINESE_CHECKERS_CAMPS,
   CHINESE_CHECKERS_CELL_COUNT,
@@ -9,6 +11,15 @@ import {
 
 export type ChineseCheckersCamp = (typeof CHINESE_CHECKERS_CAMPS)[number];
 export type AxialCoordinate = Readonly<{ q: number; r: number }>;
+
+const campLabels: Readonly<Record<ChineseCheckersCamp, string>> = {
+  N: "北营地",
+  NE: "东北营地",
+  SE: "东南营地",
+  S: "南营地",
+  SW: "西南营地",
+  NW: "西北营地",
+};
 
 const BOARD_RADIUS = 3;
 const directions = [
@@ -91,8 +102,8 @@ const indexByCoordinate = new Map(
   ]),
 );
 const rawPositions = CHINESE_CHECKERS_COORDINATES.map(({ q, r }) => ({
-  x: q + r * 0.5,
-  y: r,
+  x: 1.5 * q,
+  y: Math.sqrt(3) * (r + q / 2),
 }));
 const rawXs = rawPositions.map(({ x }) => x);
 const rawYs = rawPositions.map(({ y }) => y);
@@ -134,11 +145,12 @@ export function layoutForCell(cell: number): {
   const coordinate = CHINESE_CHECKERS_COORDINATES[cell];
   if (coordinate === undefined)
     throw new RangeError("Cell is outside the board.");
-  const rawX = coordinate.q + coordinate.r * 0.5;
+  const rawX = 1.5 * coordinate.q;
+  const rawY = Math.sqrt(3) * (coordinate.r + coordinate.q / 2);
   return {
     ...coordinate,
     x: 5 + ((rawX - minimumX) / (maximumX - minimumX)) * 90,
-    y: 5 + ((coordinate.r - minimumY) / (maximumY - minimumY)) * 90,
+    y: 5 + ((rawY - minimumY) / (maximumY - minimumY)) * 90,
   };
 }
 
@@ -209,13 +221,44 @@ export function outcomeLabel(view: Readonly<ChineseCheckersPlayView>): string {
   if (winner === undefined) return "本局排名已确定";
   const camp = campForSlot(view, winner.slotId);
   if (camp === null) return "本局排名已确定";
-  const campLabels: Readonly<Record<ChineseCheckersCamp, string>> = {
-    N: "北营地",
-    NE: "东北营地",
-    SE: "东南营地",
-    S: "南营地",
-    SW: "西南营地",
-    NW: "西北营地",
-  };
   return `第一名：${campLabels[camp]}`;
+}
+
+function rankingReasonLabel(
+  reason: ChineseCheckersPlayView["rankings"][number]["reason"],
+): string {
+  if (reason === "FINISHED") return "完成目标营地";
+  if (reason === "RESIGNATION") return "投降";
+  if (reason === "BLOCKED") return "无路可走";
+  return "最后一名未排名玩家";
+}
+
+export function resultSummary(
+  view: Readonly<ChineseCheckersPlayView>,
+): Omit<SurfaceResultSummaryV2, "type" | "stateSequence"> | null {
+  if (view.outcome === null) return null;
+  const ownSlot =
+    view.yourCamp === null
+      ? undefined
+      : view.players.find((player) => player.camp === view.yourCamp)?.slotId;
+  const ownRanking = view.outcome.rankings.find(
+    (entry) => entry.slotId === ownSlot,
+  );
+  return {
+    tone:
+      ownRanking === undefined
+        ? "neutral"
+        : ownRanking.rank === 1
+          ? "win"
+          : "neutral",
+    headline:
+      ownRanking === undefined
+        ? "本局排名已确定"
+        : `你获得第 ${ownRanking.rank} 名`,
+    details: view.outcome.rankings.map((entry) => {
+      const camp = campForSlot(view, entry.slotId);
+      const campLabel = camp === null ? "未知营地" : campLabels[camp];
+      return `第 ${entry.rank} 名：${campLabel}（${rankingReasonLabel(entry.reason)}）`;
+    }),
+  };
 }

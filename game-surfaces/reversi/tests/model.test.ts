@@ -15,6 +15,7 @@ import {
   createResignIntent,
   createSetupIntent,
   outcomeLabel,
+  resultSummary,
   setupStatusLabel,
 } from "../src/model";
 
@@ -92,6 +93,11 @@ describe("Reversi Surface model", () => {
       },
     });
     expect(outcomeLabel(terminal)).toBe("胜者：你（黑方，15 比 0）");
+    expect(resultSummary(terminal)).toEqual({
+      tone: "win",
+      headline: "你获胜",
+      details: ["黑方 15 · 白方 0"],
+    });
     expect(
       reversiPlayViewSchema.safeParse({ ...view, rawState: {} }).success,
     ).toBe(false);
