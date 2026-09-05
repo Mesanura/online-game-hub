@@ -2,9 +2,11 @@ import {
   SURFACE_BRIDGE_VERSION,
   SURFACE_READY_TIMEOUT_MS,
   hostHandshakeSchema,
+  hostSurfaceMessageMatchesBridgeVersion,
   hostSurfaceMessageSchema,
-  surfaceHostMessageSchema,
+  surfaceHostMessageSchemaFor,
   type HostSurfaceMessage,
+  type SurfaceBridgeVersion,
   type SurfaceHostMessage,
   type SurfaceMode,
 } from "./protocol.js";
@@ -23,6 +25,7 @@ export interface SurfaceMessageEventTarget {
 export interface GameSurfaceBridgeOptions {
   readonly windowTarget?: SurfaceMessageEventTarget;
   readonly parentWindow?: Window;
+  readonly bridgeVersion?: SurfaceBridgeVersion;
   readonly allowedHostOrigin: string;
   readonly readyTimeoutMs?: number;
   readonly onMessage: (message: HostSurfaceMessage) => void;
@@ -33,6 +36,7 @@ export class GameSurfaceBridge {
   readonly #options: GameSurfaceBridgeOptions;
   readonly #windowTarget: SurfaceMessageEventTarget;
   readonly #parentWindow: Window;
+  readonly #bridgeVersion: SurfaceBridgeVersion;
   #port: MessagePort | null = null;
   #mode: SurfaceMode | null = null;
   #started = false;
@@ -44,6 +48,7 @@ export class GameSurfaceBridge {
     this.#options = options;
     this.#windowTarget = options.windowTarget ?? window;
     this.#parentWindow = options.parentWindow ?? window.parent;
+    this.#bridgeVersion = options.bridgeVersion ?? SURFACE_BRIDGE_VERSION;
   }
 
   get connected(): boolean {
@@ -67,7 +72,9 @@ export class GameSurfaceBridge {
   }
 
   send(message: SurfaceHostMessage): boolean {
-    const parsed = surfaceHostMessageSchema.safeParse(message);
+    const parsed = surfaceHostMessageSchemaFor(this.#bridgeVersion).safeParse(
+      message,
+    );
     if (!parsed.success) {
       throw new TypeError("Invalid Surface-to-Host message.");
     }
@@ -116,7 +123,11 @@ export class GameSurfaceBridge {
       return;
     }
     const hello = hostHandshakeSchema.safeParse(event.data);
-    if (!hello.success || event.ports.length !== 1) {
+    if (
+      !hello.success ||
+      hello.data.bridgeVersion !== this.#bridgeVersion ||
+      event.ports.length !== 1
+    ) {
       this.#protocolError(new Error("Invalid Surface handshake."));
       return;
     }
@@ -142,7 +153,7 @@ export class GameSurfaceBridge {
     try {
       this.#port.postMessage({
         type: "surface.ready",
-        bridgeVersion: SURFACE_BRIDGE_VERSION,
+        bridgeVersion: this.#bridgeVersion,
         nonce: hello.data.nonce,
       });
     } catch {
@@ -153,7 +164,10 @@ export class GameSurfaceBridge {
   #handlePortMessage(input: unknown): void {
     if (this.#disposed) return;
     const parsed = hostSurfaceMessageSchema.safeParse(input);
-    if (!parsed.success) {
+    if (
+      !parsed.success ||
+      !hostSurfaceMessageMatchesBridgeVersion(parsed.data, this.#bridgeVersion)
+    ) {
       this.#protocolError(new Error("Host sent an invalid Surface message."));
       return;
     }

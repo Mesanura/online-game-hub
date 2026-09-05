@@ -1,9 +1,17 @@
 import { z } from "zod";
 
 export const SURFACE_ARTIFACT_SCHEMA_VERSION = 1 as const;
-export const SURFACE_BRIDGE_VERSION = 1 as const;
+export const SURFACE_BRIDGE_V1 = 1 as const;
+export const SURFACE_BRIDGE_V2 = 2 as const;
+export const SURFACE_BRIDGE_VERSION = SURFACE_BRIDGE_V2;
 export const SURFACE_HANDSHAKE_MESSAGE = "game-surface-handshake" as const;
 export const SURFACE_READY_TIMEOUT_MS = 10_000;
+
+export const surfaceBridgeVersionSchema = z.union([
+  z.literal(SURFACE_BRIDGE_V1),
+  z.literal(SURFACE_BRIDGE_V2),
+]);
+export type SurfaceBridgeVersion = z.infer<typeof surfaceBridgeVersionSchema>;
 
 const GAME_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 const EXACT_SEMVER_PATTERN =
@@ -104,7 +112,7 @@ export const surfaceArtifactManifestV1Schema = z
         error: "Supported game versions must be unique.",
       }),
     surfaceVersion: z.string().regex(EXACT_SEMVER_PATTERN),
-    bridgeVersion: z.literal(SURFACE_BRIDGE_VERSION),
+    bridgeVersion: surfaceBridgeVersionSchema,
     entrypoints: z
       .object({
         setup: z.string().regex(ENTRYPOINT_PATTERN),
@@ -129,7 +137,7 @@ export type SurfaceArtifactManifestV1 = z.infer<
 export const hostHandshakeSchema = z
   .object({
     type: z.literal("host.hello"),
-    bridgeVersion: z.literal(SURFACE_BRIDGE_VERSION),
+    bridgeVersion: surfaceBridgeVersionSchema,
     nonce: z.string().min(32).max(256),
     mode: surfaceModeSchema,
   })
@@ -137,7 +145,7 @@ export const hostHandshakeSchema = z
 export const surfaceHandshakeSchema = z
   .object({
     type: z.literal("surface.ready"),
-    bridgeVersion: z.literal(SURFACE_BRIDGE_VERSION),
+    bridgeVersion: surfaceBridgeVersionSchema,
     nonce: z.string().min(32).max(256),
   })
   .strict();
@@ -151,11 +159,11 @@ const connectionStateSchema = z.enum([
   "closed",
 ]);
 
-export const hostSurfaceMessageSchema = z.discriminatedUnion("type", [
+const hostSurfaceMessageVariants = [
   z
     .object({
       type: z.literal("host.init"),
-      bridgeVersion: z.literal(SURFACE_BRIDGE_VERSION),
+      bridgeVersion: surfaceBridgeVersionSchema,
       mode: surfaceModeSchema,
       gameId: z.string().regex(GAME_ID_PATTERN),
       gameVersion: z.string().regex(EXACT_SEMVER_PATTERN),
@@ -221,33 +229,91 @@ export const hostSurfaceMessageSchema = z.discriminatedUnion("type", [
     })
     .strict(),
   z.object({ type: z.literal("host.dispose") }).strict(),
-]);
+] as const;
+
+export const hostSurfaceMessageSchema = z.discriminatedUnion(
+  "type",
+  hostSurfaceMessageVariants,
+);
 export type HostSurfaceMessage = z.infer<typeof hostSurfaceMessageSchema>;
 
-export const surfaceHostMessageSchema = z.discriminatedUnion("type", [
-  z
-    .object({
-      type: z.literal("surface.intent"),
-      clientIntentId: z.string().min(1).max(128),
-      intent: surfaceSafeValueSchema,
-    })
-    .strict(),
-  z
-    .object({
-      type: z.literal("surface.error"),
-      code: z.string().min(1).max(128),
-      message: z.string().max(512).optional(),
-    })
-    .strict(),
-  z
-    .object({
-      type: z.literal("surface.diagnostic"),
-      name: z.string().min(1).max(128),
-      value: z.union([z.string(), z.number().finite(), z.boolean()]).optional(),
-    })
-    .strict(),
+const surfaceIntentMessageSchema = z
+  .object({
+    type: z.literal("surface.intent"),
+    clientIntentId: z.string().min(1).max(128),
+    intent: surfaceSafeValueSchema,
+  })
+  .strict();
+const surfaceErrorMessageSchema = z
+  .object({
+    type: z.literal("surface.error"),
+    code: z.string().min(1).max(128),
+    message: z.string().max(512).optional(),
+  })
+  .strict();
+const surfaceDiagnosticMessageSchema = z
+  .object({
+    type: z.literal("surface.diagnostic"),
+    name: z.string().min(1).max(128),
+    value: z.union([z.string(), z.number().finite(), z.boolean()]).optional(),
+  })
+  .strict();
+
+export const surfaceResultToneSchema = z.enum([
+  "win",
+  "loss",
+  "draw",
+  "neutral",
 ]);
-export type SurfaceHostMessage = z.infer<typeof surfaceHostMessageSchema>;
+export type SurfaceResultTone = z.infer<typeof surfaceResultToneSchema>;
+
+export const surfaceResultSummaryV2Schema = z
+  .object({
+    type: z.literal("surface.result-summary"),
+    stateSequence: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+    tone: surfaceResultToneSchema,
+    headline: z.string().min(1).max(80),
+    details: z.array(z.string().min(1).max(120)).max(6).optional(),
+  })
+  .strict();
+export type SurfaceResultSummaryV2 = z.infer<
+  typeof surfaceResultSummaryV2Schema
+>;
+
+export const surfaceHostMessageV1Schema = z.discriminatedUnion("type", [
+  surfaceIntentMessageSchema,
+  surfaceErrorMessageSchema,
+  surfaceDiagnosticMessageSchema,
+]);
+export type SurfaceHostMessageV1 = z.infer<typeof surfaceHostMessageV1Schema>;
+
+export const surfaceHostMessageV2Schema = z.discriminatedUnion("type", [
+  surfaceIntentMessageSchema,
+  surfaceErrorMessageSchema,
+  surfaceDiagnosticMessageSchema,
+  surfaceResultSummaryV2Schema,
+]);
+export type SurfaceHostMessageV2 = z.infer<typeof surfaceHostMessageV2Schema>;
+
+export const surfaceHostMessageSchema = surfaceHostMessageV2Schema;
+export type SurfaceHostMessage = SurfaceHostMessageV2;
+
+export function surfaceHostMessageSchemaFor(
+  bridgeVersion: SurfaceBridgeVersion,
+) {
+  return bridgeVersion === SURFACE_BRIDGE_V1
+    ? surfaceHostMessageV1Schema
+    : surfaceHostMessageV2Schema;
+}
+
+export function hostSurfaceMessageMatchesBridgeVersion(
+  message: HostSurfaceMessage,
+  bridgeVersion: SurfaceBridgeVersion,
+): boolean {
+  return (
+    message.type !== "host.init" || message.bridgeVersion === bridgeVersion
+  );
+}
 
 export type HostHandshake = z.infer<typeof hostHandshakeSchema>;
 export type SurfaceHandshake = z.infer<typeof surfaceHandshakeSchema>;

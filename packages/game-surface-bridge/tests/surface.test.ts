@@ -50,7 +50,7 @@ describe("GameSurfaceBridge", () => {
       origin: "https://hub.example",
       data: {
         type: "host.hello",
-        bridgeVersion: 1,
+        bridgeVersion: 2,
         nonce: "n".repeat(32),
         mode: "play",
       },
@@ -62,7 +62,7 @@ describe("GameSurfaceBridge", () => {
       origin: "https://hub.example",
       data: {
         type: "host.hello",
-        bridgeVersion: 1,
+        bridgeVersion: 2,
         nonce: "n".repeat(32),
         mode: "play",
       },
@@ -74,7 +74,7 @@ describe("GameSurfaceBridge", () => {
       expect(surfaceMessages).toEqual([
         {
           type: "surface.ready",
-          bridgeVersion: 1,
+          bridgeVersion: 2,
           nonce: "n".repeat(32),
         },
       ]),
@@ -82,7 +82,7 @@ describe("GameSurfaceBridge", () => {
 
     channel.port1.postMessage({
       type: "host.init",
-      bridgeVersion: 1,
+      bridgeVersion: 2,
       mode: "play",
       gameId: "tic-tac-toe",
       gameVersion: "1.1.0",
@@ -98,7 +98,7 @@ describe("GameSurfaceBridge", () => {
       expect(hostMessages).toEqual([
         {
           type: "host.init",
-          bridgeVersion: 1,
+          bridgeVersion: 2,
           mode: "play",
           gameId: "tic-tac-toe",
           gameVersion: "1.1.0",
@@ -134,7 +134,7 @@ describe("GameSurfaceBridge", () => {
       origin: "null",
       data: {
         type: "host.hello",
-        bridgeVersion: 1,
+        bridgeVersion: 2,
         nonce: "n".repeat(32),
         mode: "setup",
       },
@@ -149,6 +149,44 @@ describe("GameSurfaceBridge", () => {
     expect(bridge.send(intent)).toBe(true);
     expect(bridge.send(intent)).toBe(false);
     await vi.waitFor(() => expect(surfaceMessages).toContainEqual(intent));
+    bridge.dispose();
+  });
+
+  it("only sends result summaries after negotiating Bridge V2", async () => {
+    const target = new FakeWindowTarget();
+    const parentWindow = {} as Window;
+    const channel = new MessageChannel();
+    const messages: unknown[] = [];
+    channel.port1.onmessage = (event) => messages.push(event.data);
+    channel.port1.start();
+    const bridge = new GameSurfaceBridge({
+      bridgeVersion: 2,
+      windowTarget: target,
+      parentWindow,
+      allowedHostOrigin: "*",
+      onMessage: () => undefined,
+    });
+    bridge.start();
+    target.emit({
+      source: parentWindow,
+      origin: "null",
+      data: {
+        type: "host.hello",
+        bridgeVersion: 2,
+        nonce: "n".repeat(32),
+        mode: "play",
+      },
+      ports: [channel.port2],
+    });
+
+    const summary = {
+      type: "surface.result-summary",
+      stateSequence: 1,
+      tone: "draw",
+      headline: "平局",
+    } as const;
+    expect(bridge.send(summary)).toBe(true);
+    await vi.waitFor(() => expect(messages).toContainEqual(summary));
     bridge.dispose();
   });
 

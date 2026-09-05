@@ -20,6 +20,7 @@ describe("SurfaceBridgeHost", () => {
     let surfacePort: MessagePort | undefined;
     const hostMessages: unknown[] = [];
     const intents: unknown[] = [];
+    const summaries: unknown[] = [];
     const statuses: SurfaceBridgeHostStatus[] = [];
     const frameWindow: SurfaceFrameWindow = {
       postMessage(message, _targetOrigin, transfer) {
@@ -42,6 +43,7 @@ describe("SurfaceBridgeHost", () => {
       },
       createNonce: () => "n".repeat(32),
       onIntent: (message) => intents.push(message),
+      onResultSummary: (message) => summaries.push(message),
       onStatusChange: (status) => {
         statuses.push(status);
         if (status.state === "ready") {
@@ -66,7 +68,7 @@ describe("SurfaceBridgeHost", () => {
     host.start();
     expect(handshake).toEqual({
       type: "host.hello",
-      bridgeVersion: 1,
+      bridgeVersion: 2,
       nonce: "n".repeat(32),
       mode: "play",
     });
@@ -75,7 +77,7 @@ describe("SurfaceBridgeHost", () => {
 
     surfacePort?.postMessage({
       type: "surface.ready",
-      bridgeVersion: 1,
+      bridgeVersion: 2,
       nonce: "n".repeat(32),
     });
     await vi.waitFor(() => expect(host.status.state).toBe("ready"));
@@ -83,7 +85,7 @@ describe("SurfaceBridgeHost", () => {
       expect(hostMessages.slice(0, 3)).toEqual([
         {
           type: "host.init",
-          bridgeVersion: 1,
+          bridgeVersion: 2,
           mode: "play",
           gameId: "tic-tac-toe",
           gameVersion: "1.1.0",
@@ -107,6 +109,15 @@ describe("SurfaceBridgeHost", () => {
       ]),
     );
 
+    const summary = {
+      type: "surface.result-summary",
+      stateSequence: 1,
+      tone: "win",
+      headline: "你获胜",
+    } as const;
+    surfacePort?.postMessage(summary);
+    await vi.waitFor(() => expect(summaries).toEqual([summary]));
+
     const intent = {
       type: "surface.intent",
       clientIntentId: "intent-1",
@@ -127,6 +138,51 @@ describe("SurfaceBridgeHost", () => {
       "loading",
       "ready",
     ]);
+    host.dispose();
+  });
+
+  it("negotiates Bridge V1 and rejects V2-only result messages", async () => {
+    let handshake: unknown;
+    let surfacePort: MessagePort | undefined;
+    const host = new SurfaceBridgeHost({
+      bridgeVersion: 1,
+      frameWindow: () => ({
+        postMessage(message, _targetOrigin, transfer) {
+          handshake = message;
+          surfacePort = transfer?.[0] as MessagePort | undefined;
+        },
+      }),
+      mode: "play",
+      init: {
+        gameId: "tic-tac-toe",
+        gameVersion: "1.0.0",
+        locale: "zh-CN",
+        reducedMotion: false,
+      },
+      createNonce: () => "n".repeat(32),
+      onIntent: () => undefined,
+    });
+
+    host.start();
+    expect(handshake).toMatchObject({ bridgeVersion: 1 });
+    surfacePort?.postMessage({
+      type: "surface.ready",
+      bridgeVersion: 1,
+      nonce: "n".repeat(32),
+    });
+    await vi.waitFor(() => expect(host.status.state).toBe("ready"));
+    surfacePort?.postMessage({
+      type: "surface.result-summary",
+      stateSequence: 1,
+      tone: "win",
+      headline: "你获胜",
+    });
+    await vi.waitFor(() =>
+      expect(host.status).toMatchObject({
+        state: "failed",
+        code: "INVALID_MESSAGE",
+      }),
+    );
     host.dispose();
   });
 
@@ -152,7 +208,7 @@ describe("SurfaceBridgeHost", () => {
     host.start();
     ports[0]?.postMessage({
       type: "surface.ready",
-      bridgeVersion: 1,
+      bridgeVersion: 2,
       nonce: "x".repeat(32),
     });
     await nextMessage();
@@ -247,7 +303,7 @@ describe("SurfaceBridgeHost", () => {
       host.start();
       surfacePort?.postMessage({
         type: "surface.ready",
-        bridgeVersion: 1,
+        bridgeVersion: 2,
         nonce: "n".repeat(32),
       });
       await vi.waitFor(() => expect(host.status.state).toBe("ready"));

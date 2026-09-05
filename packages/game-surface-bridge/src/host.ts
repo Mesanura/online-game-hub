@@ -1,11 +1,13 @@
 import {
   SURFACE_BRIDGE_VERSION,
   SURFACE_READY_TIMEOUT_MS,
+  hostSurfaceMessageMatchesBridgeVersion,
   hostHandshakeSchema,
   hostSurfaceMessageSchema,
   surfaceHandshakeSchema,
-  surfaceHostMessageSchema,
+  surfaceHostMessageSchemaFor,
   type HostSurfaceMessage,
+  type SurfaceBridgeVersion,
   type SurfaceHostMessage,
   type SurfaceMode,
 } from "./protocol.js";
@@ -37,6 +39,7 @@ export interface SurfaceFrameWindow {
 
 export interface SurfaceBridgeHostOptions {
   readonly frameWindow: () => SurfaceFrameWindow | null;
+  readonly bridgeVersion?: SurfaceBridgeVersion;
   readonly mode: SurfaceMode;
   readonly init: {
     readonly gameId: string;
@@ -58,6 +61,12 @@ export interface SurfaceBridgeHostOptions {
     message: Extract<
       SurfaceHostMessage,
       { readonly type: "surface.diagnostic" }
+    >,
+  ) => void;
+  readonly onResultSummary?: (
+    message: Extract<
+      SurfaceHostMessage,
+      { readonly type: "surface.result-summary" }
     >,
   ) => void;
   readonly onStatusChange?: (status: SurfaceBridgeHostStatus) => void;
@@ -95,6 +104,7 @@ function containsHostOwnedIntentKey(value: unknown): boolean {
 
 export class SurfaceBridgeHost {
   readonly #options: SurfaceBridgeHostOptions;
+  readonly #bridgeVersion: SurfaceBridgeVersion;
   #status: SurfaceBridgeHostStatus = { state: "idle" };
   #attempt = 0;
   #nonce: string | null = null;
@@ -104,6 +114,7 @@ export class SurfaceBridgeHost {
 
   constructor(options: SurfaceBridgeHostOptions) {
     this.#options = options;
+    this.#bridgeVersion = options.bridgeVersion ?? SURFACE_BRIDGE_VERSION;
   }
 
   get status(): SurfaceBridgeHostStatus {
@@ -130,7 +141,7 @@ export class SurfaceBridgeHost {
     )();
     const handshake = hostHandshakeSchema.safeParse({
       type: "host.hello",
-      bridgeVersion: SURFACE_BRIDGE_VERSION,
+      bridgeVersion: this.#bridgeVersion,
       nonce,
       mode: this.#options.mode,
     });
@@ -181,7 +192,10 @@ export class SurfaceBridgeHost {
 
   send(message: HostSurfaceMessage): boolean {
     const parsed = hostSurfaceMessageSchema.safeParse(message);
-    if (!parsed.success) {
+    if (
+      !parsed.success ||
+      !hostSurfaceMessageMatchesBridgeVersion(parsed.data, this.#bridgeVersion)
+    ) {
       throw new TypeError("Invalid Host-to-Surface message.");
     }
     if (this.#status.state !== "ready" || this.#port === null) return false;
@@ -220,13 +234,17 @@ export class SurfaceBridgeHost {
         this.#fail("NONCE_MISMATCH");
         return;
       }
+      if (ready.data.bridgeVersion !== this.#bridgeVersion) {
+        this.#fail("INVALID_MESSAGE");
+        return;
+      }
       this.#clearTimer();
       const readyStatus = { state: "ready", attempt: this.#attempt } as const;
       this.#status = readyStatus;
       if (
         !this.send({
           type: "host.init",
-          bridgeVersion: SURFACE_BRIDGE_VERSION,
+          bridgeVersion: this.#bridgeVersion,
           mode: this.#options.mode,
           ...this.#options.init,
         })
@@ -238,7 +256,9 @@ export class SurfaceBridgeHost {
       return;
     }
     if (this.#status.state !== "ready") return;
-    const parsed = surfaceHostMessageSchema.safeParse(input);
+    const parsed = surfaceHostMessageSchemaFor(this.#bridgeVersion).safeParse(
+      input,
+    );
     if (!parsed.success) {
       this.#fail("INVALID_MESSAGE");
       return;
@@ -265,8 +285,10 @@ export class SurfaceBridgeHost {
       this.#options.onIntent(message);
     } else if (message.type === "surface.error") {
       this.#options.onSurfaceError?.(message);
-    } else {
+    } else if (message.type === "surface.diagnostic") {
       this.#options.onDiagnostic?.(message);
+    } else {
+      this.#options.onResultSummary?.(message);
     }
   }
 

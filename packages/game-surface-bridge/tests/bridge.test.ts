@@ -6,6 +6,8 @@ import {
   hostSurfaceMessageSchema,
   surfaceArtifactManifestV1Schema,
   surfaceHostMessageSchema,
+  surfaceHostMessageV1Schema,
+  surfaceHostMessageV2Schema,
 } from "../src/index.js";
 
 describe("SurfaceArtifactManifestV1", () => {
@@ -30,7 +32,7 @@ describe("SurfaceArtifactManifestV1", () => {
       entrypoints: { ...manifest.entrypoints, play: "/play.html" },
     },
     { ...manifest, supportedGameVersions: ["1.1.0", "1.1.0"] },
-    { ...manifest, bridgeVersion: 2 },
+    { ...manifest, bridgeVersion: 3 },
     { ...manifest, ticket: "secret" },
   ])("rejects unsafe or incompatible artifact metadata %#", (candidate) => {
     expect(surfaceArtifactManifestV1Schema.safeParse(candidate).success).toBe(
@@ -39,7 +41,7 @@ describe("SurfaceArtifactManifestV1", () => {
   });
 });
 
-describe("Game Surface Bridge V1", () => {
+describe("Game Surface Bridge", () => {
   it("uses a nonce-bound handshake", () => {
     const handshake = {
       type: "host.hello",
@@ -144,4 +146,34 @@ describe("Game Surface Bridge V1", () => {
       ).toBe(false);
     },
   );
+
+  it("keeps result summaries exclusive to Bridge V2", () => {
+    const summary = {
+      type: "surface.result-summary",
+      stateSequence: 4,
+      tone: "win",
+      headline: "你获胜",
+      details: ["五子连珠"],
+    } as const;
+
+    expect(surfaceHostMessageV2Schema.parse(summary)).toEqual(summary);
+    expect(surfaceHostMessageV1Schema.safeParse(summary).success).toBe(false);
+  });
+
+  it.each([
+    { headline: "", details: undefined },
+    { headline: "x".repeat(81), details: undefined },
+    { headline: "本局结束", details: Array.from({ length: 7 }, () => "结果") },
+    { headline: "本局结束", details: ["x".repeat(121)] },
+  ])("rejects invalid Bridge V2 result text %#", ({ headline, details }) => {
+    expect(
+      surfaceHostMessageV2Schema.safeParse({
+        type: "surface.result-summary",
+        stateSequence: 1,
+        tone: "neutral",
+        headline,
+        ...(details === undefined ? {} : { details }),
+      }).success,
+    ).toBe(false);
+  });
 });

@@ -81,7 +81,7 @@ Browser
 | `game-registry`       | 显式组合游戏 manifest、client loader 和 server definition                                                        | 游戏规则实现、运行时目录扫描                                 |
 | `protocol`            | 跨 Web/Game Server 的 envelope、错误码、票据 claims 和 Zod schema                                                | 具体游戏 Action/State/View 联合类型                          |
 | `game-setup`          | 两种 runtime 共用的纯 Setup definition、reducer/projection/finalize 类型与通用最终结果校验                       | React、DOM、transport、具体游戏规则、数据库                  |
-| `game-surface-bridge` | Surface artifact 与 Bridge V1 的 JSON schema、消息类型及可选 JS helper                                           | React、Next、socket、ticket、具体游戏、权威 State            |
+| `game-surface-bridge` | Surface artifact、Bridge V1/V2 JSON schema、消息类型及可选 JS helper                                             | React、Next、socket、ticket、具体游戏、权威 State            |
 | `database`            | PostgreSQL/Drizzle client、checked-in migrations、durable replay、Match archive/history 与 User association      | 具体游戏、规则执行、UI、active authoritative State           |
 | `ui`                  | 无业务规则的共享视觉组件与 design tokens                                                                         | 网络、房间、游戏规则和数据库访问                             |
 
@@ -178,7 +178,7 @@ Realtime simulation 使用固定整数单位和单调 server tick；实际 wall 
 
 每个 `game-surfaces/*/package.json` 必须显式声明 `onlineGameHub.surfaceArtifact: true | false`；只有 Workbench 等非发布工具可以是 `false`。发布 Surface 用 `surface.config.json` 描述不含摘要的 artifact 契约，由仓库级 artifact CLI 驱动构建收尾、锁定和验证，Surface 不声明该工具为 workspace 依赖。发布 artifact 的 `dist/surface.manifest.json` 不参与自身摘要；其余文件按 POSIX 相对路径排序，以 `online-game-hub-surface-artifact-v1` 域分隔、路径字节数、路径、内容字节数和原始内容做 canonical SHA-256。源码侧 `surface.lock.json` 固定 gameId、surfaceVersion 与摘要；普通 build 只读取并验证锁，内容变化必须先提升 surfaceVersion，再显式更新锁。Setup/Play/Replay entrypoint 必须分别位于同名 mode 目录。发布工具允许相同摘要的幂等重试，但拒绝覆盖同一 gameId/surfaceVersion 下不同摘要的已有内容。
 
-V1 Host 只创建不含 `allow-same-origin` 的 sandboxed iframe，按能力最小开放 scripts 与 pointer lock。静态路径不读取登录态，并为 opaque origin 模块加载提供 CORS；CSP 默认 `connect-src 'none'`，素材随 artifact 发布。首个 window `postMessage` 仅携带一次性 nonce 并移交 `MessageChannel`，之后双方只监听专用 port。Host 校验 iframe window、nonce、bridge version 和每条 strict schema；10 秒未 ready、Surface crash 或非法消息进入可重试错误态，且不会提交 intent。
+Host 只创建不含 `allow-same-origin` 的 sandboxed iframe，按能力最小开放 scripts 与 pointer lock。静态路径不读取登录态，并为 opaque origin 模块加载提供 CORS；CSP 默认 `connect-src 'none'`，素材随 artifact 发布。首个 window `postMessage` 仅携带一次性 nonce 并移交 `MessageChannel`，之后双方只监听专用 port。Host 按 artifact 声明同时协商 Bridge V1/V2，校验 iframe window、nonce、exact bridge version 和每条 strict schema；10 秒未 ready、Surface crash 或非法消息进入可重试错误态，且不会提交 intent。
 
 `apps/web` 只按 exact `(gameId, gameVersion, mode)` deployment 挂载 `GameSurfaceFrame`，不再导入或回退到 legacy Client Module；缺失精确 Play/Replay entrypoint 时显示稳定的不可用状态。iframe 始终位于不参与 HUD 布局的 game stage 内，Host 在 ready 后发送最新 projected state，并用 `ResizeObserver`、fullscreen event 与 focus-mode 属性发送环境尺寸。`/game-surfaces/*` 由静态路径提供 immutable cache、opaque-origin CORS、CORP、`nosniff` 与禁止联网的 CSP，同时完全绕过 guest-session proxy；加载、握手或运行失败只显示可重试遮罩，不转发 Surface intent。
 
@@ -186,7 +186,7 @@ V1 Host 只创建不含 `allow-same-origin` 的 sandboxed iframe，按能力最�
 
 `game-surfaces/workbench` 是显式 `surfaceArtifact: false` 的非发布 Host 工具，只依赖 Bridge，不依赖 Next、Game Server 或具体游戏。它可加载任意 HTTP(S) Surface dev URL，并以安全 projected fixtures覆盖 Setup、回合制 Play、Realtime Play 与 Replay；开发者可切换连接/只读/终局/reduced-motion、推进 revision/setupRevision/tick、选择完整验收 viewport，并验证 fullscreen/focus mode 与 intent accepted/rejected/stale 结果。Fixture 与 conformance tests 必须继续通过 Bridge sensitive-key 拒绝规则。
 
-Host 只发送 mode、game/version、locale、reduced-motion、最新 projected View、平台连接/只读/round/revision/tick 状态、viewport/fullscreen、intent 结果、dispose，以及 deployment 显式声明后才可发送的受限平台命令。Bridge V1 首个可选平台命令是 `host.command { control: "RESIGN", clientIntentId }`：它不携带 actor、Action/Input payload、round 或 revision；exact Surface 必须用同一 `clientIntentId` 生成自己的 `surface.intent`，再走普通 Action/Input 结果闭环。Surface 只发送 Setup Action、回合制 Action 或 realtime Input intent，以及无敏感数据的 ready/error/diagnostic。Host SDK 才能补充 command ID、round、expected revision、input sequence 和 transport envelope；Surface 不接触 ticket、session、actor、raw State、RNG、canonical replay 或 WebSocket。
+Host 只发送 mode、game/version、locale、reduced-motion、最新 projected View、平台连接/只读/round/revision/tick 状态、viewport/fullscreen、intent 结果、dispose，以及 deployment 显式声明后才可发送的受限平台命令。Bridge V1 的可选平台命令 `host.command { control: "RESIGN", clientIntentId }` 不携带 actor、Action/Input payload、round 或 revision；exact Surface 必须用同一 `clientIntentId` 生成自己的 `surface.intent`，再走普通 Action/Input 结果闭环。Bridge V2 额外允许 play Surface 对最近一次 completed `host.state.sequence` 发送严格受限的纯文本 `surface.result-summary`；Host 只展示且绝不据此推进 lifecycle。Surface 其余出站仍限于 Setup Action、回合制 Action 或 realtime Input intent，以及无敏感数据的 ready/error/diagnostic。Host SDK 才能补充 command ID、round、expected revision、input sequence 和 transport envelope；Surface 不接触 ticket、session、actor、raw State、RNG、canonical replay 或 WebSocket。
 
 ### 7.3 Game-defined Round Setup
 

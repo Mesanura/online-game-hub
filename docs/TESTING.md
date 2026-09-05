@@ -1,6 +1,6 @@
 # 测试策略
 
-> 状态：Protocol V5/V6 双轨、Game Surface Bridge V1、Setup Core 与 replay capability 测试策略
+> 状态：Protocol V5/V6 双轨、Game Surface Bridge V1/V2、Setup Core 与 replay capability 测试策略
 > 本文是测试层级、职责、最低场景和质量门禁的权威来源。具体业务范围见 [PRODUCT.md](./PRODUCT.md)。
 
 M7-B 私有历史与回放测试覆盖：UserId + matchId 数据库授权、双账户共享同局、游客永久不可见、abandoned/incomplete 拒绝、损坏数据安全错误和跨连接读取；runtime revision 0..N frame reconstruction、exact historical definition、determinism、RNG/Outcome/sequence/actor/payload 篡改、projection 异常及帧数/响应大小上限；五款游戏 historical client module 独立解析和 replay read-only 不提交 Action；Web/API 的 401、not-found、unavailable、私有 headers、帧控制、slider、播放清理、移动端大棋盘容器和无 WebSocket。
@@ -381,7 +381,7 @@ Harness 为 Web 预留随机 loopback port，并用 `port: 0` 启动正式 ticke
 
 Surface 包的独立契约门禁由 `pnpm contract-test` 进入 Turbo graph。全仓 `pnpm build` 后必须依次运行 `pnpm surface:verify` 与 `pnpm surface:publish`：前者验证所有显式发布 workspace 的 manifest、mode entrypoint、源码锁与 canonical digest，并拒绝未提升 `surfaceVersion` 的内容漂移；后者验证不可覆盖的 immutable 复制。相同 digest 的重复发布只能是 no-op，不得重写目标文件。
 
-Web iframe Host 的组件测试至少验证 sandbox 不含 same-origin/form/popup/top-navigation 权限，静态路径具备 immutable/CORS/CSP headers 且绕过 session proxy；Web production build 必须实际加载 `next.config.ts`，防止只在测试对象中成立而部署配置无效。握手、nonce、非法消息、重复 intent、timeout、retry 与 dispose 继续由 `game-surface-bridge` 的 fake-channel contract tests 覆盖。
+Web iframe Host 的组件测试至少验证 sandbox 不含 same-origin/form/popup/top-navigation 权限，静态路径具备 immutable/CORS/CSP headers 且绕过 session proxy；Web production build 必须实际加载 `next.config.ts`，防止只在测试对象中成立而部署配置无效。握手、nonce、exact V1/V2 协商、非法消息、重复 intent、timeout、retry、dispose 与 V2 result-summary 长度/行数限制继续由 `game-surface-bridge` 的 fake-channel contract tests 覆盖。
 
 Tic-Tac-Toe Surface 以 `surfaceVersion 1.0.2` 同时覆盖 `gameVersion 1.0.0`/`1.1.0`；contract/model tests 必须证明历史版本只接受普通 WIN/DRAW 与落子 intent，而 current 版本另可显示 `RESIGNATION` WIN 并响应平台投降命令。历史版本仍保留 V5 Setup/lifecycle 与 frozen Core/golden replay，不得因表现层共用而放宽 Action 或 Outcome。
 
