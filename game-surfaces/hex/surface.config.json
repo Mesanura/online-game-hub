@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "gameId": "hex",
+  "supportedGameVersions": ["1.0.0"],
+  "surfaceVersion": "1.0.0",
+  "bridgeVersion": 1,
+  "entrypoints": {
+    "setup": "setup/index.html",
+    "play": "play/index.html",
+    "replay": "replay/index.html"
+  },
+  "capabilities": {}
+}

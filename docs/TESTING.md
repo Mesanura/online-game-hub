@@ -331,12 +331,12 @@ Web E2E 同时验证三阶段 App Router：创建/加入和 canonical 邀请进�
 
 `tooling/e2e/tests/hex-vertical-slice.spec.ts` 使用相同真实 harness，独立验证：
 
-1. 目录、页面、11×11 菱形棋盘、四条红蓝边、A–K/1–11 坐标和本轮 BLUE/RED roles；
-2. 越过 disabled cell 的 RED 错轮 intent 被真实 Server 拒绝且 revision 保持 `0`；
+1. 目录、页面、独立 Setup/Play/Replay iframe、11×11 菱形棋盘、四条红蓝边、A–K/1–11 坐标和本轮 BLUE/RED roles；
+2. RED 错轮 cell 在独立 Surface 内保持 disabled 且 revision 为 `0`；伪造 actor、schema-invalid、stale 与 duplicate intent 的权威拒绝由 Protocol V6 integration 覆盖；
 3. 第一轮完成 21-revision BLUE 连接胜局，11-cell canonical path 只以白色模糊发光边框高亮；
-4. 房主再次选择自己先手，双方在同一 room/stable slots 开始第二轮，因此该测试中角色保持不变；RED 在 BLUE 回合从共用 HUD 取消投降确认时不产生 Action；
+4. 双方点击“重新对局”直接复用上一局完整 finalized setup，在同一 room/stable slots 开始第二轮且角色保持不变；RED 在 BLUE 回合从共用 HUD 取消投降确认时不产生 Action；
 5. RED 再次确认投降后产生 1-revision RESIGNATION WIN，不显示连接路径 glow；
-6. 两轮独立 Match/replay 从 PostgreSQL 新 connection 重读并验证，双方 private history 返回两条安全 metadata。
+6. 两轮独立 Match/replay 从 PostgreSQL 新 connection 重读并验证，双方 private history 返回两条安全 metadata，历史页按 exact `gameVersion` 加载只读 Replay Surface。
 
 `tooling/e2e/tests/reversi-vertical-slice.spec.ts` 使用相同真实 harness，独立验证：
 
@@ -413,6 +413,8 @@ Connect Four Surface 迁移额外保持 `1.0.0`/`1.1.0` projected View 的同一
 Gomoku Surface 迁移同样以一个 artifact 覆盖 `1.0.0`/`1.1.0` projected View；current E2E 必须覆盖保留 15×15 Config 的 Setup iframe、225 格 Play iframe、桌面尺寸适配、平台投降和 Replay iframe。19×19 Config、长连和历史 `1.0.0` exact 行为继续由 Core、Setup 与 golden tests 覆盖。
 
 Reversi Surface 迁移以同一 artifact 覆盖 `1.0.0`/`1.1.0` projected View；current E2E 必须覆盖 Setup iframe、64 格 Play iframe、服务器 `legalMoves`、翻转与非满盘终局、平台投降和 Replay iframe。Surface 不得自行扫描夹线、判断强制跳过或产生 PASS。
+
+Hex Surface 迁移以一个 artifact 精确覆盖 `1.0.0`；E2E 必须覆盖 Setup/Play/Replay iframe、121 格菱形棋盘、四条连接边、44 个坐标标签、上一局完整设置复用、平台投降和服务器 canonical `winningPath` 高亮。Surface 只验证并显示 projected path，不自行运行 BFS、推断连接或生成 Outcome。
 
 所有当前支持 `gameVersion` 的 golden replay：
 

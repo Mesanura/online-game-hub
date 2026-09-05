@@ -71,9 +71,14 @@ describe("explicit game registry", () => {
       expect(
         resolveGameDeployment(manifest.id, manifest.gameVersion),
       ).toMatchObject(
-        ["tic-tac-toe", "pong", "connect-four", "gomoku", "reversi"].includes(
-          manifest.id,
-        )
+        [
+          "tic-tac-toe",
+          "pong",
+          "connect-four",
+          "gomoku",
+          "hex",
+          "reversi",
+        ].includes(manifest.id)
           ? {
               gameId: manifest.id,
               gameVersion: manifest.gameVersion,
@@ -257,6 +262,27 @@ describe("explicit game registry", () => {
         });
       }
     }
+    expect(resolveGameDeployment("hex", "1.0.0")).toMatchObject({
+      setupProtocol: 6,
+      presentation: {
+        kind: "surface-v1",
+        publicBasePath: "/game-surfaces/hex/1.0.0",
+        artifact: {
+          supportedGameVersions: ["1.0.0"],
+          surfaceVersion: "1.0.0",
+          contentDigest: "sha256-q6sWjj53xJ0lSTSJDj/UYGqjuny/dn3D/ALg8fLV8NE=",
+        },
+      },
+    });
+    for (const mode of ["setup", "play", "replay"] as const) {
+      expect(resolveGameSurfaceEntrypoint("hex", "1.0.0", mode)).toMatchObject({
+        gameId: "hex",
+        gameVersion: "1.0.0",
+        surfaceVersion: "1.0.0",
+        mode,
+        url: `/game-surfaces/hex/1.0.0/${mode}/index.html`,
+      });
+    }
     for (const gameVersion of ["1.0.0", "1.1.0"] as const) {
       expect(resolveGameDeployment("reversi", gameVersion)).toMatchObject({
         setupProtocol: gameVersion === "1.1.0" ? 6 : 5,
@@ -310,6 +336,7 @@ describe("explicit game registry", () => {
       ["pong", "1.0.0"],
       ["connect-four", "1.1.0"],
       ["gomoku", "1.1.0"],
+      ["hex", "1.0.0"],
       ["reversi", "1.1.0"],
     ] as const) {
       const definition = resolveRoundSetupDefinition(gameId, gameVersion);

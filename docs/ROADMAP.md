@@ -345,7 +345,7 @@ M8 结束后再由产品证据选择下一个 M7 候选能力；不要把 OAuth�
 
 ### M9-F：其余游戏与 legacy 退役
 
-> 实施状态：进行中；Connect Four、Gomoku 与 Reversi 已完成 current Setup V6、双版本 Play/Replay Surface、production registration 与浏览器纵切，Hex、Chinese Checkers 待迁移。
+> 实施状态：进行中；Connect Four、Gomoku、Reversi 与 Hex 已完成 current Setup V6、独立 Play/Replay Surface、production registration 与浏览器纵切，Chinese Checkers 待迁移。
 
 按 Connect Four、Gomoku、Reversi、Hex、Chinese Checkers 迁移表现与 Setup。全部当前/受支持历史版本都有 Surface 后，删除 Web 动态 React Client Module、游戏专属全局 CSS、字段探测 HUD 与 Next 游戏 transpile；V5 房间排空后再删除 legacy setup schema/runtime。
 

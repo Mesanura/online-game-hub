@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import type { Page } from "@playwright/test";
+import type { FrameLocator, Page } from "@playwright/test";
 
 import {
   PostgresReplayStore,
@@ -16,6 +16,10 @@ import type { E2eHarness } from "../src/harness.js";
 const BLUE_WINNING_PATH = Array.from({ length: 11 }, (_, row) => row * 11);
 
 let harness: E2eHarness;
+
+function hexSurface(page: Page): FrameLocator {
+  return page.frameLocator('[data-testid="game-surface-iframe"]');
+}
 
 test.beforeAll(async () => {
   harness = await startE2eHarness();
@@ -46,6 +50,10 @@ function handleResignDialog(
 ): Promise<string> {
   return new Promise((resolve, reject) => {
     page.once("dialog", (dialog) => {
+      if (dialog.type() !== "confirm") {
+        reject(new Error(`Unexpected ${dialog.type()} dialog.`));
+        return;
+      }
       const message = dialog.message();
       const handling =
         operation === "accept" ? dialog.accept() : dialog.dismiss();
@@ -60,7 +68,7 @@ async function playAcceptedStone(
   cell: number,
   revision: number,
 ): Promise<void> {
-  const button = actor.locator(`[data-cell-index="${cell}"]`);
+  const button = hexSurface(actor).locator(`[data-cell-index="${cell}"]`);
   await expect(button).toBeEnabled();
   await button.click();
   await expectRevision(viewers, revision);
@@ -89,6 +97,7 @@ async function currentCompletedReplay(
   expect(room).toMatchObject({
     gameId: "hex",
     gameVersion: "1.0.0",
+    setupProtocol: 6,
     initialConfig: null,
     currentRound: { roundNumber, revision, status: "completed" },
     players: [{ slotId: "slot-1" }, { slotId: "slot-2" }],
@@ -139,8 +148,11 @@ test("two accounts complete Hex by connection, then use the shared HUD to cancel
   await expect(pageA.getByTestId("connection-state")).toHaveText("已连接");
   await expect(pageA.getByTestId("game-stage")).toHaveCount(0);
   await expect(pageA.getByTestId("match-status")).toHaveCount(0);
-  await expect(pageA.getByTestId("starter-random")).toHaveText("随机先手");
-  await pageA.getByTestId("starter-owner").click();
+  await expect(pageA.getByTestId("game-surface-iframe")).toHaveAttribute(
+    "src",
+    "/game-surfaces/hex/1.0.0/setup/index.html",
+  );
+  await hexSurface(pageA).getByRole("button", { name: "房主先手" }).click();
 
   const inviteUrl = await pageA.getByTestId("invite-link").getAttribute("href");
   if (inviteUrl === null)
@@ -163,54 +175,71 @@ test("two accounts complete Hex by connection, then use the shared HUD to cancel
       await expect(page.getByTestId("connection-state")).toHaveText("已连接");
       await expect(page.getByTestId("match-status")).toHaveText("对局进行中");
       await expect(page.getByTestId("room-code")).toHaveText(roomCode);
+      await expect(page.getByTestId("game-surface-iframe")).toHaveAttribute(
+        "src",
+        "/game-surfaces/hex/1.0.0/play/index.html",
+      );
       await expect(
-        page.getByRole("grid", { name: "六贯棋棋盘" }),
+        hexSurface(page).getByRole("grid", { name: "六贯棋棋盘" }),
       ).toBeVisible();
-      await expect(page.locator("[data-cell-index]")).toHaveCount(121);
-      await expect(page.locator(".hex-coordinate-upper-left")).toHaveCount(11);
-      await expect(page.locator(".hex-coordinate-upper-right")).toHaveCount(11);
-      await expect(page.locator(".hex-coordinate-lower-right")).toHaveCount(11);
-      await expect(page.locator(".hex-coordinate-lower-left")).toHaveCount(11);
-      await expect(page.locator(".hex-edge-band-blue")).toHaveCount(2);
-      await expect(page.locator(".hex-edge-band-red")).toHaveCount(2);
-      await expect(page.locator('[data-coordinate="K1"]')).toHaveCount(1);
-      await expect(page.locator('[data-coordinate="K11"]')).toHaveCount(1);
-      await expect(page.locator('[data-coordinate="A1"]')).toHaveCount(1);
-      await expect(page.locator('[data-coordinate="A11"]')).toHaveCount(1);
-      await expect(page.locator('[data-cell-index="1"]')).toHaveAttribute(
+      const surface = hexSurface(page);
+      await expect(surface.locator("[data-cell-index]")).toHaveCount(121);
+      await expect(surface.locator(".hex-coordinate-upper-left")).toHaveCount(
+        11,
+      );
+      await expect(surface.locator(".hex-coordinate-upper-right")).toHaveCount(
+        11,
+      );
+      await expect(surface.locator(".hex-coordinate-lower-right")).toHaveCount(
+        11,
+      );
+      await expect(surface.locator(".hex-coordinate-lower-left")).toHaveCount(
+        11,
+      );
+      await expect(surface.locator(".hex-edge-band-blue")).toHaveCount(2);
+      await expect(surface.locator(".hex-edge-band-red")).toHaveCount(2);
+      await expect(surface.locator('[data-coordinate="K1"]')).toHaveCount(1);
+      await expect(surface.locator('[data-coordinate="K11"]')).toHaveCount(1);
+      await expect(surface.locator('[data-coordinate="A1"]')).toHaveCount(1);
+      await expect(surface.locator('[data-coordinate="A11"]')).toHaveCount(1);
+      await expect(surface.locator('[data-cell-index="1"]')).toHaveAttribute(
         "data-layout-x",
         "0.75",
       );
-      await expect(page.locator('[data-cell-index="1"]')).toHaveAttribute(
+      await expect(surface.locator('[data-cell-index="1"]')).toHaveAttribute(
         "data-layout-y",
         "0.5",
       );
-      await expect(page.locator('[data-cell-index="11"]')).toHaveAttribute(
+      await expect(surface.locator('[data-cell-index="11"]')).toHaveAttribute(
         "data-layout-x",
         "0.75",
       );
-      await expect(page.locator('[data-cell-index="11"]')).toHaveAttribute(
+      await expect(surface.locator('[data-cell-index="11"]')).toHaveAttribute(
         "data-layout-y",
         "-0.5",
       );
-      const boardScroll = await page
-        .locator(".hex-board-scroll")
+      const boardShell = await surface
+        .locator(".board-shell")
         .evaluate((element) => ({
           clientHeight: element.clientHeight,
           clientWidth: element.clientWidth,
           scrollHeight: element.scrollHeight,
           scrollWidth: element.scrollWidth,
         }));
-      expect(boardScroll.scrollHeight).toBeLessThanOrEqual(
-        boardScroll.clientHeight + 1,
+      expect(boardShell.scrollHeight).toBeLessThanOrEqual(
+        boardShell.clientHeight + 1,
       );
-      expect(boardScroll.scrollWidth).toBeLessThanOrEqual(
-        boardScroll.clientWidth + 1,
+      expect(boardShell.scrollWidth).toBeLessThanOrEqual(
+        boardShell.clientWidth + 1,
       );
     }),
   );
-  await expect(pageA.getByTestId("player-color")).toContainText("蓝方");
-  await expect(pageB.getByTestId("player-color")).toContainText("红方");
+  await expect(hexSurface(pageA).getByTestId("player-color")).toContainText(
+    "蓝方",
+  );
+  await expect(hexSurface(pageB).getByTestId("player-color")).toContainText(
+    "红方",
+  );
   const slotA = (await pageA.getByTestId("player-slot").textContent())?.trim();
   const slotB = (await pageB.getByTestId("player-slot").textContent())?.trim();
   if (slotA === undefined || slotB === undefined) {
@@ -218,28 +247,8 @@ test("two accounts complete Hex by connection, then use the shared HUD to cancel
   }
   expect(slotA).not.toBe(slotB);
 
-  const illegalCell = pageB.locator('[data-cell-index="0"]');
+  const illegalCell = hexSurface(pageB).locator('[data-cell-index="0"]');
   await expect(illegalCell).toBeDisabled();
-  await illegalCell.evaluate((element) => {
-    const propsKey = Object.keys(element).find((key) =>
-      key.startsWith("__reactProps$"),
-    );
-    if (propsKey === undefined)
-      throw new Error("React cell props unavailable.");
-    const props = (element as unknown as Record<string, unknown>)[propsKey];
-    if (
-      props === null ||
-      typeof props !== "object" ||
-      !("onClick" in props) ||
-      typeof props.onClick !== "function"
-    ) {
-      throw new Error("The Hex cell has no intent handler.");
-    }
-    props.onClick();
-  });
-  await expect(pageB.getByTestId("command-rejection")).toContainText(
-    "还没有轮到你",
-  );
   await expectRevision([pageA, pageB], 0);
 
   const placements = [
@@ -273,22 +282,27 @@ test("two accounts complete Hex by connection, then use the shared HUD to cancel
       expect(page.getByTestId("match-status")).toHaveText("对局已完成"),
     ),
   );
-  await expect(pageA.getByTestId("turn-status")).toContainText("胜者：你");
-  await expect(pageB.getByTestId("turn-status")).toContainText("胜者：对手");
+  await expect(hexSurface(pageA).getByTestId("turn-status")).toContainText(
+    "胜者：你",
+  );
+  await expect(hexSurface(pageB).getByTestId("turn-status")).toContainText(
+    "胜者：对手",
+  );
   await openGameHud(pageA);
   await expect(pageA.getByTestId("rematch-game")).toHaveText("重新对局");
   await expect(pageA.getByTestId("next-round-settings")).toHaveText("调整设置");
-  await expect(pageA.locator(".hex-cell.winning-cell")).toHaveCount(11);
+  await expect(hexSurface(pageA).locator(".hex-cell.winning-cell")).toHaveCount(
+    11,
+  );
   for (const cell of BLUE_WINNING_PATH) {
-    await expect(pageA.locator(`[data-cell-index="${cell}"]`)).toHaveClass(
-      /winning-cell/u,
-    );
-    await expect(pageA.locator(`[data-cell-index="${cell}"]`)).toHaveAttribute(
-      "data-color",
-      "BLUE",
-    );
+    await expect(
+      hexSurface(pageA).locator(`[data-cell-index="${cell}"]`),
+    ).toHaveClass(/winning-cell/u);
+    await expect(
+      hexSurface(pageA).locator(`[data-cell-index="${cell}"]`),
+    ).toHaveAttribute("data-color", "BLUE");
   }
-  const winningHighlight = await pageA
+  const winningHighlight = await hexSurface(pageA)
     .locator(".hex-cell.winning-cell .hex-piece")
     .first()
     .evaluate((element) => {
@@ -309,29 +323,65 @@ test("two accounts complete Hex by connection, then use the shared HUD to cancel
     "CONNECTION",
   );
 
+  const rematchSetupRoom =
+    await harness.gameServer.roomStore.getByRoomCode(roomCode);
+  expect(rematchSetupRoom?.nextRoundSetup).toMatchObject({
+    setupState: {
+      starter: "FIXED",
+      fixedStarterSlotId: slotA,
+    },
+    setupRevision: 0,
+    readySlotIds: [],
+    finalizedSetup: null,
+  });
+
   await Promise.all([pageA, pageB].map((page) => openGameHud(page)));
-  await Promise.all(
-    [pageA, pageB].map((page) =>
-      page.getByTestId("next-round-settings").click(),
-    ),
-  );
-  await pageA.getByTestId("starter-owner").click();
-  await pageA.getByTestId("toggle-round-ready").click();
-  await expect(pageB.getByTestId("round-setup-status")).toHaveText(
-    "1/2 人已准备",
-  );
-  await pageB.getByTestId("toggle-round-ready").click();
+  await pageA.getByTestId("rematch-game").click();
+  await expect
+    .poll(async () => {
+      const room = await harness.gameServer.roomStore.getByRoomCode(roomCode);
+      return room?.nextRoundSetup;
+    })
+    .toMatchObject({
+      setupState: {
+        starter: "FIXED",
+        fixedStarterSlotId: slotA,
+      },
+      setupRevision: 0,
+      readySlotIds: [slotA],
+      finalizedSetup: null,
+    });
+  await pageB.getByTestId("rematch-game").click();
   await Promise.all(
     [pageA, pageB].map(async (page) => {
       await expect(page.getByTestId("round-number")).toHaveText("第 2 局");
       await expect(page.getByTestId("match-status")).toHaveText("对局进行中");
+      await expect(page.getByTestId("game-surface-iframe")).toHaveAttribute(
+        "src",
+        "/game-surfaces/hex/1.0.0/play/index.html",
+      );
     }),
   );
   await expectRevision([pageA, pageB], 0);
-  await expect(pageA.getByTestId("player-color")).toContainText("蓝方");
-  await expect(pageB.getByTestId("player-color")).toContainText("红方");
+  await expect(hexSurface(pageA).getByTestId("player-color")).toContainText(
+    "蓝方",
+  );
+  await expect(hexSurface(pageB).getByTestId("player-color")).toContainText(
+    "红方",
+  );
   await expect(pageA.getByTestId("player-slot")).toHaveText(slotA);
   await expect(pageB.getByTestId("player-slot")).toHaveText(slotB);
+  const roundTwoRoom =
+    await harness.gameServer.roomStore.getByRoomCode(roomCode);
+  expect(roundTwoRoom?.previousFinalizedSetup).toEqual({
+    config: null,
+    participantSlotIds: [slotA, slotB],
+    playerOrder: [slotA, slotB],
+    assignments: [
+      { slotId: slotA, assignment: null },
+      { slotId: slotB, assignment: null },
+    ],
+  });
 
   await Promise.all([pageA, pageB].map((page) => openGameHud(page)));
   await Promise.all(
@@ -359,9 +409,15 @@ test("two accounts complete Hex by connection, then use the shared HUD to cancel
       expect(page.getByTestId("match-status")).toHaveText("对局已完成"),
     ),
   );
-  await expect(pageA.getByTestId("turn-status")).toContainText("对手投降");
-  await expect(pageB.getByTestId("turn-status")).toContainText("对手投降");
-  await expect(pageA.locator(".hex-cell.winning-cell")).toHaveCount(0);
+  await expect(hexSurface(pageA).getByTestId("turn-status")).toContainText(
+    "对手投降",
+  );
+  await expect(hexSurface(pageB).getByTestId("turn-status")).toContainText(
+    "对手投降",
+  );
+  await expect(hexSurface(pageA).locator(".hex-cell.winning-cell")).toHaveCount(
+    0,
+  );
   const roundTwoReplayId = await currentCompletedReplay(
     roomCode,
     2,
@@ -433,6 +489,33 @@ test("two accounts complete Hex by connection, then use the shared HUD to cancel
       expect(page.getByTestId("room-notice")).toHaveText("房主已关闭房间。"),
     ),
   );
+  const replayMatchId = String(
+    historyA.find((match) => match.roundNumber === 1)?.matchId,
+  );
+  await pageA.goto(
+    `${harness.webUrl}/account/matches/${encodeURIComponent(replayMatchId)}/replay`,
+  );
+  await expect(pageA.getByTestId("replay-page")).toBeVisible();
+  await expect(pageA.getByTestId("game-surface-iframe")).toHaveAttribute(
+    "src",
+    "/game-surfaces/hex/1.0.0/replay/index.html",
+  );
+  await expect(hexSurface(pageA).locator("[data-cell-index]")).toHaveCount(121);
+  await expect(pageA.getByTestId("replay-frame-count")).toHaveText("1 / 22");
+  await expect(hexSurface(pageA).locator('[data-color="EMPTY"]')).toHaveCount(
+    121,
+  );
+  await pageA.getByTestId("replay-last").click();
+  await expect(pageA.getByTestId("replay-frame-count")).toHaveText("22 / 22");
+  await expect(hexSurface(pageA).locator(".hex-cell.winning-cell")).toHaveCount(
+    11,
+  );
+  await expect(hexSurface(pageA).getByTestId("turn-status")).toContainText(
+    "已连通对应两边",
+  );
+  await expect(
+    hexSurface(pageA).locator("[data-cell-index]:not(:disabled)"),
+  ).toHaveCount(0);
   expect(browserErrors).toEqual([]);
   await Promise.all([contextA.close(), contextB.close()]);
 });

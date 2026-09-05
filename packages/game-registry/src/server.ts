@@ -10,6 +10,7 @@ import {
 } from "@online-game-hub/gomoku/core";
 import { gomokuSetupDefinition } from "@online-game-hub/gomoku/setup";
 import { hexDefinition } from "@online-game-hub/hex/core";
+import { hexSetupDefinition } from "@online-game-hub/hex/setup";
 import {
   reversiDefinition,
   reversiDefinitionV1_0_0,
@@ -121,6 +122,11 @@ const roundSetupDefinitions = Object.freeze([
     gameId: gomokuDefinition.manifest.id,
     gameVersion: gomokuDefinition.manifest.gameVersion,
     definition: eraseRoundSetupDefinition(gomokuSetupDefinition),
+  }),
+  Object.freeze({
+    gameId: hexDefinition.manifest.id,
+    gameVersion: hexDefinition.manifest.gameVersion,
+    definition: eraseRoundSetupDefinition(hexSetupDefinition),
   }),
   Object.freeze({
     gameId: reversiDefinition.manifest.id,

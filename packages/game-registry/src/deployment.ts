@@ -154,6 +154,32 @@ const gomokuSurface = (
     }),
   });
 
+const hexSurfaceArtifactV1 = {
+  schemaVersion: 1,
+  gameId: "hex",
+  supportedGameVersions: ["1.0.0"],
+  surfaceVersion: "1.0.0",
+  bridgeVersion: 1,
+  entrypoints: {
+    setup: "setup/index.html",
+    play: "play/index.html",
+    replay: "replay/index.html",
+  },
+  capabilities: {},
+  contentDigest: "sha256-q6sWjj53xJ0lSTSJDj/UYGqjuny/dn3D/ALg8fLV8NE=",
+} satisfies SurfaceArtifactManifestV1;
+
+const hexSurfaceV1: GameDeploymentRegistration = Object.freeze({
+  gameId: "hex",
+  gameVersion: "1.0.0",
+  setupProtocol: 6,
+  presentation: Object.freeze({
+    kind: "surface-v1",
+    publicBasePath: "/game-surfaces/hex/1.0.0",
+    artifact: hexSurfaceArtifactV1,
+  }),
+});
+
 const reversiSurfaceArtifactV1 = {
   schemaVersion: 1,
   gameId: "reversi",
@@ -191,7 +217,7 @@ const gameDeployments = Object.freeze([
   connectFourSurface("1.1.0", 6),
   gomokuSurface("1.0.0", 5),
   gomokuSurface("1.1.0", 6),
-  legacy("hex", "1.0.0"),
+  hexSurfaceV1,
   reversiSurface("1.0.0", 5),
   reversiSurface("1.1.0", 6),
   legacy("chinese-checkers", "1.0.0"),

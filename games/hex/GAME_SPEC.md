@@ -31,3 +31,9 @@
 按顺序判断：`MATCH_ALREADY_FINISHED`、`NOT_A_PLAYER`、不受回合限制的 `RESIGN`、`NOT_YOUR_TURN`、`CELL_OUT_OF_BOUNDS`、`CELL_OCCUPIED`。
 
 六贯棋不消费 RNG；初始化、accepted transition 和 rejected transition 都保留输入 RNG cursor。双方同时连通、连接与投降同时存在，或满盘却没有连接方都视为服务器内部不变量损坏，不转换为平局。
+
+## Setup 与独立 Surface
+
+- current `hex@1.0.0` 使用 Protocol V6 的游戏自有 Setup。首局由房主选择 OWNER、NON_OWNER 或服务端 setup RNG 的 RANDOM；finalized `playerOrder[0]` 获得 BLUE。上一局完成后默认固定复用上一局实际 BLUE/RED 顺序、null Config、参与席位和 null assignments，双方仍需分别重新确认准备。
+- `game-surfaces/hex` 是独立构建的 Setup/Play/Replay Surface。它只消费按 viewer 投影的 Setup View 或 Hex View，只发送 `SELECT_STARTER` / `PLACE_STONE` intent；平台继续拥有 ready、投降确认、关闭/离开、连接和 replay 生命周期。
+- Surface 只显示服务器给出的 `winningPath`，不得导入 Core、重跑 BFS、推断连接胜者或构造 Outcome。Core 与 Replay Format V1 未改变，因此本次表现层迁移不提升 `gameVersion`。
