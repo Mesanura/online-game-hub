@@ -16,6 +16,7 @@ import {
 import {
   campForCell,
   campForSlot,
+  CHINESE_CHECKERS_CONNECTIONS,
   createCampIntent,
   createMovePieceIntent,
   createPlayerCountIntent,
@@ -316,6 +317,11 @@ function renderBoard(view: ChineseCheckersPlayView, movable: boolean): string {
   const legalTargets = new Set(
     legalTargetsForSelection(view.legalMoves, runtime.selectedCell),
   );
+  const connections = CHINESE_CHECKERS_CONNECTIONS.map(([from, to]) => {
+    const fromLayout = layoutForCell(from);
+    const toLayout = layoutForCell(to);
+    return `<line x1="${fromLayout.x}" y1="${fromLayout.y}" x2="${toLayout.x}" y2="${toLayout.y}" />`;
+  }).join("");
   const cells = view.board
     .map((slotId, cell) => {
       const layout = layoutForCell(cell);
@@ -331,7 +337,7 @@ function renderBoard(view: ChineseCheckersPlayView, movable: boolean): string {
       return `<button aria-label="棋位 ${cell + 1}，${occupancy}${isLegalTarget ? "，可到达" : ""}" class="chinese-checkers-cell${isSelected ? " is-selected" : ""}${isLegalTarget ? " is-legal-target" : ""}" data-camp="${boardCamp ?? "CENTER"}" data-cell-index="${cell}" data-legal-source="${String(isLegalSource)}" data-occupied="${String(slotId !== null)}" data-piece-camp="${pieceCamp ?? "EMPTY"}" ${enabled ? "" : "disabled"} role="gridcell" style="--cc-x:${layout.x};--cc-y:${layout.y}" type="button">${pieceCamp === null ? "" : '<span aria-hidden="true" class="chinese-checkers-piece"></span>'}</button>`;
     })
     .join("");
-  return `<div aria-label="中国跳棋六芒星棋盘" class="chinese-checkers-board" role="grid">${cells}</div>`;
+  return `<div aria-label="中国跳棋六芒星棋盘" class="chinese-checkers-board" role="grid"><svg aria-hidden="true" class="chinese-checkers-connections" data-testid="board-connections" focusable="false" preserveAspectRatio="none" viewBox="0 0 100 100">${connections}</svg>${cells}</div>`;
 }
 
 function rankingReason(

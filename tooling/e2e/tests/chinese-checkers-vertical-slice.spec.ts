@@ -105,7 +105,7 @@ test("three accounts configure camps in the independent Surface, rematch with co
   await expect(pageA.getByTestId("match-status")).toHaveCount(0);
   await expect(pageA.getByTestId("game-surface-iframe")).toHaveAttribute(
     "src",
-    "/game-surfaces/chinese-checkers/1.0.2/setup/index.html",
+    "/game-surfaces/chinese-checkers/1.0.4/setup/index.html",
   );
 
   const setupA = chineseCheckersSurface(pageA);
@@ -194,12 +194,19 @@ test("three accounts configure camps in the independent Surface, rematch with co
     await expect(page.getByTestId("room-code")).toHaveText(roomCode);
     await expect(page.getByTestId("game-surface-iframe")).toHaveAttribute(
       "src",
-      "/game-surfaces/chinese-checkers/1.0.2/play/index.html",
+      "/game-surfaces/chinese-checkers/1.0.4/play/index.html",
     );
     const surface = chineseCheckersSurface(page);
     await expect(
       surface.getByRole("grid", { name: "中国跳棋六芒星棋盘" }),
     ).toBeVisible();
+    await expect(surface.getByTestId("board-connections")).toHaveAttribute(
+      "aria-hidden",
+      "true",
+    );
+    await expect(
+      surface.getByTestId("board-connections").locator("line"),
+    ).toHaveCount(162);
     await expect(surface.locator("[data-cell-index]")).toHaveCount(73);
     await expect(surface.locator('[data-occupied="true"]')).toHaveCount(18);
     await expect(
@@ -344,7 +351,7 @@ test("three accounts configure camps in the independent Surface, rematch with co
       await expect(page.getByTestId("revision")).toHaveText("0");
       await expect(page.getByTestId("game-surface-iframe")).toHaveAttribute(
         "src",
-        "/game-surfaces/chinese-checkers/1.0.2/play/index.html",
+        "/game-surfaces/chinese-checkers/1.0.4/play/index.html",
       );
       await expect(
         chineseCheckersSurface(page).locator('[data-occupied="true"]'),
@@ -466,9 +473,12 @@ test("three accounts configure camps in the independent Surface, rematch with co
   await expect(pageA.getByTestId("replay-page")).toBeVisible();
   await expect(pageA.getByTestId("game-surface-iframe")).toHaveAttribute(
     "src",
-    "/game-surfaces/chinese-checkers/1.0.2/replay/index.html",
+    "/game-surfaces/chinese-checkers/1.0.4/replay/index.html",
   );
   const replaySurface = chineseCheckersSurface(pageA);
+  await expect(
+    replaySurface.getByTestId("board-connections").locator("line"),
+  ).toHaveCount(162);
   await expect(replaySurface.locator("[data-cell-index]")).toHaveCount(73);
   await expect(pageA.getByTestId("replay-frame-count")).toHaveText("1 / 4");
   await expect(replaySurface.locator('[data-occupied="true"]')).toHaveCount(18);

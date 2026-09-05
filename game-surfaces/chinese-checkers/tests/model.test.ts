@@ -12,6 +12,7 @@ import {
 } from "../src/contracts";
 import {
   CHINESE_CHECKERS_CAMP_CELLS,
+  CHINESE_CHECKERS_CONNECTIONS,
   CHINESE_CHECKERS_COORDINATES,
   campForCell,
   createCampIntent,
@@ -107,6 +108,25 @@ describe("Chinese Checkers Surface model", () => {
       expect(position.x + oppositePosition.x).toBeCloseTo(100);
       expect(position.y + oppositePosition.y).toBeCloseTo(100);
     }
+  });
+
+  it("derives the complete unique adjacent connection network", () => {
+    expect(CHINESE_CHECKERS_CONNECTIONS).toHaveLength(162);
+    const directions = new Set(["0,-1", "1,-1", "1,0", "0,1", "-1,1", "-1,0"]);
+    const seen = new Set<string>();
+    for (const [from, to] of CHINESE_CHECKERS_CONNECTIONS) {
+      expect(from).toBeLessThan(to);
+      const left = CHINESE_CHECKERS_COORDINATES[from];
+      const right = CHINESE_CHECKERS_COORDINATES[to];
+      if (left === undefined || right === undefined)
+        throw new Error("Connection references an unknown cell.");
+      expect(directions.has(`${right.q - left.q},${right.r - left.r}`)).toBe(
+        true,
+      );
+      expect(seen.has(`${to},${from}`)).toBe(false);
+      seen.add(`${from},${to}`);
+    }
+    expect(seen.size).toBe(162);
   });
 
   it("accepts only projected legal moves and creates actor-free play intents", () => {

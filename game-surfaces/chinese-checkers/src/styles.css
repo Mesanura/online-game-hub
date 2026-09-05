@@ -340,13 +340,32 @@ h2 {
 }
 
 .chinese-checkers-board {
+  isolation: isolate;
   position: relative;
   width: min(100cqw, 86.60254cqh);
   aspect-ratio: 0.8660254 / 1;
 }
 
+.chinese-checkers-connections {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.chinese-checkers-connections line {
+  stroke: rgb(95 72 50 / 52%);
+  stroke-linecap: round;
+  stroke-width: clamp(0.1rem, 0.22vmin, 0.16rem);
+  vector-effect: non-scaling-stroke;
+}
+
 .chinese-checkers-cell {
   position: absolute;
+  z-index: 1;
   left: calc(var(--cc-x) * 1%);
   top: calc(var(--cc-y) * 1%);
   width: 5.25%;

@@ -101,6 +101,23 @@ const indexByCoordinate = new Map(
     index,
   ]),
 );
+
+export type ChineseCheckersConnection = readonly [from: number, to: number];
+
+export const CHINESE_CHECKERS_CONNECTIONS: readonly ChineseCheckersConnection[] =
+  Object.freeze(
+    CHINESE_CHECKERS_COORDINATES.flatMap((coordinate, from) =>
+      directions.flatMap((direction) => {
+        const to = indexByCoordinate.get(key(add(coordinate, direction, 1)));
+        return to === undefined || from >= to ? [] : [[from, to] as const];
+      }),
+    ),
+  );
+
+if (CHINESE_CHECKERS_CONNECTIONS.length !== 162) {
+  throw new Error("Chinese Checkers geometry must contain 162 connections.");
+}
+
 const rawPositions = CHINESE_CHECKERS_COORDINATES.map(({ q, r }) => ({
   x: 1.5 * q,
   y: Math.sqrt(3) * (r + q / 2),

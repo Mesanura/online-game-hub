@@ -428,7 +428,7 @@ Reversi Surface `1.0.4` 以同一 artifact 覆盖 `1.0.0`/`1.1.0` projected View
 
 Hex Surface 迁移以一个 artifact 精确覆盖 `1.0.0`；E2E 必须覆盖 Setup/Play/Replay iframe、121 格菱形棋盘、四条连接边、44 个坐标标签、上一局完整设置复用、平台投降和服务器 canonical `winningPath` 高亮。Surface 只验证并显示 projected path，不自行运行 BFS、推断连接或生成 Outcome。
 
-Chinese Checkers Surface `1.0.2` 精确覆盖 `1.0.0`；E2E 必须覆盖三人 Setup/Play/Replay iframe、73 格对称六芒星、中央 37 格、六个 `3+2+1` 营地、棋子跨营地后保持玩家颜色、服务器 `legalMoves`、三人排名和下一局完整设置复用。Surface 不得搜索连续跳跃路径、推导当前玩家或自行生成排名/Outcome。
+Chinese Checkers Surface `1.0.4` 精确覆盖 `1.0.0`；E2E 必须覆盖三人 Setup/Play/Replay iframe、73 格对称六芒星、162 条相邻棋位连线、中央 37 格、六个 `3+2+1` 营地、棋子跨营地后保持玩家颜色、服务器 `legalMoves`、三人排名和下一局完整设置复用。Surface 不得搜索连续跳跃路径、推导当前玩家或自行生成排名/Outcome。
 
 所有当前支持 `gameVersion` 的 golden replay：
 

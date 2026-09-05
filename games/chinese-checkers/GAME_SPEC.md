@@ -33,4 +33,4 @@
 
 ## Surface
 
-`chinese-checkers@surfaceVersion 1.0.2` 以独立 Bridge V2 Setup/Play/Replay artifact 精确支持 `gameVersion 1.0.0`。Play/Replay 以正确轴坐标投影显示中央 37 格和六个 `3+2+1` 营地，棋子颜色只取玩家 assignment，不随所在棋位变化；Surface 只消费投影后的 73 格棋盘、服务器 `legalMoves`、排名和 Outcome，不搜索跳跃路径、不推导排名，也不接触 actor、raw State、seed 或 canonical replay。
+`chinese-checkers@surfaceVersion 1.0.4` 以独立 Bridge V2 Setup/Play/Replay artifact 精确支持 `gameVersion 1.0.0`。Play/Replay 以正确轴坐标投影显示中央 37 格和六个 `3+2+1` 营地，并以纯展示连接层绘制 162 条相邻棋位连线；棋子颜色只取玩家 assignment，不随所在棋位变化。Surface 只消费投影后的 73 格棋盘、服务器 `legalMoves`、排名和 Outcome，不搜索跳跃路径、不推导排名，也不接触 actor、raw State、seed 或 canonical replay。
