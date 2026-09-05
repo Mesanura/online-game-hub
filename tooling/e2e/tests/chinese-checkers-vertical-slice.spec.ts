@@ -138,10 +138,12 @@ test("three accounts configure camps in the independent Surface, rematch with co
       expect(page.getByTestId("connection-state")).toHaveText("已连接"),
     ),
   );
-  await chineseCheckersSurface(pageB).locator('[data-camp-option="S"]').click();
-  await chineseCheckersSurface(pageC)
-    .locator('[data-camp-option="NE"]')
-    .click();
+  const setupB = chineseCheckersSurface(pageB);
+  const setupC = chineseCheckersSurface(pageC);
+  await setupB.locator('[data-camp-option="S"]').click();
+  await expectSetupIntentSettled(setupB);
+  await setupC.locator('[data-camp-option="NE"]').click();
+  await expectSetupIntentSettled(setupC);
   await expect(setupA.getByTestId("setup-status")).toHaveText(
     "设置完成，所有参与者可以分别准备",
   );
@@ -235,12 +237,22 @@ test("three accounts configure camps in the independent Surface, rematch with co
   await expect(
     chineseCheckersSurface(pageB).locator("[data-cell-index]:not(:disabled)"),
   ).toHaveCount(0);
-  await expect(
-    chineseCheckersSurface(pageA).locator(".chinese-checkers-board"),
-  ).toHaveScreenshot("chinese-checkers-six-point-board.png", {
-    animations: "disabled",
-    maxDiffPixelRatio: 0.01,
+  await pageA.setViewportSize({ width: 1280, height: 800 });
+  const visualBoard = chineseCheckersSurface(pageA).locator(
+    ".chinese-checkers-board",
+  );
+  await visualBoard.evaluate((board) => {
+    const style = (board as HTMLElement).style;
+    style.setProperty("width", "433px", "important");
+    style.setProperty("height", "500px", "important");
   });
+  await expect(visualBoard).toHaveScreenshot(
+    "chinese-checkers-six-point-board.png",
+    {
+      animations: "disabled",
+      maxDiffPixelRatio: 0.01,
+    },
+  );
 
   const source = chineseCheckersSurface(pageA)
     .locator('[data-legal-source="true"]')

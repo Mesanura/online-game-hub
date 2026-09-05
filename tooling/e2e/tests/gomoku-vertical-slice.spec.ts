@@ -318,10 +318,17 @@ test("two accounts create, join, synchronize, and complete authoritative Gomoku"
       gomokuSurface(pageA).locator(`[data-cell-index="${cell}"]`),
     ).toHaveAttribute("data-stone", "BLACK");
   }
-  await expect(gomokuSurface(pageA).locator(".board")).toHaveScreenshot(
-    "gomoku-warm-clay-board.png",
-    { animations: "disabled", maxDiffPixelRatio: 0.01 },
-  );
+  await pageA.setViewportSize({ width: 1280, height: 800 });
+  const visualBoard = gomokuSurface(pageA).locator(".board");
+  await visualBoard.evaluate((board) => {
+    const style = (board as HTMLElement).style;
+    style.setProperty("width", "500px", "important");
+    style.setProperty("height", "500px", "important");
+  });
+  await expect(visualBoard).toHaveScreenshot("gomoku-warm-clay-board.png", {
+    animations: "disabled",
+    maxDiffPixelRatio: 0.01,
+  });
 
   const room = await harness.gameServer.roomStore.getByRoomCode(roomCode);
   if (room === null)

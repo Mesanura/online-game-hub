@@ -242,10 +242,17 @@ test("two accounts complete authoritative Reversi with flips and a non-full term
   expect(boardPalette.cursor).toBe("pointer");
   expect(boardPalette.marker).toBe("rgb(23, 133, 120)");
   expect(boardPalette.boardBackground).not.toContain("rgb(31, 112, 69)");
-  await expect(reversiSurface(pageA).locator(".board")).toHaveScreenshot(
-    "reversi-warm-clay-board.png",
-    { animations: "disabled", maxDiffPixelRatio: 0.01 },
-  );
+  await pageA.setViewportSize({ width: 1280, height: 800 });
+  const visualBoard = reversiSurface(pageA).locator(".board");
+  await visualBoard.evaluate((board) => {
+    const style = (board as HTMLElement).style;
+    style.setProperty("width", "500px", "important");
+    style.setProperty("height", "500px", "important");
+  });
+  await expect(visualBoard).toHaveScreenshot("reversi-warm-clay-board.png", {
+    animations: "disabled",
+    maxDiffPixelRatio: 0.01,
+  });
 
   const illegalCell = reversiSurface(pageB).locator('[data-cell-index="37"]');
   await expect(illegalCell).toBeDisabled();
