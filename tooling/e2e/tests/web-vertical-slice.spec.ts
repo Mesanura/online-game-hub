@@ -109,7 +109,7 @@ async function createAndJoinRoom(
   await expect(pageA.getByTestId("match-status")).toHaveCount(0);
   await expect(pageA.getByTestId("game-surface-iframe")).toHaveAttribute(
     "src",
-    "/game-surfaces/tic-tac-toe/1.0.2/setup/index.html",
+    "/game-surfaces/tic-tac-toe/1.0.3/setup/index.html",
   );
   await expect(pageA.getByTestId("round-setup-status")).toHaveText(
     "请先完成本局游戏设置",
@@ -188,7 +188,7 @@ async function createAndJoinRoom(
       await expect(page.getByTestId("game-stage")).toBeVisible();
       await expect(page.getByTestId("game-surface-iframe")).toHaveAttribute(
         "src",
-        "/game-surfaces/tic-tac-toe/1.0.2/play/index.html",
+        "/game-surfaces/tic-tac-toe/1.0.3/play/index.html",
       );
       const readyNotice = page.getByTestId("player-count-notice");
       await expect(readyNotice).toHaveText("玩家已到齐，游戏开始！");
@@ -462,6 +462,7 @@ test("two isolated accounts complete win/draw, converge on reconnect, and cannot
   await expect(ticTacToeSurface(pageA).getByRole("heading")).toHaveText(
     "你赢了",
   );
+  await expect(pageA.getByTestId("game-result-hud")).toContainText("你获胜");
   await expect(ticTacToeSurface(pageB).getByRole("heading")).toHaveText(
     "对手获胜",
   );
@@ -479,7 +480,7 @@ test("two isolated accounts complete win/draw, converge on reconnect, and cannot
   await expect(replayPage.getByTestId("replay-page")).toBeVisible();
   await expect(replayPage.getByTestId("game-surface-iframe")).toHaveAttribute(
     "src",
-    "/game-surfaces/tic-tac-toe/1.0.2/replay/index.html",
+    "/game-surfaces/tic-tac-toe/1.0.3/replay/index.html",
   );
   await replayPage.getByTestId("replay-last").click();
   await expect(ticTacToeSurface(replayPage).getByRole("heading")).toHaveText(
@@ -515,7 +516,6 @@ test("two isolated accounts complete win/draw, converge on reconnect, and cannot
     ),
   );
   await expect(pageA.getByTestId("create-room")).toHaveCount(0);
-  await Promise.all([pageA, pageB].map((page) => openGameHud(page)));
   await Promise.all(
     [pageA, pageB].map((page) =>
       page.getByTestId("next-round-settings").click(),
@@ -531,7 +531,7 @@ test("two isolated accounts complete win/draw, converge on reconnect, and cannot
 
   await expect(pageA.getByTestId("game-surface-iframe")).toHaveAttribute(
     "src",
-    "/game-surfaces/tic-tac-toe/1.0.2/setup/index.html",
+    "/game-surfaces/tic-tac-toe/1.0.3/setup/index.html",
   );
   await selectSurfaceStarter(pageA, "另一位玩家先手");
   await expect(pageB.getByTestId("round-setup-status")).toHaveText(
@@ -828,19 +828,26 @@ test("the game stage remains non-scrolling and overlay-safe across the viewport 
       const stage = document.querySelector<HTMLElement>(
         '[data-testid="game-stage"]',
       );
-      const toolbar = document.querySelector<HTMLElement>(".play-toolbar");
+      const drawerToggle = document.querySelector<HTMLElement>(
+        '[data-testid="toggle-game-hud"]',
+      );
+      const fullscreenToggle = document.querySelector<HTMLElement>(
+        '[data-testid="toggle-game-fullscreen"]',
+      );
       const main = document.querySelector<HTMLElement>("main");
       const scrollingElement = document.scrollingElement;
       if (
         stage === null ||
-        toolbar === null ||
+        drawerToggle === null ||
+        fullscreenToggle === null ||
         main === null ||
         scrollingElement === null
       ) {
         throw new Error("The play surface shell is incomplete.");
       }
       const stageRect = stage.getBoundingClientRect();
-      const toolbarRect = toolbar.getBoundingClientRect();
+      const drawerRect = drawerToggle.getBoundingClientRect();
+      const fullscreenRect = fullscreenToggle.getBoundingClientRect();
       return {
         overflowX: scrollingElement.scrollWidth > scrollingElement.clientWidth,
         overflowY:
@@ -853,11 +860,17 @@ test("the game stage remains non-scrolling and overlay-safe across the viewport 
           width: stageRect.width,
           height: stageRect.height,
         },
-        toolbar: {
-          left: toolbarRect.left,
-          top: toolbarRect.top,
-          right: toolbarRect.right,
-          bottom: toolbarRect.bottom,
+        drawerToggle: {
+          left: drawerRect.left,
+          top: drawerRect.top,
+          right: drawerRect.right,
+          bottom: drawerRect.bottom,
+        },
+        fullscreenToggle: {
+          left: fullscreenRect.left,
+          top: fullscreenRect.top,
+          right: fullscreenRect.right,
+          bottom: fullscreenRect.bottom,
         },
         document: {
           clientHeight: scrollingElement.clientHeight,
@@ -881,10 +894,28 @@ test("the game stage remains non-scrolling and overlay-safe across the viewport 
     expect(before.stage.top).toBeGreaterThanOrEqual(0);
     expect(before.stage.right).toBeLessThanOrEqual(before.viewport.width);
     expect(before.stage.bottom).toBeLessThanOrEqual(before.viewport.height);
-    expect(before.toolbar.left).toBeGreaterThanOrEqual(0);
-    expect(before.toolbar.top).toBeGreaterThanOrEqual(0);
-    expect(before.toolbar.right).toBeLessThanOrEqual(before.viewport.width);
-    expect(before.toolbar.bottom).toBeLessThanOrEqual(before.viewport.height);
+    expect(before.drawerToggle.left).toBeGreaterThanOrEqual(0);
+    expect(before.drawerToggle.top).toBeGreaterThanOrEqual(0);
+    expect(before.drawerToggle.right).toBeLessThanOrEqual(
+      before.viewport.width,
+    );
+    expect(before.drawerToggle.bottom).toBeLessThanOrEqual(
+      before.viewport.height,
+    );
+    expect(before.fullscreenToggle.left).toBeGreaterThanOrEqual(0);
+    expect(before.fullscreenToggle.top).toBeGreaterThanOrEqual(0);
+    expect(before.fullscreenToggle.right).toBeLessThanOrEqual(
+      before.viewport.width,
+    );
+    expect(before.fullscreenToggle.bottom).toBeLessThanOrEqual(
+      before.viewport.height,
+    );
+    expect(before.drawerToggle.left).toBeLessThan(
+      before.viewport.width - before.drawerToggle.right,
+    );
+    expect(
+      before.viewport.height - before.fullscreenToggle.bottom,
+    ).toBeLessThan(before.fullscreenToggle.top);
 
     await openGameHud(pageA);
     const during = await pageA

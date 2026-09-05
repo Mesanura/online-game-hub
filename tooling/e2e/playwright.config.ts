@@ -8,6 +8,7 @@ export default defineConfig({
   expect: { timeout: 10_000 },
   reporter: [["line"]],
   outputDir: "test-results",
+  snapshotPathTemplate: "{testDir}/visual-baselines/{arg}{ext}",
   use: {
     headless: true,
     screenshot: "only-on-failure",

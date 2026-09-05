@@ -92,7 +92,7 @@ async function startActiveRound(
   await pageA.getByTestId("create-room").click();
   await expect(pageA.getByTestId("game-surface-iframe")).toHaveAttribute(
     "src",
-    "/game-surfaces/reversi/1.0.1/setup/index.html",
+    "/game-surfaces/reversi/1.0.2/setup/index.html",
   );
   await reversiSurface(pageA).getByRole("button", { name: "房主先手" }).click();
   const inviteUrl = await pageA.getByTestId("invite-link").getAttribute("href");
@@ -108,7 +108,7 @@ async function startActiveRound(
       await expect(page.getByTestId("match-status")).toHaveText("对局进行中");
       await expect(page.getByTestId("game-surface-iframe")).toHaveAttribute(
         "src",
-        "/game-surfaces/reversi/1.0.1/play/index.html",
+        "/game-surfaces/reversi/1.0.2/play/index.html",
       );
     }),
   );
@@ -123,7 +123,10 @@ async function startActiveRound(
 test("two accounts complete authoritative Reversi with flips and a non-full terminal board", async ({
   browser,
 }) => {
-  const contextA = await browser.newContext();
+  const contextA = await browser.newContext({
+    reducedMotion: "reduce",
+    viewport: { width: 1280, height: 720 },
+  });
   const contextB = await browser.newContext();
   const pageA = await contextA.newPage();
   const pageB = await contextB.newPage();
@@ -152,7 +155,7 @@ test("two accounts complete authoritative Reversi with flips and a non-full term
   await expect(pageA.getByTestId("match-status")).toHaveCount(0);
   await expect(pageA.getByTestId("game-surface-iframe")).toHaveAttribute(
     "src",
-    "/game-surfaces/reversi/1.0.1/setup/index.html",
+    "/game-surfaces/reversi/1.0.2/setup/index.html",
   );
   await reversiSurface(pageA).getByRole("button", { name: "房主先手" }).click();
 
@@ -183,7 +186,7 @@ test("two accounts complete authoritative Reversi with flips and a non-full term
       await expect(page.getByTestId("room-code")).toHaveText(roomCode);
       await expect(page.getByTestId("game-surface-iframe")).toHaveAttribute(
         "src",
-        "/game-surfaces/reversi/1.0.1/play/index.html",
+        "/game-surfaces/reversi/1.0.2/play/index.html",
       );
       await expect(
         reversiSurface(page).getByRole("grid", { name: "黑白棋棋盘" }),
@@ -214,6 +217,35 @@ test("two accounts complete authoritative Reversi with flips and a non-full term
     throw new Error("A connected Reversi player is missing its stable slot.");
   }
   expect(slotA).not.toBe(slotB);
+
+  const boardPalette = await reversiSurface(pageA)
+    .getByRole("grid", { name: "黑白棋棋盘" })
+    .evaluate((board) => {
+      const legal = board.querySelector<HTMLElement>(
+        '[data-legal-move="true"]',
+      );
+      const marker = legal?.querySelector<HTMLElement>(".legal-marker");
+      if (legal === null || marker === null || marker === undefined) {
+        throw new Error("Reversi legal marker is missing.");
+      }
+      return {
+        boardBackground: getComputedStyle(board).backgroundImage,
+        cellBackground: getComputedStyle(legal).backgroundImage,
+        cellBorder: getComputedStyle(legal).borderColor,
+        cursor: getComputedStyle(legal).cursor,
+        marker: getComputedStyle(marker).backgroundColor,
+      };
+    });
+  expect(boardPalette.boardBackground).toContain("rgb(242, 204, 152)");
+  expect(boardPalette.cellBackground).toContain("rgb(234, 193, 139)");
+  expect(boardPalette.cellBorder).toBe("rgb(169, 111, 61)");
+  expect(boardPalette.cursor).toBe("pointer");
+  expect(boardPalette.marker).toBe("rgb(23, 133, 120)");
+  expect(boardPalette.boardBackground).not.toContain("rgb(31, 112, 69)");
+  await expect(reversiSurface(pageA).locator(".board")).toHaveScreenshot(
+    "reversi-warm-clay-board.png",
+    { animations: "disabled", maxDiffPixelRatio: 0.01 },
+  );
 
   const illegalCell = reversiSurface(pageB).locator('[data-cell-index="37"]');
   await expect(illegalCell).toBeDisabled();
@@ -401,7 +433,7 @@ test("two accounts complete authoritative Reversi with flips and a non-full term
   await expect(pageA.getByTestId("replay-page")).toBeVisible();
   await expect(pageA.getByTestId("game-surface-iframe")).toHaveAttribute(
     "src",
-    "/game-surfaces/reversi/1.0.1/replay/index.html",
+    "/game-surfaces/reversi/1.0.2/replay/index.html",
   );
   await expect(reversiSurface(pageA).locator("[data-cell-index]")).toHaveCount(
     64,

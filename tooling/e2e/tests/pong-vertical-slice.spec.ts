@@ -41,7 +41,7 @@ async function activePongRound(
   await expect(pageA.getByTestId("connection-state")).toHaveText("已连接");
   await expect(pageA.getByTestId("game-surface-iframe")).toHaveAttribute(
     "src",
-    "/game-surfaces/pong/1.0.2/setup/index.html",
+    "/game-surfaces/pong/1.0.3/setup/index.html",
   );
   await pongSurface(pageA).getByRole("button", { name: "房主发球" }).click();
   const inviteUrl = await pageA.getByTestId("invite-link").getAttribute("href");
@@ -50,7 +50,7 @@ async function activePongRound(
   await expect(pageB.getByTestId("connection-state")).toHaveText("已连接");
   await expect(pageB.getByTestId("game-surface-iframe")).toHaveAttribute(
     "src",
-    "/game-surfaces/pong/1.0.2/setup/index.html",
+    "/game-surfaces/pong/1.0.3/setup/index.html",
   );
   await pageA.getByTestId("toggle-round-ready").click();
   await pageB.getByTestId("toggle-round-ready").click();
@@ -59,7 +59,7 @@ async function activePongRound(
       await expect(page.getByTestId("match-status")).toHaveText("对局进行中");
       await expect(page.getByTestId("game-surface-iframe")).toHaveAttribute(
         "src",
-        "/game-surfaces/pong/1.0.2/play/index.html",
+        "/game-surfaces/pong/1.0.3/play/index.html",
       );
     }),
   );
@@ -417,7 +417,7 @@ test("two isolated browsers control authoritative Pong, reconnect, and read priv
     await expect(reconnected.getByTestId("replay-page")).toBeVisible();
     await expect(
       reconnected.getByTestId("game-surface-iframe"),
-    ).toHaveAttribute("src", "/game-surfaces/pong/1.0.2/replay/index.html");
+    ).toHaveAttribute("src", "/game-surfaces/pong/1.0.3/replay/index.html");
     await expectNonBlankCanvas(reconnected);
     const replayFrameCount = replayPayload.frames.length;
     await reconnected.getByTestId("replay-last").click();

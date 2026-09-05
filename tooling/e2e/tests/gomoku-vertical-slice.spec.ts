@@ -134,7 +134,7 @@ async function startActiveRound(
   await pageA.getByTestId("create-room").click();
   await expect(pageA.getByTestId("game-surface-iframe")).toHaveAttribute(
     "src",
-    "/game-surfaces/gomoku/1.0.1/setup/index.html",
+    "/game-surfaces/gomoku/1.0.2/setup/index.html",
   );
   await gomokuSurface(pageA).getByRole("button", { name: "房主先手" }).click();
   const inviteUrl = await pageA.getByTestId("invite-link").getAttribute("href");
@@ -150,7 +150,7 @@ async function startActiveRound(
       await expect(page.getByTestId("match-status")).toHaveText("对局进行中");
       await expect(page.getByTestId("game-surface-iframe")).toHaveAttribute(
         "src",
-        "/game-surfaces/gomoku/1.0.1/play/index.html",
+        "/game-surfaces/gomoku/1.0.2/play/index.html",
       );
     }),
   );
@@ -165,7 +165,10 @@ async function startActiveRound(
 test("two accounts create, join, synchronize, and complete authoritative Gomoku", async ({
   browser,
 }) => {
-  const contextA = await browser.newContext();
+  const contextA = await browser.newContext({
+    reducedMotion: "reduce",
+    viewport: { width: 1280, height: 720 },
+  });
   const contextB = await browser.newContext();
   const pageA = await contextA.newPage();
   const pageB = await contextB.newPage();
@@ -196,7 +199,7 @@ test("two accounts create, join, synchronize, and complete authoritative Gomoku"
   );
   await expect(pageA.getByTestId("game-surface-iframe")).toHaveAttribute(
     "src",
-    "/game-surfaces/gomoku/1.0.1/setup/index.html",
+    "/game-surfaces/gomoku/1.0.2/setup/index.html",
   );
   await gomokuSurface(pageA).getByRole("button", { name: "房主先手" }).click();
 
@@ -228,7 +231,7 @@ test("two accounts create, join, synchronize, and complete authoritative Gomoku"
       await expect(page.getByTestId("room-code")).toHaveText(roomCode);
       await expect(page.getByTestId("game-surface-iframe")).toHaveAttribute(
         "src",
-        "/game-surfaces/gomoku/1.0.1/play/index.html",
+        "/game-surfaces/gomoku/1.0.2/play/index.html",
       );
       await expect(
         gomokuSurface(page).getByRole("grid", { name: "五子棋棋盘" }),
@@ -254,6 +257,36 @@ test("two accounts create, join, synchronize, and complete authoritative Gomoku"
   const illegalCell = gomokuSurface(pageB).locator('[data-cell-index="105"]');
   await expect(illegalCell).toBeDisabled();
   await expectRevision([pageA, pageB], 0);
+  const previewCell = gomokuSurface(pageA).locator('[data-cell-index="105"]');
+  await expect(previewCell).toHaveAttribute("data-preview-stone", "BLACK");
+  await previewCell.hover();
+  await expect
+    .poll(() =>
+      previewCell.evaluate((cell) => {
+        const stone = cell.querySelector("span");
+        return stone === null ? null : getComputedStyle(stone).opacity;
+      }),
+    )
+    .toBe("0.42");
+  const previewStyle = await previewCell.evaluate((cell) => {
+    const stone = cell.querySelector("span");
+    const board = cell.closest(".board");
+    if (stone === null || board === null) {
+      throw new Error("Gomoku preview stone is missing.");
+    }
+    return {
+      cursor: getComputedStyle(cell).cursor,
+      borderColor: getComputedStyle(board).borderColor,
+      backgroundImage: getComputedStyle(stone).backgroundImage,
+      opacity: getComputedStyle(stone).opacity,
+    };
+  });
+  expect(previewStyle).toMatchObject({
+    cursor: "pointer",
+    borderColor: "rgb(211, 154, 94)",
+    opacity: "0.42",
+  });
+  expect(previewStyle.backgroundImage).toContain("radial-gradient");
 
   const winningPlacements = [
     [pageA, 105],
@@ -285,6 +318,10 @@ test("two accounts create, join, synchronize, and complete authoritative Gomoku"
       gomokuSurface(pageA).locator(`[data-cell-index="${cell}"]`),
     ).toHaveAttribute("data-stone", "BLACK");
   }
+  await expect(gomokuSurface(pageA).locator(".board")).toHaveScreenshot(
+    "gomoku-warm-clay-board.png",
+    { animations: "disabled", maxDiffPixelRatio: 0.01 },
+  );
 
   const room = await harness.gameServer.roomStore.getByRoomCode(roomCode);
   if (room === null)
@@ -367,7 +404,7 @@ test("two accounts create, join, synchronize, and complete authoritative Gomoku"
   await expect(pageA.getByTestId("replay-page")).toBeVisible();
   await expect(pageA.getByTestId("game-surface-iframe")).toHaveAttribute(
     "src",
-    "/game-surfaces/gomoku/1.0.1/replay/index.html",
+    "/game-surfaces/gomoku/1.0.2/replay/index.html",
   );
   await expect(gomokuSurface(pageA).locator("[data-cell-index]")).toHaveCount(
     225,

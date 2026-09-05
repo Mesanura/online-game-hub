@@ -163,7 +163,7 @@ async function startActiveRound(
   await pageA.getByTestId("create-room").click();
   await expect(pageA.getByTestId("game-surface-iframe")).toHaveAttribute(
     "src",
-    "/game-surfaces/connect-four/1.0.1/setup/index.html",
+    "/game-surfaces/connect-four/1.0.2/setup/index.html",
   );
   await connectFourSurface(pageA)
     .getByRole("button", { name: "房主先手" })
@@ -181,7 +181,7 @@ async function startActiveRound(
       await expect(page.getByTestId("match-status")).toHaveText("对局进行中");
       await expect(page.getByTestId("game-surface-iframe")).toHaveAttribute(
         "src",
-        "/game-surfaces/connect-four/1.0.1/play/index.html",
+        "/game-surfaces/connect-four/1.0.2/play/index.html",
       );
     }),
   );
@@ -228,7 +228,7 @@ test("two accounts play two authoritative Connect Four rounds with independent r
   );
   await expect(pageA.getByTestId("game-surface-iframe")).toHaveAttribute(
     "src",
-    "/game-surfaces/connect-four/1.0.1/setup/index.html",
+    "/game-surfaces/connect-four/1.0.2/setup/index.html",
   );
   await connectFourSurface(pageA)
     .getByRole("button", { name: "房主先手" })
@@ -267,7 +267,7 @@ test("two accounts play two authoritative Connect Four rounds with independent r
       await expect(page.getByTestId("room-code")).toHaveText(roomCode);
       await expect(page.getByTestId("game-surface-iframe")).toHaveAttribute(
         "src",
-        "/game-surfaces/connect-four/1.0.1/play/index.html",
+        "/game-surfaces/connect-four/1.0.2/play/index.html",
       );
       await expect(
         connectFourSurface(page).locator("[data-column]"),
@@ -348,7 +348,6 @@ test("two accounts play two authoritative Connect Four rounds with independent r
     }),
   ]);
 
-  await Promise.all([pageA, pageB].map((page) => openGameHud(page)));
   await Promise.all(
     [pageA, pageB].map((page) =>
       page.getByTestId("next-round-settings").click(),
@@ -450,7 +449,7 @@ test("two accounts play two authoritative Connect Four rounds with independent r
   await expect(pageA.getByTestId("replay-page")).toBeVisible();
   await expect(pageA.getByTestId("game-surface-iframe")).toHaveAttribute(
     "src",
-    "/game-surfaces/connect-four/1.0.1/replay/index.html",
+    "/game-surfaces/connect-four/1.0.2/replay/index.html",
   );
   await expect(
     connectFourSurface(pageA).locator("[data-cell-index]"),

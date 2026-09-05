@@ -150,7 +150,7 @@ test("two accounts complete Hex by connection, then use the shared HUD to cancel
   await expect(pageA.getByTestId("match-status")).toHaveCount(0);
   await expect(pageA.getByTestId("game-surface-iframe")).toHaveAttribute(
     "src",
-    "/game-surfaces/hex/1.0.1/setup/index.html",
+    "/game-surfaces/hex/1.0.2/setup/index.html",
   );
   await hexSurface(pageA).getByRole("button", { name: "房主先手" }).click();
 
@@ -177,7 +177,7 @@ test("two accounts complete Hex by connection, then use the shared HUD to cancel
       await expect(page.getByTestId("room-code")).toHaveText(roomCode);
       await expect(page.getByTestId("game-surface-iframe")).toHaveAttribute(
         "src",
-        "/game-surfaces/hex/1.0.1/play/index.html",
+        "/game-surfaces/hex/1.0.2/play/index.html",
       );
       await expect(
         hexSurface(page).getByRole("grid", { name: "六贯棋棋盘" }),
@@ -288,7 +288,7 @@ test("two accounts complete Hex by connection, then use the shared HUD to cancel
   await expect(hexSurface(pageB).getByTestId("turn-status")).toContainText(
     "胜者：对手",
   );
-  await openGameHud(pageA);
+  await expect(pageA.getByTestId("game-result-hud")).toContainText("你获胜");
   await expect(pageA.getByTestId("rematch-game")).toHaveText("重新对局");
   await expect(pageA.getByTestId("next-round-settings")).toHaveText("调整设置");
   await expect(hexSurface(pageA).locator(".hex-cell.winning-cell")).toHaveCount(
@@ -335,7 +335,18 @@ test("two accounts complete Hex by connection, then use the shared HUD to cancel
     finalizedSetup: null,
   });
 
-  await Promise.all([pageA, pageB].map((page) => openGameHud(page)));
+  await pageA.getByTestId("rematch-game").click();
+  await expect(pageA.getByTestId("rematch-game")).toHaveText(
+    "等待其余 1 名玩家确认",
+  );
+  await pageA.getByTestId("rematch-game").click();
+  await expect
+    .poll(async () => {
+      const room = await harness.gameServer.roomStore.getByRoomCode(roomCode);
+      return room?.nextRoundSetup?.readySlotIds;
+    })
+    .toEqual([]);
+  await expect(pageA.getByTestId("rematch-game")).toHaveText("重新对局");
   await pageA.getByTestId("rematch-game").click();
   await expect
     .poll(async () => {
@@ -358,7 +369,7 @@ test("two accounts complete Hex by connection, then use the shared HUD to cancel
       await expect(page.getByTestId("match-status")).toHaveText("对局进行中");
       await expect(page.getByTestId("game-surface-iframe")).toHaveAttribute(
         "src",
-        "/game-surfaces/hex/1.0.1/play/index.html",
+        "/game-surfaces/hex/1.0.2/play/index.html",
       );
     }),
   );
@@ -498,7 +509,7 @@ test("two accounts complete Hex by connection, then use the shared HUD to cancel
   await expect(pageA.getByTestId("replay-page")).toBeVisible();
   await expect(pageA.getByTestId("game-surface-iframe")).toHaveAttribute(
     "src",
-    "/game-surfaces/hex/1.0.1/replay/index.html",
+    "/game-surfaces/hex/1.0.2/replay/index.html",
   );
   await expect(hexSurface(pageA).locator("[data-cell-index]")).toHaveCount(121);
   await expect(pageA.getByTestId("replay-frame-count")).toHaveText("1 / 22");
