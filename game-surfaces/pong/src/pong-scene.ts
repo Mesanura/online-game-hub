@@ -95,8 +95,10 @@ export class PongScene extends Phaser.Scene {
     const scaleY = 400 / PONG_FIELD_HEIGHT;
 
     this.#graphics.clear();
-    this.#graphics.lineStyle(2, 0x6e8e91, 0.65);
-    this.#graphics.lineBetween(400, 0, 400, 400);
+    this.#graphics.lineStyle(4, 0xaedcd6, 0.72);
+    this.#graphics.strokeRoundedRect(4, 4, 792, 392, 10);
+    this.#graphics.lineStyle(2, 0x6e8e91, 0.72);
+    this.#graphics.lineBetween(400, 12, 400, 388);
     this.#graphics.fillStyle(0xf3b29f, 1);
     this.#graphics.fillRoundedRect(
       (PONG_LEFT_PADDLE_X - PONG_PADDLE_WIDTH / 2) * scaleX,

@@ -417,14 +417,14 @@ pnpm test:database
 - realtime replay tests：server-assigned tick 的 input change log 可 exact 重建；tick/sequence gap、错 actor、schema-invalid input、重复或倒退 `inputSequence`、被拒绝 command 和篡改 Outcome 可靠失败；既有 Replay Format V1 golden fixtures 持续通过；
 - realtime protocol/runtime integration：真实 Colyseus WebSocket + fake monotonic scheduler 验证 forged state/tick/score 拒绝、input rate/size 限制、单 writer ordering、快照顺序、viewer input acknowledgement、takeover reconnect 和 60 秒 abandonment；
 - PostgreSQL integration：realtime Match、input replay 和账户归属可由新 connection 重读并验证；私有 replay 授权不泄漏 raw State、seed、input log 或其他玩家数据；按数据库规则使用临时 Docker PostgreSQL；
-- Playwright E2E：两个隔离 browser contexts 经过目录、独立 Setup Surface、ready、独立 Phaser Play Surface、完成、reconnect 与只读 Replay Surface；检查 canvas 非空、800×400 逻辑尺寸、视口矩阵下的 2:1 FIT、键盘输入可用、reduced motion 和终局 UI，不以客户端位置推断权威结果；
+- Playwright E2E：两个隔离 browser contexts 经过目录、独立 Setup Surface、ready、独立 Phaser Play Surface、完成、reconnect 与只读 Replay Surface；检查 canvas 非空、800×400 逻辑尺寸、视口矩阵及 2560×1440 的 100%/150% 缩放等效视口下的 2:1 FIT、安全留白和四边边界可辨识性、键盘输入可用、reduced motion 和终局 UI，不以客户端位置推断权威结果；
 - 全仓 `lint`、`typecheck`、`test`、`build`、`deps:check`，以及受影响的 `test:integration`、`test:database` 和 `test:e2e`。Phaser 依赖必须由 legacy `games/pong` client 或独立 `game-surfaces/pong` 明确拥有，Core 和 server runtime 的依赖检查必须继续拒绝 Phaser/DOM。
 
-Connect Four Surface 迁移额外保持 `1.0.0`/`1.1.0` projected View 的同一 artifact contract；current E2E 必须覆盖 Setup iframe、42 格/7 列 Play iframe、完整设置复用的第二局、平台投降和 Replay iframe。历史 `1.0.0` golden replay 继续用 frozen Core exact 验证。
+Connect Four Surface `1.0.3` 额外保持 `1.0.0`/`1.1.0` projected View 的同一 artifact contract；current E2E 必须覆盖 Setup iframe、42 格/7 列 Play iframe、`7:6` 棋盘及 2560×1440 的 100%/150% 缩放等效视口 containment、完整设置复用的第二局、平台投降和 Replay iframe。历史 `1.0.0` golden replay 继续用 frozen Core exact 验证。
 
 Gomoku Surface `1.0.2` 同时覆盖 `1.0.0`/`1.1.0` projected View；current E2E 必须覆盖保留 15×15 Config 的 Setup iframe、225 格暖木 Clay 棋盘、容器尺寸适配、当前棋色 hover/focus 预览、平台投降和 Replay iframe。19×19 Config、长连和历史 `1.0.0` exact 行为继续由 Core、Setup 与 golden tests 覆盖。
 
-Reversi Surface `1.0.2` 以同一 artifact 覆盖 `1.0.0`/`1.1.0` projected View；current E2E 必须覆盖 Setup iframe、64 格暖木 Clay 棋盘、teal 合法落点、服务器 `legalMoves`、翻转与非满盘终局、平台投降和 Replay iframe。Surface 不得自行扫描夹线、判断强制跳过或产生 PASS。
+Reversi Surface `1.0.4` 以同一 artifact 覆盖 `1.0.0`/`1.1.0` projected View；current E2E 必须覆盖 Setup iframe、64 格暖木 Clay 棋盘、八行八列等大正方形及落子前后几何稳定性、teal 合法落点、服务器 `legalMoves`、翻转与非满盘终局、平台投降和 Replay iframe。Surface 不得自行扫描夹线、判断强制跳过或产生 PASS。
 
 Hex Surface 迁移以一个 artifact 精确覆盖 `1.0.0`；E2E 必须覆盖 Setup/Play/Replay iframe、121 格菱形棋盘、四条连接边、44 个坐标标签、上一局完整设置复用、平台投降和服务器 canonical `winningPath` 高亮。Surface 只验证并显示 projected path，不自行运行 BFS、推断连接或生成 Outcome。
 

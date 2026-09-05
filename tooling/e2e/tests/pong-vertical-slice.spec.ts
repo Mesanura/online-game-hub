@@ -41,7 +41,7 @@ async function activePongRound(
   await expect(pageA.getByTestId("connection-state")).toHaveText("已连接");
   await expect(pageA.getByTestId("game-surface-iframe")).toHaveAttribute(
     "src",
-    "/game-surfaces/pong/1.0.3/setup/index.html",
+    "/game-surfaces/pong/1.0.4/setup/index.html",
   );
   await pongSurface(pageA).getByRole("button", { name: "房主发球" }).click();
   const inviteUrl = await pageA.getByTestId("invite-link").getAttribute("href");
@@ -50,7 +50,7 @@ async function activePongRound(
   await expect(pageB.getByTestId("connection-state")).toHaveText("已连接");
   await expect(pageB.getByTestId("game-surface-iframe")).toHaveAttribute(
     "src",
-    "/game-surfaces/pong/1.0.3/setup/index.html",
+    "/game-surfaces/pong/1.0.4/setup/index.html",
   );
   await pageA.getByTestId("toggle-round-ready").click();
   await pageB.getByTestId("toggle-round-ready").click();
@@ -59,7 +59,7 @@ async function activePongRound(
       await expect(page.getByTestId("match-status")).toHaveText("对局进行中");
       await expect(page.getByTestId("game-surface-iframe")).toHaveAttribute(
         "src",
-        "/game-surfaces/pong/1.0.3/play/index.html",
+        "/game-surfaces/pong/1.0.4/play/index.html",
       );
     }),
   );
@@ -112,10 +112,29 @@ async function expectNonBlankCanvas(page: Page): Promise<void> {
     return { width: canvas.width, height: canvas.height };
   });
   expect(dimensions).toEqual({ width: 800, height: 400 });
+  const boundaryPixels = await canvas.evaluate((element) => {
+    const canvas = element as HTMLCanvasElement;
+    const context = canvas.getContext("2d");
+    if (context === null) return null;
+    return [
+      [400, 4],
+      [796, 200],
+      [400, 396],
+      [4, 200],
+    ].map(([x, y]) =>
+      Array.from(context.getImageData(x ?? 0, y ?? 0, 1, 1).data),
+    );
+  });
+  expect(boundaryPixels).not.toBeNull();
+  for (const boundaryPixel of boundaryPixels ?? []) {
+    expect(boundaryPixel.slice(0, 3)).not.toEqual([20, 40, 39]);
+  }
 }
 
 async function expectResponsivePongStage(page: Page): Promise<void> {
   for (const viewport of [
+    { width: 2560, height: 1440 },
+    { width: 1707, height: 960 },
     { width: 1366, height: 768 },
     { width: 1440, height: 900 },
     { width: 1920, height: 1080 },
@@ -127,25 +146,53 @@ async function expectResponsivePongStage(page: Page): Promise<void> {
   ]) {
     await page.setViewportSize(viewport);
     const iframe = page.getByTestId("game-surface-iframe");
+    const stage = pongSurface(page).locator(".pong-stage");
+    const host = pongSurface(page).locator("#pong-canvas");
     const canvas = pongSurface(page).locator("#pong-canvas canvas");
     await expect
       .poll(async () => {
-        const [iframeBox, canvasBox, pageFits] = await Promise.all([
-          iframe.boundingBox(),
-          canvas.boundingBox(),
-          page.evaluate(
-            () =>
-              document.documentElement.scrollWidth <=
-                document.documentElement.clientWidth &&
-              document.documentElement.scrollHeight <=
-                document.documentElement.clientHeight,
-          ),
-        ]);
-        if (iframeBox === null || canvasBox === null) return false;
+        const [iframeBox, stageBox, hostBox, canvasBox, frameStyle, pageFits] =
+          await Promise.all([
+            iframe.boundingBox(),
+            stage.boundingBox(),
+            host.boundingBox(),
+            canvas.boundingBox(),
+            host.evaluate((element) => {
+              const frame = getComputedStyle(element, "::after");
+              return {
+                borderWidth: frame.borderTopWidth,
+                borderColor: frame.borderTopColor,
+              };
+            }),
+            page.evaluate(
+              () =>
+                document.documentElement.scrollWidth <=
+                  document.documentElement.clientWidth &&
+                document.documentElement.scrollHeight <=
+                  document.documentElement.clientHeight,
+            ),
+          ]);
+        if (
+          iframeBox === null ||
+          stageBox === null ||
+          hostBox === null ||
+          canvasBox === null
+        )
+          return false;
         return (
+          hostBox.width > 0 &&
+          hostBox.height > 0 &&
+          hostBox.width <= 1281 &&
+          Math.abs(hostBox.width / hostBox.height - 2) < 0.01 &&
           canvasBox.width > 0 &&
           canvasBox.height > 0 &&
-          Math.abs(canvasBox.width / canvasBox.height - 2) < 0.03 &&
+          Math.abs(canvasBox.width / canvasBox.height - 2) < 0.01 &&
+          hostBox.x >= stageBox.x + 7 &&
+          hostBox.y >= stageBox.y + 7 &&
+          hostBox.x + hostBox.width <= stageBox.x + stageBox.width - 7 &&
+          hostBox.y + hostBox.height <= stageBox.y + stageBox.height - 7 &&
+          frameStyle.borderWidth === "2px" &&
+          frameStyle.borderColor !== "rgba(0, 0, 0, 0)" &&
           canvasBox.x >= iframeBox.x - 1 &&
           canvasBox.y >= iframeBox.y - 1 &&
           canvasBox.x + canvasBox.width <= iframeBox.x + iframeBox.width + 1 &&
@@ -417,7 +464,7 @@ test("two isolated browsers control authoritative Pong, reconnect, and read priv
     await expect(reconnected.getByTestId("replay-page")).toBeVisible();
     await expect(
       reconnected.getByTestId("game-surface-iframe"),
-    ).toHaveAttribute("src", "/game-surfaces/pong/1.0.3/replay/index.html");
+    ).toHaveAttribute("src", "/game-surfaces/pong/1.0.4/replay/index.html");
     await expectNonBlankCanvas(reconnected);
     const replayFrameCount = replayPayload.frames.length;
     await reconnected.getByTestId("replay-last").click();

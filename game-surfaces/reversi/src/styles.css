@@ -125,9 +125,12 @@ h1 {
   display: grid;
   width: min(52rem, 100%);
   height: min(52rem, 100%);
+  min-width: 0;
   min-height: 0;
   padding: clamp(0.65rem, 1.8vmin, 1.2rem);
-  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  grid-template-rows:
+    clamp(3.15rem, 9vmin, 4.4rem) clamp(2rem, 5vmin, 2.5rem)
+    minmax(0, 1fr) 1.3rem;
   gap: clamp(0.4rem, 1.2vmin, 0.75rem);
 }
 
@@ -150,7 +153,14 @@ header,
 }
 
 header h1 {
+  overflow: hidden;
   font-size: clamp(1rem, 2.35vmin, 1.5rem);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+header > div {
+  min-width: 0;
 }
 
 .role-chip {
@@ -165,7 +175,9 @@ header h1 {
 
 .score {
   justify-content: center;
-  flex-wrap: wrap;
+  min-height: 0;
+  overflow: hidden;
+  flex-wrap: nowrap;
   font-size: clamp(0.8rem, 1.8vmin, 1rem);
   font-weight: 800;
 }
@@ -204,6 +216,7 @@ header h1 {
   margin: auto;
   padding: clamp(0.25rem, 0.8vmin, 0.55rem);
   grid-template-columns: repeat(8, minmax(0, 1fr));
+  grid-template-rows: repeat(8, minmax(0, 1fr));
   border: clamp(0.25rem, 0.8vmin, 0.55rem) solid #b97d45;
   border-radius: clamp(0.75rem, 2vmin, 1.2rem);
   background: linear-gradient(135deg, #f2cc98, #dca66c);
@@ -217,6 +230,7 @@ header h1 {
   display: grid;
   min-width: 0;
   min-height: 0;
+  overflow: hidden;
   padding: 0;
   place-items: center;
   border: 1px solid #a96f3d;
@@ -267,7 +281,9 @@ header h1 {
 
 .surface-meta {
   justify-content: flex-start;
-  flex-wrap: wrap;
+  overflow: hidden;
+  flex-wrap: nowrap;
+  white-space: nowrap;
 }
 
 .notice {

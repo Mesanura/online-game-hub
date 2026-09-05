@@ -346,7 +346,7 @@ M8 结束后再由产品证据选择下一个 M7 候选能力；不要把 OAuth�
 
 ### M9-F：其余游戏与 legacy 退役
 
-> 实施状态：进行中；全部当前和受支持历史 `gameVersion` 均已有 exact Bridge V2 Surface 映射，Web live room/replay 已停止加载 legacy Client Module，终局 HUD 与暖木棋盘修复已完成；只剩存量 V5 room runtime 在排空后退役。
+> 实施状态：进行中；全部当前和受支持历史 `gameVersion` 均已有 exact Bridge V2 Surface 映射，Web live room/replay 已停止加载 legacy Client Module，终局 HUD、暖木棋盘以及四子棋/黑白棋/Pong 跨缩放几何稳定性修复已完成；只剩存量 V5 room runtime 在排空后退役。
 
 Connect Four、Gomoku、Reversi、Hex、Chinese Checkers 的表现与 Setup 已迁移。Web 现在只挂载 exact Surface，缺失 Play/Replay artifact 时 fail closed；平台投降经受限 Bridge command 触发 Surface 自有 intent。Registry 的 legacy Client Module API、各游戏组件测试与历史 Core/golden replay 暂保留兼容；Next 游戏 package transpile 条目也暂保留，因为 catalog/server registry 仍静态导入 manifest/Core，而不是因为 Web 仍加载游戏组件。V5 房间排空后再删除 legacy setup schema/runtime。
 

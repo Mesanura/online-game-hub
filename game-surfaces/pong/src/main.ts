@@ -314,7 +314,7 @@ function renderPlay(hostState: HostState, view: PongPlayView): string {
     <span class="sr-only" data-testid="score-left" id="score-left">${view.scores[0]}</span>
     <span class="sr-only" data-testid="score-right" id="score-right">${view.scores[1]}</span>
     <span class="sr-only" data-testid="pong-outcome" id="pong-outcome">${view.outcome === null ? "" : view.outcome.reason}</span>
-    <div aria-label="Pong 逻辑场地" class="pong-canvas" id="pong-canvas" tabindex="0"></div>
+    <div class="pong-stage"><div aria-label="Pong 逻辑场地" class="pong-canvas" id="pong-canvas" tabindex="0"></div></div>
     <div class="pong-footer"><span>方向键或 W / S 控制</span><div class="surface-meta" id="pong-meta" aria-live="polite">${renderStatus(hostState)}</div></div>
   </section></main>`;
 }

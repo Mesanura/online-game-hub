@@ -68,6 +68,93 @@ async function playAcceptedDrop(
   await expectRevision(viewers, revision);
 }
 
+async function expectResponsiveConnectFourBoard(page: Page): Promise<void> {
+  for (const viewport of [
+    { width: 2560, height: 1440 },
+    { width: 1707, height: 960 },
+    { width: 1280, height: 720 },
+  ]) {
+    await page.setViewportSize(viewport);
+    await expect
+      .poll(async () => {
+        const [geometry, pageFits] = await Promise.all([
+          connectFourSurface(page)
+            .locator(".board")
+            .evaluate((board) => {
+              const wrap = board.closest<HTMLElement>(".board-wrap");
+              const layout = board.closest<HTMLElement>(".board-layout");
+              if (wrap === null || layout === null) return null;
+              const controls =
+                layout.querySelector<HTMLElement>(".column-controls");
+              const cells = Array.from(
+                board.querySelectorAll<HTMLElement>(".board-cell"),
+                (cell) => cell.getBoundingClientRect(),
+              );
+              if (controls === null) return null;
+              const boardRect = board.getBoundingClientRect();
+              const wrapRect = wrap.getBoundingClientRect();
+              const layoutRect = layout.getBoundingClientRect();
+              const controlsRect = controls.getBoundingClientRect();
+              return {
+                board: {
+                  width: boardRect.width,
+                  height: boardRect.height,
+                  top: boardRect.top,
+                  bottom: boardRect.bottom,
+                },
+                wrap: {
+                  width: wrapRect.width,
+                  height: wrapRect.height,
+                  left: wrapRect.left,
+                  top: wrapRect.top,
+                  right: wrapRect.right,
+                  bottom: wrapRect.bottom,
+                },
+                layout: {
+                  left: layoutRect.left,
+                  top: layoutRect.top,
+                  right: layoutRect.right,
+                  bottom: layoutRect.bottom,
+                },
+                controlsBottom: controlsRect.bottom,
+                cellWidths: cells.map((cell) => cell.width),
+                cellHeights: cells.map((cell) => cell.height),
+              };
+            }),
+          page.evaluate(
+            () =>
+              document.documentElement.scrollWidth <=
+                document.documentElement.clientWidth &&
+              document.documentElement.scrollHeight <=
+                document.documentElement.clientHeight,
+          ),
+        ]);
+        if (geometry === null || geometry.cellWidths.length !== 42)
+          return false;
+        const minCellWidth = Math.min(...geometry.cellWidths);
+        const maxCellWidth = Math.max(...geometry.cellWidths);
+        const minCellHeight = Math.min(...geometry.cellHeights);
+        const maxCellHeight = Math.max(...geometry.cellHeights);
+        return (
+          geometry.board.width > 0 &&
+          geometry.board.height > 0 &&
+          Math.abs(geometry.board.width / geometry.board.height - 7 / 6) <
+            0.01 &&
+          geometry.layout.left >= geometry.wrap.left - 1 &&
+          geometry.layout.top >= geometry.wrap.top - 1 &&
+          geometry.layout.right <= geometry.wrap.right + 1 &&
+          geometry.layout.bottom <= geometry.wrap.bottom + 1 &&
+          geometry.controlsBottom <= geometry.board.top + 1 &&
+          maxCellWidth - minCellWidth <= 1 &&
+          maxCellHeight - minCellHeight <= 1 &&
+          pageFits
+        );
+      })
+      .toBe(true);
+  }
+  await page.setViewportSize({ width: 1280, height: 720 });
+}
+
 async function assertIsolatedGuestCookies(
   contextA: BrowserContext,
   contextB: BrowserContext,
@@ -163,7 +250,7 @@ async function startActiveRound(
   await pageA.getByTestId("create-room").click();
   await expect(pageA.getByTestId("game-surface-iframe")).toHaveAttribute(
     "src",
-    "/game-surfaces/connect-four/1.0.2/setup/index.html",
+    "/game-surfaces/connect-four/1.0.3/setup/index.html",
   );
   await connectFourSurface(pageA)
     .getByRole("button", { name: "房主先手" })
@@ -181,7 +268,7 @@ async function startActiveRound(
       await expect(page.getByTestId("match-status")).toHaveText("对局进行中");
       await expect(page.getByTestId("game-surface-iframe")).toHaveAttribute(
         "src",
-        "/game-surfaces/connect-four/1.0.2/play/index.html",
+        "/game-surfaces/connect-four/1.0.3/play/index.html",
       );
     }),
   );
@@ -228,7 +315,7 @@ test("two accounts play two authoritative Connect Four rounds with independent r
   );
   await expect(pageA.getByTestId("game-surface-iframe")).toHaveAttribute(
     "src",
-    "/game-surfaces/connect-four/1.0.2/setup/index.html",
+    "/game-surfaces/connect-four/1.0.3/setup/index.html",
   );
   await connectFourSurface(pageA)
     .getByRole("button", { name: "房主先手" })
@@ -267,7 +354,7 @@ test("two accounts play two authoritative Connect Four rounds with independent r
       await expect(page.getByTestId("room-code")).toHaveText(roomCode);
       await expect(page.getByTestId("game-surface-iframe")).toHaveAttribute(
         "src",
-        "/game-surfaces/connect-four/1.0.2/play/index.html",
+        "/game-surfaces/connect-four/1.0.3/play/index.html",
       );
       await expect(
         connectFourSurface(page).locator("[data-column]"),
@@ -290,6 +377,7 @@ test("two accounts play two authoritative Connect Four rounds with independent r
     throw new Error("A connected player is missing its stable slot.");
   }
   expect(slotA).not.toBe(slotB);
+  await expectResponsiveConnectFourBoard(pageA);
 
   const illegalColumn = connectFourSurface(pageB).locator('[data-column="0"]');
   await expect(illegalColumn).toBeDisabled();
@@ -449,7 +537,7 @@ test("two accounts play two authoritative Connect Four rounds with independent r
   await expect(pageA.getByTestId("replay-page")).toBeVisible();
   await expect(pageA.getByTestId("game-surface-iframe")).toHaveAttribute(
     "src",
-    "/game-surfaces/connect-four/1.0.2/replay/index.html",
+    "/game-surfaces/connect-four/1.0.3/replay/index.html",
   );
   await expect(
     connectFourSurface(pageA).locator("[data-cell-index]"),

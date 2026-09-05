@@ -68,6 +68,99 @@ async function playAcceptedDisc(
   await expectRevision(viewers, revision);
 }
 
+interface ReversiBoardGeometry {
+  readonly boardWidth: number;
+  readonly boardHeight: number;
+  readonly shellWidth: number;
+  readonly shellHeight: number;
+  readonly minCellWidth: number;
+  readonly maxCellWidth: number;
+  readonly minCellHeight: number;
+  readonly maxCellHeight: number;
+}
+
+async function readReversiBoardGeometry(
+  page: Page,
+): Promise<ReversiBoardGeometry> {
+  return reversiSurface(page)
+    .locator(".board")
+    .evaluate((board) => {
+      const boardRect = board.getBoundingClientRect();
+      const shellRect = board.parentElement?.getBoundingClientRect();
+      if (shellRect === undefined) {
+        throw new Error("Reversi board shell is missing.");
+      }
+      const cells = Array.from(
+        board.querySelectorAll<HTMLElement>(".board-cell"),
+        (cell) => cell.getBoundingClientRect(),
+      );
+      if (cells.length !== 64) {
+        throw new Error(`Expected 64 Reversi cells, received ${cells.length}.`);
+      }
+      const widths = cells.map((cell) => cell.width);
+      const heights = cells.map((cell) => cell.height);
+      return {
+        boardWidth: boardRect.width,
+        boardHeight: boardRect.height,
+        shellWidth: shellRect.width,
+        shellHeight: shellRect.height,
+        minCellWidth: Math.min(...widths),
+        maxCellWidth: Math.max(...widths),
+        minCellHeight: Math.min(...heights),
+        maxCellHeight: Math.max(...heights),
+      };
+    });
+}
+
+function expectSquareReversiGrid(geometry: ReversiBoardGeometry): void {
+  expect(
+    Math.abs(geometry.boardWidth - geometry.boardHeight),
+  ).toBeLessThanOrEqual(1);
+  expect(geometry.maxCellWidth - geometry.minCellWidth).toBeLessThanOrEqual(1);
+  expect(geometry.maxCellHeight - geometry.minCellHeight).toBeLessThanOrEqual(
+    1,
+  );
+  expect(
+    Math.abs(geometry.maxCellWidth - geometry.maxCellHeight),
+  ).toBeLessThanOrEqual(1);
+}
+
+async function expectResponsiveReversiBoard(page: Page): Promise<void> {
+  for (const viewport of [
+    { width: 2560, height: 1440 },
+    { width: 1707, height: 960 },
+    { width: 1280, height: 720 },
+    { width: 1280, height: 800 },
+  ]) {
+    await page.setViewportSize(viewport);
+    let previousGeometry: ReversiBoardGeometry | null = null;
+    await expect
+      .poll(async () => {
+        const geometry = await readReversiBoardGeometry(page);
+        const stable =
+          previousGeometry !== null &&
+          Math.abs(geometry.boardWidth - previousGeometry.boardWidth) <= 1 &&
+          Math.abs(geometry.boardHeight - previousGeometry.boardHeight) <= 1 &&
+          Math.abs(geometry.shellWidth - previousGeometry.shellWidth) <= 1 &&
+          Math.abs(geometry.shellHeight - previousGeometry.shellHeight) <= 1;
+        previousGeometry = geometry;
+        return (
+          stable &&
+          geometry.boardWidth > 0 &&
+          Math.abs(
+            geometry.boardWidth -
+              Math.min(geometry.shellWidth, geometry.shellHeight),
+          ) <= 1 &&
+          Math.abs(geometry.boardWidth - geometry.boardHeight) <= 1 &&
+          geometry.maxCellWidth - geometry.minCellWidth <= 1 &&
+          geometry.maxCellHeight - geometry.minCellHeight <= 1 &&
+          Math.abs(geometry.maxCellWidth - geometry.maxCellHeight) <= 1
+        );
+      })
+      .toBe(true);
+  }
+}
+
 async function readHistory(
   page: Page,
 ): Promise<readonly Record<string, unknown>[]> {
@@ -92,7 +185,7 @@ async function startActiveRound(
   await pageA.getByTestId("create-room").click();
   await expect(pageA.getByTestId("game-surface-iframe")).toHaveAttribute(
     "src",
-    "/game-surfaces/reversi/1.0.2/setup/index.html",
+    "/game-surfaces/reversi/1.0.4/setup/index.html",
   );
   await reversiSurface(pageA).getByRole("button", { name: "房主先手" }).click();
   const inviteUrl = await pageA.getByTestId("invite-link").getAttribute("href");
@@ -108,7 +201,7 @@ async function startActiveRound(
       await expect(page.getByTestId("match-status")).toHaveText("对局进行中");
       await expect(page.getByTestId("game-surface-iframe")).toHaveAttribute(
         "src",
-        "/game-surfaces/reversi/1.0.2/play/index.html",
+        "/game-surfaces/reversi/1.0.4/play/index.html",
       );
     }),
   );
@@ -155,7 +248,7 @@ test("two accounts complete authoritative Reversi with flips and a non-full term
   await expect(pageA.getByTestId("match-status")).toHaveCount(0);
   await expect(pageA.getByTestId("game-surface-iframe")).toHaveAttribute(
     "src",
-    "/game-surfaces/reversi/1.0.2/setup/index.html",
+    "/game-surfaces/reversi/1.0.4/setup/index.html",
   );
   await reversiSurface(pageA).getByRole("button", { name: "房主先手" }).click();
 
@@ -186,7 +279,7 @@ test("two accounts complete authoritative Reversi with flips and a non-full term
       await expect(page.getByTestId("room-code")).toHaveText(roomCode);
       await expect(page.getByTestId("game-surface-iframe")).toHaveAttribute(
         "src",
-        "/game-surfaces/reversi/1.0.2/play/index.html",
+        "/game-surfaces/reversi/1.0.4/play/index.html",
       );
       await expect(
         reversiSurface(page).getByRole("grid", { name: "黑白棋棋盘" }),
@@ -242,17 +335,31 @@ test("two accounts complete authoritative Reversi with flips and a non-full term
   expect(boardPalette.cursor).toBe("pointer");
   expect(boardPalette.marker).toBe("rgb(23, 133, 120)");
   expect(boardPalette.boardBackground).not.toContain("rgb(31, 112, 69)");
-  await pageA.setViewportSize({ width: 1280, height: 800 });
-  const visualBoard = reversiSurface(pageA).locator(".board");
-  await visualBoard.evaluate((board) => {
-    const style = (board as HTMLElement).style;
-    style.setProperty("width", "500px", "important");
-    style.setProperty("height", "500px", "important");
-  });
+  await expectResponsiveReversiBoard(pageA);
+  const initialBoardGeometry = await readReversiBoardGeometry(pageA);
+  expectSquareReversiGrid(initialBoardGeometry);
+  await reversiSurface(pageA)
+    .locator(".board")
+    .evaluate((board) => {
+      const visualFixture = board.cloneNode(true) as HTMLElement;
+      visualFixture.classList.add("board-visual-fixture");
+      visualFixture.setAttribute("aria-hidden", "true");
+      const style = visualFixture.style;
+      style.setProperty("position", "fixed", "important");
+      style.setProperty("inset", "100px auto auto 200px", "important");
+      style.setProperty("z-index", "100", "important");
+      style.setProperty("pointer-events", "none", "important");
+      style.setProperty("margin", "0", "important");
+      style.setProperty("width", "400px", "important");
+      style.setProperty("height", "400px", "important");
+      document.body.append(visualFixture);
+    });
+  const visualBoard = reversiSurface(pageA).locator(".board-visual-fixture");
   await expect(visualBoard).toHaveScreenshot("reversi-warm-clay-board.png", {
     animations: "disabled",
     maxDiffPixelRatio: 0.01,
   });
+  await visualBoard.evaluate((board) => board.remove());
 
   const illegalCell = reversiSurface(pageB).locator('[data-cell-index="37"]');
   await expect(illegalCell).toBeDisabled();
@@ -282,6 +389,18 @@ test("two accounts complete authoritative Reversi with flips and a non-full term
   ] as const;
   for (const [index, [actor, cell]] of placements.entries()) {
     await playAcceptedDisc(actor, [pageA, pageB], cell, index + 1);
+    const boardGeometryAfterMove = await readReversiBoardGeometry(pageA);
+    expectSquareReversiGrid(boardGeometryAfterMove);
+    expect(
+      Math.abs(
+        boardGeometryAfterMove.boardWidth - initialBoardGeometry.boardWidth,
+      ),
+    ).toBeLessThanOrEqual(1);
+    expect(
+      Math.abs(
+        boardGeometryAfterMove.boardHeight - initialBoardGeometry.boardHeight,
+      ),
+    ).toBeLessThanOrEqual(1);
     if (index === 0) {
       await expect(
         reversiSurface(pageA).locator('[data-cell-index="36"]'),
@@ -324,6 +443,18 @@ test("two accounts complete authoritative Reversi with flips and a non-full term
   await expect(reversiSurface(pageB).getByTestId("turn-status")).toContainText(
     "胜者：对手",
   );
+  const completedBoardGeometry = await readReversiBoardGeometry(pageA);
+  expectSquareReversiGrid(completedBoardGeometry);
+  expect(
+    Math.abs(
+      completedBoardGeometry.boardWidth - initialBoardGeometry.boardWidth,
+    ),
+  ).toBeLessThanOrEqual(1);
+  expect(
+    Math.abs(
+      completedBoardGeometry.boardHeight - initialBoardGeometry.boardHeight,
+    ),
+  ).toBeLessThanOrEqual(1);
 
   const room = await harness.gameServer.roomStore.getByRoomCode(roomCode);
   if (room === null) {
@@ -440,7 +571,7 @@ test("two accounts complete authoritative Reversi with flips and a non-full term
   await expect(pageA.getByTestId("replay-page")).toBeVisible();
   await expect(pageA.getByTestId("game-surface-iframe")).toHaveAttribute(
     "src",
-    "/game-surfaces/reversi/1.0.2/replay/index.html",
+    "/game-surfaces/reversi/1.0.4/replay/index.html",
   );
   await expect(reversiSurface(pageA).locator("[data-cell-index]")).toHaveCount(
     64,

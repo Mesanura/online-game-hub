@@ -270,7 +270,7 @@ function renderPlay(hostState: HostState, view: ConnectFourPlayView): string {
     .join("");
   return `<main class="play-surface"><section class="game-card" aria-labelledby="game-title">
     <header><div><div class="eyebrow">${runtime.mode === "replay" ? "Replay" : "Connect Four"}</div><h1 data-testid="turn-status" id="game-title">${title}</h1></div><span class="role-chip" data-testid="player-disc">${role}</span></header>
-    <div class="board-wrap"><div class="column-controls">${columnButtons}</div><div aria-label="四子棋棋盘" class="board" role="grid">${cells}</div></div>
+    <div class="board-wrap"><div class="board-layout"><div class="column-controls">${columnButtons}</div><div aria-label="四子棋棋盘" class="board" role="grid">${cells}</div></div></div>
     <div class="surface-meta" aria-live="polite">${renderStatus(hostState)}</div>
   </section></main>`;
 }

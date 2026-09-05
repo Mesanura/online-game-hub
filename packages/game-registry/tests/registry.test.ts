@@ -195,11 +195,11 @@ describe("explicit game registry", () => {
       setupProtocol: 6,
       presentation: {
         kind: "surface-v1",
-        publicBasePath: "/game-surfaces/pong/1.0.3",
+        publicBasePath: "/game-surfaces/pong/1.0.4",
         artifact: {
           supportedGameVersions: ["1.0.0"],
-          surfaceVersion: "1.0.3",
-          contentDigest: "sha256-p7TQjuM01+f0gF1QXG8+QB0x3YZLc4Ltj7KVallv2S8=",
+          surfaceVersion: "1.0.4",
+          contentDigest: "sha256-lpj7C/9bQhLZnepl5eHQI5nWi+qdATcfWeazRspsvjI=",
         },
       },
       platformControls: ["RESIGN"],
@@ -209,10 +209,10 @@ describe("explicit game registry", () => {
         {
           gameId: "pong",
           gameVersion: "1.0.0",
-          surfaceVersion: "1.0.3",
+          surfaceVersion: "1.0.4",
           mode,
           platformControls: ["RESIGN"],
-          url: `/game-surfaces/pong/1.0.3/${mode}/index.html`,
+          url: `/game-surfaces/pong/1.0.4/${mode}/index.html`,
         },
       );
     }
@@ -221,12 +221,12 @@ describe("explicit game registry", () => {
         setupProtocol: gameVersion === "1.1.0" ? 6 : 5,
         presentation: {
           kind: "surface-v1",
-          publicBasePath: "/game-surfaces/connect-four/1.0.2",
+          publicBasePath: "/game-surfaces/connect-four/1.0.3",
           artifact: {
             supportedGameVersions: ["1.0.0", "1.1.0"],
-            surfaceVersion: "1.0.2",
+            surfaceVersion: "1.0.3",
             contentDigest:
-              "sha256-TkKUKE720a1q99o9S92XhzffnxSGl0iGgSDR+p3DoJY=",
+              "sha256-B7C4RiHWEnQYVrhDEZmj9wV6SYnC7n7mtsl44jvz2LA=",
           },
         },
         platformControls: gameVersion === "1.1.0" ? ["RESIGN"] : [],
@@ -237,10 +237,10 @@ describe("explicit game registry", () => {
         ).toMatchObject({
           gameId: "connect-four",
           gameVersion,
-          surfaceVersion: "1.0.2",
+          surfaceVersion: "1.0.3",
           mode,
           platformControls: gameVersion === "1.1.0" ? ["RESIGN"] : [],
-          url: `/game-surfaces/connect-four/1.0.2/${mode}/index.html`,
+          url: `/game-surfaces/connect-four/1.0.3/${mode}/index.html`,
         });
       }
     }
@@ -325,12 +325,12 @@ describe("explicit game registry", () => {
         setupProtocol: gameVersion === "1.1.0" ? 6 : 5,
         presentation: {
           kind: "surface-v1",
-          publicBasePath: "/game-surfaces/reversi/1.0.2",
+          publicBasePath: "/game-surfaces/reversi/1.0.4",
           artifact: {
             supportedGameVersions: ["1.0.0", "1.1.0"],
-            surfaceVersion: "1.0.2",
+            surfaceVersion: "1.0.4",
             contentDigest:
-              "sha256-5nWxV9k3NSQeJXHtXI/00gx3z7TjQgBev0G2D0XCMyU=",
+              "sha256-Wph0/bjO1Gdrc4c6+D64QGwVI9Nwi8h/FCpmCXiArSs=",
           },
         },
         platformControls: gameVersion === "1.1.0" ? ["RESIGN"] : [],
@@ -341,10 +341,10 @@ describe("explicit game registry", () => {
         ).toMatchObject({
           gameId: "reversi",
           gameVersion,
-          surfaceVersion: "1.0.2",
+          surfaceVersion: "1.0.4",
           mode,
           platformControls: gameVersion === "1.1.0" ? ["RESIGN"] : [],
-          url: `/game-surfaces/reversi/1.0.2/${mode}/index.html`,
+          url: `/game-surfaces/reversi/1.0.4/${mode}/index.html`,
         });
       }
     }

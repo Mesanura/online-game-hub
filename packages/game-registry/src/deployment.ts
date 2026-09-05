@@ -77,7 +77,7 @@ const pongSurfaceArtifactV1 = {
   schemaVersion: 1,
   gameId: "pong",
   supportedGameVersions: ["1.0.0"],
-  surfaceVersion: "1.0.3",
+  surfaceVersion: "1.0.4",
   bridgeVersion: 2,
   entrypoints: {
     setup: "setup/index.html",
@@ -85,7 +85,7 @@ const pongSurfaceArtifactV1 = {
     replay: "replay/index.html",
   },
   capabilities: {},
-  contentDigest: "sha256-p7TQjuM01+f0gF1QXG8+QB0x3YZLc4Ltj7KVallv2S8=",
+  contentDigest: "sha256-lpj7C/9bQhLZnepl5eHQI5nWi+qdATcfWeazRspsvjI=",
 } satisfies SurfaceArtifactManifestV1;
 
 const pongSurfaceV1: GameDeploymentRegistration = Object.freeze({
@@ -95,7 +95,7 @@ const pongSurfaceV1: GameDeploymentRegistration = Object.freeze({
   platformControls: resignPlatformControls,
   presentation: Object.freeze({
     kind: "surface-v1",
-    publicBasePath: "/game-surfaces/pong/1.0.3",
+    publicBasePath: "/game-surfaces/pong/1.0.4",
     artifact: pongSurfaceArtifactV1,
   }),
 });
@@ -104,7 +104,7 @@ const connectFourSurfaceArtifactV1 = {
   schemaVersion: 1,
   gameId: "connect-four",
   supportedGameVersions: ["1.0.0", "1.1.0"],
-  surfaceVersion: "1.0.2",
+  surfaceVersion: "1.0.3",
   bridgeVersion: 2,
   entrypoints: {
     setup: "setup/index.html",
@@ -112,7 +112,7 @@ const connectFourSurfaceArtifactV1 = {
     replay: "replay/index.html",
   },
   capabilities: {},
-  contentDigest: "sha256-TkKUKE720a1q99o9S92XhzffnxSGl0iGgSDR+p3DoJY=",
+  contentDigest: "sha256-B7C4RiHWEnQYVrhDEZmj9wV6SYnC7n7mtsl44jvz2LA=",
 } satisfies SurfaceArtifactManifestV1;
 
 const connectFourSurface = (
@@ -127,7 +127,7 @@ const connectFourSurface = (
       gameVersion === "1.1.0" ? resignPlatformControls : noPlatformControls,
     presentation: Object.freeze({
       kind: "surface-v1",
-      publicBasePath: "/game-surfaces/connect-four/1.0.2",
+      publicBasePath: "/game-surfaces/connect-four/1.0.3",
       artifact: connectFourSurfaceArtifactV1,
     }),
   });
@@ -195,7 +195,7 @@ const reversiSurfaceArtifactV1 = {
   schemaVersion: 1,
   gameId: "reversi",
   supportedGameVersions: ["1.0.0", "1.1.0"],
-  surfaceVersion: "1.0.2",
+  surfaceVersion: "1.0.4",
   bridgeVersion: 2,
   entrypoints: {
     setup: "setup/index.html",
@@ -203,7 +203,7 @@ const reversiSurfaceArtifactV1 = {
     replay: "replay/index.html",
   },
   capabilities: {},
-  contentDigest: "sha256-5nWxV9k3NSQeJXHtXI/00gx3z7TjQgBev0G2D0XCMyU=",
+  contentDigest: "sha256-Wph0/bjO1Gdrc4c6+D64QGwVI9Nwi8h/FCpmCXiArSs=",
 } satisfies SurfaceArtifactManifestV1;
 
 const reversiSurface = (
@@ -218,7 +218,7 @@ const reversiSurface = (
       gameVersion === "1.1.0" ? resignPlatformControls : noPlatformControls,
     presentation: Object.freeze({
       kind: "surface-v1",
-      publicBasePath: "/game-surfaces/reversi/1.0.2",
+      publicBasePath: "/game-surfaces/reversi/1.0.4",
       artifact: reversiSurfaceArtifactV1,
     }),
   });
