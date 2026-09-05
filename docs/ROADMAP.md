@@ -295,7 +295,7 @@ M8 结束后再由产品证据选择下一个 M7 候选能力；不要把 OAuth�
 
 > 实施状态：已完成契约、双轨注册与兼容骨架；现有房间行为保持不变。
 
-- 新增无 React/Next/具体游戏依赖的 `game-surface-bridge`，定义 artifact schema、Bridge V1、nonce/MessageChannel 与 strict JSON messages；
+- 新增无 React/Next/具体游戏依赖的 `game-surface-bridge`，定义 artifact schema、Bridge V1/V2、nonce/MessageChannel、strict JSON messages 与只读终局结果摘要；
 - 新增无 transport/DOM 依赖的 `game-setup`，定义 Setup State/Action/View、transition/projection/readiness/finalize 与 `FinalizedRoundSetup` 通用校验；
 - Protocol V6 与 V5 exact schema 并存，Realtime Input/Snapshot Protocol V1 不变；
 - 所有 manifest 显式声明 `none | record-only | player-playback`，现有/历史版本保持 `player-playback`，runtime 对 `none` fail closed；
@@ -307,16 +307,17 @@ M8 结束后再由产品证据选择下一个 M7 候选能力；不要把 OAuth�
 
 > 实施状态：已完成；代码、组件测试与桌面/平板/手机全 viewport E2E 均已通过。
 
-- HUD 改为默认收起的覆盖式抽屉，最小浮动工具条只保留 HUD、连接状态与全屏；
+- HUD 改为默认收起的覆盖式抽屉，左上角独立控制抽屉、右下角独立控制全屏，常驻可见连接徽标退役；
 - stage 占满可用空间并使用 `min-width/min-height: 0`、`overflow: hidden`；
 - Fullscreen API 被拒绝或不支持时切换 `100dvh` focus mode；ESC、focus trap、ARIA 和 reduced-motion 完整；
 - Platform HUD 删除比分、棋子、阵营、当前回合、排名和 Outcome 猜测；legacy Client Module 通过适配器继续运行。
+- completed Round 由右侧非模态 HUD 显示 Surface 结果摘要、逐玩家重新对局确认和调整设置，不改变舞台尺寸。
 
 退出条件：既有游戏无需迁移即可通过桌面/平板/手机 viewport 与现有 E2E。
 
 ### M9-C：独立 Surface 工具链与 Host
 
-> 实施状态：已完成；Bridge V1、workspace/artifact 发布链、Docker static copy、Web iframe Host、独立 Workbench 与全 viewport E2E 均已实现并通过验证。
+> 实施状态：已完成；Bridge V1/V2、workspace/artifact 发布链、Docker static copy、Web iframe Host、独立 Workbench 与全 viewport E2E 均已实现并通过验证。
 
 - `game-surfaces/*` 加入 workspace、Turbo、依赖检查、CI 和 Docker static copy；`dist` 不提交；
 - manifest/source lock/digest/version drift 校验后复制到 `/game-surfaces/<gameId>/<surfaceVersion>/<mode>/` 并使用 immutable cache；
@@ -345,7 +346,7 @@ M8 结束后再由产品证据选择下一个 M7 候选能力；不要把 OAuth�
 
 ### M9-F：其余游戏与 legacy 退役
 
-> 实施状态：进行中；全部当前和受支持历史 `gameVersion` 均已有 exact Surface 映射，Web live room/replay 已停止加载 legacy Client Module，游戏专属全局 CSS 已删除；只剩存量 V5 room runtime 在排空后退役。
+> 实施状态：进行中；全部当前和受支持历史 `gameVersion` 均已有 exact Bridge V2 Surface 映射，Web live room/replay 已停止加载 legacy Client Module，终局 HUD 与暖木棋盘修复已完成；只剩存量 V5 room runtime 在排空后退役。
 
 Connect Four、Gomoku、Reversi、Hex、Chinese Checkers 的表现与 Setup 已迁移。Web 现在只挂载 exact Surface，缺失 Play/Replay artifact 时 fail closed；平台投降经受限 Bridge command 触发 Surface 自有 intent。Registry 的 legacy Client Module API、各游戏组件测试与历史 Core/golden replay 暂保留兼容；Next 游戏 package transpile 条目也暂保留，因为 catalog/server registry 仍静态导入 manifest/Core，而不是因为 Web 仍加载游戏组件。V5 房间排空后再删除 legacy setup schema/runtime。
 

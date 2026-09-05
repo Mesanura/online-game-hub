@@ -136,6 +136,7 @@ Protocol V6 另须覆盖 exact V5/V6 互拒、`game.setup` payload/identity/size
 - nonce/source/window 校验、MessageChannel 单次移交、unknown/extra fields、重复 intent、dispose、crash 与 10 秒初始化超时；
 - `host.command/RESIGN` 只在 exact deployment capability 允许时发送，命令不含 Action/Input payload 或 identity；Surface 以同一 `clientIntentId` 产生普通 intent，历史不支持投降的版本必须拒绝该能力；Surface 已有 intent 时 Host 拒绝并发平台命令，10 秒内未转化为 intent、retry、dispose 或 bridge failure 必须解除本地 pending 且不提交过期 intent；
 - Host 消息与日志不包含 ticket、session、actor、raw State、seed 或 canonical replay；
+- Bridge V1 拒绝 result-summary；Bridge V2 拒绝非法 tone、未知字段、超长 headline、超过六行或单行超长 details。Web 只显示与最近 completed play state sequence 匹配的摘要，并在 active、新 Round、retry 或 dispose 时清除；
 - iframe 没有 `allow-same-origin`、表单、弹窗、下载或顶层导航能力，CSP 禁止直接联网；
 - Surface 加载失败可重试，失败期间不会提交游戏 intent；
 - 每个 Surface 的 conformance suite 无需启动 Next、Game Server 或数据库。
@@ -383,7 +384,7 @@ Surface 包的独立契约门禁由 `pnpm contract-test` 进入 Turbo graph。�
 
 Web iframe Host 的组件测试至少验证 sandbox 不含 same-origin/form/popup/top-navigation 权限，静态路径具备 immutable/CORS/CSP headers 且绕过 session proxy；Web production build 必须实际加载 `next.config.ts`，防止只在测试对象中成立而部署配置无效。握手、nonce、exact V1/V2 协商、非法消息、重复 intent、timeout、retry、dispose 与 V2 result-summary 长度/行数限制继续由 `game-surface-bridge` 的 fake-channel contract tests 覆盖。
 
-Tic-Tac-Toe Surface 以 `surfaceVersion 1.0.2` 同时覆盖 `gameVersion 1.0.0`/`1.1.0`；contract/model tests 必须证明历史版本只接受普通 WIN/DRAW 与落子 intent，而 current 版本另可显示 `RESIGNATION` WIN 并响应平台投降命令。历史版本仍保留 V5 Setup/lifecycle 与 frozen Core/golden replay，不得因表现层共用而放宽 Action 或 Outcome。
+Tic-Tac-Toe Surface 以 `surfaceVersion 1.0.3` 和 Bridge V2 同时覆盖 `gameVersion 1.0.0`/`1.1.0`；contract/model tests 必须证明历史版本只接受普通 WIN/DRAW 与落子 intent，而 current 版本另可显示 `RESIGNATION` WIN 并响应平台投降命令。历史版本仍保留 V5 Setup/lifecycle 与 frozen Core/golden replay，不得因表现层共用而放宽 Action 或 Outcome。
 
 Workbench contract tests必须覆盖 Setup/Play/Replay mode、active/terminal projected payload 的 strict Bridge parse、敏感 key 扫描、完整 viewport 矩阵及 `surfaceArtifact: false`/唯一 workspace dependency。其 `test`、`typecheck`、`build` 与 `contract-test` 均可在不启动 Next 或 Game Server 时独立运行。
 
@@ -421,13 +422,13 @@ pnpm test:database
 
 Connect Four Surface 迁移额外保持 `1.0.0`/`1.1.0` projected View 的同一 artifact contract；current E2E 必须覆盖 Setup iframe、42 格/7 列 Play iframe、完整设置复用的第二局、平台投降和 Replay iframe。历史 `1.0.0` golden replay 继续用 frozen Core exact 验证。
 
-Gomoku Surface 迁移同样以一个 artifact 覆盖 `1.0.0`/`1.1.0` projected View；current E2E 必须覆盖保留 15×15 Config 的 Setup iframe、225 格 Play iframe、桌面尺寸适配、平台投降和 Replay iframe。19×19 Config、长连和历史 `1.0.0` exact 行为继续由 Core、Setup 与 golden tests 覆盖。
+Gomoku Surface `1.0.2` 同时覆盖 `1.0.0`/`1.1.0` projected View；current E2E 必须覆盖保留 15×15 Config 的 Setup iframe、225 格暖木 Clay 棋盘、容器尺寸适配、当前棋色 hover/focus 预览、平台投降和 Replay iframe。19×19 Config、长连和历史 `1.0.0` exact 行为继续由 Core、Setup 与 golden tests 覆盖。
 
-Reversi Surface 迁移以同一 artifact 覆盖 `1.0.0`/`1.1.0` projected View；current E2E 必须覆盖 Setup iframe、64 格 Play iframe、服务器 `legalMoves`、翻转与非满盘终局、平台投降和 Replay iframe。Surface 不得自行扫描夹线、判断强制跳过或产生 PASS。
+Reversi Surface `1.0.2` 以同一 artifact 覆盖 `1.0.0`/`1.1.0` projected View；current E2E 必须覆盖 Setup iframe、64 格暖木 Clay 棋盘、teal 合法落点、服务器 `legalMoves`、翻转与非满盘终局、平台投降和 Replay iframe。Surface 不得自行扫描夹线、判断强制跳过或产生 PASS。
 
 Hex Surface 迁移以一个 artifact 精确覆盖 `1.0.0`；E2E 必须覆盖 Setup/Play/Replay iframe、121 格菱形棋盘、四条连接边、44 个坐标标签、上一局完整设置复用、平台投降和服务器 canonical `winningPath` 高亮。Surface 只验证并显示 projected path，不自行运行 BFS、推断连接或生成 Outcome。
 
-Chinese Checkers Surface 迁移以一个 artifact 精确覆盖 `1.0.0`；E2E 必须覆盖三人 Setup/Play/Replay iframe、73 格六芒星、每人自选且唯一的营地、服务器 `legalMoves`、三人排名和下一局完整设置复用。Surface 不得搜索连续跳跃路径、推导当前玩家或自行生成排名/Outcome。
+Chinese Checkers Surface `1.0.2` 精确覆盖 `1.0.0`；E2E 必须覆盖三人 Setup/Play/Replay iframe、73 格对称六芒星、中央 37 格、六个 `3+2+1` 营地、棋子跨营地后保持玩家颜色、服务器 `legalMoves`、三人排名和下一局完整设置复用。Surface 不得搜索连续跳跃路径、推导当前玩家或自行生成排名/Outcome。
 
 所有当前支持 `gameVersion` 的 golden replay：
 
