@@ -134,7 +134,7 @@ Protocol V6 另须覆盖 exact V5/V6 互拒、`game.setup` payload/identity/size
 
 - artifact 的 game/version/mode 必须 exact 匹配；缺失 entrypoint、重复版本、路径穿越、bridge 不兼容与摘要漂移 fail closed；
 - nonce/source/window 校验、MessageChannel 单次移交、unknown/extra fields、重复 intent、dispose、crash 与 10 秒初始化超时；
-- `host.command/RESIGN` 只在 exact deployment capability 允许时发送，命令不含 Action/Input payload 或 identity；Surface 以同一 `clientIntentId` 产生普通 intent，历史不支持投降的版本必须拒绝该能力；
+- `host.command/RESIGN` 只在 exact deployment capability 允许时发送，命令不含 Action/Input payload 或 identity；Surface 以同一 `clientIntentId` 产生普通 intent，历史不支持投降的版本必须拒绝该能力；Surface 已有 intent 时 Host 拒绝并发平台命令，10 秒内未转化为 intent、retry、dispose 或 bridge failure 必须解除本地 pending 且不提交过期 intent；
 - Host 消息与日志不包含 ticket、session、actor、raw State、seed 或 canonical replay；
 - iframe 没有 `allow-same-origin`、表单、弹窗、下载或顶层导航能力，CSP 禁止直接联网；
 - Surface 加载失败可重试，失败期间不会提交游戏 intent；
@@ -309,7 +309,7 @@ try {
 9. 另一 active room 用 fake clock 前进 60,001 ms，验证 `RECONNECT_TIMEOUT` abandoned 并关闭 live room；
 10. 关闭并重建 database adapter 后，两轮 history metadata 和 completed canonical replays 仍存在；浏览器只看到安全 metadata，不看到数据库或 replay 细节。
 
-Web E2E 同时验证三阶段 App Router：创建/加入和 canonical 邀请进入等待页，旧 `?roomCode=` 兼容入口规范化，双方 ready 后自动进入 `/play`，active 刷新/reconnect 回到 `/play`，completed 保留最终棋盘并通过“调整设置”返回等待页，closed 返回入口并显示原因。井字棋还验证 exact Setup/Play/Replay Surface entrypoint、iframe 内交互、只读历史回放和 production V6；复制邀请覆盖 Clipboard 成功状态与 API 失败后的可操作手动复制后备。各游戏从默认收起的覆盖式 HUD 执行通用投降/关闭/离开，验证投降取消不产生 Action、确认只产生一个 `RESIGN`/revision、双方收敛到 `RESIGNATION` WIN 且 PostgreSQL replay exact verification 通过；中国跳棋额外覆盖 3 人营地选择、排名和 assignment replay metadata。
+Web E2E 同时验证三阶段 App Router：创建/加入和 canonical 邀请进入等待页，旧 `?roomCode=` 兼容入口规范化，双方 ready 后自动进入 `/play`，active 刷新/reconnect 回到 `/play`，completed 保留最终棋盘并通过“调整设置”返回等待页，closed 返回入口并显示原因。井字棋还验证 exact Setup/Play/Replay Surface entrypoint、iframe 内交互、只读历史回放和 production V6；复制邀请覆盖 Clipboard 成功状态与 API 失败后的可操作手动复制后备。各游戏从默认收起的覆盖式 HUD 执行通用投降/关闭/离开，验证 Web 不加载 legacy module、投降取消不产生 Action、确认经 `host.command` 只产生一个 exact `RESIGN` intent/revision、双方收敛到 `RESIGNATION` WIN 且 PostgreSQL replay exact verification 通过；中国跳棋额外覆盖 3 人营地选择、排名和 assignment replay metadata。
 
 `auth-vertical-slice.spec.ts` 还验证右上角 ProfileMenu：游客显示“游客”并可修改显示名、实时更新头像且刷新后仍保留；登录后下半部切换为历史/设置/退出，账户更新由另一 browser context 读取，退出后恢复为独立游客资料；键盘 Escape、外部点击和 live room 中身份变化确认均有效。
 
@@ -357,7 +357,7 @@ Web E2E 同时验证三阶段 App Router：创建/加入和 canonical 邀请进�
 
 Harness 为 Web 预留随机 loopback port，并用 `port: 0` 启动正式 ticket verifier/CORS composition 的真实 Colyseus Server；随后启动真实 Next production server 和 Chromium。M5/M6 E2E 使用测试 owner 创建的隔离 PostgreSQL database 和正式 adapters，只注入 fake clock、deterministic IDs 与测试 logger 等已有可控 ports，不 mock 数据库、浏览器、ticket route、matchmaking、WebSocket 或 Action pipeline，也不访问外部服务。活动 RoomStore 仍在内存中，因此该测试只验证 archive/replay 跨 adapter 重建，不声称恢复活动 room。
 
-断言优先使用可访问 role/test id 和用户可见文本；legacy Client Module 的恶意 intent case 可调用实际 React click handler 绕过 UX disable，但仍须通过真实 client host/transport/server；sandboxed Surface 不通过篡改 iframe 内框架私有属性制造攻击，权威负例由 Bridge contract 与 V6 integration 覆盖。Playwright trace/video 关闭，避免 bearer ticket 进入测试制品；失败 screenshot 只包含不显示 credential 的 UI。harness 在 `afterAll` 对两个进程执行停止清理。
+断言优先使用可访问 role/test id 和用户可见文本；legacy Client Module 的恶意 intent case 只保留在兼容组件/Host 测试，不再代表 Web 渲染路径；sandboxed Surface 不通过篡改 iframe 内框架私有属性制造攻击，权威负例由 Bridge contract 与 V6 integration 覆盖。Web unit contract 还须以源码边界断言 live room/replay 不导入 legacy loader、公共 CSS 不含游戏专属 selector。Playwright trace/video 关闭，避免 bearer ticket 进入测试制品；失败 screenshot 只包含不显示 credential 的 UI。harness 在 `afterAll` 对两个进程执行停止清理。
 
 ## 11. Change-to-Test Matrix
 

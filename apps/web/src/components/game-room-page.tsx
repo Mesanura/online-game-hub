@@ -25,7 +25,7 @@ import {
   X,
 } from "@phosphor-icons/react";
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from "react";
 
 import { resolveGameSurfaceEntrypoint } from "@online-game-hub/game-registry/deployment";
@@ -36,7 +36,10 @@ import {
   type InviteCopyState,
   type WebRoomHostState,
 } from "./game-room-host";
-import { GameSurfaceFrame } from "./game-surface-frame";
+import {
+  GameSurfaceFrame,
+  type GameSurfaceFrameHandle,
+} from "./game-surface-frame";
 
 export type GameRoomPageMode = "entry" | "room" | "play";
 
@@ -757,6 +760,19 @@ function LoadingView({ label }: { readonly label: string }) {
   );
 }
 
+function SurfaceUnavailableView() {
+  return (
+    <div
+      className="page-shell loading-page"
+      data-testid="game-surface-unavailable"
+    >
+      <WarningCircle size={32} weight="duotone" aria-hidden="true" />
+      <p>当前游戏版本没有可用的独立画面。</p>
+      <PageAlerts />
+    </div>
+  );
+}
+
 function useReducedMotionPreference(): boolean {
   const [reducedMotion, setReducedMotion] = useState(false);
   useEffect(() => {
@@ -1122,13 +1138,14 @@ export function PlaySurfaceShell({
 
 function TurnBasedPlayView({ title }: Pick<GameRoomPageProps, "title">) {
   const [resignPending, setResignPending] = useState(false);
+  const [resignError, setResignError] = useState<string | null>(null);
+  const surfaceRef = useRef<GameSurfaceFrameHandle>(null);
   const reducedMotion = useReducedMotionPreference();
   const locale =
     typeof navigator === "undefined" ? "zh-CN" : navigator.language || "zh-CN";
   const {
     busy,
     closeRoom,
-    clientModule,
     host,
     leaveRoom,
     openNextRoundSetup,
@@ -1142,47 +1159,29 @@ function TurnBasedPlayView({ title }: Pick<GameRoomPageProps, "title">) {
     room === null
       ? undefined
       : resolveGameSurfaceEntrypoint(room.gameId, room.gameVersion, "play");
-  const [viewError, parsedView] = useMemo(() => {
-    if (
-      snapshot === null ||
-      surfaceEntrypoint !== undefined ||
-      clientModule === null
-    )
-      return [false, null] as const;
-    try {
-      return [
-        false,
-        clientModule.parseView(snapshot.view) as Readonly<unknown>,
-      ] as const;
-    } catch {
-      return [true, null] as const;
-    }
-  }, [clientModule, snapshot, surfaceEntrypoint]);
-  if (
-    room === null ||
-    lifecycle === null ||
-    snapshot === null ||
-    (surfaceEntrypoint === undefined &&
-      (parsedView === null || clientModule === null))
-  ) {
+  if (room === null || lifecycle === null || snapshot === null) {
     return <LoadingView label="正在同步对局…" />;
   }
-  const GameComponent = clientModule?.Component;
+  if (surfaceEntrypoint === undefined) return <SurfaceUnavailableView />;
   const isCompleted = snapshot.status === "completed";
   const canResign =
     snapshot.status === "active" &&
     snapshot.viewer.kind === "player" &&
-    clientModule?.createResignAction !== undefined;
+    surfaceEntrypoint.platformControls.includes("RESIGN");
   const resign = async (): Promise<void> => {
-    const createResignAction = clientModule?.createResignAction;
-    if (!canResign || createResignAction === undefined || resignPending) return;
+    const surface = surfaceRef.current;
+    if (!canResign || surface === null || resignPending) return;
     if (!window.confirm(RESIGN_CONFIRMATION_MESSAGE)) return;
 
     setResignPending(true);
+    setResignError(null);
     try {
-      await host.submitAction(createResignAction());
+      const result = await surface.requestResign();
+      if (result.status !== "accepted") {
+        setResignError("游戏画面未能处理投降，请重试。");
+      }
     } catch {
-      // The generic host renders transport and authoritative rejection state.
+      setResignError("游戏画面未能处理投降，请重试。");
     } finally {
       setResignPending(false);
     }
@@ -1192,7 +1191,7 @@ function TurnBasedPlayView({ title }: Pick<GameRoomPageProps, "title">) {
       busy={busy}
       canResign={canResign}
       completed={isCompleted}
-      errorMessage={viewError ? "服务器返回的游戏视图无效。" : undefined}
+      errorMessage={resignError ?? undefined}
       modeLabel="实际对局"
       onAdjustSettings={() => void openNextRoundSetup()}
       onCloseRoom={() => void closeRoom()}
@@ -1212,36 +1211,26 @@ function TurnBasedPlayView({ title }: Pick<GameRoomPageProps, "title">) {
       roomCode={room.roomCode}
       roundNumber={snapshot.roundNumber}
       stage={
-        surfaceEntrypoint === undefined ? (
-          GameComponent === undefined || parsedView === null ? null : (
-            <GameComponent
-              connectionState={state.connectionState}
-              revision={snapshot.revision}
-              submitAction={(action) => host.submitAction(action)}
-              view={parsedView}
-            />
-          )
-        ) : (
-          <GameSurfaceFrame
-            connectionState={state.connectionState}
-            entrypoint={surfaceEntrypoint}
-            locale={locale}
-            onIntent={async (intent) => {
-              try {
-                await host.submitAction(intent);
-                return { status: "accepted" };
-              } catch {
-                return { status: "rejected", code: "HOST_REJECTED" };
-              }
-            }}
-            outcome={snapshot.outcome}
-            payload={snapshot.view}
-            readOnly={isCompleted}
-            reducedMotion={reducedMotion}
-            revision={snapshot.revision}
-            roundNumber={snapshot.roundNumber}
-          />
-        )
+        <GameSurfaceFrame
+          connectionState={state.connectionState}
+          entrypoint={surfaceEntrypoint}
+          locale={locale}
+          onIntent={async (intent) => {
+            try {
+              await host.submitAction(intent);
+              return { status: "accepted" };
+            } catch {
+              return { status: "rejected", code: "HOST_REJECTED" };
+            }
+          }}
+          outcome={snapshot.outcome}
+          payload={snapshot.view}
+          readOnly={isCompleted}
+          reducedMotion={reducedMotion}
+          ref={surfaceRef}
+          revision={snapshot.revision}
+          roundNumber={snapshot.roundNumber}
+        />
       }
       state={state}
       title={title}
@@ -1251,6 +1240,8 @@ function TurnBasedPlayView({ title }: Pick<GameRoomPageProps, "title">) {
 
 function RealtimePlayView({ title }: Pick<GameRoomPageProps, "title">) {
   const [resignPending, setResignPending] = useState(false);
+  const [resignError, setResignError] = useState<string | null>(null);
+  const surfaceRef = useRef<GameSurfaceFrameHandle>(null);
   const reducedMotion = useReducedMotionPreference();
   const locale =
     typeof navigator === "undefined" ? "zh-CN" : navigator.language || "zh-CN";
@@ -1260,12 +1251,10 @@ function RealtimePlayView({ title }: Pick<GameRoomPageProps, "title">) {
     host,
     leaveRoom,
     openNextRoundSetup,
-    realtimeClientModule,
     startRematch,
     state,
   } = useGameRoomHost();
   const snapshot = state.snapshot;
-  const previousSnapshot = state.previousSnapshot;
   const lifecycle = state.roomLifecycle;
   const room = state.room;
   const surfaceEntrypoint =
@@ -1273,51 +1262,28 @@ function RealtimePlayView({ title }: Pick<GameRoomPageProps, "title">) {
       ? undefined
       : resolveGameSurfaceEntrypoint(room.gameId, room.gameVersion, "play");
 
-  const [viewError, parsedView, parsedPreviousView] = useMemo(() => {
-    if (
-      snapshot === null ||
-      surfaceEntrypoint !== undefined ||
-      realtimeClientModule === null
-    ) {
-      return [false, null, null] as const;
-    }
-    try {
-      const current = realtimeClientModule.parseView(snapshot.view);
-      const previous =
-        previousSnapshot === null
-          ? null
-          : realtimeClientModule.parseView(previousSnapshot.view);
-      return [false, current, previous] as const;
-    } catch {
-      return [true, null, null] as const;
-    }
-  }, [previousSnapshot, realtimeClientModule, snapshot, surfaceEntrypoint]);
-
-  if (
-    room === null ||
-    lifecycle === null ||
-    snapshot === null ||
-    (surfaceEntrypoint === undefined &&
-      (parsedView === null || realtimeClientModule === null))
-  ) {
+  if (room === null || lifecycle === null || snapshot === null) {
     return <LoadingView label="正在同步实时对局…" />;
   }
-
-  const GameComponent = realtimeClientModule?.Component;
+  if (surfaceEntrypoint === undefined) return <SurfaceUnavailableView />;
   const isCompleted = snapshot.status === "completed";
   const canResign =
     snapshot.status === "active" &&
     snapshot.viewer.kind === "player" &&
-    realtimeClientModule?.createResignInput !== undefined;
+    surfaceEntrypoint.platformControls.includes("RESIGN");
   const resign = async (): Promise<void> => {
-    const createResignInput = realtimeClientModule?.createResignInput;
-    if (!canResign || createResignInput === undefined || resignPending) return;
+    const surface = surfaceRef.current;
+    if (!canResign || surface === null || resignPending) return;
     if (!window.confirm(RESIGN_CONFIRMATION_MESSAGE)) return;
     setResignPending(true);
+    setResignError(null);
     try {
-      await host.submitInput(createResignInput());
+      const result = await surface.requestResign();
+      if (result.status !== "accepted") {
+        setResignError("游戏画面未能处理投降，请重试。");
+      }
     } catch {
-      // The authoritative rejection is rendered by PageAlerts.
+      setResignError("游戏画面未能处理投降，请重试。");
     } finally {
       setResignPending(false);
     }
@@ -1327,7 +1293,7 @@ function RealtimePlayView({ title }: Pick<GameRoomPageProps, "title">) {
       busy={busy}
       canResign={canResign}
       completed={isCompleted}
-      errorMessage={viewError ? "服务器返回的实时游戏视图无效。" : undefined}
+      errorMessage={resignError ?? undefined}
       modeLabel="实时对局"
       onAdjustSettings={() => void openNextRoundSetup()}
       onCloseRoom={() => void closeRoom()}
@@ -1347,42 +1313,26 @@ function RealtimePlayView({ title }: Pick<GameRoomPageProps, "title">) {
       roomCode={room.roomCode}
       roundNumber={snapshot.roundNumber}
       stage={
-        surfaceEntrypoint === undefined ? (
-          GameComponent === undefined || parsedView === null ? null : (
-            <GameComponent
-              acknowledgedInputSequence={
-                snapshot.acknowledgedInputSequence ?? 0
-              }
-              connectionState={state.connectionState}
-              previousView={parsedPreviousView as Readonly<unknown> | null}
-              readOnly={isCompleted}
-              reducedMotion={reducedMotion}
-              serverTick={snapshot.tick ?? snapshot.revision}
-              submitInput={(input) => host.submitInput(input)}
-              view={parsedView as Readonly<unknown>}
-            />
-          )
-        ) : (
-          <GameSurfaceFrame
-            connectionState={state.connectionState}
-            entrypoint={surfaceEntrypoint}
-            locale={locale}
-            onIntent={async (intent) => {
-              try {
-                await host.submitInput(intent);
-                return { status: "accepted" };
-              } catch {
-                return { status: "rejected", code: "HOST_REJECTED" };
-              }
-            }}
-            outcome={snapshot.outcome}
-            payload={snapshot.view}
-            readOnly={isCompleted}
-            reducedMotion={reducedMotion}
-            roundNumber={snapshot.roundNumber}
-            tick={snapshot.tick ?? snapshot.revision}
-          />
-        )
+        <GameSurfaceFrame
+          connectionState={state.connectionState}
+          entrypoint={surfaceEntrypoint}
+          locale={locale}
+          onIntent={async (intent) => {
+            try {
+              await host.submitInput(intent);
+              return { status: "accepted" };
+            } catch {
+              return { status: "rejected", code: "HOST_REJECTED" };
+            }
+          }}
+          outcome={snapshot.outcome}
+          payload={snapshot.view}
+          readOnly={isCompleted}
+          reducedMotion={reducedMotion}
+          ref={surfaceRef}
+          roundNumber={snapshot.roundNumber}
+          tick={snapshot.tick ?? snapshot.revision}
+        />
       }
       state={state}
       statusProbes={

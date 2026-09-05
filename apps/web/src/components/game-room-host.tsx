@@ -20,7 +20,6 @@ import {
 import type {
   GameClientHostState,
   GameSetupProtocol,
-  UnknownGameClientModule,
 } from "@online-game-hub/game-client-sdk";
 import type {
   CommandRejected,
@@ -39,14 +38,7 @@ import {
   RealtimeGameClientHost,
   createRealtimeHttpTicketProvider,
 } from "@online-game-hub/realtime-game-client-sdk";
-import type {
-  RealtimeGameClientHostState,
-  UnknownRealtimeGameClientModule,
-} from "@online-game-hub/realtime-game-client-sdk";
-import {
-  loadGameClientModule,
-  loadRealtimeGameClientModule,
-} from "@online-game-hub/game-registry/client";
+import type { RealtimeGameClientHostState } from "@online-game-hub/realtime-game-client-sdk";
 import { gameCatalog } from "@online-game-hub/game-registry/catalog";
 import { resolveCurrentGameDeployment } from "@online-game-hub/game-registry/deployment";
 
@@ -461,8 +453,6 @@ interface GameRoomHostContextValue {
   readonly inviteUrl: string | null;
   readonly inviteCopyState: InviteCopyState;
   readonly playerCountNotice: PlayerCountNotice | null;
-  readonly clientModule: UnknownGameClientModule | null;
-  readonly realtimeClientModule: UnknownRealtimeGameClientModule | null;
   readonly setRoomCode: (value: string) => void;
   readonly createRoom: () => Promise<void>;
   readonly joinRoom: () => Promise<void>;
@@ -577,10 +567,6 @@ export function GameRoomHostProvider({
     useState<InviteCopyState>("idle");
   const [playerCountNotice, setPlayerCountNotice] =
     useState<PlayerCountNotice | null>(null);
-  const [clientModule, setClientModule] =
-    useState<UnknownGameClientModule | null>(null);
-  const [realtimeClientModule, setRealtimeClientModule] =
-    useState<UnknownRealtimeGameClientModule | null>(null);
   const autoJoinKey = useRef<string | null>(null);
   const handledCloseReason = useRef<string | null>(null);
   const allowCompletedSetup = useRef(false);
@@ -669,35 +655,6 @@ export function GameRoomHostProvider({
     setLocalError("无法进入房间。房间可能已关闭，或房间码不正确。");
     router.replace(`/games/${encodeURIComponent(gameId)}`, { scroll: false });
   }, [gameId, pathname, router, state.error, state.room]);
-
-  useEffect(() => {
-    const snapshot = state.snapshot;
-    if (snapshot === null) {
-      setClientModule(null);
-      setRealtimeClientModule(null);
-      return;
-    }
-    let active = true;
-    if (runtime === "realtime") {
-      setClientModule(null);
-      void loadRealtimeGameClientModule(
-        snapshot.gameId,
-        snapshot.gameVersion,
-      ).then((module) => {
-        if (active) setRealtimeClientModule(module ?? null);
-      });
-    } else {
-      setRealtimeClientModule(null);
-      void loadGameClientModule(snapshot.gameId, snapshot.gameVersion).then(
-        (module) => {
-          if (active) setClientModule(module ?? null);
-        },
-      );
-    }
-    return () => {
-      active = false;
-    };
-  }, [runtime, state.snapshot?.gameId, state.snapshot?.gameVersion]);
 
   useEffect(() => {
     const status = state.roomLifecycle?.currentRound?.status ?? null;
@@ -947,8 +904,6 @@ export function GameRoomHostProvider({
       inviteUrl,
       inviteCopyState,
       playerCountNotice,
-      clientModule,
-      realtimeClientModule,
       setRoomCode,
       createRoom,
       joinRoom,
@@ -967,7 +922,6 @@ export function GameRoomHostProvider({
     }),
     [
       busy,
-      clientModule,
       closeRoom,
       copyInviteLink,
       createRoom,
@@ -990,7 +944,6 @@ export function GameRoomHostProvider({
       state,
       toggleRoundReady,
       runtime,
-      realtimeClientModule,
     ],
   );
 

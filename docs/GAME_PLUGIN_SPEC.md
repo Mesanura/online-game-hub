@@ -220,7 +220,7 @@ type Action = {
 
 ## 8. Legacy Client Module
 
-游戏 Client Module 是迁移期兼容路径，可以依赖 React 和 `game-client-sdk`，但不得导入服务端 State 或自行实现 authoritative 规则。新游戏使用下一节的独立 Surface，不再新增 Client Module。
+游戏 Client Module 是保留的兼容 API 与组件测试路径，可以依赖 React 和 `game-client-sdk`，但不得导入服务端 State 或自行实现 authoritative 规则。当前 Web 的 live room 与 replay 均不再加载 Client Module；新游戏使用下一节的独立 Surface，不再新增 Client Module。
 
 概念契约：
 
@@ -242,19 +242,11 @@ interface GameClientModule<View, Action> {
 }
 ```
 
-通用 host 负责添加 `commandId` 和 `expectedRevision`、管理连接、显示平台错误和处理重连。具体游戏组件只渲染 View、采集意图并调用 `submitAction`。可投降游戏以可选 `createResignAction` 返回该版本的最小投降 Action；共用 HUD 负责 active player 可见性、二次确认和提交，但不解释或验证 Action。
+该兼容 contract 中，通用 host 负责添加 `commandId` 和 `expectedRevision`、管理连接和处理重连；具体游戏组件只渲染 View、采集意图并调用 `submitAction`。可选 `createResignAction` 必须返回 exact gameVersion 的最小投降 Action，但现在只用于 API/组件兼容测试，平台 HUD 不再读取该 factory。
 
 客户端可以重复实现提示性逻辑以改善 UX，但提示不是权威；服务器 Core 始终重新验证 Action。
 
-井字棋、四子棋、五子棋与黑白棋 current `1.1.0` 都暴露 `createResignAction`；各自 frozen `1.0.0` definition 继续只解析原落子 Action。该 client factory 不属于 replay 或 wire envelope，也不能让旧 Core 接受新 Action。
-
-四子棋 current `1.1.0` 验证了该契约可表达固定 7×6 View、每列可访问操作、`DROP_DISC(column)` intent 与共用 HUD 的 `RESIGN`，而无需让 Client Module 导入 Core、计算重力落点、扫描胜负、预测 Outcome 或推进 revision。客户端 View schema 是对不可信 server payload 的运行时边界，不等于在浏览器重建 authoritative State。
-
-五子棋 current `1.1.0` 继续使用同一 Client Module contract：View 明确携带 15 或 19 的 `boardSize` 与固定 `winLength: 5`，客户端按完整 View 渲染 225/361 个 cell 并提交 `PLACE_STONE(cell)` 或 factory 生成的 `RESIGN`。客户端不导入 Core、不扫描连续棋子，也不把 View、actor、Outcome 或 revision 放入 Action。
-
-六贯棋 `1.0.0` 使用同一 contract 渲染固定 121-cell 公开 View，并提交 `PLACE_STONE(cell)` 或 factory 生成的 `RESIGN`。连接路径完全来自服务器 Outcome；客户端不扫描连通性、不自行选择 winning path，共用 HUD 取消投降确认也不提交 Action。`RESIGN` 是否不受回合限制仍由 Core 裁定，通用 host/runtime 无需理解其语义。
-
-黑白棋 current `1.1.0` 使用同一 contract 渲染固定 64-cell 公开 View，并提交 `PLACE_DISC(cell)` 或 factory 生成的 `RESIGN`。View 由服务器明确提供 `legalMoves`、`nextTurnSlotId`、BLACK/WHITE 棋子数和 Outcome；客户端不扫描八方向夹线、不计算翻转、不判断是否跳过或终局。对方无合法行动时，Core 在该次 accepted transition 内保持当前行动 slot；没有 `PASS` Action，也不需要 runtime 特例。
+井字棋、四子棋、五子棋与黑白棋 current `1.1.0` 的兼容 module 仍暴露 `createResignAction`；各自 frozen `1.0.0` definition 继续只解析原落子 Action。六贯棋与中国跳棋的兼容 module 也保持各自既有契约。任何 client factory 都不属于 replay 或 wire envelope，不能让旧 Core 接受新 Action；Surface 是否支持平台投降只由 exact deployment 的 `platformControls` 与 Surface schema 决定。
 
 ## 9. Round Setup Definition
 
@@ -274,7 +266,7 @@ Surface 只实现 `@online-game-hub/game-surface-bridge` 的 JSON 消息协议�
 
 JavaScript Surface 可选用 `GameSurfaceBridge` helper：实例只接受指定 parent window/origin 的一次 `host.hello`，随后只通过移交的 `MessagePort` 收发 strict message，并在 timeout、非法消息或 dispose 后关闭。平台侧 `SurfaceBridgeHost` 在 ready 前拒绝发消息，负责 timeout/crash/retry 与重复 `clientIntentId` 抑制。两者都是 transport helper，不解释游戏 intent，也不补写 command ID、actor、round、revision 或 input sequence；这些仍只属于平台 Host SDK。Bridge V1 的 `host.command/RESIGN` 只是无游戏 payload 的 UX 触发：Surface 必须按 exact `gameVersion` 决定是否生成自己的 `RESIGN` Action/Input，并以命令携带的 `clientIntentId` 发送普通 `surface.intent`。历史 Core 不支持投降时，deployment 不得声明该控制。
 
-Web 按 deployment registry 的 exact game/version/mode 解析静态 entrypoint，不导入 Surface workspace。`GameSurfaceFrame` 负责 opaque sandbox、握手状态、projected state、viewport/fullscreen、intent result 和 dispose；游戏只需在自己的 artifact 中实现 Bridge。未迁移 registration 保持 `legacy-react`，因此可以逐个版本启用或回滚 Surface，而不改变已存在房间的 Core 或协议代际。
+Web 按 deployment registry 的 exact game/version/mode 解析静态 entrypoint，不导入 Surface workspace。`GameSurfaceFrame` 负责 opaque sandbox、握手状态、projected state、viewport/fullscreen、intent result、平台命令和 dispose；游戏只需在自己的 artifact 中实现 Bridge。当前全部受支持版本都必须解析到 `surface-v1`，Web 不提供 `legacy-react` 渲染 fallback；Surface 回滚通过切换 immutable `surfaceVersion` 引用完成，不改变已存在房间的 Core 或协议代际。
 
 ## 11. Manifest 与 Export Map
 

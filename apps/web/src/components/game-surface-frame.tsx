@@ -1,6 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+} from "react";
 
 import {
   SurfaceBridgeHost,
@@ -14,6 +21,10 @@ import type { WebRoomHostState } from "./game-room-host";
 export interface SurfaceIntentResult {
   readonly status: "accepted" | "rejected" | "stale";
   readonly code?: string;
+}
+
+export interface GameSurfaceFrameHandle {
+  requestResign(): Promise<SurfaceIntentResult>;
 }
 
 export interface GameSurfaceFrameProps {
@@ -41,7 +52,17 @@ function statusLabel(status: SurfaceBridgeHostStatus): string {
   return "正在加载游戏画面…";
 }
 
-export function GameSurfaceFrame(props: GameSurfaceFrameProps) {
+const SURFACE_COMMAND_TIMEOUT_MS = 10_000;
+
+interface PendingSurfaceCommand {
+  readonly resolve: (result: SurfaceIntentResult) => void;
+  timeout: ReturnType<typeof setTimeout> | null;
+}
+
+export const GameSurfaceFrame = forwardRef<
+  GameSurfaceFrameHandle,
+  GameSurfaceFrameProps
+>(function GameSurfaceFrame(props, ref) {
   const [generation, setGeneration] = useState(0);
   const [loadedFrameKey, setLoadedFrameKey] = useState<string | null>(null);
   const [status, setStatus] = useState<SurfaceBridgeHostStatus>({
@@ -51,13 +72,97 @@ export function GameSurfaceFrame(props: GameSurfaceFrameProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const bridgeRef = useRef<SurfaceBridgeHost | null>(null);
   const stateSequenceRef = useRef(0);
+  const commandSequenceRef = useRef(0);
+  const pendingIntentIdsRef = useRef(new Set<string>());
+  const pendingCommandsRef = useRef(new Map<string, PendingSurfaceCommand>());
+  const expiredCommandIdsRef = useRef(new Set<string>());
   const latestPropsRef = useRef(props);
   const frameKey = `${props.entrypoint.url}:${generation}`;
   latestPropsRef.current = props;
 
+  const settlePendingCommand = useCallback(
+    (clientIntentId: string, result: SurfaceIntentResult): void => {
+      const pending = pendingCommandsRef.current.get(clientIntentId);
+      if (pending === undefined) return;
+      if (pending.timeout !== null) clearTimeout(pending.timeout);
+      pendingCommandsRef.current.delete(clientIntentId);
+      pending.resolve(result);
+    },
+    [],
+  );
+
+  const abortPendingCommands = useCallback((code: string): void => {
+    for (const [clientIntentId, pending] of pendingCommandsRef.current) {
+      if (pending.timeout !== null) clearTimeout(pending.timeout);
+      pending.resolve({ status: "rejected", code });
+      pendingCommandsRef.current.delete(clientIntentId);
+    }
+    pendingIntentIdsRef.current.clear();
+    expiredCommandIdsRef.current.clear();
+  }, []);
+
+  const requestResign = useCallback((): Promise<SurfaceIntentResult> => {
+    if (
+      !latestPropsRef.current.entrypoint.platformControls.includes("RESIGN")
+    ) {
+      return Promise.resolve({
+        status: "rejected",
+        code: "SURFACE_COMMAND_NOT_SUPPORTED",
+      });
+    }
+    if (
+      pendingIntentIdsRef.current.size > 0 ||
+      pendingCommandsRef.current.size > 0
+    ) {
+      return Promise.resolve({
+        status: "rejected",
+        code: "SURFACE_INTENT_IN_FLIGHT",
+      });
+    }
+    const bridge = bridgeRef.current;
+    if (bridge?.status.state !== "ready") {
+      return Promise.resolve({
+        status: "rejected",
+        code: "SURFACE_NOT_READY",
+      });
+    }
+    commandSequenceRef.current += 1;
+    const clientIntentId = `platform-resign-${commandSequenceRef.current}`;
+    return new Promise((resolve) => {
+      const pending: PendingSurfaceCommand = {
+        resolve,
+        timeout: setTimeout(() => {
+          pendingCommandsRef.current.delete(clientIntentId);
+          expiredCommandIdsRef.current.add(clientIntentId);
+          resolve({
+            status: "rejected",
+            code: "SURFACE_COMMAND_TIMEOUT",
+          });
+        }, SURFACE_COMMAND_TIMEOUT_MS),
+      };
+      pendingCommandsRef.current.set(clientIntentId, pending);
+      if (
+        !bridge.send({
+          type: "host.command",
+          clientIntentId,
+          control: "RESIGN",
+        })
+      ) {
+        settlePendingCommand(clientIntentId, {
+          status: "rejected",
+          code: "SURFACE_NOT_READY",
+        });
+      }
+    });
+  }, [settlePendingCommand]);
+
+  useImperativeHandle(ref, () => ({ requestResign }), [requestResign]);
+
   useEffect(() => {
     let active = true;
     stateSequenceRef.current = 0;
+    pendingIntentIdsRef.current.clear();
+    expiredCommandIdsRef.current.clear();
     const bridge = new SurfaceBridgeHost({
       frameWindow: () => iframeRef.current?.contentWindow ?? null,
       mode: props.entrypoint.mode,
@@ -68,9 +173,27 @@ export function GameSurfaceFrame(props: GameSurfaceFrameProps) {
         reducedMotion: props.reducedMotion,
       },
       onIntent: (message) => {
+        if (expiredCommandIdsRef.current.delete(message.clientIntentId)) {
+          bridge.send({
+            type: "host.intent-result",
+            clientIntentId: message.clientIntentId,
+            status: "rejected",
+            code: "SURFACE_COMMAND_EXPIRED",
+          });
+          return;
+        }
+        pendingIntentIdsRef.current.add(message.clientIntentId);
+        const pendingCommand = pendingCommandsRef.current.get(
+          message.clientIntentId,
+        );
+        if (pendingCommand !== undefined && pendingCommand.timeout !== null) {
+          clearTimeout(pendingCommand.timeout);
+          pendingCommand.timeout = null;
+        }
         void latestPropsRef.current
           .onIntent(message.intent)
           .then((result) => {
+            pendingIntentIdsRef.current.delete(message.clientIntentId);
             if (!active || bridgeRef.current !== bridge) return;
             bridge.send({
               type: "host.intent-result",
@@ -78,15 +201,21 @@ export function GameSurfaceFrame(props: GameSurfaceFrameProps) {
               status: result.status,
               ...(result.code === undefined ? {} : { code: result.code }),
             });
+            settlePendingCommand(message.clientIntentId, result);
           })
           .catch(() => {
+            pendingIntentIdsRef.current.delete(message.clientIntentId);
             if (!active || bridgeRef.current !== bridge) return;
+            const result = {
+              status: "rejected",
+              code: "HOST_INTENT_FAILED",
+            } as const;
             bridge.send({
               type: "host.intent-result",
               clientIntentId: message.clientIntentId,
-              status: "rejected",
-              code: "HOST_INTENT_FAILED",
+              ...result,
             });
+            settlePendingCommand(message.clientIntentId, result);
           });
       },
       onSurfaceError: () => bridgeRef.current?.reportSurfaceCrash(),
@@ -97,13 +226,18 @@ export function GameSurfaceFrame(props: GameSurfaceFrameProps) {
         });
       },
       onStatusChange: (nextStatus) => {
-        if (active) setStatus(nextStatus);
+        if (!active) return;
+        setStatus(nextStatus);
+        if (nextStatus.state === "failed" || nextStatus.state === "disposed") {
+          abortPendingCommands("SURFACE_COMMAND_ABORTED");
+        }
       },
     });
     bridgeRef.current = bridge;
     setStatus({ state: "idle" });
     return () => {
       active = false;
+      abortPendingCommands("SURFACE_COMMAND_ABORTED");
       bridge.dispose();
       if (bridgeRef.current === bridge) bridgeRef.current = null;
     };
@@ -115,6 +249,8 @@ export function GameSurfaceFrame(props: GameSurfaceFrameProps) {
     props.entrypoint.url,
     props.locale,
     props.reducedMotion,
+    abortPendingCommands,
+    settlePendingCommand,
   ]);
 
   useEffect(() => {
@@ -244,4 +380,4 @@ export function GameSurfaceFrame(props: GameSurfaceFrameProps) {
       )}
     </div>
   );
-}
+});

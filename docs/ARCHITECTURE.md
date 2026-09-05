@@ -1,6 +1,6 @@
 # 系统架构
 
-> 状态：架构基线（Protocol V5 与 legacy React 仍服务现有房间；Game Surface Bridge V1、Setup Protocol V6 与双轨注册已进入迁移）
+> 状态：架构基线（Web 游戏表现已只使用 Game Surface；Protocol V5 仍服务存量房间，Setup Protocol V6 与双轨 runtime 并存）
 > 本文是系统职责、目录结构、依赖方向和部署基线的权威来源。产品范围见 [PRODUCT.md](./PRODUCT.md)。
 
 ## 1. 架构目标
@@ -41,7 +41,7 @@ Browser
 - 建立匿名访客 session，并管理用户名+密码账户、可撤销账户 session 和同源认证 API；
 - 签发短期 Game Server 连接票据；
 - 通过同源只读代理发现已有房间固定的 runtime、game version 与 Setup Protocol generation；
-- 按 exact deployment registration 加载 legacy Client Module 或 sandboxed Game Surface；
+- 按 exact deployment registration 加载 sandboxed Game Surface；缺失精确 artifact 时 fail closed；
 - 把服务器 View 投影、平台状态和 viewport 传给 Surface，并为 Surface intent 补充 command/round/revision/input sequence；
 - 以 server-verified guest 读取私有比赛 metadata。
 
@@ -96,7 +96,7 @@ games/<game-id>/
   package.json
   src/
     core/
-    client/              # 仅迁移期 legacy adapter
+    client/              # 保留的 legacy API/组件测试兼容层，Web 不再加载
     manifest.ts
   tests/
   GAME_SPEC.md
@@ -106,7 +106,7 @@ games/<game-id>/
 Package export map 提供：
 
 - `/core`：服务器可用的 `GameDefinition` 与公开领域类型；
-- `/client`：迁移期 React Client Module，仅 legacy Web 路径可加载；全部 Surface 迁移后退役；
+- `/client`：保留的 React Client Module 公共兼容层与组件测试入口；当前 Web 不再消费；
 - `/manifest`：无副作用、可序列化的目录元数据。
 
 默认不创建游戏专属 Colyseus adapter。只有通用 runtime 无法表达、且经过架构评审确认的需求，才允许增加 server extension；扩展仍不得把 Colyseus 引入 Core。
@@ -120,7 +120,7 @@ M8 是已落地的例外：实时游戏不把 tick、持续输入、插值或预
 `game-registry` 提供隔离的子路径：
 
 - `/catalog`：纯 manifest 列表，供首页和工具读取；
-- `/client`：按 `gameId` 懒加载 Client Module，避免首页打包全部游戏；
+- `/client`：按 `gameId + gameVersion` 懒加载 Client Module 的保留兼容 API；当前 Web 不再导入；
 - `/server`：按 `gameId + gameVersion` 解析服务端 `GameDefinition`。
 - `/deployment`：按 `gameId + gameVersion` 选择 Setup Protocol generation 与 legacy/surface presentation，并把 `(gameId, gameVersion, mode)` 精确映射到 immutable artifact。
 
@@ -145,8 +145,8 @@ game-registry ──────────────> games/* subpath export
 database ───────────────────> game-sdk + protocol + game-server-runtime ports
                               Drizzle ORM + Postgres.js
 
-apps/web ───────────────────> game-registry/client + catalog
-                              game-registry/deployment + game-surface-bridge
+apps/web ───────────────────> game-registry/catalog + deployment
+                              game-surface-bridge
                               game-client-sdk + game-server-ticket + database
 
 apps/game-server ───────────> game-registry/server
@@ -180,7 +180,7 @@ Realtime simulation 使用固定整数单位和单调 server tick；实际 wall 
 
 V1 Host 只创建不含 `allow-same-origin` 的 sandboxed iframe，按能力最小开放 scripts 与 pointer lock。静态路径不读取登录态，并为 opaque origin 模块加载提供 CORS；CSP 默认 `connect-src 'none'`，素材随 artifact 发布。首个 window `postMessage` 仅携带一次性 nonce 并移交 `MessageChannel`，之后双方只监听专用 port。Host 校验 iframe window、nonce、bridge version 和每条 strict schema；10 秒未 ready、Surface crash 或非法消息进入可重试错误态，且不会提交 intent。
 
-`apps/web` 只在 exact `(gameId, gameVersion, mode)` deployment 解析为 `surface-v1` 时挂载 `GameSurfaceFrame`；其余 registration 继续走 legacy Client Module。iframe 始终位于不参与 HUD 布局的 game stage 内，Host 在 ready 后发送最新 projected state，并用 `ResizeObserver`、fullscreen event 与 focus-mode 属性发送环境尺寸。`/game-surfaces/*` 由静态路径提供 immutable cache、opaque-origin CORS、CORP、`nosniff` 与禁止联网的 CSP，同时完全绕过 guest-session proxy；加载、握手或运行失败只显示可重试遮罩，不转发 Surface intent。
+`apps/web` 只按 exact `(gameId, gameVersion, mode)` deployment 挂载 `GameSurfaceFrame`，不再导入或回退到 legacy Client Module；缺失精确 Play/Replay entrypoint 时显示稳定的不可用状态。iframe 始终位于不参与 HUD 布局的 game stage 内，Host 在 ready 后发送最新 projected state，并用 `ResizeObserver`、fullscreen event 与 focus-mode 属性发送环境尺寸。`/game-surfaces/*` 由静态路径提供 immutable cache、opaque-origin CORS、CORP、`nosniff` 与禁止联网的 CSP，同时完全绕过 guest-session proxy；加载、握手或运行失败只显示可重试遮罩，不转发 Surface intent。
 
 `game-surface-bridge` 的公开 JavaScript helper 由两端组成：平台使用 `SurfaceBridgeHost.start/retry/send/reportSurfaceCrash/dispose` 驱动 `idle → loading → ready | failed → disposed` 生命周期；Surface 使用 `GameSurfaceBridge.start/send/dispose` 接收单次握手并绑定专用 port。握手传输或 port 发送抛错一律 fail closed；失败实例必须由 Host 显式 `retry` 创建新 nonce 和新 channel。非 JavaScript Surface 可直接按同一 strict JSON schema 实现，不依赖 helper。
 
@@ -196,7 +196,7 @@ Platform 通用校验只允许已占用 stable slot，强制 manifest 人数范�
 
 新房间以 manifest `defaultConfig` 初始化首轮 Setup。完成 Round 后，下一轮从上一轮 `FinalizedRoundSetup` 初始化，复用 config、参与者、实际顺序与 assignments，但不复用 State、Outcome、revision/tick、seed、RNG cursor、ready、Match ID 或 replay ID。每位参与者必须分别重新 ready；accepted 设置变更再次清空全部确认。
 
-回合制与 realtime runtime 均具备 V5/V6 双轨：新建房间按 exact deployment 固定 generation，V6 aggregate/RoomStore 保存 versioned coordinator、ready slot、上一局 finalized setup，并以独立 setup/gameplay seed 启动 Round。Setup Action 与 ready 的候选状态先保存再提交内存；finalize 后的随机结果在 Round archive/replay 创建失败期间保持固化，同一命令可重试而不重新随机。completed setup 阶段的断线会同时清除对应 slot 的 ready 并写回 RoomStore。井字棋、Pong、四子棋、五子棋、黑白棋、六贯棋与中国跳棋的 current production registration 已切换为 V6 与 `surface-v1`；仍受支持的历史 V5 房间和 exact legacy registration 继续由原代 runtime 完成。
+回合制与 realtime runtime 均具备 V5/V6 双轨：新建房间按 exact deployment 固定 generation，V6 aggregate/RoomStore 保存 versioned coordinator、ready slot、上一局 finalized setup，并以独立 setup/gameplay seed 启动 Round。Setup Action 与 ready 的候选状态先保存再提交内存；finalize 后的随机结果在 Round archive/replay 创建失败期间保持固化，同一命令可重试而不重新随机。completed setup 阶段的断线会同时清除对应 slot 的 ready 并写回 RoomStore。井字棋、Pong、四子棋、五子棋、黑白棋、六贯棋与中国跳棋的 current production registration 已切换为 V6；全部当前及受支持历史版本的表现 registration 都是 `surface-v1`。仍存活的历史 V5 房间继续由原代 runtime 完成，但其 Play/Replay 也使用精确 Surface。
 
 ### 7.4 房间协议代际固定与发现
 
@@ -239,7 +239,7 @@ Room 必须串行处理 Action。任何未来多实例方案都必须维持“�
 ### 8.2 M4 Web 与 Client Host
 
 - Next Proxy 在首次页面请求建立签名 `ogh_guest` cookie；Web 从可选的有效 `ogh_account` session 为 `POST /api/game-ticket` 签入可信 UserId。PlayerSessionId、UserId 和 signing secrets 都由服务器决定，浏览器不能提交或读取内部 identity。
-- 首页和目录只从 `game-registry/catalog` 读取 manifest；游戏页使用 manifest 的 `defaultConfig` 创建房间，并按 exact deployment 加载独立 Surface 或迁移期 Client Module，不导入 Core 或 server registry。
+- 首页和目录只从 `game-registry/catalog` 读取 manifest；游戏页使用 manifest 的 `defaultConfig` 创建房间，并按 exact deployment 只加载独立 Surface，不导入 Core、server registry 或 legacy Client Module。
 - Next App Router 以 `/games/[gameId]`、`/games/[gameId]/rooms/[roomCode]` 和 `/games/[gameId]/rooms/[roomCode]/play` 表达入口、等待和对局三个真实页面阶段。`GameClientHostProvider` 位于 `[gameId]/layout`，三个子路由共享同一 host，路由切换不重建连接或重复 join；旧 `/games/[gameId]?roomCode=...` 由服务端兼容重定向到规范房间 URL。
 - 通用 `GameClientHost` 获取新 ticket 后调用 Colyseus `create`/`join`；join 在 SDK 调用前执行 `trim().toUpperCase()`。连接成功先以 `room.connected` 的 stable slot 和 `room.lifecycle` 为准；首局未启动时没有 snapshot，只有 active/completed Round 才有完整 `match.snapshot`。
 - Web 只从当前非敏感 gameId/roomCode 构造 canonical invite URL，并通过 Clipboard API 提供 copying/copied/failed 和手动选择后备。lifecycle 的 waiting/next-round setup 映射到房间页，active 映射到 play，completed 保留在 play；closed 原因返回入口。刷新与 reconnect 都先由 host 收敛服务器 lifecycle，再决定规范路由。
@@ -287,7 +287,7 @@ Room 必须串行处理 Action。任何未来多实例方案都必须维持“�
 - 黑白棋同样直接使用 `defaultConfig: null` 和现有 opaque Action envelope。一次 accepted placement 内完成全部翻转和跳过判断；只有该 placement 递增一次 revision 并进入 replay，平台不理解 PASS 或翻转列表。`game-sdk`、`protocol`、`game-client-sdk`、`game-server-runtime`、`game-server-ticket`、database source/schema/migration 继续零修改。
 - 通用 Action pipeline、`projectView`、replay verifier、PostgreSQL adapters、多轮/关闭/reconnect 行为没有 `connect-four`、`gomoku`、`hex` 或其他 gameId 规则分支。真实 Colyseus integration 直接验证六贯棋 21-action 第三轴连接胜局、同房间第二轮再次选择相同先手时的角色一致性与 off-turn `RESIGN`；另以四游戏 table 验证 current `1.1.0` 的正常 Action 后同 actor off-turn `RESIGN`、单次 revision、completed、对手 WIN 和 exact replay verification。
 - 井字棋、四子棋、五子棋与黑白棋 current `1.1.0` 统一增加 strict `RESIGN`、State `resignedSlotId` 与 `RESIGNATION` WIN；普通落子规则保持不变。各自 frozen `1.0.0` definition 是不 alias current 的独立对象，继续拒绝 `RESIGN` 并重建原 golden replay。Hex Core、算法与 `gameVersion 1.0.0` 不变。
-- presentation 仍需在 Next transpile allowlist 与 Web 全局 CSS 显式登记；通用 `GameRoomPage` 继续只按稳定领域错误码提供少量文案映射，没有新增 gameId 规则分支。
+- M6 当时的 presentation 仍需在 Next transpile allowlist 与 Web 全局 CSS 显式登记；M9 完成全量 Surface 映射后，Web 已删除动态 Client Module 与游戏专属全局 CSS。具体游戏 package 暂仍保留在 Next transpile allowlist，因为 catalog/server registry 的静态 manifest/Core imports 尚未从 package 发布边界剥离；这不代表 Web 会编译 Surface 源码或加载游戏 React 组件。
 - 黑白棋涉及游戏外非文档 10 个唯一文件：registry package/catalog/client/server、lockfile、Next transpile 共 6 个机械登记文件，CSS 1 个，registry/integration/E2E 验证 3 个。连续多个游戏证明 package 骨架和登记步骤稳定后，窄版 `tools/create-game` 已作为独立工具实现；规则、样式与验收序列继续由游戏 owner 设计。
 
 ### 8.6 `tools/create-game` 边界

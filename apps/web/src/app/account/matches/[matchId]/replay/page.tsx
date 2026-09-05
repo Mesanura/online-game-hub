@@ -11,14 +11,10 @@ import {
 } from "@phosphor-icons/react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { use, useEffect, useMemo, useRef, useState } from "react";
+import { use, useEffect, useRef, useState } from "react";
 
-import { loadGameClientModule } from "@online-game-hub/game-registry/client";
-import { loadRealtimeGameClientModule } from "@online-game-hub/game-registry/client";
 import { gameCatalog } from "@online-game-hub/game-registry/catalog";
 import { resolveGameSurfaceEntrypoint } from "@online-game-hub/game-registry/deployment";
-import type { UnknownGameClientModule } from "@online-game-hub/game-client-sdk";
-import type { UnknownRealtimeGameClientModule } from "@online-game-hub/realtime-game-client-sdk";
 
 import { GameSurfaceFrame } from "../../../../../components/game-surface-frame";
 
@@ -76,9 +72,6 @@ export default function ReplayPage({
   const locale =
     typeof navigator === "undefined" ? "zh-CN" : navigator.language || "zh-CN";
   const [payload, setPayload] = useState<ReplayPayload | null>(null);
-  const [module, setModule] = useState<UnknownGameClientModule | null>(null);
-  const [realtimeModule, setRealtimeModule] =
-    useState<UnknownRealtimeGameClientModule | null>(null);
   const [frameIndex, setFrameIndex] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -87,8 +80,6 @@ export default function ReplayPage({
   useEffect(() => {
     let cancelled = false;
     setPayload(null);
-    setModule(null);
-    setRealtimeModule(null);
     setFrameIndex(0);
     setPlaying(false);
     setError(null);
@@ -115,34 +106,10 @@ export default function ReplayPage({
           body.match.gameVersion,
           "replay",
         );
-        const loaded =
-          surfaceEntrypoint !== undefined
-            ? null
-            : body.runtime === "realtime"
-              ? await loadRealtimeGameClientModule(
-                  body.match.gameId,
-                  body.match.gameVersion,
-                )
-              : await loadGameClientModule(
-                  body.match.gameId,
-                  body.match.gameVersion,
-                );
-        if (surfaceEntrypoint === undefined && loaded === undefined) {
+        if (surfaceEntrypoint === undefined) {
           throw new Error("REPLAY_UNAVAILABLE");
         }
-        if (!cancelled) {
-          setPayload(body);
-          if (surfaceEntrypoint !== undefined) {
-            setModule(null);
-            setRealtimeModule(null);
-          } else if (body.runtime === "realtime") {
-            setRealtimeModule(loaded as UnknownRealtimeGameClientModule);
-            setModule(null);
-          } else {
-            setModule(loaded as UnknownGameClientModule);
-            setRealtimeModule(null);
-          }
-        }
+        if (!cancelled) setPayload(body);
       })
       .catch((caught: unknown) => {
         if (!cancelled) {
@@ -190,28 +157,13 @@ export default function ReplayPage({
           payload.match.gameVersion,
           "replay",
         );
-  const parsedView = useMemo(() => {
-    if (surfaceEntrypoint !== undefined) return frame?.view ?? null;
-    const activeModule = module ?? realtimeModule;
-    if (activeModule === null || frame === null) return null;
-    try {
-      return activeModule.parseView(frame.view);
-    } catch {
-      return null;
-    }
-  }, [frame, module, realtimeModule, surfaceEntrypoint]);
   const title =
     payload === null
       ? "回放中心"
       : (gameCatalog.find((game) => game.id === payload.match.gameId)?.title ??
         "回放中心");
 
-  if (
-    payload === null ||
-    (surfaceEntrypoint === undefined &&
-      module === null &&
-      realtimeModule === null)
-  ) {
+  if (payload === null) {
     return (
       <div
         className="page-shell replay-page"
@@ -227,7 +179,14 @@ export default function ReplayPage({
       </div>
     );
   }
-  if (parsedView === null || frame === null) {
+  if (surfaceEntrypoint === undefined) {
+    return (
+      <div className="page-shell replay-page" data-testid="replay-error">
+        <h1>该游戏版本不支持玩家回放</h1>
+      </div>
+    );
+  }
+  if (frame === null) {
     return (
       <div className="page-shell replay-page" data-testid="replay-error">
         <h1>回放数据无效</h1>
@@ -261,45 +220,24 @@ export default function ReplayPage({
           <div className="replay-frame-label" data-testid="replay-frame">
             第 {frameNumber} 帧
           </div>
-          {surfaceEntrypoint !== undefined ? (
-            <GameSurfaceFrame
-              connectionState="closed"
-              entrypoint={surfaceEntrypoint}
-              locale={locale}
-              onIntent={() =>
-                Promise.resolve({
-                  status: "rejected",
-                  code: "REPLAY_READ_ONLY",
-                })
-              }
-              payload={frame.view}
-              readOnly
-              reducedMotion={reducedMotion}
-              roundNumber={payload.match.roundNumber}
-              {...(payload.runtime === "realtime"
-                ? { tick: frameNumber }
-                : { revision: frameNumber })}
-            />
-          ) : payload.runtime === "realtime" && realtimeModule !== null ? (
-            <realtimeModule.Component
-              acknowledgedInputSequence={0}
-              connectionState="closed"
-              previousView={null}
-              readOnly
-              reducedMotion
-              serverTick={frameNumber}
-              submitInput={async () => undefined}
-              view={parsedView as Readonly<unknown>}
-            />
-          ) : module !== null ? (
-            <module.Component
-              readOnly
-              connectionState="closed"
-              revision={frameNumber}
-              submitAction={async () => undefined}
-              view={parsedView as Readonly<unknown>}
-            />
-          ) : null}
+          <GameSurfaceFrame
+            connectionState="closed"
+            entrypoint={surfaceEntrypoint}
+            locale={locale}
+            onIntent={() =>
+              Promise.resolve({
+                status: "rejected",
+                code: "REPLAY_READ_ONLY",
+              })
+            }
+            payload={frame.view}
+            readOnly
+            reducedMotion={reducedMotion}
+            roundNumber={payload.match.roundNumber}
+            {...(payload.runtime === "realtime"
+              ? { tick: frameNumber }
+              : { revision: frameNumber })}
+          />
         </section>
         <section className="replay-controls clay-surface" aria-label="回放控制">
           <span data-testid="replay-frame-count">
