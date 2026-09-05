@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import type { Page } from "@playwright/test";
+import type { FrameLocator, Page } from "@playwright/test";
 
 import {
   PostgresReplayStore,
@@ -8,11 +8,16 @@ import {
 import { resolveGameDefinition } from "@online-game-hub/game-registry/server";
 import { verifyReplay } from "@online-game-hub/game-server-runtime";
 
+import { registerE2eAccount } from "../src/account.js";
 import { openGameHud } from "../src/game-hud.js";
 import { startE2eHarness } from "../src/harness.js";
 import type { E2eHarness } from "../src/harness.js";
 
 let harness: E2eHarness;
+
+function chineseCheckersSurface(page: Page): FrameLocator {
+  return page.frameLocator('[data-testid="game-surface-iframe"]');
+}
 
 test.beforeAll(async () => {
   harness = await startE2eHarness();
@@ -22,20 +27,48 @@ test.afterAll(async () => {
   await harness?.stop();
 });
 
-async function acceptResignation(page: Page) {
-  await openGameHud(page);
-  const dialog = new Promise<string>((resolve) => {
-    page.once("dialog", async (event) => {
-      const message = event.message();
-      await event.accept();
-      resolve(message);
-    });
-  });
-  await page.getByTestId("resign-game").click();
-  return dialog;
+function capturePageErrors(page: Page, errors: string[]): void {
+  page.on("pageerror", (error) => errors.push(error.message));
 }
 
-test("three players choose camps, start, resign into a ranking, and persist replay metadata", async ({
+async function expectRevision(
+  pages: readonly Page[],
+  revision: number,
+): Promise<void> {
+  await Promise.all(
+    pages.map((page) =>
+      expect(page.getByTestId("revision")).toHaveText(String(revision)),
+    ),
+  );
+}
+
+function acceptResignation(page: Page): Promise<string> {
+  return new Promise((resolve, reject) => {
+    page.once("dialog", (dialog) => {
+      if (dialog.type() !== "confirm") {
+        reject(new Error(`Unexpected ${dialog.type()} dialog.`));
+        return;
+      }
+      const message = dialog.message();
+      void dialog.accept().then(() => resolve(message), reject);
+    });
+    void page.getByTestId("resign-game").click();
+  });
+}
+
+async function readHistory(
+  page: Page,
+): Promise<readonly Record<string, unknown>[]> {
+  const response = await page.request.get(`${harness.webUrl}/api/matches`);
+  expect(response.status()).toBe(200);
+  expect(response.headers()["cache-control"]).toBe("no-store, private");
+  const body = (await response.json()) as {
+    readonly matches?: readonly Record<string, unknown>[];
+  };
+  return body.matches ?? [];
+}
+
+test("three accounts configure camps in the independent Surface, rematch with complete settings, and replay both rankings", async ({
   browser,
 }) => {
   const contextA = await browser.newContext();
@@ -44,84 +77,362 @@ test("three players choose camps, start, resign into a ranking, and persist repl
   const pageA = await contextA.newPage();
   const pageB = await contextB.newPage();
   const pageC = await contextC.newPage();
-  await pageA.goto(`${harness.webUrl}/games/chinese-checkers`);
+  const pages = [pageA, pageB, pageC] as const;
+  await Promise.all([
+    registerE2eAccount(pageA.request, harness.webUrl, "cc_account_a"),
+    registerE2eAccount(pageB.request, harness.webUrl, "cc_account_b"),
+    registerE2eAccount(pageC.request, harness.webUrl, "cc_account_c"),
+  ]);
+  const browserErrors: string[] = [];
+  for (const page of pages) capturePageErrors(page, browserErrors);
+
+  await pageA.goto(`${harness.webUrl}/games`);
+  const gameCard = pageA.getByRole("article").filter({ hasText: "中国跳棋" });
+  await expect(gameCard).toContainText("2–6");
+  await gameCard.getByRole("link", { name: "创建或加入房间" }).click();
   await pageA.getByTestId("create-room").click();
   await expect(pageA.getByTestId("connection-state")).toHaveText("已连接");
-  await pageA.getByTestId("player-count").selectOption("3");
-  await pageA.locator('[data-assignment="N"]').click();
-  await pageA.getByTestId("starter-owner").click();
+  await expect(pageA.getByTestId("game-stage")).toHaveCount(0);
+  await expect(pageA.getByTestId("match-status")).toHaveCount(0);
+  await expect(pageA.getByTestId("game-surface-iframe")).toHaveAttribute(
+    "src",
+    "/game-surfaces/chinese-checkers/1.0.0/setup/index.html",
+  );
+
+  const setupA = chineseCheckersSurface(pageA);
+  await setupA.locator("[data-player-count]").selectOption("3");
+  await setupA.locator('[data-camp-option="N"]').click();
+  await setupA.locator('[data-starter="OWNER"]').click();
+  await expect(setupA.getByTestId("setup-status")).toContainText(
+    "等待 3 位玩家",
+  );
+
   const inviteUrl = await pageA.getByTestId("invite-link").getAttribute("href");
-  if (inviteUrl === null)
-    throw new Error("Missing Chinese Checkers invite URL.");
-
-  await pageB.goto(inviteUrl);
-  await pageC.goto(inviteUrl);
-  await expect(pageB.getByTestId("connection-state")).toHaveText("已连接");
-  await expect(pageC.getByTestId("connection-state")).toHaveText("已连接");
-  await pageB.locator('[data-assignment="S"]').click();
-  await pageC.locator('[data-assignment="NE"]').click();
-  await pageA.getByTestId("toggle-round-ready").click();
-  await pageB.getByTestId("toggle-round-ready").click();
-  await pageC.getByTestId("toggle-round-ready").click();
-  for (const page of [pageA, pageB, pageC]) {
-    await expect(page.getByTestId("match-status")).toHaveText("对局进行中");
-    await expect(
-      page.getByRole("grid", { name: "中国跳棋六芒星棋盘" }),
-    ).toBeVisible();
-    await expect(page.locator("[data-cell-index]")).toHaveCount(73);
+  if (inviteUrl === null) {
+    throw new Error("Chinese Checkers did not expose an invitation URL.");
   }
-  const ownerSlotId = await pageA.getByTestId("player-slot").innerText();
+  const invitation = new URL(inviteUrl);
+  expect(invitation.pathname).toMatch(
+    /^\/games\/chinese-checkers\/rooms\/[A-HJ-NP-Z2-9]{8}$/u,
+  );
+  const roomCode = invitation.pathname.split("/").at(-1);
+  if (roomCode === undefined || roomCode.length === 0) {
+    throw new Error("Chinese Checkers invitation omitted its room code.");
+  }
 
-  const secondDialog = acceptResignation(pageB);
-  await expect(await secondDialog).toContain("排在未投降玩家之后");
-  await expect(pageA.getByTestId("revision")).toHaveText("1");
-  const thirdDialog = acceptResignation(pageC);
-  await expect(await thirdDialog).toContain("排在未投降玩家之后");
+  await Promise.all([pageB.goto(inviteUrl), pageC.goto(inviteUrl)]);
   await Promise.all(
-    [pageA, pageB, pageC].map((page) =>
+    [pageB, pageC].map((page) =>
+      expect(page.getByTestId("connection-state")).toHaveText("已连接"),
+    ),
+  );
+  await chineseCheckersSurface(pageB).locator('[data-camp-option="S"]').click();
+  await chineseCheckersSurface(pageC)
+    .locator('[data-camp-option="NE"]')
+    .click();
+  await expect(setupA.getByTestId("setup-status")).toHaveText(
+    "设置完成，所有参与者可以分别准备",
+  );
+
+  const slotA = (await pageA.getByTestId("player-slot").textContent())?.trim();
+  const slotB = (await pageB.getByTestId("player-slot").textContent())?.trim();
+  const slotC = (await pageC.getByTestId("player-slot").textContent())?.trim();
+  if (slotA === undefined || slotB === undefined || slotC === undefined) {
+    throw new Error("A connected Chinese Checkers player is missing a slot.");
+  }
+  expect(new Set([slotA, slotB, slotC]).size).toBe(3);
+  const setupAssignmentsByStableSlot = [
+    { slotId: slotA, camp: "N" },
+    { slotId: slotB, camp: "S" },
+    { slotId: slotC, camp: "NE" },
+  ].sort((left, right) => left.slotId.localeCompare(right.slotId));
+
+  const waitingRoom =
+    await harness.gameServer.roomStore.getByRoomCode(roomCode);
+  expect(waitingRoom).toMatchObject({
+    gameId: "chinese-checkers",
+    gameVersion: "1.0.0",
+    setupProtocol: 6,
+    nextRoundSetup: {
+      setupState: {
+        targetPlayerCount: 3,
+        starter: "OWNER",
+        fixedStarterSlotId: null,
+        assignments: setupAssignmentsByStableSlot,
+      },
+      readySlotIds: [],
+      finalizedSetup: null,
+    },
+  });
+
+  await pageA.getByTestId("toggle-round-ready").click();
+  await expect(pageB.getByTestId("round-setup-status")).toHaveText(
+    "1/3 人已准备",
+  );
+  await pageB.getByTestId("toggle-round-ready").click();
+  await expect(pageC.getByTestId("round-setup-status")).toHaveText(
+    "2/3 人已准备",
+  );
+  await pageC.getByTestId("toggle-round-ready").click();
+
+  for (const page of pages) {
+    await expect(page.getByTestId("match-status")).toHaveText("对局进行中");
+    await expect(page.getByTestId("room-code")).toHaveText(roomCode);
+    await expect(page.getByTestId("game-surface-iframe")).toHaveAttribute(
+      "src",
+      "/game-surfaces/chinese-checkers/1.0.0/play/index.html",
+    );
+    const surface = chineseCheckersSurface(page);
+    await expect(
+      surface.getByRole("grid", { name: "中国跳棋六芒星棋盘" }),
+    ).toBeVisible();
+    await expect(surface.locator("[data-cell-index]")).toHaveCount(73);
+    await expect(surface.locator('[data-occupied="true"]')).toHaveCount(18);
+    await expect(
+      surface.locator('[data-cell-index][data-camp="CENTER"]'),
+    ).toHaveCount(37);
+    for (const camp of ["N", "NE", "SE", "S", "SW", "NW"] as const) {
+      await expect(
+        surface.locator(`[data-cell-index][data-camp="${camp}"]`),
+      ).toHaveCount(6);
+    }
+    const boardShell = await surface
+      .locator(".board-shell")
+      .evaluate((element) => ({
+        clientHeight: element.clientHeight,
+        clientWidth: element.clientWidth,
+        scrollHeight: element.scrollHeight,
+        scrollWidth: element.scrollWidth,
+      }));
+    expect(boardShell.scrollHeight).toBeLessThanOrEqual(
+      boardShell.clientHeight + 1,
+    );
+    expect(boardShell.scrollWidth).toBeLessThanOrEqual(
+      boardShell.clientWidth + 1,
+    );
+  }
+  await expect(
+    chineseCheckersSurface(pageA).getByTestId("player-camp"),
+  ).toContainText("北营地");
+  await expect(
+    chineseCheckersSurface(pageB).getByTestId("player-camp"),
+  ).toContainText("南营地");
+  await expect(
+    chineseCheckersSurface(pageC).getByTestId("player-camp"),
+  ).toContainText("东北营地");
+  await expect(
+    chineseCheckersSurface(pageB).locator("[data-cell-index]:not(:disabled)"),
+  ).toHaveCount(0);
+
+  const source = chineseCheckersSurface(pageA)
+    .locator('[data-legal-source="true"]')
+    .first();
+  await expect(source).toBeEnabled();
+  await source.click();
+  const target = chineseCheckersSurface(pageA)
+    .locator(".is-legal-target:not(:disabled)")
+    .first();
+  await expect(target).toBeVisible();
+  await target.click();
+  await expectRevision(pages, 1);
+
+  await Promise.all([pageB, pageC].map((page) => openGameHud(page)));
+  expect(await acceptResignation(pageB)).toContain("排在未投降玩家之后");
+  await expectRevision(pages, 2);
+  expect(await acceptResignation(pageC)).toContain("排在未投降玩家之后");
+  await expectRevision(pages, 3);
+  await Promise.all(
+    pages.map((page) =>
       expect(page.getByTestId("match-status")).toHaveText("对局已完成"),
     ),
   );
-  const winnerRanking = pageA
+  const firstRanking = chineseCheckersSurface(pageA)
     .getByRole("list", { name: "最终排名" })
     .getByRole("listitem")
     .first();
-  await expect(winnerRanking).toContainText("第 1 名");
-  await expect(winnerRanking).toContainText(ownerSlotId);
-  await openGameHud(pageA);
-  await pageA.getByTestId("next-round-settings").click();
-  await expect(pageA).toHaveURL(
-    /\/games\/chinese-checkers\/rooms\/[A-HJ-NP-Z2-9]{8}$/u,
-  );
-  await expect(pageA.locator('[data-assignment="N"]')).toHaveAttribute(
-    "aria-pressed",
-    "false",
-  );
+  await expect(firstRanking).toContainText("第 1 名");
+  await expect(firstRanking).toContainText(slotA);
 
-  const roomCode = new URL(inviteUrl).pathname.split("/").at(-1);
-  if (roomCode === undefined) throw new Error("Invite URL omitted room code.");
-  const room = await harness.gameServer.roomStore.getByRoomCode(roomCode);
-  if (room === null || room.currentRound === null)
-    throw new Error("Completed Chinese Checkers room was not archived.");
-  const database = createPostgresDatabaseClient({
+  const roundOneRoom =
+    await harness.gameServer.roomStore.getByRoomCode(roomCode);
+  const roundOne = roundOneRoom?.currentRound;
+  if (roundOne === null || roundOne === undefined) {
+    throw new Error("The first Chinese Checkers round was not archived.");
+  }
+  expect(roundOneRoom).toMatchObject({
+    setupProtocol: 6,
+    currentRound: { roundNumber: 1, revision: 3, status: "completed" },
+    nextRoundSetup: {
+      setupState: {
+        targetPlayerCount: 3,
+        starter: "FIXED",
+        fixedStarterSlotId: slotA,
+        assignments: setupAssignmentsByStableSlot,
+      },
+      setupRevision: 0,
+      readySlotIds: [],
+      finalizedSetup: null,
+    },
+  });
+  const roundOneReplayId = roundOne.replayId;
+
+  await Promise.all(pages.map((page) => openGameHud(page)));
+  await pageA.getByTestId("rematch-game").click();
+  await expect
+    .poll(async () => {
+      const room = await harness.gameServer.roomStore.getByRoomCode(roomCode);
+      return room?.nextRoundSetup?.readySlotIds;
+    })
+    .toEqual([slotA]);
+  await pageB.getByTestId("rematch-game").click();
+  await pageC.getByTestId("rematch-game").click();
+
+  await Promise.all(
+    pages.map(async (page) => {
+      await expect(page.getByTestId("round-number")).toHaveText("第 2 局");
+      await expect(page.getByTestId("match-status")).toHaveText("对局进行中");
+      await expect(page.getByTestId("revision")).toHaveText("0");
+      await expect(page.getByTestId("game-surface-iframe")).toHaveAttribute(
+        "src",
+        "/game-surfaces/chinese-checkers/1.0.0/play/index.html",
+      );
+      await expect(
+        chineseCheckersSurface(page).locator('[data-occupied="true"]'),
+      ).toHaveCount(18);
+    }),
+  );
+  const roundTwoActiveRoom =
+    await harness.gameServer.roomStore.getByRoomCode(roomCode);
+  expect(roundTwoActiveRoom?.previousFinalizedSetup).toEqual({
+    config: null,
+    participantSlotIds: setupAssignmentsByStableSlot.map(
+      (assignment) => assignment.slotId,
+    ),
+    playerOrder: [slotA, slotB, slotC],
+    assignments: [
+      { slotId: slotA, assignment: "N" },
+      { slotId: slotB, assignment: "S" },
+      { slotId: slotC, assignment: "NE" },
+    ],
+  });
+
+  await Promise.all([pageB, pageC].map((page) => openGameHud(page)));
+  expect(await acceptResignation(pageB)).toContain("排在未投降玩家之后");
+  await expectRevision(pages, 1);
+  expect(await acceptResignation(pageC)).toContain("排在未投降玩家之后");
+  await expectRevision(pages, 2);
+  await Promise.all(
+    pages.map((page) =>
+      expect(page.getByTestId("match-status")).toHaveText("对局已完成"),
+    ),
+  );
+  const roundTwoRoom =
+    await harness.gameServer.roomStore.getByRoomCode(roomCode);
+  const roundTwo = roundTwoRoom?.currentRound;
+  if (roundTwo === null || roundTwo === undefined) {
+    throw new Error("The second Chinese Checkers round was not archived.");
+  }
+  expect(roundTwo).toMatchObject({
+    roundNumber: 2,
+    revision: 2,
+    status: "completed",
+  });
+  expect(roundTwo.replayId).not.toBe(roundOneReplayId);
+
+  const rebuiltClient = createPostgresDatabaseClient({
     url: harness.databaseUrl,
-    applicationName: "chinese-checkers-e2e-replay",
+    applicationName: "chinese-checkers-e2e-replays",
     maxConnections: 2,
   });
   try {
-    const replayStore = new PostgresReplayStore(database.database);
-    const replay = await replayStore.get(room.currentRound.replayId);
-    expect(replay?.header.players).toEqual([
-      { slotId: "slot-1", assignment: "N" },
-      { slotId: "slot-2", assignment: "S" },
-      { slotId: "slot-3", assignment: "NE" },
+    const replayStore = new PostgresReplayStore(rebuiltClient.database);
+    const [roundOneReplay, roundTwoReplay] = await Promise.all([
+      replayStore.get(roundOneReplayId),
+      replayStore.get(roundTwo.replayId),
     ]);
-    expect(verifyReplay(replay, resolveGameDefinition)).toMatchObject({
+    const expectedPlayers = [
+      { slotId: slotA, assignment: "N" },
+      { slotId: slotB, assignment: "S" },
+      { slotId: slotC, assignment: "NE" },
+    ];
+    expect(roundOneReplay?.header.players).toEqual(expectedPlayers);
+    expect(roundTwoReplay?.header.players).toEqual(expectedPlayers);
+    expect(roundOneReplay?.actions).toHaveLength(3);
+    expect(roundTwoReplay?.actions).toHaveLength(2);
+    expect(roundOneReplay?.header.rng.seed).not.toBe(
+      roundTwoReplay?.header.rng.seed,
+    );
+    expect(verifyReplay(roundOneReplay, resolveGameDefinition)).toMatchObject({
       status: "verified",
+      rng: { cursor: 0 },
+      outcome: { type: "RANKING" },
+    });
+    expect(verifyReplay(roundTwoReplay, resolveGameDefinition)).toMatchObject({
+      status: "verified",
+      rng: { cursor: 0 },
       outcome: { type: "RANKING" },
     });
   } finally {
-    await database.close();
+    await rebuiltClient.close();
   }
+
+  const [historyA, historyB, historyC] = await Promise.all([
+    readHistory(pageA),
+    readHistory(pageB),
+    readHistory(pageC),
+  ]);
+  for (const history of [historyA, historyB, historyC]) {
+    expect(history).toHaveLength(2);
+    expect(history.map((match) => match.roundNumber).sort()).toEqual([1, 2]);
+    expect(
+      history.every(
+        (match) =>
+          match.gameId === "chinese-checkers" &&
+          match.gameVersion === "1.0.0" &&
+          match.replayAvailable === true,
+      ),
+    ).toBe(true);
+  }
+  expect(new Set(historyA.map((match) => match.matchId))).toEqual(
+    new Set(historyB.map((match) => match.matchId)),
+  );
+  expect(new Set(historyA.map((match) => match.matchId))).toEqual(
+    new Set(historyC.map((match) => match.matchId)),
+  );
+
+  await openGameHud(pageA);
+  await pageA.getByTestId("close-room").click();
+  await Promise.all(
+    pages.map((page) =>
+      expect(page.getByTestId("room-notice")).toHaveText("房主已关闭房间。"),
+    ),
+  );
+  const replayMatchId = String(
+    historyA.find((match) => match.roundNumber === 1)?.matchId,
+  );
+  await pageA.goto(
+    `${harness.webUrl}/account/matches/${encodeURIComponent(replayMatchId)}/replay`,
+  );
+  await expect(pageA.getByTestId("replay-page")).toBeVisible();
+  await expect(pageA.getByTestId("game-surface-iframe")).toHaveAttribute(
+    "src",
+    "/game-surfaces/chinese-checkers/1.0.0/replay/index.html",
+  );
+  const replaySurface = chineseCheckersSurface(pageA);
+  await expect(replaySurface.locator("[data-cell-index]")).toHaveCount(73);
+  await expect(pageA.getByTestId("replay-frame-count")).toHaveText("1 / 4");
+  await expect(replaySurface.locator('[data-occupied="true"]')).toHaveCount(18);
+  await expect(
+    replaySurface.locator("[data-cell-index]:not(:disabled)"),
+  ).toHaveCount(0);
+  await pageA.getByTestId("replay-last").click();
+  await expect(pageA.getByTestId("replay-frame-count")).toHaveText("4 / 4");
+  await expect(
+    replaySurface.getByRole("list", { name: "最终排名" }).getByRole("listitem"),
+  ).toHaveCount(3);
+  await expect(replaySurface.getByTestId("turn-status")).toContainText(
+    "第一名：北营地",
+  );
+  expect(browserErrors).toEqual([]);
   await Promise.all([contextA.close(), contextB.close(), contextC.close()]);
 });

@@ -13,6 +13,13 @@
 - `RESIGN` 不受回合限制；投降玩家退出回合，并在非投降玩家之后计入排名。
 - 首位由房主选择的 OWNER/NON_OWNER/RANDOM 决定，其余玩家按已选营地逆时针排列。
 
+## Round Setup
+
+- 新建 `chinese-checkers@1.0.0` 房间使用 Protocol V6 和游戏自有 Setup；默认目标人数为 2，房主可选择 2–6 人与 `OWNER`、`NON_OWNER`、`RANDOM` 首位规则。
+- 每位已占用稳定席位只能选择或清除自己的营地，六个营地全局唯一。只有目标人数与已占用席位数一致、每位参与者都有营地、首位已选择且所有参与者在线并分别 ready 时才能开始。
+- `NON_OWNER` 选择按营地逆时针排列后的首位非房主；`RANDOM` 只在房主与该首位非房主之间使用独立 Setup RNG 选择。Gameplay Core 不解释房主或 Setup RNG，只接收最终 `playerOrder` 和 assignments。
+- 下一局从上一局 `FinalizedRoundSetup` 恢复目标人数、参与席位、实际首位、完整顺序和营地，首位状态固定为 `FIXED`，不会重新随机。State、Outcome、gameplay seed、revision、ready、Match 与 replay 均重新创建，每位参与者必须再次确认。
+
 ## Assignment 元数据
 
 `InitialContext.playerAssignments` 与 `players` 等长，保存每个 slot 的营地。所有营地必须唯一且属于六个固定选项；assignment 会进入 replay header 以便精确重建。
@@ -23,3 +30,7 @@
 - Action 为严格 `MOVE_PIECE(from,to) | RESIGN`。
 - View 包含公开棋盘、玩家营地、当前行动 slot、合法 `(from,to)` 列表、当前 viewer 营地、排名和 Outcome。
 - Outcome 为 `RANKING`，每个 slot 有连续 rank 与 `FINISHED`、`RESIGNATION`、`BLOCKED` 或 `LAST_REMAINING` 原因。
+
+## Surface
+
+`game-surfaces/chinese-checkers` 以独立 Setup/Play/Replay artifact 精确支持 `gameVersion 1.0.0`。Play/Replay 只消费投影后的 73 格棋盘、服务器 `legalMoves`、排名和 Outcome；Surface 不搜索跳跃路径、不推导排名，也不接触 actor、raw State、seed 或 canonical replay。

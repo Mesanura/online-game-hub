@@ -315,6 +315,166 @@ describe("RealtimeGameClientHost", () => {
     });
   });
 
+  it("accepts a V6 lifecycle with more than two stable player slots", async () => {
+    const room = new FakeRoom();
+    const client: RealtimeTransportClient = {
+      async create() {
+        return room;
+      },
+      async join() {
+        return room;
+      },
+    };
+    const host = new RealtimeGameClientHost({
+      gameServerUrl: "http://127.0.0.1:2567",
+      ticketProvider: async () => "ticket",
+      transport: { createClient: () => client },
+      setupProtocol: SETUP_PROTOCOL_VERSION,
+    });
+    await host.createRoom("chinese-checkers", null);
+    room.emit(SERVER_PROTOCOL_MESSAGE, {
+      ...connectedV6(),
+      gameId: "chinese-checkers",
+      playerSlotId: "slot-1",
+    });
+    const waiting = lifecycleV6(false);
+    room.emit(ROOM_CONTROL_MESSAGE, {
+      ...waiting,
+      nextRound: {
+        ...waiting.nextRound,
+        setupView: { targetPlayerCount: 3 },
+        readiness: {
+          canReady: true,
+          selfReady: false,
+          readySlotIds: [],
+          requiredSlotIds: ["slot-1", "slot-2", "slot-3"],
+        },
+      },
+      players: [
+        { slotId: "slot-1", occupied: true, online: true, ready: false },
+        { slotId: "slot-2", occupied: true, online: true, ready: false },
+        { slotId: "slot-3", occupied: true, online: true, ready: false },
+      ],
+    });
+
+    expect(host.getState()).toMatchObject({
+      connectionState: "connected",
+      error: null,
+      roomLifecycle: {
+        nextRound: {
+          readiness: {
+            requiredSlotIds: ["slot-1", "slot-2", "slot-3"],
+          },
+        },
+      },
+    });
+  });
+
+  it("fails closed when a V5 lifecycle expands beyond two stable player slots", async () => {
+    const room = new FakeRoom();
+    const client: RealtimeTransportClient = {
+      async create() {
+        return room;
+      },
+      async join() {
+        return room;
+      },
+    };
+    const host = new RealtimeGameClientHost({
+      gameServerUrl: "http://127.0.0.1:2567",
+      ticketProvider: async () => "ticket",
+      transport: { createClient: () => client },
+    });
+    await host.createRoom("pong", { targetScore: 3 });
+    room.emit(SERVER_PROTOCOL_MESSAGE, connected());
+    room.emit(ROOM_CONTROL_MESSAGE, {
+      ...lifecycle(),
+      players: [
+        {
+          slotId: "slot-left",
+          occupied: true,
+          online: true,
+          ready: false,
+          assignment: null,
+        },
+        {
+          slotId: "slot-right",
+          occupied: true,
+          online: true,
+          ready: false,
+          assignment: null,
+        },
+        {
+          slotId: "slot-extra",
+          occupied: true,
+          online: true,
+          ready: false,
+          assignment: null,
+        },
+      ],
+    });
+
+    expect(host.getState()).toMatchObject({
+      connectionState: "closed",
+      error: "INVALID_SERVER_MESSAGE",
+    });
+  });
+
+  it("fails closed when a V5 lifecycle changes the required player count", async () => {
+    const room = new FakeRoom();
+    const client: RealtimeTransportClient = {
+      async create() {
+        return room;
+      },
+      async join() {
+        return room;
+      },
+    };
+    const host = new RealtimeGameClientHost({
+      gameServerUrl: "http://127.0.0.1:2567",
+      ticketProvider: async () => "ticket",
+      transport: { createClient: () => client },
+    });
+    await host.createRoom("pong", { targetScore: 3 });
+    room.emit(SERVER_PROTOCOL_MESSAGE, connected());
+    room.emit(ROOM_CONTROL_MESSAGE, {
+      type: "room.lifecycle",
+      protocolVersion: PROTOCOL_VERSION,
+      isOwner: true,
+      currentRound: null,
+      nextRound: {
+        roundNumber: 1,
+        starter: "OWNER",
+        selfReady: false,
+        readyPlayerCount: 0,
+        requiredPlayerCount: 3,
+      },
+      closed: false,
+      closeReason: null,
+      players: [
+        {
+          slotId: "slot-left",
+          occupied: true,
+          online: true,
+          ready: false,
+          assignment: null,
+        },
+        {
+          slotId: "slot-right",
+          occupied: true,
+          online: true,
+          ready: false,
+          assignment: null,
+        },
+      ],
+    });
+
+    expect(host.getState()).toMatchObject({
+      connectionState: "closed",
+      error: "INVALID_SERVER_MESSAGE",
+    });
+  });
+
   it("pins a discovered V6 generation through reconnect and resets create to its default", async () => {
     const firstRoom = new FakeRoom();
     const reconnectedRoom = new FakeRoom();

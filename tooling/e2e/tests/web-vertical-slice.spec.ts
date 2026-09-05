@@ -797,12 +797,32 @@ test("the game stage remains non-scrolling and overlay-safe across the viewport 
 
   for (const viewport of viewports) {
     await pageA.setViewportSize(viewport);
-    await pageA.evaluate(
-      () =>
-        new Promise<void>((resolve) => {
-          requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
-        }),
-    );
+    await expect
+      .poll(() =>
+        pageA.evaluate(({ width, height }) => {
+          const scrollingElement = document.scrollingElement;
+          const playPage = document.querySelector<HTMLElement>(".play-page");
+          const rootFontSize = Number.parseFloat(
+            getComputedStyle(document.documentElement).fontSize,
+          );
+          const expectedPlayPageHeight = matchMedia("(max-width: 46rem)")
+            .matches
+            ? height
+            : height - rootFontSize * 6.25;
+          return (
+            window.innerWidth === width &&
+            window.innerHeight === height &&
+            scrollingElement !== null &&
+            playPage !== null &&
+            Math.abs(
+              playPage.getBoundingClientRect().height - expectedPlayPageHeight,
+            ) < 1 &&
+            scrollingElement.scrollWidth <= scrollingElement.clientWidth &&
+            scrollingElement.scrollHeight <= scrollingElement.clientHeight
+          );
+        }, viewport),
+      )
+      .toBe(true);
     await expect(pageA.getByTestId("game-stage")).toBeVisible();
     const before = await pageA.evaluate(() => {
       const stage = document.querySelector<HTMLElement>(

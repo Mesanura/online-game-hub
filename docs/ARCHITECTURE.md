@@ -196,7 +196,7 @@ Platform 通用校验只允许已占用 stable slot，强制 manifest 人数范�
 
 新房间以 manifest `defaultConfig` 初始化首轮 Setup。完成 Round 后，下一轮从上一轮 `FinalizedRoundSetup` 初始化，复用 config、参与者、实际顺序与 assignments，但不复用 State、Outcome、revision/tick、seed、RNG cursor、ready、Match ID 或 replay ID。每位参与者必须分别重新 ready；accepted 设置变更再次清空全部确认。
 
-回合制 runtime 已具备 V5/V6 双轨：新建房间按 exact deployment 固定 generation，V6 aggregate/RoomStore 保存 versioned coordinator、ready slot、上一局 finalized setup，并以独立 setup/gameplay seed 启动 Round。Setup Action 与 ready 的候选状态先保存再提交内存；finalize 后的随机结果在 Round archive/replay 创建失败期间保持固化，同一命令可重试而不重新随机。completed setup 阶段的断线会同时清除对应 slot 的 ready 并写回 RoomStore。`tic-tac-toe@1.1.0` 的生产 registration 已切换为 V6 与 `surface-v1`，其 `1.0.0` 历史版本及其余游戏继续使用 V5/legacy；realtime V6 adapter 仍属于 M9-D 后续工作。
+回合制与 realtime runtime 均具备 V5/V6 双轨：新建房间按 exact deployment 固定 generation，V6 aggregate/RoomStore 保存 versioned coordinator、ready slot、上一局 finalized setup，并以独立 setup/gameplay seed 启动 Round。Setup Action 与 ready 的候选状态先保存再提交内存；finalize 后的随机结果在 Round archive/replay 创建失败期间保持固化，同一命令可重试而不重新随机。completed setup 阶段的断线会同时清除对应 slot 的 ready 并写回 RoomStore。井字棋、Pong、四子棋、五子棋、黑白棋、六贯棋与中国跳棋的 current production registration 已切换为 V6 与 `surface-v1`；仍受支持的历史 V5 房间和 exact legacy registration 继续由原代 runtime 完成。
 
 ### 7.4 房间协议代际固定与发现
 
@@ -247,7 +247,7 @@ Room 必须串行处理 Action。任何未来多实例方案都必须维持“�
 - host 只保存当前 per-viewer View snapshot、`roomLifecycle`、round/revision、连接/拒绝状态。`submitAction` 生成 `commandId` 并从最新 lifecycle/snapshot 填充 `roundNumber` 和 `expectedRevision`；它不持有或重演 authoritative State。
 - 所有 server payload 都先通过房间固定代际对应的 Protocol V5 或 V6 exact schema。duplicate、stale、schema-invalid 和 game-rule rejection 不在浏览器模拟；host 接受服务器附带或随后发送的完整 snapshot 收敛。
 - transport 非主动关闭时，host 在 60 秒窗口内以指数退避获取新 ticket 并重新执行 room-code join，生成新的 seat reservation；不使用 SDK reconnection token 证明席位所有权。
-- `tic-tac-toe@1.1.0` 使用 React/Vite Surface 渲染 3×3 棋盘，`pong@1.0.0` 使用 TypeScript/Phaser Surface 渲染 800×400 逻辑场地；四子棋、五子棋与黑白棋分别由独立 TypeScript Surface 同时承载各自 `1.0.0`/`1.1.0` 的 Play/Replay，current `1.1.0` 另以游戏自有 Setup Surface 创建 V6 房间；六贯棋 `1.0.0` 也以独立 TypeScript Setup/Play/Replay Surface 创建 V6 房间并只显示服务器投影的 canonical winning path。井字棋历史 `1.0.0` 与尚未迁移的中国跳棋继续使用 Client Module。各表现层只提交自身普通落子、移动或输入 intent；平台投降按钮与确认不进入 Game Surface，按钮禁用与确认仅是 UX，不能代替 authoritative rejection。
+- `tic-tac-toe@1.1.0` 使用 React/Vite Surface 渲染 3×3 棋盘，`pong@1.0.0` 使用 TypeScript/Phaser Surface 渲染 800×400 逻辑场地；四子棋、五子棋与黑白棋分别由独立 TypeScript Surface 同时承载各自 `1.0.0`/`1.1.0` 的 Play/Replay，current `1.1.0` 另以游戏自有 Setup Surface 创建 V6 房间；六贯棋与中国跳棋 `1.0.0` 也以独立 TypeScript Setup/Play/Replay Surface 创建 V6 房间，前者只显示服务器 canonical winning path，后者只消费服务器 legal moves、排名和 Outcome。井字棋历史 `1.0.0` 暂时继续使用 Client Module。各表现层只提交自身普通落子、移动或输入 intent；平台投降按钮与确认不进入 Game Surface，按钮禁用与确认仅是 UX，不能代替 authoritative rejection。
 
 ### 8.3 Legacy V5 Live Room、Round 设置与关闭
 

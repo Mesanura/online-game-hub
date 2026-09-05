@@ -168,7 +168,13 @@ async function expectResponsivePongStage(page: Page): Promise<void> {
       const currentBox = JSON.stringify(box);
       const stable = currentBox === previousBox;
       previousBox = currentBox;
-      return stable;
+      return (
+        stable &&
+        box.x >= 0 &&
+        box.y >= 0 &&
+        box.x + box.width <= 1281 &&
+        box.y + box.height <= 721
+      );
     })
     .toBe(true);
 }

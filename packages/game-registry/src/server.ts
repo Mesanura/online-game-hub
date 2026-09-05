@@ -4,6 +4,7 @@ import {
 } from "@online-game-hub/connect-four/core";
 import { connectFourSetupDefinition } from "@online-game-hub/connect-four/setup";
 import { chineseCheckersDefinition } from "@online-game-hub/chinese-checkers/core";
+import { chineseCheckersSetupDefinition } from "@online-game-hub/chinese-checkers/setup";
 import {
   gomokuDefinition,
   gomokuDefinitionV1_0_0,
@@ -132,6 +133,11 @@ const roundSetupDefinitions = Object.freeze([
     gameId: reversiDefinition.manifest.id,
     gameVersion: reversiDefinition.manifest.gameVersion,
     definition: eraseRoundSetupDefinition(reversiSetupDefinition),
+  }),
+  Object.freeze({
+    gameId: chineseCheckersDefinition.manifest.id,
+    gameVersion: chineseCheckersDefinition.manifest.gameVersion,
+    definition: eraseRoundSetupDefinition(chineseCheckersSetupDefinition),
   }),
 ]);
 

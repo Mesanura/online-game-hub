@@ -210,6 +210,32 @@ const reversiSurface = (
     }),
   });
 
+const chineseCheckersSurfaceArtifactV1 = {
+  schemaVersion: 1,
+  gameId: "chinese-checkers",
+  supportedGameVersions: ["1.0.0"],
+  surfaceVersion: "1.0.0",
+  bridgeVersion: 1,
+  entrypoints: {
+    setup: "setup/index.html",
+    play: "play/index.html",
+    replay: "replay/index.html",
+  },
+  capabilities: {},
+  contentDigest: "sha256-RPchtuaRXW3IuyaCPRigTYjze1mP1DzXP+TclC12eTQ=",
+} satisfies SurfaceArtifactManifestV1;
+
+const chineseCheckersSurfaceV1: GameDeploymentRegistration = Object.freeze({
+  gameId: "chinese-checkers",
+  gameVersion: "1.0.0",
+  setupProtocol: 6,
+  presentation: Object.freeze({
+    kind: "surface-v1",
+    publicBasePath: "/game-surfaces/chinese-checkers/1.0.0",
+    artifact: chineseCheckersSurfaceArtifactV1,
+  }),
+});
+
 const gameDeployments = Object.freeze([
   legacy("tic-tac-toe", "1.0.0"),
   ticTacToeSurfaceV1,
@@ -220,7 +246,7 @@ const gameDeployments = Object.freeze([
   hexSurfaceV1,
   reversiSurface("1.0.0", 5),
   reversiSurface("1.1.0", 6),
-  legacy("chinese-checkers", "1.0.0"),
+  chineseCheckersSurfaceV1,
   pongSurfaceV1,
 ]) satisfies readonly GameDeploymentRegistration[];
 

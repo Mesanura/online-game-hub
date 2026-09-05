@@ -594,7 +594,8 @@ export class RealtimeGameClientHost<View = unknown, Outcome = unknown> {
       if (
         new Set(playerSlots).size !== playerSlots.length ||
         !playerSlots.includes(room.playerSlotId) ||
-        playerSlots.length !== 2 ||
+        (this.#setupProtocol !== SETUP_PROTOCOL_VERSION &&
+          playerSlots.length !== 2) ||
         lifecycle.players.some(
           (player) => player.occupied === false && player.online,
         )
@@ -606,15 +607,17 @@ export class RealtimeGameClientHost<View = unknown, Outcome = unknown> {
     if (
       lifecycle.nextRound !== null &&
       (("requiredPlayerCount" in lifecycle.nextRound &&
-        lifecycle.nextRound.requiredPlayerCount !== 2) ||
+        (lifecycle.nextRound.requiredPlayerCount !== 2 ||
+          (lifecycle.players !== undefined &&
+            lifecycle.nextRound.requiredPlayerCount >
+              lifecycle.players.length))) ||
         ("readiness" in lifecycle.nextRound &&
-          (lifecycle.nextRound.readiness.requiredSlotIds.length > 2 ||
-            lifecycle.nextRound.readiness.requiredSlotIds.some(
-              (slotId) =>
-                !lifecycle.players?.some(
-                  (player) => player.slotId === slotId && player.occupied,
-                ),
-            ))))
+          lifecycle.nextRound.readiness.requiredSlotIds.some(
+            (slotId) =>
+              !lifecycle.players?.some(
+                (player) => player.slotId === slotId && player.occupied,
+              ),
+          )))
     ) {
       this.#failProtocol();
       return;

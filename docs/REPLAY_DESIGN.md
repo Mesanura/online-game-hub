@@ -193,6 +193,7 @@ Bug fix 是否提升版本以“相同 replay 是否可能得到不同 State、R
 - `gomoku@1.0.0`：`gomoku-1.0.0-win.json`；current `1.1.0`：`gomoku-1.1.0-win.json`、`gomoku-1.1.0-resignation.json`
 - `hex@1.0.0`：`hex-1.0.0-win.json`
 - `reversi@1.0.0`：`reversi-1.0.0-win.json`；current `1.1.0`：`reversi-1.1.0-win.json`、`reversi-1.1.0-resignation.json`
+- `chinese-checkers@1.0.0`：`chinese-checkers-1.0.0-normal.json`、`chinese-checkers-1.0.0-resignation.json`、`chinese-checkers-1.0.0-multiplayer-ranking.json`
 
 以上文件都位于对应 `games/<game-id>/tests/fixtures/`。四个原 `1.0.0` fixture 未改写，并由独立 frozen definition exact 重建；它们拒绝 `RESIGN`。current `1.1.0` normal fixture 证明原落子结果不变，resignation fixture 证明 off-turn accepted `RESIGN` 产生单一 replay event、`resignedSlotId` 与对手 `RESIGNATION` WIN。
 
@@ -204,7 +205,7 @@ Bug fix 是否提升版本以“相同 replay 是否可能得到不同 State、R
 
 黑白棋 frozen `1.0.0` golden replay 使用 `initialConfig: null`，记录 60 个 accepted `PLACE_DISC(cell)` 并重建相同 64-cell State、WHITE 45–19 WIN Outcome 与零 RNG cursor。fixture 在 sequence 18 后出现 BLACK 无合法行动，因此 sequence 19 仍由 WHITE 行动；没有 `PASS` Action、sequence gap 或额外 revision。current `1.1.0` 的 normal/resignation fixtures 分别保留翻转/跳过结果并加入规范化 `RESIGN`。翻转、跳过和终局规则继续受 exact version 约束；Replay Format V1 不变。
 
-中国跳棋 `1.0.0` golden replay 使用 Replay Format V1，在 header 的 `players` 条目中保存唯一营地 assignment；`MOVE_PIECE` 只记录规范化起点/终点，`RESIGN` 与完成、阻塞和末位排名由 exact Core 重建。
+中国跳棋 `1.0.0` 的 normal、resignation 与三人 ranking golden replay 均使用 Replay Format V1，在 header 的 `players` 条目中保存最终有序玩家和唯一营地 assignment；`MOVE_PIECE` 只记录规范化起点/终点，`RESIGN` 与完成、阻塞和末位排名由 exact Core 重建。Setup V6 只负责在开局前固化同一 header 输入，不改变 Core、Action schema、重建结果、`gameVersion` 或 replay format。
 
 ## 8. Hidden Information 与访问控制
 

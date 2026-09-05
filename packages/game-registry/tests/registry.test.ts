@@ -78,6 +78,7 @@ describe("explicit game registry", () => {
           "gomoku",
           "hex",
           "reversi",
+          "chinese-checkers",
         ].includes(manifest.id)
           ? {
               gameId: manifest.id,
@@ -236,6 +237,29 @@ describe("explicit game registry", () => {
         });
       }
     }
+    expect(resolveGameDeployment("chinese-checkers", "1.0.0")).toMatchObject({
+      setupProtocol: 6,
+      presentation: {
+        kind: "surface-v1",
+        publicBasePath: "/game-surfaces/chinese-checkers/1.0.0",
+        artifact: {
+          supportedGameVersions: ["1.0.0"],
+          surfaceVersion: "1.0.0",
+          contentDigest: "sha256-RPchtuaRXW3IuyaCPRigTYjze1mP1DzXP+TclC12eTQ=",
+        },
+      },
+    });
+    for (const mode of ["setup", "play", "replay"] as const) {
+      expect(
+        resolveGameSurfaceEntrypoint("chinese-checkers", "1.0.0", mode),
+      ).toMatchObject({
+        gameId: "chinese-checkers",
+        gameVersion: "1.0.0",
+        surfaceVersion: "1.0.0",
+        mode,
+        url: `/game-surfaces/chinese-checkers/1.0.0/${mode}/index.html`,
+      });
+    }
     for (const gameVersion of ["1.0.0", "1.1.0"] as const) {
       expect(resolveGameDeployment("gomoku", gameVersion)).toMatchObject({
         setupProtocol: gameVersion === "1.1.0" ? 6 : 5,
@@ -338,6 +362,7 @@ describe("explicit game registry", () => {
       ["gomoku", "1.1.0"],
       ["hex", "1.0.0"],
       ["reversi", "1.1.0"],
+      ["chinese-checkers", "1.0.0"],
     ] as const) {
       const definition = resolveRoundSetupDefinition(gameId, gameVersion);
       expect(definition).toBeDefined();

@@ -16,6 +16,10 @@
       "types": "./dist/core/index.d.ts",
       "import": "./dist/core/index.js"
     },
+    "./setup": {
+      "types": "./dist/setup/index.d.ts",
+      "import": "./dist/setup/index.js"
+    },
     "./client": {
       "types": "./dist/client/index.d.ts",
       "import": "./dist/client/index.js"
@@ -30,6 +34,7 @@
   "dependencies": {
     "@online-game-hub/game-client-sdk": "workspace:*",
     "@online-game-hub/game-sdk": "workspace:*",
+    "@online-game-hub/game-setup": "workspace:*",
     "zod": "4.4.3"
   },
   "devDependencies": {

@@ -338,6 +338,14 @@ Web E2E 同时验证三阶段 App Router：创建/加入和 canonical 邀请进�
 5. RED 再次确认投降后产生 1-revision RESIGNATION WIN，不显示连接路径 glow；
 6. 两轮独立 Match/replay 从 PostgreSQL 新 connection 重读并验证，双方 private history 返回两条安全 metadata，历史页按 exact `gameVersion` 加载只读 Replay Surface。
 
+`tooling/e2e/tests/chinese-checkers-vertical-slice.spec.ts` 使用三个隔离账户和相同真实 harness，独立验证：
+
+1. 房主在独立 Setup Surface 选择 3 人和 OWNER 首位，三位玩家分别为自己的稳定席位选择唯一 `N`、`S`、`NE` 营地并分别 ready；
+2. V6 RoomStore 保存 canonical Setup State，Play Surface 精确显示 73 格、37 个中心格、六个 6 格营地与 18 枚棋子，非当前玩家没有可操作棋位；
+3. 当前玩家只通过服务器 projected `legalMoves` 完成一次两阶段移动，随后另外两位玩家 off-turn 投降，形成三人 canonical 排名；
+4. 下一局复用上一局目标人数、参与席位、实际 `playerOrder` 和全部营地，不重新随机且三位玩家必须分别点击“重新对局”；两轮各自使用新的 gameplay seed、Match 和 replay；
+5. 两轮 replay 由新的 PostgreSQL connection 重读并通过 exact registry verifier，三个账户历史一致；Replay Surface 验证首帧、末帧、最终排名和全棋盘只读。
+
 `tooling/e2e/tests/reversi-vertical-slice.spec.ts` 使用相同真实 harness，独立验证：
 
 1. 目录卡片、中文标题、`/games/reversi`、独立 Setup/Play iframe、8×8 可访问棋盘、本轮 BLACK/WHITE roles、棋子数和服务器合法落点；
@@ -416,6 +424,8 @@ Reversi Surface 迁移以同一 artifact 覆盖 `1.0.0`/`1.1.0` projected View�
 
 Hex Surface 迁移以一个 artifact 精确覆盖 `1.0.0`；E2E 必须覆盖 Setup/Play/Replay iframe、121 格菱形棋盘、四条连接边、44 个坐标标签、上一局完整设置复用、平台投降和服务器 canonical `winningPath` 高亮。Surface 只验证并显示 projected path，不自行运行 BFS、推断连接或生成 Outcome。
 
+Chinese Checkers Surface 迁移以一个 artifact 精确覆盖 `1.0.0`；E2E 必须覆盖三人 Setup/Play/Replay iframe、73 格六芒星、每人自选且唯一的营地、服务器 `legalMoves`、三人排名和下一局完整设置复用。Surface 不得搜索连续跳跃路径、推导当前玩家或自行生成排名/Outcome。
+
 所有当前支持 `gameVersion` 的 golden replay：
 
 ```text
@@ -424,6 +434,7 @@ pnpm --filter @online-game-hub/connect-four test:golden
 pnpm --filter @online-game-hub/gomoku test:golden
 pnpm --filter @online-game-hub/hex test:golden
 pnpm --filter @online-game-hub/reversi test:golden
+pnpm --filter @online-game-hub/chinese-checkers test:golden
 ```
 
 首次本机运行 E2E 前执行 `pnpm exec playwright install chromium`。CI 在 frozen-lockfile install 后以 `pnpm exec playwright install --with-deps chromium` 安装与 Playwright 1.62.1 精确匹配的浏览器，使用固定 PostgreSQL 17.6 service，然后运行 lint、typecheck、unit、database、integration、build 和 E2E。
