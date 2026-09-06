@@ -314,6 +314,8 @@ try {
 
 Web E2E 同时验证三阶段 App Router：创建/加入和 canonical 邀请进入等待页，旧 `?roomCode=` 兼容入口规范化，双方 ready 后自动进入 `/play`，active 刷新/reconnect 回到 `/play`，completed 保留最终棋盘并通过“调整设置”返回等待页，closed 返回入口并显示原因。井字棋还验证 exact Setup/Play/Replay Surface entrypoint、iframe 内交互、只读历史回放和 production V6；复制邀请覆盖 Clipboard 成功状态与 API 失败后的可操作手动复制后备。各游戏从默认收起的覆盖式 HUD 执行通用投降/关闭/离开，验证 Web 不加载 legacy module、投降取消不产生 Action、确认经 `host.command` 只产生一个 exact `RESIGN` intent/revision、双方收敛到 `RESIGNATION` WIN 且 PostgreSQL replay exact verification 通过；中国跳棋额外覆盖 3 人营地选择、排名和 assignment replay metadata。
 
+`realtime-navigation.spec.ts` 使用生产 realtime scheduler 持续推进 Pong 与羽毛球，并让真实页面导航跨越多个服务器快照。两名玩家必须在 Round 仍为 active 时从准备页进入 `/play` 并显示 canvas；从邀请链接重连、终局调整设置后再次全员准备也必须正常切换，并保留 stable slots。此回归不能只用暂停 tick 的手动 scheduler 验证，否则无法发现高频 snapshot 反复触发路由、直到终局才完成导航的问题。
+
 `auth-vertical-slice.spec.ts` 还验证右上角 ProfileMenu：游客显示“游客”并可修改显示名、实时更新头像且刷新后仍保留；登录后下半部切换为历史/设置/退出，账户更新由另一 browser context 读取，退出后恢复为独立游客资料；键盘 Escape、外部点击和 live room 中身份变化确认均有效。
 
 `tooling/e2e/tests/connect-four-vertical-slice.spec.ts` 保留上述真实 Next/PostgreSQL/Colyseus harness，独立验证：

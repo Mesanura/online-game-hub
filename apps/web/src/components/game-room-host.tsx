@@ -608,24 +608,45 @@ export function GameRoomHostProvider({
       );
     }
     setInviteCopyState("idle");
-    const lifecycle = state.roomLifecycle;
-    if (lifecycle === null || lifecycle.closed) return;
-    if (lifecycle.currentRound?.status === "active") {
+  }, [state.room]);
+
+  const connectedGameId = state.room?.gameId;
+  const connectedRoomCode = state.room?.roomCode;
+  const roomClosed = state.roomLifecycle?.closed;
+  const roundStatus = state.roomLifecycle?.currentRound?.status;
+
+  useEffect(() => {
+    if (
+      connectedGameId === undefined ||
+      connectedRoomCode === undefined ||
+      roomClosed !== false
+    ) {
+      return;
+    }
+    if (roundStatus === "active") {
       allowCompletedSetup.current = false;
     }
     const shouldPlay =
-      lifecycle.currentRound?.status === "active" ||
-      (lifecycle.currentRound?.status === "completed" &&
-        !allowCompletedSetup.current);
-    const canonical = shouldPlay
-      ? `/games/${encodeURIComponent(room.gameId)}/rooms/${encodeURIComponent(room.roomCode)}/play`
-      : `/games/${encodeURIComponent(room.gameId)}/rooms/${encodeURIComponent(room.roomCode)}`;
+      roundStatus === "active" ||
+      (roundStatus === "completed" && !allowCompletedSetup.current);
+    const roomPath = `/games/${encodeURIComponent(connectedGameId)}/rooms/${encodeURIComponent(connectedRoomCode)}`;
+    const canonical = shouldPlay ? `${roomPath}/play` : roomPath;
     const currentCode = routeRoomCode(pathname, gameId);
     const currentIsPlay = routeIsPlay(pathname, gameId);
-    if (currentCode !== room.roomCode || currentIsPlay !== shouldPlay) {
+    if (currentCode !== connectedRoomCode || currentIsPlay !== shouldPlay) {
       router.replace(canonical, { scroll: false });
     }
-  }, [gameId, pathname, router, state.room, state.roomLifecycle]);
+    // V6 lifecycle normalization creates an object for every realtime snapshot.
+    // Only route facts may restart navigation; ticks must let it finish.
+  }, [
+    connectedGameId,
+    connectedRoomCode,
+    gameId,
+    pathname,
+    roomClosed,
+    roundStatus,
+    router,
+  ]);
 
   useEffect(() => {
     const lifecycle = state.roomLifecycle;
