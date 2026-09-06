@@ -13,6 +13,7 @@ import { clearAuthenticatedCookies } from "../../../../../server/auth-response";
 import {
   getUserMatchReplay,
   getUserRealtimeMatchReplay,
+  getGameReplayMode,
 } from "../../../../../server/match-history";
 import { getWebServerConfig } from "../../../../../server/runtime-config";
 
@@ -35,6 +36,24 @@ function response(
   });
 }
 
+function playbackUnavailable(match: {
+  readonly gameId: string;
+  readonly gameVersion: string;
+}) {
+  const mode = getGameReplayMode(match.gameId, match.gameVersion);
+  return mode === "player-playback"
+    ? null
+    : response(
+        {
+          code:
+            mode === "record-only"
+              ? "PLAYER_PLAYBACK_NOT_SUPPORTED"
+              : "REPLAY_UNAVAILABLE",
+        },
+        409,
+      );
+}
+
 export async function GET(
   request: NextRequest,
   context: { readonly params: Promise<{ readonly matchId: string }> },
@@ -54,6 +73,8 @@ export async function GET(
     const { matchId } = await context.params;
     const result = await getUserMatchReplay(config, account.userId, matchId);
     if (result.status === "available") {
+      const unavailable = playbackUnavailable(result.match);
+      if (unavailable !== null) return unavailable;
       const rebuilt = reconstructReplayFrames(
         result.replay,
         resolveGameDefinition,
@@ -80,6 +101,8 @@ export async function GET(
       return response({ code: "REPLAY_UNAVAILABLE" }, 409);
     }
     if (realtime.status === "available") {
+      const unavailable = playbackUnavailable(realtime.match);
+      if (unavailable !== null) return unavailable;
       const rebuilt = reconstructRealtimeReplayFrames(
         realtime.replay,
         resolveRealtimeGameDefinition,

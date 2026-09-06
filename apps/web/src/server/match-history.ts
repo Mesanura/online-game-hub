@@ -8,8 +8,21 @@ import {
 import type { MatchHistoryItem } from "@online-game-hub/database";
 import type { UserMatchReplayRead } from "@online-game-hub/database";
 import type { UserRealtimeMatchReplayRead } from "@online-game-hub/database";
+import {
+  resolveGameDefinition,
+  resolveRealtimeGameDefinition,
+} from "@online-game-hub/game-registry/server";
 
 import type { WebServerConfig } from "./config";
+
+export function getGameReplayMode(gameId: string, gameVersion: string) {
+  // History must use the recorded version, including frozen definitions that
+  // are intentionally absent from the current-game catalog.
+  return (
+    resolveGameDefinition(gameId, gameVersion) ??
+    resolveRealtimeGameDefinition(gameId, gameVersion)
+  )?.manifest.capabilities.replay;
+}
 
 export async function listUserMatchHistory(
   config: WebServerConfig,
@@ -35,7 +48,14 @@ export async function listUserMatchHistory(
           ? byDate
           : right.matchId.localeCompare(left.matchId);
       })
-      .slice(0, 50) satisfies readonly MatchHistoryItem[];
+      .slice(0, 50)
+      .map((match) => ({
+        ...match,
+        replayAvailable:
+          match.replayAvailable &&
+          getGameReplayMode(match.gameId, match.gameVersion) ===
+            "player-playback",
+      })) satisfies readonly MatchHistoryItem[];
   } finally {
     await client.close();
   }

@@ -56,7 +56,9 @@ describe("explicit game registry", () => {
     );
 
     for (const manifest of gameCatalog) {
-      expect(manifest.capabilities.replay).toBe("player-playback");
+      expect(manifest.capabilities.replay).toBe(
+        manifest.id === "badminton" ? "record-only" : "player-playback",
+      );
       expect(resolveGameManifest(manifest.id, manifest.gameVersion)).toBe(
         manifest,
       );
@@ -74,6 +76,7 @@ describe("explicit game registry", () => {
         [
           "tic-tac-toe",
           "pong",
+          "badminton",
           "connect-four",
           "gomoku",
           "hex",
@@ -373,6 +376,7 @@ describe("explicit game registry", () => {
     for (const [gameId, gameVersion] of [
       ["tic-tac-toe", "1.1.0"],
       ["pong", "1.0.0"],
+      ["badminton", "1.0.0"],
       ["connect-four", "1.1.0"],
       ["gomoku", "1.1.0"],
       ["hex", "1.0.0"],
@@ -435,8 +439,10 @@ describe("explicit game registry", () => {
     }
   });
 
-  it("keeps every client entry lazy, isolated, and free of UI business", async () => {
-    for (const manifest of gameCatalog) {
+  it("keeps the retained legacy client entries lazy, isolated, and free of UI business", async () => {
+    for (const manifest of gameCatalog.filter(
+      (game) => game.id !== "badminton",
+    )) {
       if (manifest.runtime === "realtime") {
         const entrypoint = await loadRealtimeGameClientEntrypoint(
           manifest.id,
@@ -486,5 +492,36 @@ describe("explicit game registry", () => {
         loadGameClientModule(manifest.id, `${manifest.gameVersion}-unknown`),
       ).resolves.toBeUndefined();
     }
+  });
+
+  it("registers badminton as an independent V6 Surface with server-only replay", async () => {
+    expect(resolveGameManifest("badminton", "1.0.0")).toMatchObject({
+      title: "火柴人羽毛球",
+      runtime: "realtime",
+      defaultConfig: { targetScore: 7 },
+      capabilities: { replay: "record-only" },
+    });
+    expect(resolveGameDeployment("badminton", "1.0.0")).toMatchObject({
+      setupProtocol: 6,
+      platformControls: ["RESIGN"],
+      presentation: { kind: "surface-v1", artifact: { bridgeVersion: 2 } },
+    });
+    for (const mode of ["setup", "play"] as const) {
+      expect(
+        resolveGameSurfaceEntrypoint("badminton", "1.0.0", mode),
+      ).toMatchObject({
+        url: `/game-surfaces/badminton/1.0.2/${mode}/index.html`,
+        mode,
+      });
+    }
+    expect(
+      resolveGameSurfaceEntrypoint("badminton", "1.0.0", "replay"),
+    ).toBeUndefined();
+    await expect(
+      loadRealtimeGameClientModule("badminton", "1.0.0"),
+    ).resolves.toBeUndefined();
+    await expect(
+      loadRealtimeGameClientEntrypoint("badminton", "1.0.0"),
+    ).resolves.toBeUndefined();
   });
 });

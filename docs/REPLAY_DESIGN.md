@@ -23,7 +23,7 @@ V1 已要求生成、持久化到 PostgreSQL、跨新连接读取并验证 repla
 - `record-only`：保存和验证流程完全相同，但玩家回放 API 稳定返回 `PLAYER_PLAYBACK_NOT_SUPPORTED`；
 - `none`：类型与注册语义已保留，首轮 runtime 在注册或启动阶段稳定拒绝，直到出现真实游戏后再设计可空 Match–Replay 关联、journal 替代与数据库迁移。
 
-所有现有游戏及历史版本保持 `player-playback`。简单棋牌回合制新游戏建议选择 `player-playback`；实时游戏应逐个评估，通常从 `record-only` 开始。脚手架不得默认选择。能力变化必须按 exact `gameVersion` 审查历史承诺，不能靠 UI 隐藏来改变服务器审计行为。
+既有棋牌、Pong 及其历史版本保持 `player-playback`；新增 `badminton@1.0.0` 显式选择 `record-only`。简单棋牌回合制新游戏建议选择 `player-playback`；实时游戏应逐个评估，通常从 `record-only` 开始。脚手架不得默认选择。能力变化必须按 exact `gameVersion` 审查历史承诺，不能靠 UI 隐藏来改变服务器审计行为。
 
 本格式只描述离散 Action runtime。M8 的固定 tick realtime runtime 不能把客户端到达时间或每个网络包当作 Action replay；它将定义独立的 realtime replay format，归档由服务端决定生效 tick 的规范化 input changes，并以 exact realtime definition 逐 tick 重建。旧 Replay Format V1、所有现有 golden fixture 和它们的 verifier 必须保持不变；详细设计见 [REALTIME_RUNTIME_DESIGN.md](./REALTIME_RUNTIME_DESIGN.md)。
 
@@ -207,6 +207,13 @@ Bug fix 是否提升版本以“相同 replay 是否可能得到不同 State、R
 
 中国跳棋 `1.0.0` 的 normal、resignation 与三人 ranking golden replay 均使用 Replay Format V1，在 header 的 `players` 条目中保存最终有序玩家和唯一营地 assignment；`MOVE_PIECE` 只记录规范化起点/终点，`RESIGN` 与完成、阻塞和末位排名由 exact Core 重建。Setup V6 只负责在开局前固化同一 header 输入，不改变 Core、Action schema、重建结果、`gameVersion` 或 replay format。
 
+独立 Realtime Replay Format V1 还支持：
+
+- `pong@1.0.0`：`pong-1.0.0-resignation.json`。
+- `badminton@1.0.0`：`badminton-1.0.0-score.json`、`badminton-1.0.0-resignation.json`、`badminton-1.0.0-rally.json`，分别覆盖自动发球至比分终局、投降和连续回球。header 保存目标比分与实际左右顺序，事件只含服务器规范化的 accepted `CONTROL | RESIGN`；Core 逐 tick 重建移动、跳跃、挥拍有效期、碰撞、分数和 Outcome，gameplay RNG cursor 始终为 0。随机首发的 Setup RNG 不进入 gameplay record。
+
+羽毛球的 `record-only` 仅限制玩家读取，不改变 create/append/complete/verify。更改整数物理、输入持续时间、球拍判定、发球、比分或同时事件顺序时，必须评估新 `gameVersion`，不能改写现有 fixtures。
+
 ## 8. Hidden Information 与访问控制
 
 Canonical replay 是服务器内部记录，可能通过 seed、Action 或 Config 暴露牌序、秘密目标和所有玩家私有信息。
@@ -214,7 +221,8 @@ Canonical replay 是服务器内部记录，可能通过 seed、Action 或 Confi
 - 比赛进行中不得向客户端发送完整 canonical replay 或 seed。
 - `projectView` 不等于 replay 导出策略；公开 replay 需要独立的授权与脱敏设计。
 - 日志、监控和错误响应不得包含完整 replay payload。
-- `GET /api/matches` 返回 exact manifest 的 `replayMode`；`replayAvailable` 仅当 mode 为 `player-playback` 且记录完整时为 true。它不返回 replay ID、header、actions、Config、Outcome 或 seed。
+- `GET /api/matches` 保持既有 metadata 字段；`replayAvailable` 仅当 exact server definition 声明 `player-playback` 且记录完整时为 true。Web 使用包括 frozen 版本在内的 exact resolver，不以 current catalog 替代历史版本。它不返回 replay ID、header、actions、Config、Outcome 或 seed。
+- 玩家 replay API 先验证账户与参赛归属，再判断 exact replay 能力；`record-only` 返回 HTTP 409 与 `PLAYER_PLAYBACK_NOT_SUPPORTED`，未知版本返回 `REPLAY_UNAVAILABLE`。未登录/未参赛请求仍分别遵循 401/404，不因能力判断泄漏比赛信息；全部响应保持 private/no-store。
 - M7-A/M7-B 的账户历史和 replay 读取按 `UserId` 查询；匿名 Round 的 `match_players.user_id` 永久为 `null`，注册/登录、归档重试和 session 轮换都不会回填。M7-B 只返回服务端逐帧 `projectView`，不提供 canonical replay、seed、raw State、Actions、公开分享、下载或观战。
 - 举报审查、玩家下载和公开分享可能拥有不同访问级别，具体策略暂缓。
 - V1 井字棋、四子棋、五子棋、六贯棋与黑白棋都没有隐藏信息，但仍按内部 canonical record 处理。

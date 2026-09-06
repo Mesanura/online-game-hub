@@ -172,6 +172,8 @@ Hard Rules：
 
 Realtime simulation 使用固定整数单位和单调 server tick；实际 wall clock 只属于 server scheduler，不得进入 Core。服务端按每个 tick 生成规范化 input frame，再调用 Core 一次；客户端只接收 per-viewer projected View snapshot，并在 Phaser canvas 内做显示插值。预测/回滚、共享 ECS 和多实例 ownership 不属于 M8。
 
+M8 完成后新增的 `badminton@1.0.0` 直接复用这些契约：`games/badminton` 只导出 manifest、Core 与 Setup，`game-surfaces/badminton` 独立拥有 Phaser、Zod 与 Bridge 表现。Registry 显式登记 V6 与 Setup/Play artifact；不新增 legacy Client Module、平台规则分支、Next transpile 条目、网站游戏 CSS 或数据库 schema。物理与输入持续时间属于游戏规则版本，画布布局属于独立 `surfaceVersion`。
+
 ### 7.2 Game Surface 与 iframe Host
 
 `game-surfaces/<game-id>` 各自拥有 `dev`、`build`、`test` 与 `contract-test`。构建输出由 `SurfaceArtifactManifestV1` 描述：`schemaVersion`、`gameId`、`supportedGameVersions`、独立 `surfaceVersion`、`bridgeVersion`、Setup/Play/可选 Replay HTML entrypoint、浏览器能力和内容摘要。CI 校验摘要与版本漂移后，把未提交的 `dist` 复制到 `/game-surfaces/<gameId>/<surfaceVersion>/<mode>/`；版本化资源使用 immutable cache，registry 回滚只切换引用，绝不覆盖 artifact。
@@ -267,6 +269,7 @@ Room 必须串行处理 Action。任何未来多实例方案都必须维持“�
 - `match_players` 以 `(match_id, player_slot_id)` 为主键并约束同场 participant 唯一；原始 `PlayerSessionId` 只用于服务器内部参与者一致性，不进入公共 response、日志或错误。M7-A 删除旧 `guest_user_associations` 回填路径；Round 创建直接保存 slot 在开始时已快照的可选 UserId，save/complete/归档重试只能验证既有值，不能重新查询当前登录态或补写。
 - reconnect/takeover 必须同时匹配 PlayerSessionId 与原 slot UserId。注册、登录、退出或账户 session 失效都会轮换 guest session，因此 live seat 不能匿名升级、账户降级或换号接管。同一房间后续 Round 沿用 stable slot 身份。
 - Web 的 `GET /api/matches` 只从经 HMAC 验证的 `ogh_guest` 推导 identity，每次请求创建并关闭自己的 server-only database client。结果最多 50 条，按 `createdAt DESC, matchId DESC` 稳定排序，只返回含 `roundNumber` 的平台 metadata；canonical replay、Config、Action、Outcome、seed、State、其他参与者和内部 room ID 都不返回。
+- Web 在账户参赛归属读取之后，按 exact turn-based/realtime definition 的 replay capability 计算 `replayAvailable` 与玩家播放权限；历史 frozen definition 不能被 current catalog 代替。`record-only` 不开放播放，但内部 PostgreSQL canonical record 与 verifier 不变；无需扩展 shared public API 或数据库结构。
 - PostgreSQL 是唯一生产数据库，`DATABASE_MODE=memory` 只允许 development/test 且明确无 durable history。migration 只能通过运维命令显式执行，应用 import/start 不自动迁移；`DATABASE_URL` 不进入浏览器 bundle、结构化日志或错误 response。
 
 ### 8.4.1 Account Profile Boundary
@@ -350,7 +353,7 @@ Room 必须串行处理 Action。任何未来多实例方案都必须维持“�
 - Redis driver/presence 的选择与部署；
 - Matchmaking、观战延迟、公开 replay 权限；
 - M8 之外的 durable active room、Redis presence/driver 与多实例 ownership；
-- realtime runtime 以外的通用预测/回滚、ECS 或第二个实时游戏。
+- realtime runtime 以外的通用预测/回滚或 ECS；新增内容按明确需求逐款接入。
 
 ### 10.3 当前不做
 
@@ -371,7 +374,7 @@ Room 必须串行处理 Action。任何未来多实例方案都必须维持“�
 | Live room 不持久化          | Game Server 重启会终止待开局设置或 active 对局           | 只对已存在的 active/旧 waiting archive 标记 abandoned；不宣称恢复 State，durable RoomStore 留待真实需求 |
 | 单实例启动协调              | 多实例同时启动会误标其他实例的 active archive            | M5 明确只支持单实例；引入多实例前必须设计 ownership/presence，不能复用当前全局协调                      |
 | Tick 输入与网络时序耦合     | 不同延迟可能重建出不同实时结果                           | Core 只接收按 server tick 归档的规范化 input frame；wall clock 只驱动 scheduler，replay 逐 tick 重建    |
-| Phaser 进入权威层           | 浏览器渲染或帧率差异改变比赛结果                         | Phaser 仅属于 `games/pong` client；simulation/runtime 不依赖 DOM、Phaser 或浏览器时钟                   |
+| Phaser 进入权威层           | 浏览器渲染或帧率差异改变比赛结果                         | Phaser 仅属于独立 Surface 与保留的 Pong client；simulation/runtime 不依赖 DOM、Phaser 或浏览器时钟      |
 
 ## 12. 共享 API 变更政策
 

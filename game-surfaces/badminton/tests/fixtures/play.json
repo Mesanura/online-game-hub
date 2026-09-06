@@ -1,0 +1,56 @@
+{
+  "court": {
+    "width": 1000000,
+    "height": 600000,
+    "ground": 500000,
+    "leftLine": 80000,
+    "rightLine": 920000,
+    "netX": 500000,
+    "netTop": 340000,
+    "netWidth": 6000,
+    "shuttleRadius": 6000
+  },
+  "players": [
+    {
+      "slotId": "left-slot",
+      "side": "LEFT"
+    },
+    {
+      "slotId": "right-slot",
+      "side": "RIGHT"
+    }
+  ],
+  "athletes": [
+    {
+      "x": 240000,
+      "y": 500000,
+      "moving": false,
+      "swingTicks": 0,
+      "swingShot": "NONE"
+    },
+    {
+      "x": 760000,
+      "y": 500000,
+      "moving": false,
+      "swingTicks": 0,
+      "swingShot": "NONE"
+    }
+  ],
+  "shuttle": {
+    "x": 280000,
+    "y": 405000
+  },
+  "scores": [0, 0],
+  "targetScore": 7,
+  "scoreCap": 11,
+  "tick": 0,
+  "phase": "SERVE",
+  "phaseTicks": 120,
+  "servingSide": "LEFT",
+  "yourSide": "LEFT",
+  "rally": 1,
+  "rallyHits": 0,
+  "bestRally": 0,
+  "lastPoint": null,
+  "outcome": null
+}

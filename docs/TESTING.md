@@ -93,6 +93,8 @@ M7-B 私有历史与回放测试覆盖：UserId + matchId 数据库授权、双�
 
 中国跳棋至少覆盖 2/3/6 人初始化、73 位坐标和六子营地、唯一 assignment、相邻移动、连续跳跃、越界/占用/错回合、完成/投降/阻塞排名、自动跳过、State/View/Action/Outcome immutability、JSON serialization、projection 和零 RNG cursor determinism；golden replay 必须验证 header assignment 可重建。
 
+火柴人羽毛球至少覆盖 7/11/21 分 Config、strict CONTROL/RESIGN、左右半场限制、跳跃按下边沿、45-tick 输入有效期、挥拍持续/冷却/重复击球限制、高远球/吊球/高点扣杀与低位降级、球网/界外/落地计分、领先两分和封顶、自动发球、投降优先级、终局停止、immutability、JSON serialization、公开投影和逐 tick seeded determinism。Setup 覆盖房主比分/首发权限、RANDOM 与独立 RNG、上一局完整设置复用；score/resignation/rally 三个 golden records 必须保持 exact。
+
 ### 4.2 Property 与 Table-driven Tests
 
 - 对有限规则优先使用 table-driven cases 表达规则矩阵。
@@ -420,6 +422,23 @@ pnpm test:database
 - Playwright E2E：两个隔离 browser contexts 经过目录、独立 Setup Surface、ready、独立 Phaser Play Surface、完成、reconnect 与只读 Replay Surface；检查 canvas 非空、800×400 逻辑尺寸、视口矩阵及 2560×1440 的 100%/150% 缩放等效视口下的 2:1 FIT、安全留白和四边边界可辨识性、键盘输入可用、reduced motion 和终局 UI，不以客户端位置推断权威结果；
 - 全仓 `lint`、`typecheck`、`test`、`build`、`deps:check`，以及受影响的 `test:integration`、`test:database` 和 `test:e2e`。Phaser 依赖必须由 legacy `games/pong` client 或独立 `game-surfaces/pong` 明确拥有，Core 和 server runtime 的依赖检查必须继续拒绝 Phaser/DOM。
 
+### 13.1 额外实时游戏：羽毛球验收
+
+- `apps/game-server/tests/realtime-game-server.integration.test.ts` 的羽毛球 V6 suite 覆盖真实双客户端、非房主/非法/过期 Setup、accepted 设置清 ready、左右 slot 映射、伪造 actor/State/tick/位置/分数、重复 command、过期 input sequence、错轮、输入释放、同 session 接管、投降、完整设置重开、自动计分终局和两轮 exact replay。
+- `tooling/e2e/tests/badminton-vertical-slice.spec.ts` 使用两个隔离账户、临时 PostgreSQL 和真实 Next/Colyseus/Chromium。验证独立 Setup/Play、键盘组合、真实 Chromium 多点触控及取消、失焦释放、刷新重连、完整计分、终局重开与取消/确认投降。跨新数据库连接重读记录并 verify，私有 history 保留战绩但 `replayAvailable: false`，玩家播放返回 409 `PLAYER_PLAYBACK_NOT_SUPPORTED`。
+- 羽毛球 Surface 验证 1000×600 逻辑画布、5:3 比例、连续缩放后的最大可用尺寸、桌面/平板/手机横竖屏、44px 操作目标、非空 canvas、reduced motion 和安全终局摘要。手机横屏按钮分置球场两侧，不覆盖独立全屏控件。
+- Web replay capability tests 覆盖 `player-playback`、`record-only`、未知版本、现行/历史 definition、私有响应头和 401/404 授权顺序；既有游戏的 projected replay 保持可用。
+
+针对性命令（浏览器命令前须完成 build、surface verify/publish，并按第 9.1 节临时注入测试数据库）：
+
+```text
+pnpm --filter @online-game-hub/badminton test
+pnpm --filter @online-game-hub/badminton test:golden
+pnpm --filter @online-game-hub/badminton-surface contract-test
+pnpm test:integration
+pnpm --filter @online-game-hub/e2e test:e2e tests/badminton-vertical-slice.spec.ts
+```
+
 Connect Four Surface `1.0.3` 额外保持 `1.0.0`/`1.1.0` projected View 的同一 artifact contract；current E2E 必须覆盖 Setup iframe、42 格/7 列 Play iframe、`7:6` 棋盘及 2560×1440 的 100%/150% 缩放等效视口 containment、完整设置复用的第二局、平台投降和 Replay iframe。历史 `1.0.0` golden replay 继续用 frozen Core exact 验证。
 
 Gomoku Surface `1.0.2` 同时覆盖 `1.0.0`/`1.1.0` projected View；current E2E 必须覆盖保留 15×15 Config 的 Setup iframe、225 格暖木 Clay 棋盘、容器尺寸适配、当前棋色 hover/focus 预览、平台投降和 Replay iframe。19×19 Config、长连和历史 `1.0.0` exact 行为继续由 Core、Setup 与 golden tests 覆盖。
@@ -439,6 +458,8 @@ pnpm --filter @online-game-hub/gomoku test:golden
 pnpm --filter @online-game-hub/hex test:golden
 pnpm --filter @online-game-hub/reversi test:golden
 pnpm --filter @online-game-hub/chinese-checkers test:golden
+pnpm --filter @online-game-hub/pong test:golden
+pnpm --filter @online-game-hub/badminton test:golden
 ```
 
 首次本机运行 E2E 前执行 `pnpm exec playwright install chromium`。CI 在 frozen-lockfile install 后以 `pnpm exec playwright install --with-deps chromium` 安装与 Playwright 1.62.1 精确匹配的浏览器，使用固定 PostgreSQL 17.6 service，然后运行 lint、typecheck、unit、database、integration、build 和 E2E。

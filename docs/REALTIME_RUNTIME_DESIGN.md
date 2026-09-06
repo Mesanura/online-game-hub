@@ -1,8 +1,8 @@
 # Realtime Runtime 设计基线
 
-> 状态：M8 已实现（单实例双人 Pong）；M9 已接入 Setup V6 与独立 Phaser Surface
+> 状态：M8 已实现（单实例双人 Pong）；M9 已接入 Setup V6 与独立 Phaser Surface；额外火柴人羽毛球复用相同运行时
 >
-> 本文是“独立 realtime runtime 与 Phaser Pong”的权威设计边界。现有回合制契约仍以 [GAME_PLUGIN_SPEC.md](./GAME_PLUGIN_SPEC.md)、[NETWORK_PROTOCOL.md](./NETWORK_PROTOCOL.md) 和 [REPLAY_DESIGN.md](./REPLAY_DESIGN.md) 为准。
+> 本文是独立 realtime runtime 及其 Pong、羽毛球消费者的权威设计边界。M8 范围与退出条件保留为历史基线，额外游戏见第 10 节。现有回合制契约仍以 [GAME_PLUGIN_SPEC.md](./GAME_PLUGIN_SPEC.md)、[NETWORK_PROTOCOL.md](./NETWORK_PROTOCOL.md) 和 [REPLAY_DESIGN.md](./REPLAY_DESIGN.md) 为准。
 
 ## 1. 目标与范围
 
@@ -39,6 +39,8 @@ Realtime client host 负责 ticket/join、lifecycle、snapshot 顺序、重连�
 | `realtime-game-client-sdk`     | realtime ticket/room host、snapshot interpolation clock、input sender 与 Phaser 无关的 client contract | `game-client-sdk` 的 turn-based host、具体游戏、数据库                 |
 | `games/pong`                   | Pong simulation、manifest、legacy Phaser client、Setup Core、规则说明与 golden/unit tests              | 其他游戏；simulation 依赖 realtime SDK，Core 不依赖 Phaser             |
 | `game-surfaces/pong`           | 独立 TypeScript + Phaser Setup/Play/Replay 表现层，只消费 Bridge projected View                        | Pong Core、React、Next、Protocol、WebSocket、ticket、seed 与 raw State |
+| `games/badminton`              | 羽毛球整数 simulation、manifest、Setup Core、规则与 golden/unit tests                                  | 其他游戏、DOM、Phaser、React、transport 与数据库                       |
+| `game-surfaces/badminton`      | 独立 Phaser Setup/Play、键盘/多指输入、公开快照插值和终局摘要                                          | Game Core、Next、Protocol、WebSocket、ticket、seed 与 raw State        |
 
 只有 composition layer 可以同时看到 manifest、registry、两个 runtime 和 Platform ports。若复用身份/lifecycle 代码，先提取不含游戏规则、tick 和 transport 的最小 port，并同步更新依赖检查；不要以 `packages/shared` 或“未来通用”接口承载未经证明的抽象。
 
@@ -113,7 +115,7 @@ Realtime Round 复用 Platform 的 Match/账户授权边界，但存储 adapter 
 
 ## 7. Phaser client 边界
 
-Phaser 只在 `games/pong` client package 中拥有。它从 realtime client host 接收 immutable View、connection/lifecycle 状态和 acknowledged input sequence，负责 canvas、键盘输入、视觉插值、胜负 HUD 和 reduced-motion 降级。Phaser scene 不创建 socket、不解析 ticket、不决定 actor、不写服务器 State，也不执行权威碰撞。
+当前 Web 的 Phaser 表现由独立 `game-surfaces/pong` 与 `game-surfaces/badminton` 拥有，`games/pong` client 仅保留兼容 API。Surface 通过 Bridge 接收 immutable View、connection/lifecycle 状态，负责 canvas、输入、视觉插值、结果摘要和 reduced-motion 降级；realtime client host 继续在平台侧管理 acknowledgement。Phaser scene 不创建 socket、不解析 ticket、不决定 actor、不写服务器 State，也不执行权威碰撞。
 
 真实浏览器验收必须检查 canvas 非空、尺寸稳定、键盘输入可达、重连后视图收敛和终局画面；截图或像素断言不能被用来替代 server integration 的 authoritative 断言。
 
@@ -132,3 +134,13 @@ Phaser 只在 `games/pong` client package 中拥有。它从 realtime client hos
 - fixed seed + accepted input log 的 golden replay 可重复验证，旧 Replay Format V1 fixtures 全部通过；
 - 受影响的 `pnpm lint`、`pnpm typecheck`、`pnpm test`、`pnpm build`、`pnpm deps:check`、`pnpm test:integration`、`pnpm test:database` 和 `pnpm test:e2e` 均通过；
 - 文档、迁移、registry 登记、package exports 和 Conventional Commit 均完成，没有把 Matchmaking、观战、预测/回滚、Redis、多实例或第二个 realtime 游戏带入本轮。
+
+## 10. M8 之后的羽毛球扩展
+
+`badminton@1.0.0` 使用既有 60 Hz `RealtimeGameDefinition`，所有位置、速度、重力、阻力、球拍/球网/地面碰撞与计分均属于游戏 Core。Config 为 `{ targetScore: 7 | 11 | 21 }`；strict Input 为 `CONTROL { move: -1 | 0 | 1, jump: boolean, shot: NONE | CLEAR | DROP | SMASH }` 或 `RESIGN`。完整规则以 [GAME_SPEC](../games/badminton/GAME_SPEC.md) 为准，不复制到 runtime。
+
+连续控制由游戏保存在 State 中，无新输入时最多保持 45 ticks。Surface 按住时每 150ms 刷新，松开、失焦、触控取消和断线清除；Core 的有效期保证浏览器意外消失后不会永久移动。客户端只采集 intent，服务器仍决定生效 tick 和本轮 actor。同一 tick 的同 slot 输入以最后一个 accepted change 生效；投降待确认期间 Surface 停止普通控制，避免覆盖投降。
+
+初始球场和发球不消耗 gameplay RNG，所有完成记录的 cursor 为 0；随机首发只消费独立 Setup RNG，最终有序 slots 与 Config 写入既有 header。record-only 模式保留完整 canonical replay/verifier 与 PostgreSQL archive。Web 在账户授权之后按 exact definition 的 replay 能力拒绝玩家播放；历史 `replayAvailable` 也以相同能力为条件，旧 Pong 与 frozen 棋类版本保持可播放。
+
+新增的独立 Surface 只依赖 Bridge、Phaser 与 Zod，没有 legacy Client Module。CSS 固定 5:3 显示比例与 1000×600 逻辑画布，触屏按钮最小 44px；服务器重连、重新发球和新轮次直接收敛公开视图。此扩展不改变 SDK 公共 API、Setup Protocol V6、Realtime Protocol V1、Realtime Replay Format V1 或数据库 schema。

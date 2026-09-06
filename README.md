@@ -1,12 +1,12 @@
 # Online Game Hub
 
-Online Game Hub 是一个面向在线棋类游戏的 TypeScript monorepo，现同时支持双人游戏与 2–6 人中国跳棋。平台采用服务端权威模型：浏览器只提交操作意图，Game Server 负责验证规则、推进状态和记录回放。
+Online Game Hub 是一个面向多人在线网页游戏的 TypeScript monorepo，支持双人棋牌、2–6 人中国跳棋以及实时 2D 对战。平台采用服务端权威模型：浏览器只提交操作意图，Game Server 负责验证规则、推进状态和记录回放。
 
 ## 1. 软件定位与功能
 
 项目提供可复用的多人网页游戏平台能力，并以独立游戏插件承载具体规则。当前已支持：
 
-- 井字棋、四子棋、五子棋、六贯棋、黑白棋和多人中国跳棋；
+- 井字棋、四子棋、五子棋、六贯棋、黑白棋、多人中国跳棋、Pong 和火柴人羽毛球；
 - 匿名访客创建房间、邀请码加入、选择先手与双方准备；
 - 服务端权威对局、断线重连、同一房间多轮游戏；
 - 游客无需注册即可完整对局；用户名+密码账户、可撤销登录态和账户私有比赛历史；
@@ -14,6 +14,8 @@ Online Game Hub 是一个面向在线棋类游戏的 TypeScript monorepo，现�
 - 显式注册的 Game Plugin，可通过 `pnpm create-game --game-id <id>` 创建开发骨架。
 
 游客可玩但没有历史或 replay 读取入口；注册/登录不会认领此前游客比赛，只有 Round 开始时已登录的玩家才归属账户。M7-B 已提供账户私有 replay UI：只有登录态参赛者可读取，响应只包含服务端逐帧 `projectView`；浏览器不会收到 canonical replay、seed、raw State 或 Actions。邮箱、OAuth、找回密码、公开回放、观战、匹配大厅和多实例协调尚未实现。
+
+火柴人羽毛球首版采用 `record-only`：保存可验证的服务器记录和账户战绩，暂不提供玩家回放页面。其余当前游戏继续提供账户私有回放。
 
 ## 2. 运行代码
 
@@ -58,6 +60,14 @@ PowerShell 中先设置 `$env:DATABASE_URL`，再运行 `pnpm db:migrate`。开�
 
 ### 启动开发服务
 
+首次运行或更新游戏画面后，先构建 workspace 并发布本地 Surface 静态文件：
+
+```sh
+pnpm build
+pnpm surface:verify
+pnpm surface:publish
+```
+
 在两个终端分别运行：
 
 ```sh
@@ -78,6 +88,8 @@ Docker Compose 单机部署、生产配置和数据备份见 [部署文档](./do
 2. 将房间邀请链接发送给另一名玩家；对方加入后，双方选择本轮先手并准备开始。
 3. 对局页面只展示服务器下发的当前视图。落子、投降和终局均由服务端判定。
 4. 对局结束后可在同一房间设置下一轮；短暂断线会尝试恢复原有席位。
+
+火柴人羽毛球入口为 `/games/badminton`。房主可选择 7/11/21 分和首发方，双方分别准备后开始。A/D 或左右方向键移动，W/上方向键/空格起跳，J 高远球、K 扣杀、L 吊球；手机使用屏幕按钮并支持多指操作。跑到球下按住挥拍，起跳后的高点接触可扣杀。每球得分者发球，领先 2 分获胜，分别在 11/15/30 分封顶。完整规则见 [羽毛球 GAME_SPEC](./games/badminton/GAME_SPEC.md)。
 
 开发新游戏时，可先运行：
 
@@ -105,11 +117,13 @@ packages/
   game-sdk/            JSON 类型、游戏定义和确定性 RNG
   protocol/            网络消息 schema 与类型
   game-server-runtime/ 通用房间、动作和 replay 管线
-  game-client-sdk/     浏览器连接与游戏 Client Module 合约
+  game-client-sdk/     回合制浏览器连接与兼容 Client Module 合约
+  realtime-game-sdk/   固定 tick、输入与确定性 replay 合约
+  game-surface-bridge/ 独立游戏画面与网站的消息桥
   game-registry/       游戏的显式 catalog 与解析
   database/            PostgreSQL schema、migration 和持久化适配器
 game-surfaces/         独立构建的游戏画面与 Surface Workbench
-games/                 每个游戏独立的 manifest、Core、Client 和测试
+games/                 每个游戏独立的 manifest、Core、Setup 和测试
 tooling/               仓库检查、Surface artifact 发布、E2E 与测试工具
 tools/create-game/     新游戏机械骨架生成器
 ```
@@ -119,6 +133,8 @@ tools/create-game/     新游戏机械骨架生成器
 架构、协议和版本兼容性以 [系统架构](./docs/ARCHITECTURE.md)、[网络协议](./docs/NETWORK_PROTOCOL.md) 与 [Replay 设计](./docs/REPLAY_DESIGN.md) 为准。
 
 M8 已接入当前可运行组合：独立 realtime runtime、Realtime Protocol V1、固定 60 Hz Pong、Phaser client、Realtime Replay Format V1 与账户私有只读回放。范围、依赖边界和验收标准见 [Realtime Runtime 设计基线](./docs/REALTIME_RUNTIME_DESIGN.md)。
+
+火柴人羽毛球复用同一 realtime runtime，以纯 TypeScript 整数物理和独立 Phaser Setup/Play Surface 接入；没有修改公共协议、数据库结构或网站的游戏布局。
 
 ## 5. 常见问题
 

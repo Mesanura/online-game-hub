@@ -355,3 +355,14 @@ Connect Four、Gomoku、Reversi、Hex、Chinese Checkers 的表现与 Setup 已�
 架构迁移稳定后，各游戏只通过 `surfaceVersion` 迭代规则解释、预览、参与顺序和 assignment 交互。平台只规定外框、可访问性、loading/error 与 ready 区域，不引入通用表单 DSL。
 
 本里程碑不包含真正 `replay:none` 的数据库语义、外部仓库发布、独立无 Cookie 资源域或 Setup UI 视觉重设计。生产先使用同域静态路径和 opaque iframe origin，后续迁域不改变 Bridge。
+
+## 用户指定内容扩展：火柴人羽毛球
+
+本扩展在 M8 实时运行时与 M9 独立 Surface 已具备复用能力后实施，仅增加 `badminton@1.0.0`，不改变历史里程碑的退出条件。
+
+- `games/badminton` 拥有 strict Config/Input、60 Hz 整数物理、移动/跳跃/三种击球、触网/出界/落地计分、领先两分与封顶、投降、Setup、公开投影和 golden records。
+- `game-surfaces/badminton` 拥有原创 Phaser 球场、Setup/Play、键盘及多指触控、输入释放、reduced motion、响应式画布和 Bridge V2 终局摘要；没有 legacy Client Module 或 Replay 入口。
+- Registry 仅登记新的 manifest、exact Core/Setup 与 versioned Surface。平台 SDK、Protocol V6、Realtime Protocol V1、Replay Format V1、数据库 schema 和既有游戏版本不变。
+- replay 显式为 `record-only`，账户战绩与服务端确定性记录继续可用；不承诺玩家回放。
+
+验收要求：Core/Setup/golden、Surface contract、真实双客户端 authority/reconnect/rematch、临时 PostgreSQL 双浏览器键盘/多指触控/完整计分/战绩验证，以及全仓质量门禁。具体范围见 [TESTING.md](./TESTING.md) 和 [羽毛球规格](../games/badminton/GAME_SPEC.md)。

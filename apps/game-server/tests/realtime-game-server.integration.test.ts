@@ -779,3 +779,398 @@ describe.sequential("realtime Pong Protocol V6 setup", () => {
     await roomB.leave(true);
   });
 });
+
+describe.sequential("realtime badminton Protocol V6", () => {
+  const clock = new FakeRuntimeClock(3_000_000);
+  const schedulerTimer = new ManualSchedulerTimer();
+  const authority = new TestTicketAuthority({
+    issuer: "badminton-integration",
+    secret: "badminton-integration-secret",
+    clock,
+    lifetimeSeconds: 600,
+  });
+  const replayStore = new InMemoryRealtimeReplayStore();
+  const roomStore = new InMemoryRealtimeRoomStore();
+  const archive = new RecordingRealtimeArchive();
+  let replaySequence = 0;
+  let seedSequence = 0;
+  let setupSeedSequence = 0;
+  let app: GameServerApplication;
+  let address: GameServerAddress;
+
+  const ticket = (session: string) =>
+    authority.issue(session, { protocolVersion: SETUP_PROTOCOL_VERSION });
+  const ready = (commandId: string) => ({
+    type: "room.control",
+    protocolVersion: SETUP_PROTOCOL_VERSION,
+    commandId,
+    operation: "READY_FOR_ROUND",
+  });
+  const setup = (
+    commandId: string,
+    expectedSetupRevision: number,
+    action: unknown,
+  ) => ({
+    type: "game.setup",
+    protocolVersion: SETUP_PROTOCOL_VERSION,
+    commandId,
+    roundNumber: 1,
+    expectedSetupRevision,
+    action,
+  });
+  const view = (inbox: RoomMessagesV6) =>
+    inbox.snapshots.at(-1)?.view as {
+      athletes: [{ x: number; y: number }, { x: number; y: number }];
+      scores: [number, number];
+    };
+
+  async function deliveryBarrier(
+    room: ClientRoom,
+    inbox: RoomMessagesV6,
+  ): Promise<void> {
+    const count = inbox.realtimeRejections.length;
+    // WebSocket messages and the room writer are ordered. A rejected envelope
+    // confirms earlier inputs arrived without advancing the simulation clock.
+    room.send(REALTIME_INPUT_MESSAGE, { testBarrier: true });
+    await waitUntil(() => inbox.realtimeRejections.length > count);
+  }
+
+  async function advance(inbox: RoomMessagesV6): Promise<void> {
+    const tick = inbox.snapshots.at(-1)?.tick ?? 0;
+    await schedulerTimer.tick();
+    await waitUntil(() => (inbox.snapshots.at(-1)?.tick ?? 0) > tick);
+  }
+
+  beforeAll(async () => {
+    app = createGameServer({
+      ticketVerifier: authority,
+      realtimeTicketVerifier: authority,
+      realtimeReplayStore: replayStore,
+      realtimeRoomStore: roomStore,
+      realtimeMatchArchive: archive,
+      realtimeClock: clock as unknown as RealtimeRuntimeClock,
+      realtimeSchedulerTimer: schedulerTimer,
+      realtimeIds: {
+        createRoomCode: () => "BDMN2345",
+        createReplayId: () => `badminton-replay-${++replaySequence}`,
+        createSetupRngSeed: () => `badminton-setup-${++setupSeedSequence}`,
+        createRngSeed: () => `badminton-gameplay-${++seedSequence}`,
+        createPlayerSlotId: (index) => `badminton-slot-${index + 1}` as never,
+      },
+      logger: { write: () => undefined },
+    });
+    address = await app.start({ port: 0 });
+  });
+
+  afterAll(async () => {
+    await app?.stop();
+  });
+
+  it("validates setup and input authority, reconnects, resigns, rematches and scores with exact replay", async () => {
+    const roomA = await new ColyseusClient(address.httpUrl).create(
+      REALTIME_GAME_ROOM_NAME,
+      {
+        type: "room.create",
+        protocolVersion: SETUP_PROTOCOL_VERSION,
+        ticket: ticket("badminton-owner"),
+        gameId: "badminton",
+        initialConfig: { targetScore: 7 },
+      },
+    );
+    const inboxA = messagesV6(roomA);
+    await waitUntil(() => inboxA.lifecycle.length > 0);
+    expect(inboxA.lifecycle.at(-1)?.nextRound).toMatchObject({
+      setupRevision: 0,
+      setupView: {
+        starter: "OWNER",
+        config: { targetScore: 7 },
+        canEdit: true,
+      },
+      readiness: { canReady: false, readySlotIds: [] },
+    });
+    const discovery = await fetch(
+      `${address.httpUrl}/room-discovery?gameId=badminton&roomCode=bdmn2345`,
+    );
+    expect(await discovery.json()).toEqual({
+      roomCode: "BDMN2345",
+      gameId: "badminton",
+      gameVersion: "1.0.0",
+      setupProtocol: SETUP_PROTOCOL_VERSION,
+      runtime: "realtime",
+    });
+
+    const roomB = await new ColyseusClient(address.httpUrl).join(
+      REALTIME_GAME_ROOM_NAME,
+      {
+        type: "room.join",
+        protocolVersion: SETUP_PROTOCOL_VERSION,
+        ticket: ticket("badminton-guest"),
+        roomCode: "BDMN2345",
+      },
+    );
+    const inboxB = messagesV6(roomB);
+    await waitUntil(() => inboxB.lifecycle.length > 0);
+    expect(inboxB.lifecycle.at(-1)?.nextRound).toMatchObject({
+      setupView: { canEdit: false },
+      readiness: { canReady: true },
+    });
+    roomB.send(
+      GAME_SETUP_MESSAGE,
+      setup("guest-score", 0, { type: "SET_TARGET_SCORE", targetScore: 21 }),
+    );
+    await waitUntil(() => inboxB.rejections.length > 0);
+    expect(inboxB.rejections.at(-1)).toMatchObject({
+      code: "SETUP_RULE_REJECTED",
+      gameRuleCode: "NOT_OWNER",
+      setupRevision: 0,
+    });
+
+    roomA.send(ROOM_CONTROL_MESSAGE, ready("ready-before-change"));
+    await waitUntil(
+      () => inboxA.lifecycle.at(-1)?.nextRound?.readiness.selfReady === true,
+    );
+    roomA.send(
+      GAME_SETUP_MESSAGE,
+      setup("eleven", 0, { type: "SET_TARGET_SCORE", targetScore: 11 }),
+    );
+    await waitUntil(
+      () => inboxA.lifecycle.at(-1)?.nextRound?.setupRevision === 1,
+    );
+    expect(inboxA.lifecycle.at(-1)?.nextRound).toMatchObject({
+      setupView: { config: { targetScore: 11 } },
+      readiness: { readySlotIds: [] },
+    });
+    roomA.send(
+      GAME_SETUP_MESSAGE,
+      setup("stale-score", 0, { type: "SET_TARGET_SCORE", targetScore: 21 }),
+    );
+    await waitUntil(() => inboxA.rejections.length > 0);
+    expect(inboxA.rejections.at(-1)?.code).toBe("STALE_SETUP_REVISION");
+    roomA.send(
+      GAME_SETUP_MESSAGE,
+      setup("invalid-score", 1, { type: "SET_TARGET_SCORE", targetScore: 100 }),
+    );
+    await waitUntil(() => inboxA.rejections.length > 1);
+    expect(inboxA.lifecycle.at(-1)?.nextRound?.setupRevision).toBe(1);
+    roomA.send(
+      GAME_SETUP_MESSAGE,
+      setup("seven", 1, { type: "SET_TARGET_SCORE", targetScore: 7 }),
+    );
+    await waitUntil(
+      () => inboxA.lifecycle.at(-1)?.nextRound?.setupRevision === 2,
+    );
+    roomA.send(
+      GAME_SETUP_MESSAGE,
+      setup("guest-first", 2, { type: "SELECT_STARTER", starter: "NON_OWNER" }),
+    );
+    await waitUntil(
+      () => inboxA.lifecycle.at(-1)?.nextRound?.setupRevision === 3,
+    );
+    roomA.send(ROOM_CONTROL_MESSAGE, ready("ready-a"));
+    roomB.send(ROOM_CONTROL_MESSAGE, ready("ready-b"));
+    await waitUntil(
+      () => inboxA.snapshots.length > 0 && inboxB.snapshots.length > 0,
+    );
+    expect(inboxA.snapshots.at(-1)?.view).toMatchObject({
+      yourSide: "RIGHT",
+      servingSide: "LEFT",
+      players: [
+        { slotId: "badminton-slot-2", side: "LEFT" },
+        { slotId: "badminton-slot-1", side: "RIGHT" },
+      ],
+      scores: [0, 0],
+      targetScore: 7,
+    });
+    expect(inboxB.snapshots.at(-1)?.view).toMatchObject({ yourSide: "LEFT" });
+    expect(JSON.stringify(inboxA.snapshots.at(-1)?.view)).not.toMatch(
+      /velocity|controls|inputAge|rng|seed|session|ticket|events/iu,
+    );
+
+    for (const payload of [
+      {
+        ...input("forged-actor", 1, { type: "RESIGN" }),
+        actorSlotId: "badminton-slot-2",
+        state: { scores: [7, 0] },
+        tick: 10_000,
+      },
+      input("forged-position", 1, {
+        type: "CONTROL",
+        move: 1,
+        jump: false,
+        shot: "CLEAR",
+        x: 900_000,
+      }),
+      input("invalid-direction", 1, {
+        type: "CONTROL",
+        move: 2,
+        jump: false,
+        shot: "CLEAR",
+      }),
+      input("forged-outcome", 1, { type: "RESIGN", scores: [7, 0] }),
+    ]) {
+      const count = inboxA.realtimeRejections.length;
+      roomA.send(REALTIME_INPUT_MESSAGE, payload);
+      await waitUntil(() => inboxA.realtimeRejections.length > count);
+      expect(inboxA.realtimeRejections.at(-1)?.code).toBe(
+        "INVALID_INPUT_PAYLOAD",
+      );
+    }
+    expect(inboxA.snapshots.at(-1)?.tick).toBe(0);
+    const initialAthlete = { ...view(inboxA).athletes[1] };
+    const movement = input("control-a", 1, {
+      type: "CONTROL",
+      move: -1,
+      jump: true,
+      shot: "CLEAR",
+    });
+    roomA.send(REALTIME_INPUT_MESSAGE, movement);
+    roomA.send(REALTIME_INPUT_MESSAGE, movement);
+    await deliveryBarrier(roomA, inboxA);
+    await advance(inboxA);
+    expect(inboxA.snapshots.at(-1)?.acknowledgedInputSequence).toBe(1);
+    expect(view(inboxA).athletes[1].x).toBeLessThan(initialAthlete.x);
+    expect(view(inboxA).athletes[1].y).toBeLessThan(initialAthlete.y);
+    expect((await replayStore.get("badminton-replay-1"))?.events).toHaveLength(
+      1,
+    );
+
+    roomB.send(REALTIME_INPUT_MESSAGE, movement);
+    await waitUntil(() => inboxB.realtimeRejections.length > 0);
+    expect(inboxB.realtimeRejections.at(-1)?.code).toBe("DUPLICATE_COMMAND");
+    roomA.send(
+      REALTIME_INPUT_MESSAGE,
+      input("stale-input", 1, { type: "RESIGN" }),
+    );
+    await waitUntil(
+      () => inboxA.realtimeRejections.at(-1)?.code === "STALE_INPUT_SEQUENCE",
+    );
+    roomA.send(REALTIME_INPUT_MESSAGE, {
+      ...input("wrong-round", 2, { type: "RESIGN" }),
+      roundNumber: 2,
+    });
+    await waitUntil(
+      () => inboxA.realtimeRejections.at(-1)?.code === "ROUND_MISMATCH",
+    );
+    expect((await replayStore.get("badminton-replay-1"))?.events).toHaveLength(
+      1,
+    );
+
+    roomA.send(
+      REALTIME_INPUT_MESSAGE,
+      input("release-a", 2, {
+        type: "CONTROL",
+        move: 0,
+        jump: false,
+        shot: "NONE",
+      }),
+    );
+    await deliveryBarrier(roomA, inboxA);
+    await advance(inboxA);
+    const stoppedX = view(inboxA).athletes[1].x;
+    await advance(inboxA);
+    expect(view(inboxA).athletes[1].x).toBe(stoppedX);
+
+    const takeover = await new ColyseusClient(address.httpUrl).join(
+      REALTIME_GAME_ROOM_NAME,
+      {
+        type: "room.join",
+        protocolVersion: SETUP_PROTOCOL_VERSION,
+        ticket: ticket("badminton-owner"),
+        roomCode: "BDMN2345",
+      },
+    );
+    const resumed = messagesV6(takeover);
+    await waitUntil(
+      () => resumed.connected.length > 0 && resumed.snapshots.length > 0,
+    );
+    expect(resumed.connected[0]?.playerSlotId).toBe("badminton-slot-1");
+    expect(resumed.snapshots.at(-1)?.tick).toBe(3);
+    expect(view(resumed)).toEqual(view(inboxA));
+    takeover.send(
+      REALTIME_INPUT_MESSAGE,
+      input("resign-a", 3, { type: "RESIGN" }),
+    );
+    await deliveryBarrier(takeover, resumed);
+    await advance(resumed);
+    await waitUntil(
+      () => resumed.lifecycle.at(-1)?.currentRound?.status === "completed",
+    );
+    const firstReplay = await replayStore.get("badminton-replay-1");
+    expect(firstReplay?.events).toHaveLength(3);
+    expect(firstReplay?.recordedRngCursor).toBe(0);
+    expect(firstReplay?.recordedOutcome).toMatchObject({
+      reason: "RESIGNATION",
+      winnerSlotId: "badminton-slot-2",
+      resignedSlotId: "badminton-slot-1",
+    });
+    expect(
+      verifyRealtimeReplay(firstReplay, resolveRealtimeGameDefinition),
+    ).toMatchObject({ ok: true });
+    expect(await roomStore.getByRoomCode("BDMN2345")).toMatchObject({
+      nextRoundSetup: {
+        setupRevision: 0,
+        readySlotIds: [],
+        setupState: {
+          config: { targetScore: 7 },
+          starter: "FIXED",
+          fixedStarterSlotId: "badminton-slot-2",
+        },
+      },
+    });
+
+    takeover.send(ROOM_CONTROL_MESSAGE, ready("rematch-a"));
+    await waitUntil(
+      () => resumed.lifecycle.at(-1)?.nextRound?.readiness.selfReady === true,
+    );
+    expect(resumed.lifecycle.at(-1)?.currentRound?.roundNumber).toBe(1);
+    roomB.send(ROOM_CONTROL_MESSAGE, ready("rematch-b"));
+    await waitUntil(() => resumed.snapshots.at(-1)?.roundNumber === 2);
+    expect(resumed.snapshots.at(-1)).toMatchObject({
+      tick: 0,
+      acknowledgedInputSequence: 0,
+      view: { scores: [0, 0], yourSide: "RIGHT", targetScore: 7 },
+    });
+    expect(archive.created).toHaveLength(2);
+    expect(archive.created[1]?.currentRound?.playerOrder).toEqual([
+      "badminton-slot-2",
+      "badminton-slot-1",
+    ]);
+    expect(seedSequence).toBe(2);
+    // With no player input, automatic serves exercise real physics, points,
+    // score completion and the entire accepted-input-only replay path.
+    for (
+      let batch = 0;
+      batch < 50 && resumed.snapshots.at(-1)?.outcome === null;
+      batch++
+    ) {
+      const initialTick = resumed.snapshots.at(-1)?.tick ?? 0;
+      for (let tick = 0; tick < 60; tick++) await schedulerTimer.tick();
+      await waitUntil(
+        () =>
+          resumed.snapshots.at(-1)?.outcome !== null ||
+          (resumed.snapshots.at(-1)?.tick ?? 0) >= initialTick + 60,
+      );
+    }
+    await waitUntil(
+      () => resumed.lifecycle.at(-1)?.currentRound?.status === "completed",
+    );
+    const scoredReplay = await replayStore.get("badminton-replay-2");
+    expect(scoredReplay?.recordedOutcome).toEqual({
+      type: "WIN",
+      reason: "SCORE",
+      winnerSlotId: "badminton-slot-2",
+      scores: [7, 0],
+    });
+    expect(scoredReplay?.events).toEqual([]);
+    expect(scoredReplay?.recordedRngCursor).toBe(0);
+    expect(scoredReplay?.header.rng.seed).not.toBe(
+      firstReplay?.header.rng.seed,
+    );
+    expect(
+      verifyRealtimeReplay(scoredReplay, resolveRealtimeGameDefinition),
+    ).toMatchObject({ ok: true });
+    expect(archive.saved.at(-1)?.currentRound?.status).toBe("completed");
+    await takeover.leave(true);
+    await roomB.leave(true);
+  }, 30_000);
+});
