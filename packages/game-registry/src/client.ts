@@ -109,6 +109,16 @@ const clientRegistrations = Object.freeze([
   },
   {
     gameId: chineseCheckersManifest.id,
+    gameVersion: "1.0.0",
+    loadEntrypoint: loadChineseCheckersEntrypoint,
+    loadModule: async (): Promise<UnknownGameClientModule> =>
+      eraseGameClientModule(
+        (await loadChineseCheckersEntrypoint())
+          .chineseCheckersClientModuleV1_0_0,
+      ),
+  },
+  {
+    gameId: chineseCheckersManifest.id,
     gameVersion: chineseCheckersManifest.gameVersion,
     loadEntrypoint: loadChineseCheckersEntrypoint,
     loadModule: async (): Promise<UnknownGameClientModule> =>

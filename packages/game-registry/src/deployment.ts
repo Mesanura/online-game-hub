@@ -226,8 +226,8 @@ const reversiSurface = (
 const chineseCheckersSurfaceArtifactV1 = {
   schemaVersion: 1,
   gameId: "chinese-checkers",
-  supportedGameVersions: ["1.0.0"],
-  surfaceVersion: "1.0.4",
+  supportedGameVersions: ["1.0.0", "1.1.0"],
+  surfaceVersion: "1.1.0",
   bridgeVersion: 2,
   entrypoints: {
     setup: "setup/index.html",
@@ -235,20 +235,23 @@ const chineseCheckersSurfaceArtifactV1 = {
     replay: "replay/index.html",
   },
   capabilities: {},
-  contentDigest: "sha256-2sK9vUTTb1gKomD6SUo/TkJJxvUiatKwWlvw/ssd/p8=",
+  contentDigest: "sha256-2UBPd5lrwnaDqgEF0SYSanUGiisL2BcWZswnNC7n2oU=",
 } satisfies SurfaceArtifactManifestV1;
 
-const chineseCheckersSurfaceV1: GameDeploymentRegistration = Object.freeze({
-  gameId: "chinese-checkers",
-  gameVersion: "1.0.0",
-  setupProtocol: 6,
-  platformControls: resignPlatformControls,
-  presentation: Object.freeze({
-    kind: "surface-v1",
-    publicBasePath: "/game-surfaces/chinese-checkers/1.0.4",
-    artifact: chineseCheckersSurfaceArtifactV1,
-  }),
-});
+const chineseCheckersSurface = (
+  gameVersion: "1.0.0" | "1.1.0",
+): GameDeploymentRegistration =>
+  Object.freeze({
+    gameId: "chinese-checkers",
+    gameVersion,
+    setupProtocol: 6,
+    platformControls: resignPlatformControls,
+    presentation: Object.freeze({
+      kind: "surface-v1",
+      publicBasePath: "/game-surfaces/chinese-checkers/1.1.0",
+      artifact: chineseCheckersSurfaceArtifactV1,
+    }),
+  });
 
 const badmintonSurfaceV1: GameDeploymentRegistration = Object.freeze({
   gameId: "badminton",
@@ -281,7 +284,8 @@ const gameDeployments = Object.freeze([
   hexSurfaceV1,
   reversiSurface("1.0.0", 5),
   reversiSurface("1.1.0", 6),
-  chineseCheckersSurfaceV1,
+  chineseCheckersSurface("1.0.0"),
+  chineseCheckersSurface("1.1.0"),
   pongSurfaceV1,
   badmintonSurfaceV1,
 ]) satisfies readonly GameDeploymentRegistration[];

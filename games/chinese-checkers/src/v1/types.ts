@@ -3,11 +3,6 @@ import type { PlayerSlotId } from "@online-game-hub/game-sdk";
 export type ChineseCheckersConfig = null;
 export type ChineseCheckersCamp = "N" | "NE" | "SE" | "S" | "SW" | "NW";
 export type ChineseCheckersBoard = readonly (PlayerSlotId | null)[];
-export type ChineseCheckersCellGeometry = {
-  readonly q: number;
-  readonly r: number;
-  readonly camp: ChineseCheckersCamp | null;
-};
 export type ChineseCheckersRankReason =
   "FINISHED" | "RESIGNATION" | "BLOCKED" | "LAST_REMAINING";
 export type ChineseCheckersPlayer = {
@@ -36,7 +31,6 @@ export type ChineseCheckersState = {
 export type ChineseCheckersView = {
   readonly players: readonly ChineseCheckersPlayer[];
   readonly board: ChineseCheckersBoard;
-  readonly geometry: readonly ChineseCheckersCellGeometry[];
   readonly nextTurnSlotId: PlayerSlotId | null;
   readonly legalMoves: readonly {
     readonly from: number;

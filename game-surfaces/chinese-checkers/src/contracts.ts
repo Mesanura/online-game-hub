@@ -81,7 +81,7 @@ const outcomeSchema = z
   .object({ type: z.literal("RANKING"), rankings: z.array(rankingSchema) })
   .strict();
 
-export const chineseCheckersPlayViewSchema = z
+export const chineseCheckersLegacyPlayViewSchema = z
   .object({
     players: z.array(playerSchema).min(2).max(6),
     board: z.array(slotIdSchema.nullable()).length(CHINESE_CHECKERS_CELL_COUNT),
@@ -189,6 +189,44 @@ export const chineseCheckersPlayViewSchema = z
       });
     }
   });
+const cellGeometrySchema = z
+  .object({
+    q: z.number().int().min(-6).max(6),
+    r: z.number().int().min(-6).max(6),
+    camp: chineseCheckersCampSchema.nullable(),
+  })
+  .strict();
+export type ChineseCheckersCellGeometry = z.infer<typeof cellGeometrySchema>;
+
+export const chineseCheckersPlayViewSchema =
+  chineseCheckersLegacyPlayViewSchema.safeExtend({
+    geometry: z
+      .array(cellGeometrySchema)
+      .length(CHINESE_CHECKERS_CELL_COUNT)
+      .superRefine((cells, context) => {
+        if (
+          new Set(cells.map(({ q, r }) => `${q},${r}`)).size !== cells.length
+        ) {
+          context.addIssue({
+            code: "custom",
+            message: "Board coordinates must be unique.",
+          });
+        }
+        if (
+          cells.filter(({ camp }) => camp === null).length !== 37 ||
+          CHINESE_CHECKERS_CAMPS.some(
+            (camp) => cells.filter((cell) => cell.camp === camp).length !== 6,
+          )
+        ) {
+          context.addIssue({
+            code: "custom",
+            message:
+              "Board must contain a 37-cell center and six six-cell camps.",
+          });
+        }
+      }),
+  });
+
 export type ChineseCheckersPlayView = z.infer<
   typeof chineseCheckersPlayViewSchema
 >;

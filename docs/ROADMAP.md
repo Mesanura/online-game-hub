@@ -350,6 +350,8 @@ M8 结束后再由产品证据选择下一个 M7 候选能力；不要把 OAuth�
 
 Connect Four、Gomoku、Reversi、Hex、Chinese Checkers 的表现与 Setup 已迁移。Web 现在只挂载 exact Surface，缺失 Play/Replay artifact 时 fail closed；平台投降经受限 Bridge command 触发 Surface 自有 intent。Registry 的 legacy Client Module API、各游戏组件测试与历史 Core/golden replay 暂保留兼容；Next 游戏 package transpile 条目也暂保留，因为 catalog/server registry 仍静态导入 manifest/Core，而不是因为 Web 仍加载游戏组件。V5 房间排空后再删除 legacy setup schema/runtime。
 
+中国跳棋棋盘重构仍属于本阶段：current `1.1.0` 使用服务端统一的 13 行、73 格、180 条等距连线几何，旧 `1.0.0` 编号与回放保持冻结；`surfaceVersion 1.1.0` 同时支持两版。几何单测、自然布局截图和桌面/触屏 E2E 共同约束六个正三角营地，避免只靠样式补丁或截图确认棋盘正确。
+
 ### M9-G：Setup UI 独立设计
 
 架构迁移稳定后，各游戏只通过 `surfaceVersion` 迭代规则解释、预览、参与顺序和 assignment 交互。平台只规定外框、可访问性、loading/error 与 ready 区域，不引入通用表单 DSL。

@@ -2,7 +2,8 @@
 
 修改本游戏前先阅读 [GAME_SPEC.md](./GAME_SPEC.md)，并继续遵守仓库根 `AGENTS.md` 与权威架构文档。
 
-- 棋盘固定 73 个棋位：中心边长 4 的六边形和六个边长 3 的六子营地。
+- 当前 1.1.0 棋盘固定 73 个棋位：中心边长 4 的六边形和六个边长 3 的六子营地；逐行布局以 GAME_SPEC 为准，geometry 仅由 Core 经 projectView 提供。
+- 1.0.0 的旧棋位编号与拓扑必须保持冻结，禁止用新版几何解释旧 replay 或 View。
 - 每轮 2–6 名玩家各占一个唯一营地，目标为其对角营地。
 - Action 只表达 `MOVE_PIECE(from,to)` 或 `RESIGN` 意图，不包含 actor、State、Outcome、revision 或路径。
 - Core 必须确定性、纯函数、JSON-safe；移动合法性和排名由服务器裁定。

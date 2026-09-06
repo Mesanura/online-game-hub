@@ -25,6 +25,129 @@ async function expectSetupIntentSettled(surface: FrameLocator): Promise<void> {
   );
 }
 
+async function expectRegularBoard(
+  surface: FrameLocator,
+  touch = false,
+): Promise<void> {
+  const geometry = await surface
+    .locator(".chinese-checkers-board")
+    .evaluate((board) => {
+      const bounds = board.getBoundingClientRect();
+      const rows = Array.from(board.querySelectorAll('[role="row"]'), (row) =>
+        Array.from(
+          row.querySelectorAll<HTMLButtonElement>("[data-cell-index]"),
+          (cell) => {
+            const rectangle = cell.getBoundingClientRect();
+            return {
+              index: Number(cell.dataset.cellIndex),
+              x: rectangle.x + rectangle.width / 2,
+              y: rectangle.y + rectangle.height / 2,
+              width: rectangle.width,
+              height: rectangle.height,
+            };
+          },
+        ),
+      );
+      const cells = new Map(rows.flat().map((cell) => [cell.index, cell]));
+      const svg = board.querySelector("svg");
+      const matrix = svg?.getScreenCTM();
+      const shell = board.parentElement;
+      if (svg === null || matrix == null || shell === null) {
+        throw new Error("Missing board drawing or scrolling container.");
+      }
+      const links = Array.from(svg.querySelectorAll("line"), (line) => {
+        const start = cells.get(Number(line.dataset.from));
+        const end = cells.get(Number(line.dataset.to));
+        if (start === undefined || end === undefined) {
+          throw new Error(
+            "A board connection does not reference a rendered cell.",
+          );
+        }
+        const drawnStart = new DOMPoint(
+          line.x1.baseVal.value,
+          line.y1.baseVal.value,
+        ).matrixTransform(matrix);
+        const drawnEnd = new DOMPoint(
+          line.x2.baseVal.value,
+          line.y2.baseVal.value,
+        ).matrixTransform(matrix);
+        return {
+          length: Math.hypot(end.x - start.x, end.y - start.y),
+          startOffset: Math.hypot(
+            start.x - drawnStart.x,
+            start.y - drawnStart.y,
+          ),
+          endOffset: Math.hypot(end.x - drawnEnd.x, end.y - drawnEnd.y),
+        };
+      });
+      return {
+        rows,
+        links,
+        bounds: {
+          left: bounds.left,
+          top: bounds.top,
+          right: bounds.right,
+          bottom: bounds.bottom,
+        },
+        regions: svg.querySelectorAll("polygon").length,
+        overflowX: shell.scrollWidth - shell.clientWidth,
+        overflowY: shell.scrollHeight - shell.clientHeight,
+        documentOverflow:
+          document.documentElement.scrollWidth - window.innerWidth,
+      };
+    });
+  const rowLengths = [1, 2, 3, 10, 9, 8, 7, 8, 9, 10, 3, 2, 1];
+  const leadingSpaces = [9, 8, 7, 0, 1, 2, 3, 2, 1, 0, 7, 8, 9];
+  expect(geometry.rows.map((row) => row.length)).toEqual(rowLengths);
+  const leftmost = geometry.rows[3]?.[0];
+  const neighbor = geometry.rows[3]?.[1];
+  const topmost = geometry.rows[0]?.[0];
+  if (
+    leftmost === undefined ||
+    neighbor === undefined ||
+    topmost === undefined
+  ) {
+    throw new Error("The ASCII reference rows are missing.");
+  }
+  const spacing = neighbor.x - leftmost.x;
+  for (const [rowIndex, row] of geometry.rows.entries()) {
+    for (const [columnIndex, cell] of row.entries()) {
+      const expectedX =
+        leftmost.x +
+        ((leadingSpaces[rowIndex] ?? 0) / 2 + columnIndex) * spacing;
+      const expectedY = topmost.y + (rowIndex * Math.sqrt(3) * spacing) / 2;
+      expect(Math.abs(cell.x - expectedX)).toBeLessThan(0.2);
+      expect(Math.abs(cell.y - expectedY)).toBeLessThan(0.2);
+      expect(Math.abs(cell.width - cell.height)).toBeLessThan(0.1);
+      expect(cell.x - cell.width / 2).toBeGreaterThanOrEqual(
+        geometry.bounds.left,
+      );
+      expect(cell.x + cell.width / 2).toBeLessThanOrEqual(
+        geometry.bounds.right,
+      );
+      expect(cell.y - cell.height / 2).toBeGreaterThanOrEqual(
+        geometry.bounds.top,
+      );
+      expect(cell.y + cell.height / 2).toBeLessThanOrEqual(
+        geometry.bounds.bottom,
+      );
+      if (touch) expect(cell.width).toBeGreaterThanOrEqual(43.9);
+    }
+  }
+  expect(geometry.regions).toBe(7);
+  expect(geometry.links).toHaveLength(180);
+  for (const link of geometry.links) {
+    expect(Math.abs(link.length - spacing)).toBeLessThan(0.2);
+    expect(link.startOffset).toBeLessThan(0.2);
+    expect(link.endOffset).toBeLessThan(0.2);
+  }
+  expect(geometry.documentOverflow).toBeLessThanOrEqual(1);
+  if (!touch) {
+    expect(geometry.overflowX).toBeLessThanOrEqual(1);
+    expect(geometry.overflowY).toBeLessThanOrEqual(1);
+  }
+}
+
 test.beforeAll(async () => {
   harness = await startE2eHarness();
 });
@@ -81,7 +204,11 @@ test("three accounts configure camps in the independent Surface, rematch with co
     reducedMotion: "reduce",
     viewport: { width: 1280, height: 720 },
   });
-  const contextB = await browser.newContext();
+  const contextB = await browser.newContext({
+    hasTouch: true,
+    reducedMotion: "reduce",
+    viewport: { width: 390, height: 844 },
+  });
   const contextC = await browser.newContext();
   const pageA = await contextA.newPage();
   const pageB = await contextB.newPage();
@@ -105,7 +232,7 @@ test("three accounts configure camps in the independent Surface, rematch with co
   await expect(pageA.getByTestId("match-status")).toHaveCount(0);
   await expect(pageA.getByTestId("game-surface-iframe")).toHaveAttribute(
     "src",
-    "/game-surfaces/chinese-checkers/1.0.4/setup/index.html",
+    "/game-surfaces/chinese-checkers/1.1.0/setup/index.html",
   );
 
   const setupA = chineseCheckersSurface(pageA);
@@ -165,7 +292,7 @@ test("three accounts configure camps in the independent Surface, rematch with co
     await harness.gameServer.roomStore.getByRoomCode(roomCode);
   expect(waitingRoom).toMatchObject({
     gameId: "chinese-checkers",
-    gameVersion: "1.0.0",
+    gameVersion: "1.1.0",
     setupProtocol: 6,
     nextRoundSetup: {
       setupState: {
@@ -194,7 +321,7 @@ test("three accounts configure camps in the independent Surface, rematch with co
     await expect(page.getByTestId("room-code")).toHaveText(roomCode);
     await expect(page.getByTestId("game-surface-iframe")).toHaveAttribute(
       "src",
-      "/game-surfaces/chinese-checkers/1.0.4/play/index.html",
+      "/game-surfaces/chinese-checkers/1.1.0/play/index.html",
     );
     const surface = chineseCheckersSurface(page);
     await expect(
@@ -206,7 +333,7 @@ test("three accounts configure camps in the independent Surface, rematch with co
     );
     await expect(
       surface.getByTestId("board-connections").locator("line"),
-    ).toHaveCount(162);
+    ).toHaveCount(180);
     await expect(surface.locator("[data-cell-index]")).toHaveCount(73);
     await expect(surface.locator('[data-occupied="true"]')).toHaveCount(18);
     await expect(
@@ -217,20 +344,7 @@ test("three accounts configure camps in the independent Surface, rematch with co
         surface.locator(`[data-cell-index][data-camp="${camp}"]`),
       ).toHaveCount(6);
     }
-    const boardShell = await surface
-      .locator(".board-shell")
-      .evaluate((element) => ({
-        clientHeight: element.clientHeight,
-        clientWidth: element.clientWidth,
-        scrollHeight: element.scrollHeight,
-        scrollWidth: element.scrollWidth,
-      }));
-    expect(boardShell.scrollHeight).toBeLessThanOrEqual(
-      boardShell.clientHeight + 1,
-    );
-    expect(boardShell.scrollWidth).toBeLessThanOrEqual(
-      boardShell.clientWidth + 1,
-    );
+    await expectRegularBoard(surface, page === pageB);
   }
   await expect(
     chineseCheckersSurface(pageA).getByTestId("player-camp"),
@@ -244,15 +358,33 @@ test("three accounts configure camps in the independent Surface, rematch with co
   await expect(
     chineseCheckersSurface(pageB).locator("[data-cell-index]:not(:disabled)"),
   ).toHaveCount(0);
-  await pageA.setViewportSize({ width: 1280, height: 800 });
+  for (const viewport of [
+    { width: 2560, height: 1440 },
+    { width: 1707, height: 960 },
+    { width: 1024, height: 768 },
+    { width: 768, height: 1024 },
+    { width: 1280, height: 800 },
+  ]) {
+    await pageA.setViewportSize(viewport);
+    await expectRegularBoard(chineseCheckersSurface(pageA));
+  }
+  for (const viewport of [
+    { width: 844, height: 390 },
+    { width: 390, height: 844 },
+  ]) {
+    await pageB.setViewportSize(viewport);
+    await expectRegularBoard(chineseCheckersSurface(pageB), true);
+    for (const cell of [72, 6, 15, 0]) {
+      const targetCell = chineseCheckersSurface(pageB).locator(
+        '[data-cell-index="' + cell + '"]',
+      );
+      await targetCell.scrollIntoViewIfNeeded();
+      await expect(targetCell).toBeInViewport();
+    }
+  }
   const visualBoard = chineseCheckersSurface(pageA).locator(
     ".chinese-checkers-board",
   );
-  await visualBoard.evaluate((board) => {
-    const style = (board as HTMLElement).style;
-    style.setProperty("width", "433px", "important");
-    style.setProperty("height", "500px", "important");
-  });
   await expect(visualBoard).toHaveScreenshot(
     "chinese-checkers-six-point-board.png",
     {
@@ -351,7 +483,7 @@ test("three accounts configure camps in the independent Surface, rematch with co
       await expect(page.getByTestId("revision")).toHaveText("0");
       await expect(page.getByTestId("game-surface-iframe")).toHaveAttribute(
         "src",
-        "/game-surfaces/chinese-checkers/1.0.4/play/index.html",
+        "/game-surfaces/chinese-checkers/1.1.0/play/index.html",
       );
       await expect(
         chineseCheckersSurface(page).locator('[data-occupied="true"]'),
@@ -445,7 +577,7 @@ test("three accounts configure camps in the independent Surface, rematch with co
       history.every(
         (match) =>
           match.gameId === "chinese-checkers" &&
-          match.gameVersion === "1.0.0" &&
+          match.gameVersion === "1.1.0" &&
           match.replayAvailable === true,
       ),
     ).toBe(true);
@@ -473,12 +605,13 @@ test("three accounts configure camps in the independent Surface, rematch with co
   await expect(pageA.getByTestId("replay-page")).toBeVisible();
   await expect(pageA.getByTestId("game-surface-iframe")).toHaveAttribute(
     "src",
-    "/game-surfaces/chinese-checkers/1.0.4/replay/index.html",
+    "/game-surfaces/chinese-checkers/1.1.0/replay/index.html",
   );
   const replaySurface = chineseCheckersSurface(pageA);
   await expect(
     replaySurface.getByTestId("board-connections").locator("line"),
-  ).toHaveCount(162);
+  ).toHaveCount(180);
+  await expectRegularBoard(replaySurface);
   await expect(replaySurface.locator("[data-cell-index]")).toHaveCount(73);
   await expect(pageA.getByTestId("replay-frame-count")).toHaveText("1 / 4");
   await expect(replaySurface.locator('[data-occupied="true"]')).toHaveCount(18);

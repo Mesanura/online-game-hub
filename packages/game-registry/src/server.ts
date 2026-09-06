@@ -3,7 +3,10 @@ import {
   connectFourDefinitionV1_0_0,
 } from "@online-game-hub/connect-four/core";
 import { connectFourSetupDefinition } from "@online-game-hub/connect-four/setup";
-import { chineseCheckersDefinition } from "@online-game-hub/chinese-checkers/core";
+import {
+  chineseCheckersDefinition,
+  chineseCheckersDefinitionV1_0_0,
+} from "@online-game-hub/chinese-checkers/core";
 import { chineseCheckersSetupDefinition } from "@online-game-hub/chinese-checkers/setup";
 import {
   gomokuDefinition,
@@ -49,6 +52,7 @@ const serverDefinitions = Object.freeze([
   eraseGameDefinition(reversiDefinitionV1_0_0),
   eraseGameDefinition(reversiDefinition),
   eraseGameDefinition(chineseCheckersDefinition),
+  eraseGameDefinition(chineseCheckersDefinitionV1_0_0),
   // create-game:server-definition
 ]) as readonly UnknownGameDefinition[];
 
@@ -145,6 +149,11 @@ const roundSetupDefinitions = Object.freeze([
   Object.freeze({
     gameId: chineseCheckersDefinition.manifest.id,
     gameVersion: chineseCheckersDefinition.manifest.gameVersion,
+    definition: eraseRoundSetupDefinition(chineseCheckersSetupDefinition),
+  }),
+  Object.freeze({
+    gameId: chineseCheckersDefinitionV1_0_0.manifest.id,
+    gameVersion: chineseCheckersDefinitionV1_0_0.manifest.gameVersion,
     definition: eraseRoundSetupDefinition(chineseCheckersSetupDefinition),
   }),
 ]);

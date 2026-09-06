@@ -1,0 +1,516 @@
+{
+  "players": [
+    {
+      "slotId": "slot-1",
+      "camp": "N"
+    },
+    {
+      "slotId": "slot-2",
+      "camp": "NE"
+    },
+    {
+      "slotId": "slot-3",
+      "camp": "SE"
+    },
+    {
+      "slotId": "slot-4",
+      "camp": "S"
+    },
+    {
+      "slotId": "slot-5",
+      "camp": "SW"
+    },
+    {
+      "slotId": "slot-6",
+      "camp": "NW"
+    }
+  ],
+  "board": [
+    "slot-1",
+    "slot-1",
+    "slot-1",
+    "slot-1",
+    "slot-1",
+    "slot-1",
+    "slot-6",
+    "slot-6",
+    "slot-6",
+    null,
+    null,
+    null,
+    null,
+    "slot-2",
+    "slot-2",
+    "slot-2",
+    "slot-6",
+    "slot-6",
+    null,
+    null,
+    null,
+    null,
+    null,
+    "slot-2",
+    "slot-2",
+    "slot-6",
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    "slot-2",
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    "slot-5",
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    "slot-3",
+    "slot-5",
+    "slot-5",
+    null,
+    null,
+    null,
+    null,
+    null,
+    "slot-3",
+    "slot-3",
+    "slot-5",
+    "slot-5",
+    "slot-5",
+    null,
+    null,
+    null,
+    null,
+    "slot-3",
+    "slot-3",
+    "slot-3",
+    "slot-4",
+    "slot-4",
+    "slot-4",
+    "slot-4",
+    "slot-4",
+    "slot-4"
+  ],
+  "geometry": [
+    {
+      "q": 3,
+      "r": -6,
+      "camp": "N"
+    },
+    {
+      "q": 2,
+      "r": -5,
+      "camp": "N"
+    },
+    {
+      "q": 3,
+      "r": -5,
+      "camp": "N"
+    },
+    {
+      "q": 1,
+      "r": -4,
+      "camp": "N"
+    },
+    {
+      "q": 2,
+      "r": -4,
+      "camp": "N"
+    },
+    {
+      "q": 3,
+      "r": -4,
+      "camp": "N"
+    },
+    {
+      "q": -3,
+      "r": -3,
+      "camp": "NW"
+    },
+    {
+      "q": -2,
+      "r": -3,
+      "camp": "NW"
+    },
+    {
+      "q": -1,
+      "r": -3,
+      "camp": "NW"
+    },
+    {
+      "q": 0,
+      "r": -3,
+      "camp": null
+    },
+    {
+      "q": 1,
+      "r": -3,
+      "camp": null
+    },
+    {
+      "q": 2,
+      "r": -3,
+      "camp": null
+    },
+    {
+      "q": 3,
+      "r": -3,
+      "camp": null
+    },
+    {
+      "q": 4,
+      "r": -3,
+      "camp": "NE"
+    },
+    {
+      "q": 5,
+      "r": -3,
+      "camp": "NE"
+    },
+    {
+      "q": 6,
+      "r": -3,
+      "camp": "NE"
+    },
+    {
+      "q": -3,
+      "r": -2,
+      "camp": "NW"
+    },
+    {
+      "q": -2,
+      "r": -2,
+      "camp": "NW"
+    },
+    {
+      "q": -1,
+      "r": -2,
+      "camp": null
+    },
+    {
+      "q": 0,
+      "r": -2,
+      "camp": null
+    },
+    {
+      "q": 1,
+      "r": -2,
+      "camp": null
+    },
+    {
+      "q": 2,
+      "r": -2,
+      "camp": null
+    },
+    {
+      "q": 3,
+      "r": -2,
+      "camp": null
+    },
+    {
+      "q": 4,
+      "r": -2,
+      "camp": "NE"
+    },
+    {
+      "q": 5,
+      "r": -2,
+      "camp": "NE"
+    },
+    {
+      "q": -3,
+      "r": -1,
+      "camp": "NW"
+    },
+    {
+      "q": -2,
+      "r": -1,
+      "camp": null
+    },
+    {
+      "q": -1,
+      "r": -1,
+      "camp": null
+    },
+    {
+      "q": 0,
+      "r": -1,
+      "camp": null
+    },
+    {
+      "q": 1,
+      "r": -1,
+      "camp": null
+    },
+    {
+      "q": 2,
+      "r": -1,
+      "camp": null
+    },
+    {
+      "q": 3,
+      "r": -1,
+      "camp": null
+    },
+    {
+      "q": 4,
+      "r": -1,
+      "camp": "NE"
+    },
+    {
+      "q": -3,
+      "r": 0,
+      "camp": null
+    },
+    {
+      "q": -2,
+      "r": 0,
+      "camp": null
+    },
+    {
+      "q": -1,
+      "r": 0,
+      "camp": null
+    },
+    {
+      "q": 0,
+      "r": 0,
+      "camp": null
+    },
+    {
+      "q": 1,
+      "r": 0,
+      "camp": null
+    },
+    {
+      "q": 2,
+      "r": 0,
+      "camp": null
+    },
+    {
+      "q": 3,
+      "r": 0,
+      "camp": null
+    },
+    {
+      "q": -4,
+      "r": 1,
+      "camp": "SW"
+    },
+    {
+      "q": -3,
+      "r": 1,
+      "camp": null
+    },
+    {
+      "q": -2,
+      "r": 1,
+      "camp": null
+    },
+    {
+      "q": -1,
+      "r": 1,
+      "camp": null
+    },
+    {
+      "q": 0,
+      "r": 1,
+      "camp": null
+    },
+    {
+      "q": 1,
+      "r": 1,
+      "camp": null
+    },
+    {
+      "q": 2,
+      "r": 1,
+      "camp": null
+    },
+    {
+      "q": 3,
+      "r": 1,
+      "camp": "SE"
+    },
+    {
+      "q": -5,
+      "r": 2,
+      "camp": "SW"
+    },
+    {
+      "q": -4,
+      "r": 2,
+      "camp": "SW"
+    },
+    {
+      "q": -3,
+      "r": 2,
+      "camp": null
+    },
+    {
+      "q": -2,
+      "r": 2,
+      "camp": null
+    },
+    {
+      "q": -1,
+      "r": 2,
+      "camp": null
+    },
+    {
+      "q": 0,
+      "r": 2,
+      "camp": null
+    },
+    {
+      "q": 1,
+      "r": 2,
+      "camp": null
+    },
+    {
+      "q": 2,
+      "r": 2,
+      "camp": "SE"
+    },
+    {
+      "q": 3,
+      "r": 2,
+      "camp": "SE"
+    },
+    {
+      "q": -6,
+      "r": 3,
+      "camp": "SW"
+    },
+    {
+      "q": -5,
+      "r": 3,
+      "camp": "SW"
+    },
+    {
+      "q": -4,
+      "r": 3,
+      "camp": "SW"
+    },
+    {
+      "q": -3,
+      "r": 3,
+      "camp": null
+    },
+    {
+      "q": -2,
+      "r": 3,
+      "camp": null
+    },
+    {
+      "q": -1,
+      "r": 3,
+      "camp": null
+    },
+    {
+      "q": 0,
+      "r": 3,
+      "camp": null
+    },
+    {
+      "q": 1,
+      "r": 3,
+      "camp": "SE"
+    },
+    {
+      "q": 2,
+      "r": 3,
+      "camp": "SE"
+    },
+    {
+      "q": 3,
+      "r": 3,
+      "camp": "SE"
+    },
+    {
+      "q": -3,
+      "r": 4,
+      "camp": "S"
+    },
+    {
+      "q": -2,
+      "r": 4,
+      "camp": "S"
+    },
+    {
+      "q": -1,
+      "r": 4,
+      "camp": "S"
+    },
+    {
+      "q": -3,
+      "r": 5,
+      "camp": "S"
+    },
+    {
+      "q": -2,
+      "r": 5,
+      "camp": "S"
+    },
+    {
+      "q": -3,
+      "r": 6,
+      "camp": "S"
+    }
+  ],
+  "nextTurnSlotId": "slot-1",
+  "legalMoves": [
+    {
+      "from": 1,
+      "to": 9
+    },
+    {
+      "from": 1,
+      "to": 11
+    },
+    {
+      "from": 2,
+      "to": 10
+    },
+    {
+      "from": 2,
+      "to": 12
+    },
+    {
+      "from": 3,
+      "to": 9
+    },
+    {
+      "from": 3,
+      "to": 10
+    },
+    {
+      "from": 4,
+      "to": 10
+    },
+    {
+      "from": 4,
+      "to": 11
+    },
+    {
+      "from": 5,
+      "to": 11
+    },
+    {
+      "from": 5,
+      "to": 12
+    }
+  ],
+  "rankings": [],
+  "outcome": null,
+  "yourCamp": "N"
+}

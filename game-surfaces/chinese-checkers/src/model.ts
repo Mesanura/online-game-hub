@@ -1,16 +1,17 @@
 import type { SurfaceResultSummaryV2 } from "@online-game-hub/game-surface-bridge";
 
 import {
-  CHINESE_CHECKERS_CAMPS,
-  CHINESE_CHECKERS_CELL_COUNT,
+  type CHINESE_CHECKERS_CAMPS,
+  chineseCheckersLegacyPlayViewSchema,
+  chineseCheckersPlayViewSchema,
   type ChineseCheckersPlayIntent,
   type ChineseCheckersPlayView,
   type ChineseCheckersSetupIntent,
   type ChineseCheckersSetupView,
 } from "./contracts";
+import { LEGACY_GEOMETRY } from "./legacy-geometry";
 
 export type ChineseCheckersCamp = (typeof CHINESE_CHECKERS_CAMPS)[number];
-export type AxialCoordinate = Readonly<{ q: number; r: number }>;
 
 const campLabels: Readonly<Record<ChineseCheckersCamp, string>> = {
   N: "北营地",
@@ -21,154 +22,19 @@ const campLabels: Readonly<Record<ChineseCheckersCamp, string>> = {
   NW: "西北营地",
 };
 
-const BOARD_RADIUS = 3;
-const directions = [
-  { q: 0, r: -1 },
-  { q: 1, r: -1 },
-  { q: 1, r: 0 },
-  { q: 0, r: 1 },
-  { q: -1, r: 1 },
-  { q: -1, r: 0 },
-] as const;
-
-function key(coordinate: AxialCoordinate): string {
-  return `${coordinate.q},${coordinate.r}`;
-}
-
-function add(
-  coordinate: AxialCoordinate,
-  direction: AxialCoordinate,
-  amount: number,
-): AxialCoordinate {
-  return {
-    q: coordinate.q + direction.q * amount,
-    r: coordinate.r + direction.r * amount,
-  };
-}
-
-function inCenter(coordinate: AxialCoordinate): boolean {
-  const s = -coordinate.q - coordinate.r;
-  return (
-    Math.max(Math.abs(coordinate.q), Math.abs(coordinate.r), Math.abs(s)) <=
-    BOARD_RADIUS
-  );
-}
-
-function buildCampCells(camp: ChineseCheckersCamp): readonly AxialCoordinate[] {
-  const index = CHINESE_CHECKERS_CAMPS.indexOf(camp);
-  const outward = directions[index];
-  const tangent = directions[(index + 2) % directions.length];
-  if (outward === undefined || tangent === undefined) {
-    throw new Error("Invalid Chinese Checkers camp direction.");
+export function parsePlayView(
+  input: unknown,
+  gameVersion: string,
+): ChineseCheckersPlayView {
+  if (gameVersion === "1.1.0")
+    return chineseCheckersPlayViewSchema.parse(input);
+  if (gameVersion === "1.0.0") {
+    return {
+      ...chineseCheckersLegacyPlayViewSchema.parse(input),
+      geometry: LEGACY_GEOMETRY.map((cell) => ({ ...cell })),
+    };
   }
-  const cells: AxialCoordinate[] = [];
-  for (let row = 0; row < 3; row += 1) {
-    const base = add({ q: 0, r: 0 }, outward, BOARD_RADIUS + 1 + row);
-    for (let offset = 0; offset < 3 - row; offset += 1) {
-      cells.push(add(base, tangent, offset));
-    }
-  }
-  return cells;
-}
-
-const campCoordinates = Object.fromEntries(
-  CHINESE_CHECKERS_CAMPS.map((camp) => [camp, buildCampCells(camp)]),
-) as Record<ChineseCheckersCamp, readonly AxialCoordinate[]>;
-const coordinateSet = new Map<string, AxialCoordinate>();
-for (let q = -6; q <= 6; q += 1) {
-  for (let r = -6; r <= 6; r += 1) {
-    const coordinate = { q, r };
-    if (inCenter(coordinate)) coordinateSet.set(key(coordinate), coordinate);
-  }
-}
-for (const camp of CHINESE_CHECKERS_CAMPS) {
-  for (const coordinate of campCoordinates[camp]) {
-    coordinateSet.set(key(coordinate), coordinate);
-  }
-}
-
-export const CHINESE_CHECKERS_COORDINATES = Object.freeze(
-  [...coordinateSet.values()].sort(
-    (left, right) => left.r - right.r || left.q - right.q,
-  ),
-);
-if (CHINESE_CHECKERS_COORDINATES.length !== CHINESE_CHECKERS_CELL_COUNT) {
-  throw new Error("Chinese Checkers Surface geometry must contain 73 cells.");
-}
-const indexByCoordinate = new Map(
-  CHINESE_CHECKERS_COORDINATES.map((coordinate, index) => [
-    key(coordinate),
-    index,
-  ]),
-);
-
-export type ChineseCheckersConnection = readonly [from: number, to: number];
-
-export const CHINESE_CHECKERS_CONNECTIONS: readonly ChineseCheckersConnection[] =
-  Object.freeze(
-    CHINESE_CHECKERS_COORDINATES.flatMap((coordinate, from) =>
-      directions.flatMap((direction) => {
-        const to = indexByCoordinate.get(key(add(coordinate, direction, 1)));
-        return to === undefined || from >= to ? [] : [[from, to] as const];
-      }),
-    ),
-  );
-
-if (CHINESE_CHECKERS_CONNECTIONS.length !== 162) {
-  throw new Error("Chinese Checkers geometry must contain 162 connections.");
-}
-
-const rawPositions = CHINESE_CHECKERS_COORDINATES.map(({ q, r }) => ({
-  x: 1.5 * q,
-  y: Math.sqrt(3) * (r + q / 2),
-}));
-const rawXs = rawPositions.map(({ x }) => x);
-const rawYs = rawPositions.map(({ y }) => y);
-const minimumX = Math.min(...rawXs);
-const maximumX = Math.max(...rawXs);
-const minimumY = Math.min(...rawYs);
-const maximumY = Math.max(...rawYs);
-
-export const CHINESE_CHECKERS_CAMP_CELLS = Object.freeze(
-  Object.fromEntries(
-    CHINESE_CHECKERS_CAMPS.map((camp) => [
-      camp,
-      Object.freeze(
-        campCoordinates[camp].map((coordinate) => {
-          const index = indexByCoordinate.get(key(coordinate));
-          if (index === undefined)
-            throw new Error("Camp cell is not on board.");
-          return index;
-        }),
-      ),
-    ]),
-  ) as Record<ChineseCheckersCamp, readonly number[]>,
-);
-
-export function campForCell(cell: number): ChineseCheckersCamp | null {
-  return (
-    CHINESE_CHECKERS_CAMPS.find((camp) =>
-      CHINESE_CHECKERS_CAMP_CELLS[camp].includes(cell),
-    ) ?? null
-  );
-}
-
-export function layoutForCell(cell: number): {
-  readonly q: number;
-  readonly r: number;
-  readonly x: number;
-  readonly y: number;
-} {
-  const coordinate = CHINESE_CHECKERS_COORDINATES[cell];
-  if (coordinate === undefined)
-    throw new RangeError("Cell is outside the board.");
-  const rawX = 1.5 * coordinate.q;
-  const rawY = Math.sqrt(3) * (coordinate.r + coordinate.q / 2);
-  return {
-    ...coordinate,
-    x: 5 + ((rawX - minimumX) / (maximumX - minimumX)) * 90,
-    y: 5 + ((rawY - minimumY) / (maximumY - minimumY)) * 90,
-  };
+  throw new Error("Unsupported Chinese Checkers version.");
 }
 
 export function createPlayerCountIntent(

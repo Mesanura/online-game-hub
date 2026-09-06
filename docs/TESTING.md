@@ -347,7 +347,7 @@ Web E2E 同时验证三阶段 App Router：创建/加入和 canonical 邀请进�
 `tooling/e2e/tests/chinese-checkers-vertical-slice.spec.ts` 使用三个隔离账户和相同真实 harness，独立验证：
 
 1. 房主在独立 Setup Surface 选择 3 人和 OWNER 首位，三位玩家分别为自己的稳定席位选择唯一 `N`、`S`、`NE` 营地并分别 ready；
-2. V6 RoomStore 保存 canonical Setup State，Play Surface 精确显示 73 格、37 个中心格、六个 6 格营地与 18 枚棋子，非当前玩家没有可操作棋位；
+2. V6 RoomStore 固定 current `1.1.0` 并保存 canonical Setup State，Play Surface 精确显示 13 行 73 格、37 个中心格、六个 6 格营地、180 条等距连线与 18 枚棋子，非当前玩家没有可操作棋位；
 3. 当前玩家只通过服务器 projected `legalMoves` 完成一次两阶段移动，随后另外两位玩家 off-turn 投降，形成三人 canonical 排名；
 4. 下一局复用上一局目标人数、参与席位、实际 `playerOrder` 和全部营地，不重新随机且三位玩家必须分别点击“重新对局”；两轮各自使用新的 gameplay seed、Match 和 replay；
 5. 两轮 replay 由新的 PostgreSQL connection 重读并通过 exact registry verifier，三个账户历史一致；Replay Surface 验证首帧、末帧、最终排名和全棋盘只读。
@@ -449,7 +449,9 @@ Reversi Surface `1.0.4` 以同一 artifact 覆盖 `1.0.0`/`1.1.0` projected View
 
 Hex Surface 迁移以一个 artifact 精确覆盖 `1.0.0`；E2E 必须覆盖 Setup/Play/Replay iframe、121 格菱形棋盘、四条连接边、44 个坐标标签、上一局完整设置复用、平台投降和服务器 canonical `winningPath` 高亮。Surface 只验证并显示 projected path，不自行运行 BFS、推断连接或生成 Outcome。
 
-Chinese Checkers Surface `1.0.4` 精确覆盖 `1.0.0`；E2E 必须覆盖三人 Setup/Play/Replay iframe、73 格对称六芒星、162 条相邻棋位连线、中央 37 格、六个 `3+2+1` 营地、棋子跨营地后保持玩家颜色、服务器 `legalMoves`、三人排名和下一局完整设置复用。Surface 不得搜索连续跳跃路径、推导当前玩家或自行生成排名/Outcome。
+Chinese Checkers Surface `1.1.0` 精确覆盖规则 `1.0.0` 与 `1.1.0`。Core tests 必须逐空格匹配 GAME_SPEC 的 ASCII 图，验证中央 37 格、六个边长 3 的正三角形、60° 旋转对称、180 条互为邻接的等距边和六方向跳跃。独立 Surface tests 使用两个版本的公开 projected fixtures，验证新版 geometry 与旧 162 边拓扑隔离、严格 schema 和缺失 geometry 时 fail closed。
+
+中国跳棋 E2E 必须覆盖三人 Setup/Play/Replay iframe、逐行棋位数 `1,2,3,10,9,8,7,8,9,10,3,2,1`、所有棋位实际屏幕坐标、圆形按钮、SVG 端点对齐及 180 条等长连线；桌面/平板横竖屏及 2560×1440 的 100%/150% 等效视口不得拉伸或溢出，390×844 与 844×390 触屏保留至少 44px 棋位并可滚动到所有角。截图使用自然布局，禁止给棋盘注入测试专用宽高来掩盖错误。继续验证棋子跨营地后保持玩家颜色、服务器 `legalMoves`、三人排名、下一局完整设置复用和 PostgreSQL exact 回放；Surface 不得搜索跳跃路径、推导当前玩家或生成排名/Outcome。
 
 所有当前支持 `gameVersion` 的 golden replay：
 

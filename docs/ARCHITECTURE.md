@@ -251,6 +251,8 @@ Room 必须串行处理 Action。任何未来多实例方案都必须维持“�
 - transport 非主动关闭时，host 在 60 秒窗口内以指数退避获取新 ticket 并重新执行 room-code join，生成新的 seat reservation；不使用 SDK reconnection token 证明席位所有权。
 - 井字棋的 React/Vite Surface 同时承载 `1.0.0`/`1.1.0` 的 3×3 Play/Replay，并按 exact `gameVersion` 严格拒绝历史版本不存在的投降 Outcome 与平台投降命令；current `1.1.0` 另以游戏自有 Setup Surface 创建 V6 房间，历史 `1.0.0` 继续使用 V5 lifecycle。`pong@1.0.0` 使用 TypeScript/Phaser Surface 渲染 800×400 逻辑场地；四子棋、五子棋与黑白棋分别由独立 TypeScript Surface 同时承载各自 `1.0.0`/`1.1.0` 的 Play/Replay，current `1.1.0` 另以游戏自有 Setup Surface 创建 V6 房间；六贯棋与中国跳棋 `1.0.0` 也以独立 TypeScript Setup/Play/Replay Surface 创建 V6 房间，前者只显示服务器 canonical winning path，后者只消费服务器 legal moves、排名和 Outcome。普通落子、移动和输入由 Surface 直接发送；平台 HUD 的投降确认只发送受限命令，exact Surface 再生成 `RESIGN` intent。按钮禁用与确认仅是 UX，不能代替 authoritative rejection。
 
+中国跳棋 current `1.1.0` 由 Core 在 `projectView` 中提供逐格 `geometry`，Surface 只做等距投影、连线和区域着色；平台与 Bridge 不解释这些游戏字段。旧 `1.0.0` 的编号及拓扑独立冻结，同一 Surface artifact 按 exact version 分派两种 View，不能用新版几何重新解释旧回放。此重构不扩展任何平台共享 API，也不改变 V6、Bridge V2 或 Replay Format V1。
+
 ### 8.3 Legacy V5 Live Room、Round 设置与关闭
 
 - live room 属于 Platform，`Match`/canonical replay 属于 Round。房间级 record 只保存 room code、exact game/version、Config、stable slots、`currentRound | null` 和关闭状态；Round 独立保存 `roundNumber`、`playerOrder`、replay ID、State、RNG、revision、status 与 Outcome。

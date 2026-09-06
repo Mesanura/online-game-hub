@@ -4,18 +4,60 @@ import { createRng, definePlayerSlotId } from "@online-game-hub/game-sdk";
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  chineseCheckersDefinitionV1_0_0,
   createInitialState,
   projectView,
   transition,
 } from "../src/core/index.js";
 import {
   chineseCheckersClientModule,
+  chineseCheckersClientModuleV1_0_0,
   chineseCheckersViewSchema,
   ChineseCheckersClient,
   legalTargetsForSelection,
 } from "../src/client/module.js";
 
 describe("Chinese Checkers client contract", () => {
+  it("keeps exact legacy projections and replay rendering independent", () => {
+    const context = {
+      config: null,
+      players: [definePlayerSlotId("p1"), definePlayerSlotId("p2")],
+      playerAssignments: ["N", "S"],
+      rng: createRng("legacy-client"),
+    };
+    const historical =
+      chineseCheckersDefinitionV1_0_0.createInitialState(context);
+    const legacyView = chineseCheckersDefinitionV1_0_0.projectView({
+      state: historical.state,
+      viewer: { kind: "spectator" },
+    });
+    expect(legacyView).not.toHaveProperty("geometry");
+    expect(chineseCheckersClientModuleV1_0_0.parseView(legacyView)).toEqual(
+      legacyView,
+    );
+    expect(() => chineseCheckersClientModule.parseView(legacyView)).toThrow();
+    const currentView = projectView({
+      state: createInitialState(context).state,
+      viewer: { kind: "spectator" },
+    });
+    expect(() =>
+      chineseCheckersClientModuleV1_0_0.parseView(currentView),
+    ).toThrow();
+    const submitAction = vi.fn(async () => undefined);
+    const html = renderToStaticMarkup(
+      createElement(chineseCheckersClientModuleV1_0_0.Component, {
+        view: legacyView,
+        revision: 0,
+        connectionState: "connected",
+        readOnly: true,
+        submitAction,
+      }),
+    );
+    expect(html.match(/data-cell-index=/gu)).toHaveLength(73);
+    expect(html.match(/disabled=""/gu)).toHaveLength(73);
+    expect(submitAction).not.toHaveBeenCalled();
+  });
+
   it("parses a projected 73-cell view and exposes resignation factory", () => {
     const p1 = definePlayerSlotId("p1");
     const p2 = definePlayerSlotId("p2");

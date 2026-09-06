@@ -14,15 +14,14 @@ import { z } from "zod";
 import {
   CHINESE_CHECKERS_CAMP_OPTIONS,
   CHINESE_CHECKERS_CELL_COUNT,
-} from "../constants.js";
+} from "../v1/constants.js";
 import {
   CHINESE_CHECKERS_CAMP_CELLS,
-  CHINESE_CHECKERS_GEOMETRY,
   adjacentCells,
   jumpLanding,
   oppositeCamp,
-} from "../geometry.js";
-import { chineseCheckersManifest } from "../manifest.js";
+} from "../v1/geometry.js";
+import { chineseCheckersManifestV1_0_0 } from "../v1/manifest.js";
 import type {
   ChineseCheckersAction,
   ChineseCheckersCamp,
@@ -34,24 +33,22 @@ import type {
   ChineseCheckersRuleErrorCode,
   ChineseCheckersState,
   ChineseCheckersView,
-} from "../types.js";
+} from "../v1/types.js";
 
-export type * from "../types.js";
-export { chineseCheckersDefinitionV1_0_0 } from "./v1.js";
+export type * from "../v1/types.js";
 export {
   CHINESE_CHECKERS_CAMP_OPTIONS,
   CHINESE_CHECKERS_CELL_COUNT,
-} from "../constants.js";
+} from "../v1/constants.js";
 export {
   CHINESE_CHECKERS_CAMP_CELLS,
   CHINESE_CHECKERS_CENTER_CELLS,
   CHINESE_CHECKERS_COORDINATES,
-  CHINESE_CHECKERS_GEOMETRY,
   adjacentCells,
   cellCoordinate,
   campForCell,
   oppositeCamp,
-} from "../geometry.js";
+} from "../v1/geometry.js";
 
 const slotIdSchema = z.string().min(1);
 const cellSchema = z
@@ -184,35 +181,10 @@ export const chineseCheckersStateSchema = z
     }
   });
 const moveSchema = z.object({ from: cellSchema, to: cellSchema }).strict();
-const geometrySchema = z
-  .array(
-    z
-      .object({
-        q: z.number().int().min(-6).max(6),
-        r: z.number().int().min(-6).max(6),
-        camp: campSchema.nullable(),
-      })
-      .strict(),
-  )
-  .length(CHINESE_CHECKERS_CELL_COUNT)
-  .refine(
-    (geometry) =>
-      geometry.every((cell, index) => {
-        const expected = CHINESE_CHECKERS_GEOMETRY[index];
-        return (
-          expected !== undefined &&
-          cell.q === expected.q &&
-          cell.r === expected.r &&
-          cell.camp === expected.camp
-        );
-      }),
-    "Geometry must match the 1.1.0 cell-ID map.",
-  );
 export const chineseCheckersViewSchema = z
   .object({
     players: z.array(playerSchema).min(2).max(6),
     board: boardSchema,
-    geometry: geometrySchema,
     nextTurnSlotId: slotIdSchema.nullable(),
     legalMoves: z.array(moveSchema),
     rankings: z.array(rankingSchema),
@@ -663,9 +635,6 @@ function freezeView(view: ChineseCheckersView): ChineseCheckersView {
   return Object.freeze({
     players: Object.freeze(view.players.map(freezePlayer)),
     board: Object.freeze([...view.board]),
-    geometry: Object.freeze(
-      view.geometry.map((cell) => Object.freeze({ ...cell })),
-    ),
     nextTurnSlotId: view.nextTurnSlotId,
     legalMoves: Object.freeze(
       view.legalMoves.map((move) => Object.freeze({ ...move })),
@@ -687,7 +656,6 @@ export function projectView(
   const parsed = chineseCheckersViewSchema.parse({
     players: state.players,
     board: state.board,
-    geometry: CHINESE_CHECKERS_GEOMETRY,
     nextTurnSlotId: next?.slotId ?? null,
     legalMoves: next === undefined ? [] : legalMovesFor(state, next.slotId),
     rankings: state.rankings,
@@ -701,15 +669,15 @@ export function projectView(
   return freezeView(parsed);
 }
 
-export const chineseCheckersDefinition = {
-  manifest: chineseCheckersManifest,
+export const chineseCheckersDefinitionV1_0_0 = Object.freeze({
+  manifest: chineseCheckersManifestV1_0_0,
   configSchema: chineseCheckersConfigSchema,
   actionSchema: chineseCheckersActionSchema,
   createInitialState,
   transition,
   projectView,
   getOutcome,
-} satisfies GameDefinition<
+}) satisfies GameDefinition<
   ChineseCheckersConfig,
   ChineseCheckersState,
   ChineseCheckersAction,

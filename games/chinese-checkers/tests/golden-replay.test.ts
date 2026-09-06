@@ -2,70 +2,64 @@ import { readFileSync } from "node:fs";
 import { eraseGameDefinition } from "@online-game-hub/game-sdk";
 import { verifyReplay } from "@online-game-hub/game-server-runtime";
 import { describe, expect, it } from "vitest";
-import { chineseCheckersDefinition } from "../src/core/index.js";
+import {
+  chineseCheckersDefinition,
+  chineseCheckersDefinitionV1_0_0,
+} from "../src/core/index.js";
 
-const fixture = JSON.parse(
-  readFileSync(
-    new URL(
-      "./fixtures/chinese-checkers-1.0.0-resignation.json",
-      import.meta.url,
-    ),
-    "utf8",
-  ),
-);
-const normalFixture = JSON.parse(
-  readFileSync(
-    new URL("./fixtures/chinese-checkers-1.0.0-normal.json", import.meta.url),
-    "utf8",
-  ),
-);
-const multiplayerFixture = JSON.parse(
-  readFileSync(
-    new URL(
-      "./fixtures/chinese-checkers-1.0.0-multiplayer-ranking.json",
-      import.meta.url,
-    ),
-    "utf8",
-  ),
-);
+const definitions = [
+  eraseGameDefinition(chineseCheckersDefinitionV1_0_0),
+  eraseGameDefinition(chineseCheckersDefinition),
+];
+const resolve = (gameId: string, gameVersion: string) =>
+  definitions.find(
+    (definition) =>
+      definition.manifest.id === gameId &&
+      definition.manifest.gameVersion === gameVersion,
+  );
 
 describe("Chinese Checkers golden replay", () => {
-  it("rebuilds the assignment-aware resignation ranking", () => {
-    const result = verifyReplay(fixture, (gameId, gameVersion) =>
-      gameId === chineseCheckersDefinition.manifest.id &&
-      gameVersion === chineseCheckersDefinition.manifest.gameVersion
-        ? eraseGameDefinition(chineseCheckersDefinition)
-        : undefined,
+  for (const version of ["1.0.0", "1.1.0"]) {
+    for (const name of ["normal", "resignation", "multiplayer-ranking"]) {
+      it(
+        "rebuilds " +
+          version +
+          " " +
+          name +
+          " with exact geometry and assignments",
+        () => {
+          const fixture = JSON.parse(
+            readFileSync(
+              new URL(
+                "./fixtures/chinese-checkers-" + version + "-" + name + ".json",
+                import.meta.url,
+              ),
+              "utf8",
+            ),
+          );
+          const result = verifyReplay(fixture, resolve);
+          expect(result).toMatchObject({
+            status: "verified",
+            rng: { cursor: 0 },
+            outcome: fixture.recordedOutcome,
+          });
+          expect(verifyReplay(fixture, resolve)).toEqual(result);
+        },
+      );
+    }
+  }
+
+  it("rejects an old move journal relabeled as the new rule version", () => {
+    const fixture = JSON.parse(
+      readFileSync(
+        new URL(
+          "./fixtures/chinese-checkers-1.0.0-normal.json",
+          import.meta.url,
+        ),
+        "utf8",
+      ),
     );
-    expect(result).toMatchObject({
-      status: "verified",
-      rng: { cursor: 0 },
-      outcome: fixture.recordedOutcome,
-    });
-  });
-
-  it("rebuilds a normal assignment-aware move replay", () => {
-    expect(
-      verifyReplay(normalFixture, (gameId, gameVersion) =>
-        gameId === chineseCheckersDefinition.manifest.id &&
-        gameVersion === chineseCheckersDefinition.manifest.gameVersion
-          ? eraseGameDefinition(chineseCheckersDefinition)
-          : undefined,
-      ),
-    ).toMatchObject({ status: "verified", outcome: null, rng: { cursor: 0 } });
-  });
-
-  it("rebuilds a three-player ranking with complete assignment metadata", () => {
-    expect(
-      verifyReplay(multiplayerFixture, (gameId, gameVersion) =>
-        gameId === chineseCheckersDefinition.manifest.id &&
-        gameVersion === chineseCheckersDefinition.manifest.gameVersion
-          ? eraseGameDefinition(chineseCheckersDefinition)
-          : undefined,
-      ),
-    ).toMatchObject({
-      status: "verified",
-      outcome: multiplayerFixture.recordedOutcome,
-    });
+    fixture.header.gameVersion = "1.1.0";
+    expect(verifyReplay(fixture, resolve).status).not.toBe("verified");
   });
 });

@@ -1,0 +1,72 @@
+{
+  "header": {
+    "replayFormatVersion": 1,
+    "gameId": "chinese-checkers",
+    "gameVersion": "1.1.0",
+    "rng": {
+      "algorithm": "fnv1a32-counter-v1",
+      "seed": "golden-star-multiplayer-ranking"
+    },
+    "initialConfig": null,
+    "players": [
+      {
+        "slotId": "player-1",
+        "assignment": "N"
+      },
+      {
+        "slotId": "player-2",
+        "assignment": "S"
+      },
+      {
+        "slotId": "player-3",
+        "assignment": "NE"
+      }
+    ]
+  },
+  "actions": [
+    {
+      "sequence": 1,
+      "actorSlotId": "player-1",
+      "action": {
+        "type": "MOVE_PIECE",
+        "from": 3,
+        "to": 10
+      }
+    },
+    {
+      "sequence": 2,
+      "actorSlotId": "player-2",
+      "action": {
+        "type": "RESIGN"
+      }
+    },
+    {
+      "sequence": 3,
+      "actorSlotId": "player-3",
+      "action": {
+        "type": "RESIGN"
+      }
+    }
+  ],
+  "recordedRngCursor": 0,
+  "recordedOutcome": {
+    "rankings": [
+      {
+        "slotId": "player-1",
+        "rank": 1,
+        "reason": "LAST_REMAINING"
+      },
+      {
+        "slotId": "player-2",
+        "rank": 2,
+        "reason": "RESIGNATION"
+      },
+      {
+        "slotId": "player-3",
+        "rank": 3,
+        "reason": "RESIGNATION"
+      }
+    ],
+    "type": "RANKING"
+  }
+}

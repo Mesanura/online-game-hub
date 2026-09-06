@@ -1,0 +1,137 @@
+{
+  "players": [
+    {
+      "slotId": "slot-1",
+      "camp": "N"
+    },
+    {
+      "slotId": "slot-2",
+      "camp": "NE"
+    },
+    {
+      "slotId": "slot-3",
+      "camp": "SE"
+    },
+    {
+      "slotId": "slot-4",
+      "camp": "S"
+    },
+    {
+      "slotId": "slot-5",
+      "camp": "SW"
+    },
+    {
+      "slotId": "slot-6",
+      "camp": "NW"
+    }
+  ],
+  "board": [
+    "slot-1",
+    "slot-2",
+    "slot-1",
+    "slot-1",
+    "slot-2",
+    "slot-1",
+    "slot-1",
+    "slot-1",
+    "slot-2",
+    "slot-2",
+    null,
+    null,
+    null,
+    null,
+    "slot-2",
+    "slot-6",
+    null,
+    null,
+    null,
+    null,
+    null,
+    "slot-2",
+    "slot-6",
+    "slot-6",
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    "slot-6",
+    "slot-6",
+    "slot-6",
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    "slot-3",
+    "slot-3",
+    "slot-3",
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    "slot-3",
+    "slot-3",
+    "slot-5",
+    null,
+    null,
+    null,
+    null,
+    null,
+    "slot-3",
+    "slot-5",
+    null,
+    null,
+    null,
+    null,
+    "slot-5",
+    "slot-5",
+    "slot-4",
+    "slot-4",
+    "slot-4",
+    "slot-5",
+    "slot-4",
+    "slot-4",
+    "slot-5",
+    "slot-4"
+  ],
+  "nextTurnSlotId": "slot-1",
+  "legalMoves": [
+    {
+      "from": 2,
+      "to": 10
+    },
+    {
+      "from": 3,
+      "to": 11
+    },
+    {
+      "from": 5,
+      "to": 10
+    },
+    {
+      "from": 6,
+      "to": 10
+    },
+    {
+      "from": 6,
+      "to": 11
+    },
+    {
+      "from": 7,
+      "to": 11
+    },
+    {
+      "from": 7,
+      "to": 12
+    }
+  ],
+  "rankings": [],
+  "outcome": null,
+  "yourCamp": "N"
+}

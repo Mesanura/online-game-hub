@@ -3530,9 +3530,38 @@ describe.sequential("authoritative Colyseus Game Server", () => {
     expect(secondActive).toMatchObject({ view: { yourCamp: "S" } });
     expect(thirdActive).toMatchObject({ view: { yourCamp: "NE" } });
 
+    expect(
+      await roomStore.getByRoomCode(ownerConnected.roomCode),
+    ).toMatchObject({ gameVersion: "1.1.0" });
+    expect(ownerActive).toMatchObject({
+      view: {
+        geometry: expect.arrayContaining([
+          { q: 3, r: -6, camp: "N" },
+          { q: -3, r: 6, camp: "S" },
+          { q: 0, r: 0, camp: null },
+        ]),
+      },
+    });
+    const movedSnapshots = [ownerInbox, secondInbox, thirdInbox].map((inbox) =>
+      inbox.next((message) => isSnapshot(message) && message.revision === 1),
+    );
+    ownerRoom.send(
+      GAME_ACTION_MESSAGE,
+      command("cc-move-from-camp", 0, {
+        type: "MOVE_PIECE",
+        from: 3,
+        to: 10,
+      }),
+    );
+    for (const snapshot of await Promise.all(movedSnapshots)) {
+      expect(snapshot).toMatchObject({ revision: 1, status: "active" });
+      expect(snapshot).toHaveProperty("view.board.3", null);
+      expect(snapshot).toHaveProperty("view.board.10", "slot-1");
+    }
+
     secondRoom.send(
       GAME_ACTION_MESSAGE,
-      command("cc-resign-second", 0, { type: "RESIGN" }),
+      command("cc-resign-second", 1, { type: "RESIGN" }),
     );
     await expect(
       secondInbox.next(
@@ -3540,17 +3569,17 @@ describe.sequential("authoritative Colyseus Game Server", () => {
           isSnapshot(message) &&
           message.causedByCommandId === "cc-resign-second",
       ),
-    ).resolves.toMatchObject({ revision: 1, status: "active" });
+    ).resolves.toMatchObject({ revision: 2, status: "active" });
     const completed = thirdInbox.next(
       (message) =>
         isSnapshot(message) && message.causedByCommandId === "cc-resign-third",
     );
     thirdRoom.send(
       GAME_ACTION_MESSAGE,
-      command("cc-resign-third", 1, { type: "RESIGN" }),
+      command("cc-resign-third", 2, { type: "RESIGN" }),
     );
     await expect(completed).resolves.toMatchObject({
-      revision: 2,
+      revision: 3,
       status: "completed",
       outcome: {
         type: "RANKING",
@@ -3563,6 +3592,8 @@ describe.sequential("authoritative Colyseus Game Server", () => {
     });
     const stored = await roomStore.getByRoomCode(ownerConnected.roomCode);
     const replay = await replayStore.get(stored?.currentRound?.replayId ?? "");
+    expect(replay?.header.gameVersion).toBe("1.1.0");
+    expect(replay?.actions).toHaveLength(3);
     expect(replay?.header.players).toEqual([
       { slotId: "slot-1", assignment: "N" },
       { slotId: "slot-2", assignment: "S" },

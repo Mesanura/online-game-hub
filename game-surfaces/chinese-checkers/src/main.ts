@@ -6,7 +6,6 @@ import {
 
 import {
   CHINESE_CHECKERS_CAMPS,
-  chineseCheckersPlayViewSchema,
   chineseCheckersSetupViewSchema,
   type ChineseCheckersPlayIntent,
   type ChineseCheckersPlayView,
@@ -14,21 +13,20 @@ import {
   type ChineseCheckersSetupView,
 } from "./contracts";
 import {
-  campForCell,
   campForSlot,
-  CHINESE_CHECKERS_CONNECTIONS,
   createCampIntent,
   createMovePieceIntent,
   createPlayerCountIntent,
   createResignIntent,
   createStarterIntent,
-  layoutForCell,
   legalTargetsForSelection,
   outcomeLabel,
+  parsePlayView,
   resultSummary,
   setupStatusLabel,
   type ChineseCheckersCamp,
 } from "./model";
+import { layoutBoard } from "./board";
 import "./styles.css";
 
 type HostInit = Extract<HostSurfaceMessage, { readonly type: "host.init" }>;
@@ -101,14 +99,14 @@ function reportSurfaceError(code: string, message: string): void {
 function parsePayload(message: HostState): SurfacePayload {
   return runtime.mode === "setup"
     ? chineseCheckersSetupViewSchema.parse(message.payload)
-    : chineseCheckersPlayViewSchema.parse(message.payload);
+    : parsePlayView(message.payload, runtime.init?.gameVersion ?? "");
 }
 
 function handleHostMessage(message: HostSurfaceMessage): void {
   if (message.type === "host.init") {
     if (
       message.gameId !== "chinese-checkers" ||
-      message.gameVersion !== "1.0.0" ||
+      !["1.0.0", "1.1.0"].includes(message.gameVersion) ||
       message.mode !== runtime.mode
     ) {
       reportSurfaceError(
@@ -314,30 +312,47 @@ function canMove(
 
 function renderBoard(view: ChineseCheckersPlayView, movable: boolean): string {
   const ownSlot = ownSlotId(view);
+  const layout = layoutBoard(view.geometry, runtime.init?.gameVersion ?? "");
   const legalTargets = new Set(
     legalTargetsForSelection(view.legalMoves, runtime.selectedCell),
   );
-  const connections = CHINESE_CHECKERS_CONNECTIONS.map(([from, to]) => {
-    const fromLayout = layoutForCell(from);
-    const toLayout = layoutForCell(to);
-    return `<line x1="${fromLayout.x}" y1="${fromLayout.y}" x2="${toLayout.x}" y2="${toLayout.y}" />`;
-  }).join("");
-  const cells = view.board
-    .map((slotId, cell) => {
-      const layout = layoutForCell(cell);
-      const pieceCamp = campForSlot(view, slotId);
-      const boardCamp = campForCell(cell);
-      const isOwnPiece = slotId !== null && slotId === ownSlot;
-      const isLegalSource = view.legalMoves.some((move) => move.from === cell);
-      const isSelected = runtime.selectedCell === cell;
-      const isLegalTarget = legalTargets.has(cell);
-      const enabled = movable && (isOwnPiece || isLegalTarget);
-      const occupancy =
-        pieceCamp === null ? "空位" : `${campLabels[pieceCamp]}棋子`;
-      return `<button aria-label="棋位 ${cell + 1}，${occupancy}${isLegalTarget ? "，可到达" : ""}" class="chinese-checkers-cell${isSelected ? " is-selected" : ""}${isLegalTarget ? " is-legal-target" : ""}" data-camp="${boardCamp ?? "CENTER"}" data-cell-index="${cell}" data-legal-source="${String(isLegalSource)}" data-occupied="${String(slotId !== null)}" data-piece-camp="${pieceCamp ?? "EMPTY"}" ${enabled ? "" : "disabled"} role="gridcell" style="--cc-x:${layout.x};--cc-y:${layout.y}" type="button">${pieceCamp === null ? "" : '<span aria-hidden="true" class="chinese-checkers-piece"></span>'}</button>`;
+  const regions = layout.regions
+    .map(
+      ({ camp, points }) =>
+        `<polygon class="board-region" data-camp="${camp ?? "CENTER"}" points="${points.map(({ x, y }) => `${x},${y}`).join(" ")}" />`,
+    )
+    .join("");
+  const connections = layout.connections
+    .map(({ from, to }) => {
+      const start = layout.cells[from];
+      const end = layout.cells[to];
+      if (start === undefined || end === undefined)
+        throw new Error("Missing connection endpoint.");
+      return `<line data-from="${from}" data-to="${to}" x1="${start.x}" y1="${start.y}" x2="${end.x}" y2="${end.y}" />`;
     })
     .join("");
-  return `<div aria-label="中国跳棋六芒星棋盘" class="chinese-checkers-board" role="grid"><svg aria-hidden="true" class="chinese-checkers-connections" data-testid="board-connections" focusable="false" preserveAspectRatio="none" viewBox="0 0 100 100">${connections}</svg>${cells}</div>`;
+  const rows = layout.rows
+    .map(
+      (row) =>
+        `<div role="row">${row
+          .map(({ cell, q, r, x, y, camp: boardCamp }) => {
+            const slotId = view.board[cell] ?? null;
+            const pieceCamp = campForSlot(view, slotId);
+            const isOwnPiece = slotId !== null && slotId === ownSlot;
+            const isLegalSource = view.legalMoves.some(
+              (move) => move.from === cell,
+            );
+            const isSelected = runtime.selectedCell === cell;
+            const isLegalTarget = legalTargets.has(cell);
+            const enabled = movable && (isOwnPiece || isLegalTarget);
+            const occupancy =
+              pieceCamp === null ? "空位" : `${campLabels[pieceCamp]}棋子`;
+            return `<button aria-label="棋位 ${cell + 1}，${occupancy}${isLegalTarget ? "，可到达" : ""}" aria-selected="${String(isSelected)}" class="chinese-checkers-cell${isSelected ? " is-selected" : ""}${isLegalTarget ? " is-legal-target" : ""}" data-camp="${boardCamp ?? "CENTER"}" data-cell-index="${cell}" data-q="${q}" data-r="${r}" data-legal-source="${String(isLegalSource)}" data-occupied="${String(slotId !== null)}" data-piece-camp="${pieceCamp ?? "EMPTY"}" ${enabled ? "" : "disabled"} role="gridcell" style="left:${(100 * x) / layout.width}%;top:${(100 * y) / layout.height}%" type="button">${pieceCamp === null ? "" : '<span aria-hidden="true" class="chinese-checkers-piece"></span>'}</button>`;
+          })
+          .join("")}</div>`,
+    )
+    .join("");
+  return `<div aria-label="中国跳棋六芒星棋盘" class="chinese-checkers-board" role="grid" style="--board-ratio:${layout.width / layout.height};--cell-size:${(100 * layout.cellDiameter) / layout.width}%;--board-touch-width:${(layout.width * 44) / layout.cellDiameter}px"><svg aria-hidden="true" class="chinese-checkers-connections" data-testid="board-connections" focusable="false" viewBox="0 0 ${layout.width} ${layout.height}">${regions}${connections}</svg>${rows}</div>`;
 }
 
 function rankingReason(

@@ -1,0 +1,56 @@
+{
+  "header": {
+    "replayFormatVersion": 1,
+    "gameId": "chinese-checkers",
+    "gameVersion": "1.1.0",
+    "rng": {
+      "algorithm": "fnv1a32-counter-v1",
+      "seed": "golden-star-resignation"
+    },
+    "initialConfig": null,
+    "players": [
+      {
+        "slotId": "player-1",
+        "assignment": "N"
+      },
+      {
+        "slotId": "player-2",
+        "assignment": "S"
+      }
+    ]
+  },
+  "actions": [
+    {
+      "sequence": 1,
+      "actorSlotId": "player-1",
+      "action": {
+        "type": "MOVE_PIECE",
+        "from": 3,
+        "to": 10
+      }
+    },
+    {
+      "sequence": 2,
+      "actorSlotId": "player-1",
+      "action": {
+        "type": "RESIGN"
+      }
+    }
+  ],
+  "recordedRngCursor": 0,
+  "recordedOutcome": {
+    "rankings": [
+      {
+        "slotId": "player-2",
+        "rank": 1,
+        "reason": "LAST_REMAINING"
+      },
+      {
+        "slotId": "player-1",
+        "rank": 2,
+        "reason": "RESIGNATION"
+      }
+    ],
+    "type": "RANKING"
+  }
+}

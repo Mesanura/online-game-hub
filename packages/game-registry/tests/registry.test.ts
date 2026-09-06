@@ -247,30 +247,35 @@ describe("explicit game registry", () => {
         });
       }
     }
-    expect(resolveGameDeployment("chinese-checkers", "1.0.0")).toMatchObject({
-      setupProtocol: 6,
-      presentation: {
-        kind: "surface-v1",
-        publicBasePath: "/game-surfaces/chinese-checkers/1.0.4",
-        artifact: {
-          supportedGameVersions: ["1.0.0"],
-          surfaceVersion: "1.0.4",
-          contentDigest: "sha256-2sK9vUTTb1gKomD6SUo/TkJJxvUiatKwWlvw/ssd/p8=",
-        },
-      },
-      platformControls: ["RESIGN"],
-    });
-    for (const mode of ["setup", "play", "replay"] as const) {
+    for (const gameVersion of ["1.0.0", "1.1.0"] as const) {
       expect(
-        resolveGameSurfaceEntrypoint("chinese-checkers", "1.0.0", mode),
+        resolveGameDeployment("chinese-checkers", gameVersion),
       ).toMatchObject({
-        gameId: "chinese-checkers",
-        gameVersion: "1.0.0",
-        surfaceVersion: "1.0.4",
-        mode,
+        setupProtocol: 6,
+        presentation: {
+          kind: "surface-v1",
+          publicBasePath: "/game-surfaces/chinese-checkers/1.1.0",
+          artifact: {
+            supportedGameVersions: ["1.0.0", "1.1.0"],
+            surfaceVersion: "1.1.0",
+            contentDigest:
+              "sha256-2UBPd5lrwnaDqgEF0SYSanUGiisL2BcWZswnNC7n2oU=",
+          },
+        },
         platformControls: ["RESIGN"],
-        url: `/game-surfaces/chinese-checkers/1.0.4/${mode}/index.html`,
       });
+      for (const mode of ["setup", "play", "replay"] as const) {
+        expect(
+          resolveGameSurfaceEntrypoint("chinese-checkers", gameVersion, mode),
+        ).toMatchObject({
+          gameId: "chinese-checkers",
+          gameVersion,
+          surfaceVersion: "1.1.0",
+          mode,
+          platformControls: ["RESIGN"],
+          url: `/game-surfaces/chinese-checkers/1.1.0/${mode}/index.html`,
+        });
+      }
     }
     for (const gameVersion of ["1.0.0", "1.1.0"] as const) {
       expect(resolveGameDeployment("gomoku", gameVersion)).toMatchObject({
@@ -381,7 +386,7 @@ describe("explicit game registry", () => {
       ["gomoku", "1.1.0"],
       ["hex", "1.0.0"],
       ["reversi", "1.1.0"],
-      ["chinese-checkers", "1.0.0"],
+      ["chinese-checkers", "1.1.0"],
     ] as const) {
       const definition = resolveRoundSetupDefinition(gameId, gameVersion);
       expect(definition).toBeDefined();
@@ -416,6 +421,20 @@ describe("explicit game registry", () => {
     }
   });
 
+  it("preserves both Chinese Checkers geometries and their V6 setup", () => {
+    const current = resolveCurrentGameDefinition("chinese-checkers");
+    const legacy = resolveGameDefinition("chinese-checkers", "1.0.0");
+    if (current === undefined || legacy === undefined) {
+      throw new Error("Both Chinese Checkers versions must be registered.");
+    }
+    expect(current.manifest.gameVersion).toBe("1.1.0");
+    expect(legacy).not.toBe(current);
+    expect(Object.isFrozen(legacy)).toBe(true);
+    expect(
+      resolveRoundSetupDefinition("chinese-checkers", "1.0.0"),
+    ).toBeDefined();
+  });
+
   it("resolves every supported exact historical client module independently", async () => {
     const historicalVersions = [
       ["tic-tac-toe", "1.0.0"],
@@ -423,6 +442,7 @@ describe("explicit game registry", () => {
       ["gomoku", "1.0.0"],
       ["hex", "1.0.0"],
       ["reversi", "1.0.0"],
+      ["chinese-checkers", "1.0.0"],
     ] as const;
     for (const [gameId, gameVersion] of historicalVersions) {
       const historical = await loadGameClientModule(gameId, gameVersion);

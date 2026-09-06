@@ -15,6 +15,13 @@ import {
   projectView,
   transition,
 } from "../src/core/index.js";
+import { cellIndex } from "../src/geometry.js";
+
+function at(q: number, r: number): number {
+  const cell = cellIndex({ q, r });
+  if (cell === undefined) throw new Error(`Missing fixture cell ${q},${r}`);
+  return cell;
+}
 
 const players = ["p1", "p2", "p3", "p4", "p5", "p6"].map(definePlayerSlotId);
 const assignments = ["N", "S", "NE", "SW", "SE", "NW"] as const;
@@ -29,8 +36,8 @@ function init(count = 2) {
 }
 
 describe("Chinese Checkers core", () => {
-  it("initializes 2, 3, and 6 players on 73 cells", () => {
-    for (const count of [2, 3, 6]) {
+  it("initializes every supported player count on 73 cells", () => {
+    for (const count of [2, 3, 4, 5, 6]) {
       const result = init(count);
       expect(result.state.board).toHaveLength(CHINESE_CHECKERS_CELL_COUNT);
       expect(result.state.board.filter((slot) => slot !== null)).toHaveLength(
@@ -73,7 +80,7 @@ describe("Chinese Checkers core", () => {
 
   it("allows an adjacent move and projects only the viewer camp", () => {
     const initial = init(2);
-    const legal = CHINESE_CHECKERS_CAMP_CELLS.N[0];
+    const legal = at(1, -4);
     if (legal === undefined) throw new Error("Camp cell missing.");
     const target = adjacentCells(legal).find(
       (cell) => initial.state.board[cell] === null,
@@ -130,22 +137,86 @@ describe("Chinese Checkers core", () => {
     const board = Array<(typeof players)[number] | null>(
       CHINESE_CHECKERS_CELL_COUNT,
     ).fill(null);
-    for (const cell of [36, 0, 1, 2, 3, 4]) board[cell] = p1;
-    for (const cell of [26, 10, 8, 9, 11, 12]) board[cell] = p2;
+    const from = at(0, 0);
+    const to = at(2, -2);
+    for (const cell of [from, ...CHINESE_CHECKERS_CAMP_CELLS.S.slice(0, 5)])
+      board[cell] = p1;
+    for (const cell of [
+      at(0, -1),
+      at(1, -2),
+      ...CHINESE_CHECKERS_CAMP_CELLS.NW.slice(0, 4),
+    ])
+      board[cell] = p2;
     const initial = init(2);
     const customState = { ...initial.state, board };
     const moved = transition({
       state: customState,
       rng: initial.rng,
       actorSlotId: p1,
-      action: { type: "MOVE_PIECE", from: 36, to: 5 },
+      action: { type: "MOVE_PIECE", from, to },
     });
     expect(moved.status).toBe("accepted");
     if (moved.status !== "accepted") return;
-    expect(moved.state.board[36]).toBeNull();
-    expect(moved.state.board[5]).toBe(p1);
-    expect(customState.board[36]).toBe(p1);
-    expect(customState.board[5]).toBeNull();
+    expect(moved.state.board[from]).toBeNull();
+    expect(moved.state.board[to]).toBe(p1);
+    expect(customState.board[from]).toBe(p1);
+    expect(customState.board[to]).toBeNull();
+  });
+
+  it("rejects invalid geometry moves without changing state or RNG", () => {
+    const initial = init(2);
+    const player = definePlayerSlotId("p1");
+    const before = JSON.stringify(initial);
+    for (const [from, to, code] of [
+      [-1, 0, "CELL_OUT_OF_BOUNDS"],
+      [0, 73, "CELL_OUT_OF_BOUNDS"],
+      [0.5, 0, "CELL_OUT_OF_BOUNDS"],
+      [at(0, 0), at(0, 1), "SOURCE_NOT_OWNED"],
+      [at(3, -6), at(2, -5), "DESTINATION_OCCUPIED"],
+      [at(3, -6), at(0, 0), "ILLEGAL_MOVE"],
+    ] as const) {
+      expect(
+        transition({
+          state: initial.state,
+          rng: initial.rng,
+          actorSlotId: player,
+          action: { type: "MOVE_PIECE", from, to },
+        }),
+      ).toEqual({ status: "rejected", code });
+      expect(JSON.stringify(initial)).toBe(before);
+    }
+  });
+
+  it("keeps accepted moves deterministic through serialization and rejects terminal actions", () => {
+    const initial = init(2);
+    const player = definePlayerSlotId("p1");
+    const action = Object.freeze({
+      type: "MOVE_PIECE" as const,
+      from: at(1, -4),
+      to: at(1, -3),
+    });
+    const context = { ...initial, actorSlotId: player, action };
+    const first = transition(context);
+    expect(first.status).toBe("accepted");
+    expect(transition(JSON.parse(JSON.stringify(context)))).toEqual(first);
+    if (first.status !== "accepted")
+      throw new Error("Expected an accepted move.");
+    expect(
+      chineseCheckersStateSchema.parse(JSON.parse(JSON.stringify(first.state))),
+    ).toEqual(first.state);
+    expect(Object.isFrozen(first.state.board)).toBe(true);
+    expect(first.rng).toEqual(initial.rng);
+    const resigned = transition({
+      ...first,
+      actorSlotId: player,
+      action: { type: "RESIGN" },
+    });
+    if (resigned.status !== "accepted")
+      throw new Error("Expected an accepted resignation.");
+    expect(transition({ ...resigned, actorSlotId: player, action })).toEqual({
+      status: "rejected",
+      code: "MATCH_ALREADY_FINISHED",
+    });
   });
 
   it("locks a player into the ranking when the opposite camp is filled", () => {

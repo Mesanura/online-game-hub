@@ -6,17 +6,19 @@ import type {
   GameClientModule,
   GameClientProps,
 } from "@online-game-hub/game-client-sdk";
+import { defineGameVersion } from "@online-game-hub/game-sdk";
 
 import {
   CHINESE_CHECKERS_CAMP_OPTIONS,
   CHINESE_CHECKERS_CELL_COUNT,
-} from "../constants.js";
-import { chineseCheckersManifest } from "../manifest.js";
+} from "../v1/constants.js";
+import { CHINESE_CHECKERS_CAMP_CELLS, cellCoordinate } from "../v1/geometry.js";
+import { chineseCheckersManifestV1_0_0 } from "../v1/manifest.js";
 import type {
   ChineseCheckersAction,
   ChineseCheckersCamp,
   ChineseCheckersView,
-} from "../types.js";
+} from "../v1/types.js";
 
 const slotIdSchema = z.string().min(1);
 const campSchema = z.enum(CHINESE_CHECKERS_CAMP_OPTIONS);
@@ -38,17 +40,6 @@ export const chineseCheckersViewSchema = z
       .min(2)
       .max(6),
     board: z.array(slotIdSchema.nullable()).length(CHINESE_CHECKERS_CELL_COUNT),
-    geometry: z
-      .array(
-        z
-          .object({
-            q: z.number().int().min(-6).max(6),
-            r: z.number().int().min(-6).max(6),
-            camp: campSchema.nullable(),
-          })
-          .strict(),
-      )
-      .length(CHINESE_CHECKERS_CELL_COUNT),
     nextTurnSlotId: slotIdSchema.nullable(),
     legalMoves: z.array(
       z.object({ from: cellSchema, to: cellSchema }).strict(),
@@ -190,19 +181,21 @@ export function ChineseCheckersClient(
           role="grid"
         >
           {props.view.board.map((slotId, cell) => {
-            const coordinate = props.view.geometry[cell];
+            const coordinate = cellCoordinate(cell);
             if (coordinate === undefined) return null;
             const player = playerForCell(props.view, slotId);
             const camp = player?.camp ?? null;
             const isOwnPiece = slotId !== null && slotId === ownSlotId;
             const isLegalTarget = legalTargets.has(cell);
             const isSelected = selectedCell === cell;
-            const campCell = coordinate.camp;
+            const campCell = CHINESE_CHECKERS_CAMP_OPTIONS.find((candidate) =>
+              CHINESE_CHECKERS_CAMP_CELLS[candidate].includes(cell),
+            );
             const style = {
               "--cc-left": `${(coordinate.q + 7 + (coordinate.r + 7) * 0.5) * 2.6}rem`,
               "--cc-top": `${(coordinate.r + 7) * 2.15 + 1.5}rem`,
               "--cc-camp-color":
-                campCell === null ? "#f7efe7" : campColors[campCell],
+                campCell === undefined ? "#f7efe7" : campColors[campCell],
             } as CSSProperties;
             return (
               <button
@@ -230,7 +223,7 @@ export function ChineseCheckersClient(
                 title={
                   isLegalTarget && selectedCell !== null
                     ? moveLabel(selectedCell, cell)
-                    : campCell === null
+                    : campCell === undefined
                       ? "中心棋位"
                       : campLabels[campCell]
                 }
@@ -274,9 +267,9 @@ export function ChineseCheckersClient(
   );
 }
 
-export const chineseCheckersClientModule = {
-  gameId: chineseCheckersManifest.id,
-  gameVersion: chineseCheckersManifest.gameVersion,
+export const chineseCheckersClientModuleV1_0_0 = {
+  gameId: chineseCheckersManifestV1_0_0.id,
+  gameVersion: defineGameVersion("1.0.0"),
   createResignAction: (): ChineseCheckersAction => ({ type: "RESIGN" }),
   parseView(input: unknown) {
     return chineseCheckersViewSchema.parse(
@@ -285,5 +278,3 @@ export const chineseCheckersClientModule = {
   },
   Component: ChineseCheckersClient,
 } satisfies GameClientModule<ChineseCheckersView, ChineseCheckersAction>;
-
-export { chineseCheckersClientModuleV1_0_0 } from "./v1.js";
