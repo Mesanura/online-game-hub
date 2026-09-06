@@ -334,6 +334,22 @@ importers:
         specifier: 4.1.11
         version: 4.1.11(@types/node@24.13.3)(vite@8.2.2(@types/node@24.13.3)(esbuild@0.28.2)(tsx@4.23.12))
 
+  games/badminton:
+    dependencies:
+      '@online-game-hub/game-setup':
+        specifier: workspace:*
+        version: link:../../packages/game-setup
+      '@online-game-hub/realtime-game-sdk':
+        specifier: workspace:*
+        version: link:../../packages/realtime-game-sdk
+      zod:
+        specifier: 4.4.3
+        version: 4.4.3
+    devDependencies:
+      '@types/node':
+        specifier: 24.13.3
+        version: 24.13.3
+
   games/chinese-checkers:
     dependencies:
       '@online-game-hub/game-client-sdk':

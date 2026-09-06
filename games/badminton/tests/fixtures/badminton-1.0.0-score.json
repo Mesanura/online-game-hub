@@ -1,0 +1,33 @@
+{
+  "header": {
+    "replayFormatVersion": 1,
+    "runtime": "realtime",
+    "gameId": "badminton",
+    "gameVersion": "1.0.0",
+    "tickRate": 60,
+    "rng": {
+      "algorithm": "fnv1a32-counter-v1",
+      "seed": "badminton-golden-seed"
+    },
+    "initialConfig": {
+      "targetScore": 7
+    },
+    "players": [
+      {
+        "slotId": "left-slot"
+      },
+      {
+        "slotId": "right-slot"
+      }
+    ]
+  },
+  "events": [],
+  "recordedRngCursor": 0,
+  "recordedOutcome": {
+    "type": "WIN",
+    "reason": "SCORE",
+    "winnerSlotId": "left-slot",
+    "scores": [7, 0]
+  },
+  "finalTick": 1982
+}

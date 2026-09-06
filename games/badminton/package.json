@@ -1,0 +1,38 @@
+{
+  "name": "@online-game-hub/badminton",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "sideEffects": false,
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    "./manifest": {
+      "types": "./dist/manifest.d.ts",
+      "import": "./dist/manifest.js"
+    },
+    "./core": {
+      "types": "./dist/core/index.d.ts",
+      "import": "./dist/core/index.js"
+    },
+    "./setup": {
+      "types": "./dist/setup/index.d.ts",
+      "import": "./dist/setup/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run",
+    "test:golden": "vitest run tests/golden-replay.test.ts",
+    "typecheck": "tsc -p tsconfig.json && tsc -p tests/tsconfig.json"
+  },
+  "dependencies": {
+    "@online-game-hub/game-setup": "workspace:*",
+    "@online-game-hub/realtime-game-sdk": "workspace:*",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.3"
+  }
+}
