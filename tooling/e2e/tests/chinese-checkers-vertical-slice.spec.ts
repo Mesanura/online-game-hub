@@ -382,17 +382,6 @@ test("three accounts configure camps in the independent Surface, rematch with co
       await expect(targetCell).toBeInViewport();
     }
   }
-  const visualBoard = chineseCheckersSurface(pageA).locator(
-    ".chinese-checkers-board",
-  );
-  await expect(visualBoard).toHaveScreenshot(
-    "chinese-checkers-six-point-board.png",
-    {
-      animations: "disabled",
-      maxDiffPixelRatio: 0.01,
-    },
-  );
-
   const source = chineseCheckersSurface(pageA)
     .locator('[data-legal-source="true"]')
     .first();

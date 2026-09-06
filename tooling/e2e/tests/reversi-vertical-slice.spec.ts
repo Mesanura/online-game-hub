@@ -338,28 +338,6 @@ test("two accounts complete authoritative Reversi with flips and a non-full term
   await expectResponsiveReversiBoard(pageA);
   const initialBoardGeometry = await readReversiBoardGeometry(pageA);
   expectSquareReversiGrid(initialBoardGeometry);
-  await reversiSurface(pageA)
-    .locator(".board")
-    .evaluate((board) => {
-      const visualFixture = board.cloneNode(true) as HTMLElement;
-      visualFixture.classList.add("board-visual-fixture");
-      visualFixture.setAttribute("aria-hidden", "true");
-      const style = visualFixture.style;
-      style.setProperty("position", "fixed", "important");
-      style.setProperty("inset", "100px auto auto 200px", "important");
-      style.setProperty("z-index", "100", "important");
-      style.setProperty("pointer-events", "none", "important");
-      style.setProperty("margin", "0", "important");
-      style.setProperty("width", "400px", "important");
-      style.setProperty("height", "400px", "important");
-      document.body.append(visualFixture);
-    });
-  const visualBoard = reversiSurface(pageA).locator(".board-visual-fixture");
-  await expect(visualBoard).toHaveScreenshot("reversi-warm-clay-board.png", {
-    animations: "disabled",
-    maxDiffPixelRatio: 0.01,
-  });
-  await visualBoard.evaluate((board) => board.remove());
 
   const illegalCell = reversiSurface(pageB).locator('[data-cell-index="37"]');
   await expect(illegalCell).toBeDisabled();

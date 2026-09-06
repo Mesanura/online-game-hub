@@ -364,6 +364,12 @@ Harness 为 Web 预留随机 loopback port，并用 `port: 0` 启动正式 ticke
 
 断言优先使用可访问 role/test id 和用户可见文本；legacy Client Module 的恶意 intent case 只保留在兼容组件/Host 测试，不再代表 Web 渲染路径；sandboxed Surface 不通过篡改 iframe 内框架私有属性制造攻击，权威负例由 Bridge contract 与 V6 integration 覆盖。Web unit contract 还须以源码边界断言 live room/replay 不导入 legacy loader、公共 CSS 不含游戏专属 selector。Playwright trace/video 关闭，避免 bearer ticket 进入测试制品；失败 screenshot 只包含不显示 credential 的 UI。harness 在 `afterAll` 对两个进程执行停止清理。
 
+### 10.1 布局回归与失败截图
+
+E2E 使用真实 DOM/SVG 几何、布局和交互断言，不使用 `toHaveScreenshot()` 等图片像素比对，也不维护平台截图基线，避免系统字体和抗锯齿差异导致误报。棋盘布局必须使用自然尺寸，不为截图注入固定宽高或克隆棋盘；保留各游戏的棋位、连线、营地形状、坐标对齐、视口适配及触屏尺寸断言，以及完整联机、重连、排名、重开和数据库回放测试。
+
+Playwright 保留 `screenshot: "only-on-failure"`，只在测试失败后生成排障截图，不与基线比对，也不作为测试通过条件。继续关闭 trace/video，避免身份凭据进入制品。
+
 ## 11. Change-to-Test Matrix
 
 | 改动                    | 最低检查                                                              |
@@ -451,7 +457,7 @@ Hex Surface 迁移以一个 artifact 精确覆盖 `1.0.0`；E2E 必须覆盖 Set
 
 Chinese Checkers Surface `1.1.0` 精确覆盖规则 `1.0.0` 与 `1.1.0`。Core tests 必须逐空格匹配 GAME_SPEC 的 ASCII 图，验证中央 37 格、六个边长 3 的正三角形、60° 旋转对称、180 条互为邻接的等距边和六方向跳跃。独立 Surface tests 使用两个版本的公开 projected fixtures，验证新版 geometry 与旧 162 边拓扑隔离、严格 schema 和缺失 geometry 时 fail closed。
 
-中国跳棋 E2E 必须覆盖三人 Setup/Play/Replay iframe、逐行棋位数 `1,2,3,10,9,8,7,8,9,10,3,2,1`、所有棋位实际屏幕坐标、圆形按钮、SVG 端点对齐及 180 条等长连线；桌面/平板横竖屏及 2560×1440 的 100%/150% 等效视口不得拉伸或溢出，390×844 与 844×390 触屏保留至少 44px 棋位并可滚动到所有角。截图使用自然布局，禁止给棋盘注入测试专用宽高来掩盖错误。继续验证棋子跨营地后保持玩家颜色、服务器 `legalMoves`、三人排名、下一局完整设置复用和 PostgreSQL exact 回放；Surface 不得搜索跳跃路径、推导当前玩家或生成排名/Outcome。
+中国跳棋 E2E 必须覆盖三人 Setup/Play/Replay iframe、逐行棋位数 `1,2,3,10,9,8,7,8,9,10,3,2,1`、所有棋位实际屏幕坐标、圆形按钮、SVG 端点对齐及 180 条等长连线；桌面/平板横竖屏及 2560×1440 的 100%/150% 等效视口不得拉伸或溢出，390×844 与 844×390 触屏保留至少 44px 棋位并可滚动到所有角。几何断言使用自然布局，禁止给棋盘注入测试专用宽高来掩盖错误。继续验证棋子跨营地后保持玩家颜色、服务器 `legalMoves`、三人排名、下一局完整设置复用和 PostgreSQL exact 回放；Surface 不得搜索跳跃路径、推导当前玩家或生成排名/Outcome。
 
 所有当前支持 `gameVersion` 的 golden replay：
 
