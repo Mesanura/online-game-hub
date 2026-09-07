@@ -12,10 +12,12 @@ import {
   chineseCheckersSetupViewSchema,
 } from "../src/contracts";
 import {
+  campLabels,
   createCampIntent,
   createMovePieceIntent,
   createPlayerCountIntent,
   createResignIntent,
+  createStarterCampIntent,
   createStarterIntent,
   legalTargetsForSelection,
   outcomeLabel,
@@ -68,8 +70,75 @@ describe("Chinese Checkers Surface model", () => {
       chineseCheckersSetupIntentSchema.parse(createCampIntent("NE")),
     ).toEqual({ type: "SELECT_CAMP", camp: "NE" });
     expect(
-      chineseCheckersSetupIntentSchema.parse(createStarterIntent("OWNER")),
-    ).toEqual({ type: "SELECT_STARTER", starter: "OWNER" });
+      chineseCheckersSetupIntentSchema.parse(createStarterIntent("RANDOM")),
+    ).toEqual({ type: "SELECT_STARTER", starter: "RANDOM" });
+    for (const camp of CHINESE_CHECKERS_CAMPS) {
+      expect(
+        chineseCheckersSetupIntentSchema.parse(createStarterCampIntent(camp)),
+      ).toEqual({ type: "SELECT_STARTER_CAMP", camp });
+    }
+  });
+
+  it("numbers every camp clockwise from north", () => {
+    expect(CHINESE_CHECKERS_CAMPS.map((camp) => campLabels[camp])).toEqual([
+      "北营地（1号）",
+      "东北营地（2号）",
+      "东南营地（3号）",
+      "南营地（4号）",
+      "西南营地（5号）",
+      "西北营地（6号）",
+    ]);
+  });
+
+  it("waits for the specified camp and retains the actual camp on rematch", () => {
+    const setup = chineseCheckersSetupViewSchema.parse({
+      targetPlayerCount: 3,
+      starter: "CAMP",
+      fixedStarterSlotId: null,
+      starterCamp: "NW",
+      participants: [
+        { slotId: "slot-1", isOwner: true, camp: "N" },
+        { slotId: "slot-2", isOwner: false, camp: "S" },
+        { slotId: "slot-3", isOwner: false, camp: "NE" },
+      ],
+      canEditRules: true,
+      canSelectCamp: true,
+      yourCamp: "N",
+    });
+    expect(setupStatusLabel(setup)).toBe(
+      "等待玩家选择西北营地（6号），或请房主重新指定首位",
+    );
+    expect(setupStatusLabel({ ...setup, starterCamp: "NE" })).toBe(
+      "设置完成，所有参与者可以分别准备",
+    );
+    const rematch = chineseCheckersSetupViewSchema.parse({
+      ...setup,
+      starter: "FIXED",
+      fixedStarterSlotId: "slot-3",
+      starterCamp: "NE",
+    });
+    expect(rematch.starterCamp).toBe("NE");
+    expect(setupStatusLabel(rematch)).toBe("沿用上一局的完整营地与实际顺序");
+    expect(
+      chineseCheckersSetupViewSchema.safeParse({ ...setup, starterCamp: null })
+        .success,
+    ).toBe(false);
+    expect(
+      chineseCheckersSetupViewSchema.safeParse({
+        ...setup,
+        fixedStarterSlotId: "slot-1",
+      }).success,
+    ).toBe(false);
+    for (const intent of [
+      { type: "SELECT_STARTER_CAMP", camp: "E" },
+      { type: "SELECT_STARTER_CAMP", camp: 1 },
+      { type: "SELECT_STARTER_CAMP", camp: null },
+      { type: "SELECT_STARTER_CAMP", camp: "N", actor: "slot-1" },
+    ]) {
+      expect(chineseCheckersSetupIntentSchema.safeParse(intent).success).toBe(
+        false,
+      );
+    }
   });
 
   it("lays out the projected 13-row star with equal spacing and triangular camps", () => {
@@ -242,13 +311,13 @@ describe("Chinese Checkers Surface model", () => {
         ],
       },
     });
-    expect(outcomeLabel(terminal)).toBe("第一名：北营地");
+    expect(outcomeLabel(terminal)).toBe("第一名：北营地（1号）");
     expect(resultSummary(terminal)).toEqual({
       tone: "win",
       headline: "你获得第 1 名",
       details: [
-        "第 1 名：北营地（最后一名未排名玩家）",
-        "第 2 名：南营地（投降）",
+        "第 1 名：北营地（1号）（最后一名未排名玩家）",
+        "第 2 名：南营地（4号）（投降）",
       ],
     });
   });

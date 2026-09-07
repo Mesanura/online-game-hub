@@ -73,12 +73,12 @@ export const chineseCheckersViewSchema = z
   .strict();
 
 const campLabels: Record<ChineseCheckersCamp, string> = {
-  N: "北营地",
-  NE: "东北营地",
-  SE: "东南营地",
-  S: "南营地",
-  SW: "西南营地",
-  NW: "西北营地",
+  N: "北营地（1号）",
+  NE: "东北营地（2号）",
+  SE: "东南营地（3号）",
+  S: "南营地（4号）",
+  SW: "西南营地（5号）",
+  NW: "西北营地（6号）",
 };
 
 const campColors: Record<ChineseCheckersCamp, string> = {

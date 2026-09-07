@@ -254,12 +254,12 @@ describe("explicit game registry", () => {
         setupProtocol: 6,
         presentation: {
           kind: "surface-v1",
-          publicBasePath: "/game-surfaces/chinese-checkers/1.1.0",
+          publicBasePath: "/game-surfaces/chinese-checkers/1.1.1",
           artifact: {
             supportedGameVersions: ["1.0.0", "1.1.0"],
-            surfaceVersion: "1.1.0",
+            surfaceVersion: "1.1.1",
             contentDigest:
-              "sha256-2UBPd5lrwnaDqgEF0SYSanUGiisL2BcWZswnNC7n2oU=",
+              "sha256-1KN8MRLajLvX7ABYV+JyEgzl54TsyaqZVP0U5+jQuDs=",
           },
         },
         platformControls: ["RESIGN"],
@@ -270,10 +270,10 @@ describe("explicit game registry", () => {
         ).toMatchObject({
           gameId: "chinese-checkers",
           gameVersion,
-          surfaceVersion: "1.1.0",
+          surfaceVersion: "1.1.1",
           mode,
           platformControls: ["RESIGN"],
-          url: `/game-surfaces/chinese-checkers/1.1.0/${mode}/index.html`,
+          url: `/game-surfaces/chinese-checkers/1.1.1/${mode}/index.html`,
         });
       }
     }

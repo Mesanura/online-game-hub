@@ -20,6 +20,7 @@ const starterSelectionSchema = z.enum([
   "NON_OWNER",
   "RANDOM",
   "FIXED",
+  "CAMP",
 ]);
 const selectableStarterSchema = z.enum(["OWNER", "NON_OWNER", "RANDOM"]);
 const campSchema = z.enum(CHINESE_CHECKERS_CAMP_OPTIONS);
@@ -35,6 +36,7 @@ export const chineseCheckersSetupStateSchema = z
     targetPlayerCount: z.number().int().min(2).max(6),
     starter: starterSelectionSchema,
     fixedStarterSlotId: z.string().min(1).nullable(),
+    starterCamp: campSchema.nullable().default(null),
     assignments: z.array(assignmentSchema).max(6),
   })
   .strict()
@@ -43,6 +45,12 @@ export const chineseCheckersSetupStateSchema = z
       context.addIssue({
         code: "custom",
         message: "FIXED starter must identify exactly one stable slot.",
+      });
+    }
+    if ((state.starter === "CAMP") !== (state.starterCamp !== null)) {
+      context.addIssue({
+        code: "custom",
+        message: "CAMP starter must identify exactly one camp.",
       });
     }
     if (
@@ -85,6 +93,12 @@ export const chineseCheckersSetupActionSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("CLEAR_CAMP") }).strict(),
   z
     .object({
+      type: z.literal("SELECT_STARTER_CAMP"),
+      camp: campSchema,
+    })
+    .strict(),
+  z
+    .object({
       type: z.literal("SELECT_STARTER"),
       starter: selectableStarterSchema,
     })
@@ -108,6 +122,7 @@ export const chineseCheckersSetupViewSchema = z
     targetPlayerCount: z.number().int().min(2).max(6),
     starter: starterSelectionSchema,
     fixedStarterSlotId: z.string().min(1).nullable(),
+    starterCamp: campSchema.nullable().default(null),
     participants: z.array(setupParticipantSchema).max(6),
     canEditRules: z.boolean(),
     canSelectCamp: z.boolean(),
@@ -115,6 +130,18 @@ export const chineseCheckersSetupViewSchema = z
   })
   .strict()
   .superRefine((view, context) => {
+    if ((view.starter === "FIXED") !== (view.fixedStarterSlotId !== null)) {
+      context.addIssue({
+        code: "custom",
+        message: "FIXED starter must identify exactly one stable slot.",
+      });
+    }
+    if (view.starter === "CAMP" && view.starterCamp === null) {
+      context.addIssue({
+        code: "custom",
+        message: "CAMP starter must identify exactly one camp.",
+      });
+    }
     if (
       new Set(view.participants.map((participant) => participant.slotId))
         .size !== view.participants.length
@@ -192,7 +219,9 @@ function setupIsComplete(
   const camps = participants.map((slot) => assignmentFor(state, slot.slotId));
   return (
     camps.every((camp) => camp !== null) &&
-    new Set(camps).size === participants.length
+    new Set(camps).size === participants.length &&
+    (state.starter !== "CAMP" ||
+      (state.starterCamp !== null && camps.includes(state.starterCamp)))
   );
 }
 
@@ -212,6 +241,24 @@ function counterclockwiseOrder(
       )
     );
   });
+}
+
+function selectedStarterCamp(
+  state: Readonly<ChineseCheckersSetupState>,
+  participants: readonly SetupSlot[],
+): ChineseCheckersCamp | null {
+  if (state.starter === "CAMP") return state.starterCamp;
+  const starterSlotId =
+    state.starter === "FIXED"
+      ? state.fixedStarterSlotId
+      : state.starter === "OWNER"
+        ? participants.find((slot) => slot.isOwner)?.slotId
+        : state.starter === "NON_OWNER"
+          ? counterclockwiseOrder(state, participants).find(
+              (slot) => !slot.isOwner,
+            )?.slotId
+          : null;
+  return starterSlotId == null ? null : assignmentFor(state, starterSlotId);
 }
 
 function rotateFromStarter(
@@ -252,10 +299,19 @@ function finalizeOrder(
     return order === undefined ? undefined : { order, rng: { ...rng } };
   }
   if (state.starter === "RANDOM") {
-    const random = nextSetupInt(rng, 2);
-    const starterSlotId = random.value === 0 ? owner.slotId : firstNonOwner;
+    const random = nextSetupInt(rng, orderedSlotIds.length);
+    const starterSlotId = orderedSlotIds[random.value];
+    if (starterSlotId === undefined) return undefined;
     const order = rotateFromStarter(orderedSlotIds, starterSlotId);
     return order === undefined ? undefined : { order, rng: random.next };
+  }
+  if (state.starter === "CAMP") {
+    const starterSlotId = state.assignments.find(
+      (entry) => entry.camp === state.starterCamp,
+    )?.slotId;
+    if (starterSlotId === undefined) return undefined;
+    const order = rotateFromStarter(orderedSlotIds, starterSlotId);
+    return order === undefined ? undefined : { order, rng: { ...rng } };
   }
   if (state.starter === "FIXED" && state.fixedStarterSlotId !== null) {
     const order = rotateFromStarter(orderedSlotIds, state.fixedStarterSlotId);
@@ -292,6 +348,7 @@ export const chineseCheckersSetupDefinition = Object.freeze({
           : 2,
       starter: previousStarter === null ? "UNSELECTED" : "FIXED",
       fixedStarterSlotId: previousStarter,
+      starterCamp: null,
       assignments: initializeAssignments(context.source, context.slots),
     });
   },
@@ -313,6 +370,25 @@ export const chineseCheckersSetupDefinition = Object.freeze({
       };
     }
 
+    if (context.action.type === "SELECT_STARTER_CAMP") {
+      if (!context.isOwner) return { status: "rejected", code: "NOT_OWNER" };
+      if (
+        context.state.starter === "CAMP" &&
+        context.state.starterCamp === context.action.camp
+      ) {
+        return { status: "rejected", code: "SETUP_UNCHANGED" };
+      }
+      return {
+        status: "accepted",
+        state: Object.freeze({
+          ...context.state,
+          starter: "CAMP",
+          fixedStarterSlotId: null,
+          starterCamp: context.action.camp,
+        }),
+      };
+    }
+
     if (context.action.type === "SELECT_STARTER") {
       if (!context.isOwner) return { status: "rejected", code: "NOT_OWNER" };
       if (
@@ -327,6 +403,7 @@ export const chineseCheckersSetupDefinition = Object.freeze({
           ...context.state,
           starter: context.action.starter,
           fixedStarterSlotId: null,
+          starterCamp: null,
         }),
       };
     }
@@ -400,6 +477,10 @@ export const chineseCheckersSetupDefinition = Object.freeze({
       targetPlayerCount: context.state.targetPlayerCount,
       starter: context.state.starter,
       fixedStarterSlotId: context.state.fixedStarterSlotId,
+      starterCamp: selectedStarterCamp(
+        context.state,
+        occupiedSlots(context.slots),
+      ),
       participants: occupiedSlots(context.slots).map((slot) => ({
         slotId: slot.slotId,
         isOwner: slot.isOwner,

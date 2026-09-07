@@ -14,10 +14,12 @@ import {
 } from "./contracts";
 import {
   campForSlot,
+  campLabels,
   createCampIntent,
   createMovePieceIntent,
   createPlayerCountIntent,
   createResignIntent,
+  createStarterCampIntent,
   createStarterIntent,
   legalTargetsForSelection,
   outcomeLabel,
@@ -44,15 +46,6 @@ interface RuntimeState {
   readonly error: string | null;
   readonly disposed: boolean;
 }
-
-const campLabels: Readonly<Record<ChineseCheckersCamp, string>> = {
-  N: "北营地",
-  NE: "东北营地",
-  SE: "东南营地",
-  S: "南营地",
-  SW: "西南营地",
-  NW: "西北营地",
-};
 
 function modeFromLocation(): SurfaceMode {
   if (window.location.pathname.includes("/setup/")) return "setup";
@@ -250,10 +243,15 @@ function renderSetup(
     )
     .join("");
   const starters = [
-    ["OWNER", "房主首位", "由房主所在营地开始"],
-    ["NON_OWNER", "其他玩家首位", "按营地逆时针选择首位非房主"],
-    ["RANDOM", "随机首位", "服务端在房主与首位非房主之间决定"],
+    ["CAMP", "指定首位", "选择本局最先行动的营地"],
+    ["RANDOM", "随机首位", "服务端从所有参赛营地中随机选择"],
   ] as const;
+  const specifiedStarter =
+    view.starter !== "UNSELECTED" && view.starter !== "RANDOM";
+  const starterCamps = CHINESE_CHECKERS_CAMPS.map(
+    (camp) =>
+      `<option ${view.starterCamp === camp ? "selected" : ""} value="${camp}">${campLabels[camp]}</option>`,
+  ).join("");
   const participantCamps = new Set(
     view.participants.flatMap((participant) =>
       participant.camp === null ? [] : [participant.camp],
@@ -278,9 +276,11 @@ function renderSetup(
     <section aria-labelledby="starter-title"><h2 id="starter-title">本局首位</h2><div class="starter-options" role="group" aria-label="首位规则">${starters
       .map(
         ([value, label, description]) =>
-          `<button aria-pressed="${String(view.starter === value)}" data-starter="${value}" ${disabled || !view.canEditRules ? "disabled" : ""} type="button"><strong>${label}</strong><span>${description}</span></button>`,
+          `<button aria-pressed="${String(value === "CAMP" ? specifiedStarter : view.starter === value)}" data-starter="${value}" ${disabled || !view.canEditRules ? "disabled" : ""} type="button"><strong>${label}</strong><span>${description}</span></button>`,
       )
-      .join("")}</div></section></div>
+      .join(
+        "",
+      )}</div>${specifiedStarter ? `<label class="starter-camp">首位营地<select aria-describedby="starter-camp-hint" data-starter-camp ${disabled || !view.canEditRules ? "disabled" : ""}>${view.starterCamp === null ? '<option selected disabled value="">请选择营地</option>' : ""}${starterCamps}</select></label><p class="footnote" id="starter-camp-hint">从北开始顺时针编号；指定营地须有玩家参与。</p>` : ""}</section></div>
     <ol aria-label="参赛席位" class="participant-list">${participants}</ol>
     <p class="footnote">营地决定逆时针顺序；设置完成后每位参赛者仍需分别准备。</p>
     <div class="surface-meta" aria-live="polite">${renderStatus(hostState)}</div>
@@ -418,15 +418,23 @@ function bindSetupControls(): void {
     .querySelectorAll<HTMLButtonElement>("[data-starter]")
     .forEach((button) => {
       button.addEventListener("click", () => {
+        if (button.getAttribute("aria-pressed") === "true") return;
         const starter = button.dataset.starter;
-        if (
-          starter === "OWNER" ||
-          starter === "NON_OWNER" ||
-          starter === "RANDOM"
-        ) {
+        if (starter === "CAMP") {
+          const view = runtime.payload as ChineseCheckersSetupView;
+          submitIntent(createStarterCampIntent(view.starterCamp ?? "N"));
+        } else if (starter === "RANDOM") {
           submitIntent(createStarterIntent(starter));
         }
       });
+    });
+  surfaceRoot
+    .querySelector<HTMLSelectElement>("[data-starter-camp]")
+    ?.addEventListener("change", (event) => {
+      const camp = (event.currentTarget as HTMLSelectElement).value;
+      if (CHINESE_CHECKERS_CAMPS.includes(camp as ChineseCheckersCamp)) {
+        submitIntent(createStarterCampIntent(camp as ChineseCheckersCamp));
+      }
     });
   surfaceRoot
     .querySelectorAll<HTMLButtonElement>("[data-camp-option]")

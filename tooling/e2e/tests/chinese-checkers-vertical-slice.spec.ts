@@ -232,10 +232,22 @@ test("three accounts configure camps in the independent Surface, rematch with co
   await expect(pageA.getByTestId("match-status")).toHaveCount(0);
   await expect(pageA.getByTestId("game-surface-iframe")).toHaveAttribute(
     "src",
-    "/game-surfaces/chinese-checkers/1.1.0/setup/index.html",
+    "/game-surfaces/chinese-checkers/1.1.1/setup/index.html",
   );
 
   const setupA = chineseCheckersSurface(pageA);
+  await expect(
+    setupA.getByRole("group", { name: "首位规则" }).getByRole("button"),
+  ).toHaveCount(2);
+  await expect(setupA.locator('[data-starter="CAMP"]')).toContainText(
+    "指定首位",
+  );
+  await expect(setupA.locator('[data-starter="RANDOM"]')).toContainText(
+    "随机首位",
+  );
+  await expect(
+    setupA.getByRole("button", { name: /房主首位|其他玩家首位/u }),
+  ).toHaveCount(0);
   await setupA.locator("[data-player-count]").selectOption("3");
   await expect(setupA.getByTestId("setup-status")).toContainText(
     "等待 3 位玩家",
@@ -243,8 +255,43 @@ test("three accounts configure camps in the independent Surface, rematch with co
   await expectSetupIntentSettled(setupA);
   await setupA.locator('[data-camp-option="N"]').click();
   await expectSetupIntentSettled(setupA);
-  await setupA.locator('[data-starter="OWNER"]').click();
+  await setupA.locator('[data-starter="CAMP"]').click();
   await expectSetupIntentSettled(setupA);
+  await expect(setupA.getByLabel("首位营地").locator("option")).toHaveText([
+    "北营地（1号）",
+    "东北营地（2号）",
+    "东南营地（3号）",
+    "南营地（4号）",
+    "西南营地（5号）",
+    "西北营地（6号）",
+  ]);
+  await expect(setupA.locator("[data-camp-option] strong")).toHaveText([
+    "北营地（1号）",
+    "东北营地（2号）",
+    "东南营地（3号）",
+    "南营地（4号）",
+    "西南营地（5号）",
+    "西北营地（6号）",
+  ]);
+  await setupA.getByLabel("首位营地").selectOption("NE");
+  await expectSetupIntentSettled(setupA);
+  for (const viewport of [
+    { width: 390, height: 844 },
+    { width: 844, height: 390 },
+    { width: 1280, height: 720 },
+  ]) {
+    await pageA.setViewportSize(viewport);
+    await setupA.getByLabel("首位营地").scrollIntoViewIfNeeded();
+    await expect(setupA.getByLabel("首位营地")).toBeInViewport();
+    const layout = await setupA.locator(".setup-card").evaluate((card) => ({
+      overflow: card.scrollWidth - card.clientWidth,
+      selectHeight: card
+        .querySelector("[data-starter-camp]")
+        ?.getBoundingClientRect().height,
+    }));
+    expect(layout.overflow).toBeLessThanOrEqual(1);
+    expect(layout.selectHeight).toBeGreaterThanOrEqual(44);
+  }
 
   const inviteUrl = await pageA.getByTestId("invite-link").getAttribute("href");
   if (inviteUrl === null) {
@@ -267,6 +314,10 @@ test("three accounts configure camps in the independent Surface, rematch with co
   );
   const setupB = chineseCheckersSurface(pageB);
   const setupC = chineseCheckersSurface(pageC);
+  await expect(setupB.getByLabel("首位营地")).toHaveValue("NE");
+  await expect(setupB.getByLabel("首位营地")).toBeDisabled();
+  await expect(setupB.locator('[data-starter="CAMP"]')).toBeDisabled();
+  await expect(setupB.locator('[data-starter="RANDOM"]')).toBeDisabled();
   await setupB.locator('[data-camp-option="S"]').click();
   await expectSetupIntentSettled(setupB);
   await setupC.locator('[data-camp-option="NE"]').click();
@@ -274,6 +325,43 @@ test("three accounts configure camps in the independent Surface, rematch with co
   await expect(setupA.getByTestId("setup-status")).toHaveText(
     "设置完成，所有参与者可以分别准备",
   );
+  await setupA.getByLabel("首位营地").selectOption("NW");
+  await expectSetupIntentSettled(setupA);
+  await expect(setupA.getByTestId("setup-status")).toHaveText(
+    "等待玩家选择西北营地（6号），或请房主重新指定首位",
+  );
+  await expect(pageA.getByTestId("toggle-round-ready")).toBeDisabled();
+  await setupA.getByLabel("首位营地").selectOption("NE");
+  await expectSetupIntentSettled(setupA);
+  await pageA.getByTestId("toggle-round-ready").click();
+  await expect(pageB.getByTestId("round-setup-status")).toHaveText(
+    "1/3 人已准备",
+  );
+  await setupA.getByLabel("首位营地").selectOption("S");
+  await expectSetupIntentSettled(setupA);
+  await expect
+    .poll(async () => {
+      const room = await harness.gameServer.roomStore.getByRoomCode(roomCode);
+      return room?.nextRoundSetup?.readySlotIds;
+    })
+    .toEqual([]);
+  await setupA.locator('[data-starter="RANDOM"]').click();
+  await expectSetupIntentSettled(setupA);
+  await expect(setupA.getByLabel("首位营地")).toHaveCount(0);
+  await expect(setupA.locator('[data-starter="RANDOM"]')).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await expect
+    .poll(async () => {
+      const room = await harness.gameServer.roomStore.getByRoomCode(roomCode);
+      return room?.nextRoundSetup?.setupState;
+    })
+    .toMatchObject({ starter: "RANDOM", starterCamp: null });
+  await setupA.locator('[data-starter="CAMP"]').click();
+  await expectSetupIntentSettled(setupA);
+  await setupA.getByLabel("首位营地").selectOption("NE");
+  await expectSetupIntentSettled(setupA);
 
   const slotA = (await pageA.getByTestId("player-slot").textContent())?.trim();
   const slotB = (await pageB.getByTestId("player-slot").textContent())?.trim();
@@ -297,8 +385,9 @@ test("three accounts configure camps in the independent Surface, rematch with co
     nextRoundSetup: {
       setupState: {
         targetPlayerCount: 3,
-        starter: "OWNER",
+        starter: "CAMP",
         fixedStarterSlotId: null,
+        starterCamp: "NE",
         assignments: setupAssignmentsByStableSlot,
       },
       readySlotIds: [],
@@ -321,7 +410,7 @@ test("three accounts configure camps in the independent Surface, rematch with co
     await expect(page.getByTestId("room-code")).toHaveText(roomCode);
     await expect(page.getByTestId("game-surface-iframe")).toHaveAttribute(
       "src",
-      "/game-surfaces/chinese-checkers/1.1.0/play/index.html",
+      "/game-surfaces/chinese-checkers/1.1.1/play/index.html",
     );
     const surface = chineseCheckersSurface(page);
     await expect(
@@ -348,13 +437,19 @@ test("three accounts configure camps in the independent Surface, rematch with co
   }
   await expect(
     chineseCheckersSurface(pageA).getByTestId("player-camp"),
-  ).toContainText("北营地");
+  ).toContainText("北营地（1号）");
   await expect(
     chineseCheckersSurface(pageB).getByTestId("player-camp"),
-  ).toContainText("南营地");
+  ).toContainText("南营地（4号）");
   await expect(
     chineseCheckersSurface(pageC).getByTestId("player-camp"),
-  ).toContainText("东北营地");
+  ).toContainText("东北营地（2号）");
+  await expect(
+    chineseCheckersSurface(pageC).getByTestId("turn-status"),
+  ).toContainText("轮到你行动");
+  await expect(
+    chineseCheckersSurface(pageA).locator("[data-cell-index]:not(:disabled)"),
+  ).toHaveCount(0);
   await expect(
     chineseCheckersSurface(pageB).locator("[data-cell-index]:not(:disabled)"),
   ).toHaveCount(0);
@@ -382,12 +477,12 @@ test("three accounts configure camps in the independent Surface, rematch with co
       await expect(targetCell).toBeInViewport();
     }
   }
-  const source = chineseCheckersSurface(pageA)
+  const source = chineseCheckersSurface(pageC)
     .locator('[data-legal-source="true"]')
     .first();
   await expect(source).toBeEnabled();
   await source.click();
-  const target = chineseCheckersSurface(pageA)
+  const target = chineseCheckersSurface(pageC)
     .locator(".is-legal-target:not(:disabled)")
     .first();
   await expect(target).toBeVisible();
@@ -399,10 +494,10 @@ test("three accounts configure camps in the independent Surface, rematch with co
   const movedPiece = chineseCheckersSurface(pageA).locator(
     `[data-cell-index="${targetCell}"]`,
   );
-  await expect(movedPiece).toHaveAttribute("data-piece-camp", "N");
+  await expect(movedPiece).toHaveAttribute("data-piece-camp", "NE");
   await expect(movedPiece.locator(".chinese-checkers-piece")).toHaveCSS(
     "background-color",
-    "rgb(233, 111, 106)",
+    "rgb(224, 170, 50)",
   );
 
   await Promise.all([pageB, pageC].map((page) => openGameHud(page)));
@@ -435,7 +530,8 @@ test("three accounts configure camps in the independent Surface, rematch with co
       setupState: {
         targetPlayerCount: 3,
         starter: "FIXED",
-        fixedStarterSlotId: slotA,
+        fixedStarterSlotId: slotC,
+        starterCamp: null,
         assignments: setupAssignmentsByStableSlot,
       },
       setupRevision: 0,
@@ -472,7 +568,7 @@ test("three accounts configure camps in the independent Surface, rematch with co
       await expect(page.getByTestId("revision")).toHaveText("0");
       await expect(page.getByTestId("game-surface-iframe")).toHaveAttribute(
         "src",
-        "/game-surfaces/chinese-checkers/1.1.0/play/index.html",
+        "/game-surfaces/chinese-checkers/1.1.1/play/index.html",
       );
       await expect(
         chineseCheckersSurface(page).locator('[data-occupied="true"]'),
@@ -486,11 +582,11 @@ test("three accounts configure camps in the independent Surface, rematch with co
     participantSlotIds: setupAssignmentsByStableSlot.map(
       (assignment) => assignment.slotId,
     ),
-    playerOrder: [slotA, slotB, slotC],
+    playerOrder: [slotC, slotA, slotB],
     assignments: [
+      { slotId: slotC, assignment: "NE" },
       { slotId: slotA, assignment: "N" },
       { slotId: slotB, assignment: "S" },
-      { slotId: slotC, assignment: "NE" },
     ],
   });
 
@@ -529,9 +625,9 @@ test("three accounts configure camps in the independent Surface, rematch with co
       replayStore.get(roundTwo.replayId),
     ]);
     const expectedPlayers = [
+      { slotId: slotC, assignment: "NE" },
       { slotId: slotA, assignment: "N" },
       { slotId: slotB, assignment: "S" },
-      { slotId: slotC, assignment: "NE" },
     ];
     expect(roundOneReplay?.header.players).toEqual(expectedPlayers);
     expect(roundTwoReplay?.header.players).toEqual(expectedPlayers);
@@ -594,7 +690,7 @@ test("three accounts configure camps in the independent Surface, rematch with co
   await expect(pageA.getByTestId("replay-page")).toBeVisible();
   await expect(pageA.getByTestId("game-surface-iframe")).toHaveAttribute(
     "src",
-    "/game-surfaces/chinese-checkers/1.1.0/replay/index.html",
+    "/game-surfaces/chinese-checkers/1.1.1/replay/index.html",
   );
   const replaySurface = chineseCheckersSurface(pageA);
   await expect(
@@ -613,7 +709,7 @@ test("three accounts configure camps in the independent Surface, rematch with co
     replaySurface.getByRole("list", { name: "最终排名" }).getByRole("listitem"),
   ).toHaveCount(3);
   await expect(replaySurface.getByTestId("turn-status")).toContainText(
-    "第一名：北营地",
+    "第一名：北营地（1号）",
   );
   expect(browserErrors).toEqual([]);
   await Promise.all([contextA.close(), contextB.close(), contextC.close()]);

@@ -98,7 +98,8 @@ h2 {
   color: #6f6357;
 }
 
-.player-count {
+.player-count,
+.starter-camp {
   display: grid;
   gap: 0.25rem;
   flex: 0 0 auto;
@@ -107,7 +108,8 @@ h2 {
   font-weight: 750;
 }
 
-.player-count select {
+.player-count select,
+.starter-camp select {
   min-width: 6rem;
   min-height: 2.5rem;
   padding: 0.35rem 0.65rem;
@@ -115,6 +117,16 @@ h2 {
   border-radius: 0.7rem;
   color: #3d342c;
   background: #fff;
+}
+
+.starter-camp {
+  margin-top: 0.65rem;
+}
+
+.starter-camp select {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
 }
 
 .setup-grid {

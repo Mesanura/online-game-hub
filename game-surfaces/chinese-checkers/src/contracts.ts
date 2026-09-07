@@ -23,6 +23,7 @@ const starterSelectionSchema = z.enum([
   "NON_OWNER",
   "RANDOM",
   "FIXED",
+  "CAMP",
 ]);
 
 const setupParticipantSchema = z
@@ -38,6 +39,7 @@ export const chineseCheckersSetupViewSchema = z
     targetPlayerCount: z.number().int().min(2).max(6),
     starter: starterSelectionSchema,
     fixedStarterSlotId: slotIdSchema.nullable(),
+    starterCamp: chineseCheckersCampSchema.nullable().default(null),
     participants: z.array(setupParticipantSchema).max(6),
     canEditRules: z.boolean(),
     canSelectCamp: z.boolean(),
@@ -49,6 +51,12 @@ export const chineseCheckersSetupViewSchema = z
       context.addIssue({
         code: "custom",
         message: "FIXED starter must identify one stable slot.",
+      });
+    }
+    if (view.starter === "CAMP" && view.starterCamp === null) {
+      context.addIssue({
+        code: "custom",
+        message: "CAMP starter must identify exactly one camp.",
       });
     }
     const slotIds = view.participants.map((participant) => participant.slotId);
@@ -242,6 +250,12 @@ export const chineseCheckersSetupIntentSchema = z.discriminatedUnion("type", [
     .object({ type: z.literal("SELECT_CAMP"), camp: chineseCheckersCampSchema })
     .strict(),
   z.object({ type: z.literal("CLEAR_CAMP") }).strict(),
+  z
+    .object({
+      type: z.literal("SELECT_STARTER_CAMP"),
+      camp: chineseCheckersCampSchema,
+    })
+    .strict(),
   z
     .object({
       type: z.literal("SELECT_STARTER"),

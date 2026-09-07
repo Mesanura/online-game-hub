@@ -227,7 +227,7 @@ const chineseCheckersSurfaceArtifactV1 = {
   schemaVersion: 1,
   gameId: "chinese-checkers",
   supportedGameVersions: ["1.0.0", "1.1.0"],
-  surfaceVersion: "1.1.0",
+  surfaceVersion: "1.1.1",
   bridgeVersion: 2,
   entrypoints: {
     setup: "setup/index.html",
@@ -235,7 +235,7 @@ const chineseCheckersSurfaceArtifactV1 = {
     replay: "replay/index.html",
   },
   capabilities: {},
-  contentDigest: "sha256-2UBPd5lrwnaDqgEF0SYSanUGiisL2BcWZswnNC7n2oU=",
+  contentDigest: "sha256-1KN8MRLajLvX7ABYV+JyEgzl54TsyaqZVP0U5+jQuDs=",
 } satisfies SurfaceArtifactManifestV1;
 
 const chineseCheckersSurface = (
@@ -248,7 +248,7 @@ const chineseCheckersSurface = (
     platformControls: resignPlatformControls,
     presentation: Object.freeze({
       kind: "surface-v1",
-      publicBasePath: "/game-surfaces/chinese-checkers/1.1.0",
+      publicBasePath: "/game-surfaces/chinese-checkers/1.1.1",
       artifact: chineseCheckersSurfaceArtifactV1,
     }),
   });
