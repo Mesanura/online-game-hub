@@ -5,8 +5,8 @@ import type {
   RealtimeRngState,
 } from "@online-game-hub/realtime-game-sdk";
 
-import { COURT, PHYSICS, scoreLimit } from "../constants.js";
-import { badmintonManifest } from "../manifest.js";
+import { COURT, PHYSICS, scoreLimit } from "../v1/constants.js";
+import { badmintonManifestV1_0_0 } from "../v1/manifest.js";
 import {
   badmintonConfigSchema,
   badmintonInputSchema,
@@ -17,16 +17,15 @@ import {
   type BadmintonOutcome,
   type BadmintonSide,
   type BadmintonState,
-} from "./schemas.js";
+} from "./v1-schemas.js";
 
-export { COURT, PHYSICS, scoreLimit } from "../constants.js";
-export { badmintonDefinitionV1_0_0 } from "./v1.js";
+export { COURT, PHYSICS, scoreLimit } from "../v1/constants.js";
 export {
   badmintonConfigSchema,
   badmintonInputSchema,
   badmintonStateSchema,
   badmintonOutcomeSchema,
-} from "./schemas.js";
+} from "./v1-schemas.js";
 export type {
   BadmintonConfig,
   BadmintonControls,
@@ -34,7 +33,7 @@ export type {
   BadmintonOutcome,
   BadmintonState,
   BadmintonSide,
-} from "./schemas.js";
+} from "./v1-schemas.js";
 
 function freeze<T>(value: T): T {
   if (value !== null && typeof value === "object") {
@@ -477,8 +476,8 @@ export function projectView(context: {
 
 export type BadmintonView = ReturnType<typeof projectView>;
 
-export const badmintonDefinition = Object.freeze({
-  manifest: badmintonManifest,
+export const badmintonDefinitionV1_0_0 = Object.freeze({
+  manifest: badmintonManifestV1_0_0,
   configSchema: badmintonConfigSchema,
   inputSchema: badmintonInputSchema,
   createInitialState,

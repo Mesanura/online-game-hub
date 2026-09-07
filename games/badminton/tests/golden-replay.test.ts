@@ -6,11 +6,11 @@ import {
 } from "@online-game-hub/realtime-game-sdk";
 import { describe, expect, it } from "vitest";
 
-import { badmintonDefinition } from "../src/core/index.js";
+import { badmintonDefinitionV1_0_0 } from "../src/core/index.js";
 
 const resolve = (gameId: string, gameVersion: string) =>
   gameId === "badminton" && gameVersion === "1.0.0"
-    ? eraseRealtimeGameDefinition(badmintonDefinition)
+    ? eraseRealtimeGameDefinition(badmintonDefinitionV1_0_0)
     : undefined;
 const fixture = (name: string) =>
   JSON.parse(
