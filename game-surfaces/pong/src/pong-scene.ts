@@ -17,7 +17,11 @@ import {
   winnerText,
 } from "./model";
 
+const COURT_BORDER_COLOR = 0xaedcd6;
+const COURT_BORDER_ALPHA = 0.72;
+
 export interface PongRenderState {
+  readonly gameVersion: string;
   readonly current: PongPlayView;
   readonly previous: PongPlayView | null;
   readonly receivedAt: number;
@@ -107,7 +111,7 @@ export class PongScene extends Phaser.Scene {
     const scaleY = 400 / PONG_FIELD_HEIGHT;
 
     this.#graphics.clear();
-    this.#graphics.lineStyle(4, 0xaedcd6, 0.72);
+    this.#graphics.lineStyle(4, COURT_BORDER_COLOR, COURT_BORDER_ALPHA);
     this.#graphics.strokeRoundedRect(4, 4, 792, 392, 10);
     this.#graphics.lineStyle(2, 0x6e8e91, 0.72);
     this.#graphics.lineBetween(400, 12, 400, 388);
@@ -128,17 +132,28 @@ export class PongScene extends Phaser.Scene {
       5,
     );
     if (serve !== null && render.current.outcome === null) {
-      if (serveArrowVisible(render.current, render.reducedMotion)) {
-        this.#graphics.save();
-        this.#graphics.translateCanvas(ballX * scaleX, ballY * scaleY);
-        this.#graphics.rotateCanvas(
-          Math.atan2(serve.directionY, serve.directionX * 2),
+      if (
+        serveArrowVisible(
+          render.current,
+          render.reducedMotion,
+          render.gameVersion,
+        )
+      ) {
+        const direction = serve.directionX;
+        const x = 400 + direction * 24;
+        this.#graphics.fillStyle(COURT_BORDER_COLOR, COURT_BORDER_ALPHA);
+        this.#graphics.fillPoints(
+          [
+            { x: x - direction * 12, y: 96 },
+            { x, y: 96 },
+            { x, y: 90 },
+            { x: x + direction * 12, y: 100 },
+            { x, y: 110 },
+            { x, y: 104 },
+            { x: x - direction * 12, y: 104 },
+          ],
+          true,
         );
-        this.#graphics.lineStyle(4, 0xfff4c7, 1);
-        this.#graphics.lineBetween(-20, 0, 20, 0);
-        this.#graphics.lineBetween(8, -12, 20, 0);
-        this.#graphics.lineBetween(8, 12, 20, 0);
-        this.#graphics.restore();
       }
     } else {
       this.#graphics.fillStyle(0xfff4c7, 1);

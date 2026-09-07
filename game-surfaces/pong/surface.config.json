@@ -1,13 +1,12 @@
 {
   "schemaVersion": 1,
   "gameId": "pong",
-  "supportedGameVersions": ["1.0.0", "1.1.0"],
-  "surfaceVersion": "1.1.0",
+  "supportedGameVersions": ["1.0.0", "1.1.0", "1.2.0"],
+  "surfaceVersion": "1.2.0",
   "bridgeVersion": 2,
   "entrypoints": {
     "setup": "setup/index.html",
-    "play": "play/index.html",
-    "replay": "replay/index.html"
+    "play": "play/index.html"
   },
   "capabilities": {}
 }

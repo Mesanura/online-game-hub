@@ -57,7 +57,9 @@ describe("explicit game registry", () => {
 
     for (const manifest of gameCatalog) {
       expect(manifest.capabilities.replay).toBe(
-        manifest.id === "badminton" ? "record-only" : "player-playback",
+        ["pong", "badminton"].includes(manifest.id)
+          ? "record-only"
+          : "player-playback",
       );
       expect(resolveGameManifest(manifest.id, manifest.gameVersion)).toBe(
         manifest,
@@ -194,33 +196,36 @@ describe("explicit game registry", () => {
         });
       }
     }
-    for (const gameVersion of ["1.0.0", "1.1.0"] as const) {
+    for (const gameVersion of ["1.0.0", "1.1.0", "1.2.0"] as const) {
       expect(resolveGameDeployment("pong", gameVersion)).toMatchObject({
         setupProtocol: 6,
         presentation: {
           kind: "surface-v1",
-          publicBasePath: "/game-surfaces/pong/1.1.0",
+          publicBasePath: "/game-surfaces/pong/1.2.0",
           artifact: {
-            supportedGameVersions: ["1.0.0", "1.1.0"],
-            surfaceVersion: "1.1.0",
+            supportedGameVersions: ["1.0.0", "1.1.0", "1.2.0"],
+            surfaceVersion: "1.2.0",
             contentDigest:
-              "sha256-3QMjyVsXSEaRhrc3LmKnNvu7aWE1qHS51vtPv+wRi5M=",
+              "sha256-fZBrN7VTxH+m+khvknmdfBF5so37gY94R6FG9/y9rQU=",
           },
         },
         platformControls: ["RESIGN"],
       });
-      for (const mode of ["setup", "play", "replay"] as const) {
+      for (const mode of ["setup", "play"] as const) {
         expect(
           resolveGameSurfaceEntrypoint("pong", gameVersion, mode),
         ).toMatchObject({
           gameId: "pong",
           gameVersion,
-          surfaceVersion: "1.1.0",
+          surfaceVersion: "1.2.0",
           mode,
           platformControls: ["RESIGN"],
-          url: `/game-surfaces/pong/1.1.0/${mode}/index.html`,
+          url: `/game-surfaces/pong/1.2.0/${mode}/index.html`,
         });
       }
+      expect(
+        resolveGameSurfaceEntrypoint("pong", gameVersion, "replay"),
+      ).toBeUndefined();
     }
     for (const gameVersion of ["1.0.0", "1.1.0"] as const) {
       expect(resolveGameDeployment("connect-four", gameVersion)).toMatchObject({
@@ -385,6 +390,7 @@ describe("explicit game registry", () => {
       ["tic-tac-toe", "1.1.0"],
       ["pong", "1.0.0"],
       ["pong", "1.1.0"],
+      ["pong", "1.2.0"],
       ["badminton", "1.0.0"],
       ["connect-four", "1.1.0"],
       ["gomoku", "1.1.0"],
@@ -439,13 +445,20 @@ describe("explicit game registry", () => {
     ).toBeDefined();
   });
 
-  it("preserves immediate-serve Pong for historical replays and uses delayed serves for new rooms", async () => {
+  it("retains both historical Pong simulations for audit and disables player playback for every version", async () => {
     const current = resolveCurrentRealtimeGameDefinition("pong");
     const legacy = resolveRealtimeGameDefinition("pong", "1.0.0");
-    expect(current?.manifest.gameVersion).toBe("1.1.0");
+    const previous = resolveRealtimeGameDefinition("pong", "1.1.0");
+    expect(current?.manifest.gameVersion).toBe("1.2.0");
     expect(legacy).toBeDefined();
     expect(Object.isFrozen(legacy)).toBe(true);
     expect(legacy).not.toBe(current);
+    expect(previous).toBeDefined();
+    expect(previous).not.toBe(current);
+    expect(Object.isFrozen(previous)).toBe(true);
+    for (const definition of [legacy, previous, current]) {
+      expect(definition?.manifest.capabilities.replay).toBe("record-only");
+    }
     await expect(
       loadRealtimeGameClientModule("pong", "1.1.0"),
     ).resolves.toBeUndefined();

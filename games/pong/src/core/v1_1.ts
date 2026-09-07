@@ -8,9 +8,7 @@ import type {
 import { z } from "zod";
 
 import {
-  PONG_BALL_MAX_SPEED,
   PONG_BALL_RADIUS,
-  PONG_BALL_SPEED_INCREMENT,
   PONG_BALL_SPEED_X,
   PONG_BALL_SPEED_Y,
   PONG_FIELD_HEIGHT,
@@ -21,8 +19,8 @@ import {
   PONG_PADDLE_WIDTH,
   PONG_RIGHT_PADDLE_X,
   PONG_SERVE_DELAY_TICKS,
-} from "../constants.js";
-import { pongManifest } from "../manifest.js";
+} from "../v1_1/constants.js";
+import { pongManifestV1_1_0 } from "../v1_1/manifest.js";
 import type {
   PongConfig,
   PongDirection,
@@ -30,7 +28,7 @@ import type {
   PongOutcome,
   PongState,
   PongView,
-} from "../types.js";
+} from "./v1_1-types.js";
 
 export type {
   PongConfig,
@@ -39,11 +37,9 @@ export type {
   PongOutcome,
   PongState,
   PongView,
-} from "../types.js";
+} from "./v1_1-types.js";
 export {
-  PONG_BALL_MAX_SPEED,
   PONG_BALL_RADIUS,
-  PONG_BALL_SPEED_INCREMENT,
   PONG_BALL_SPEED_X,
   PONG_BALL_SPEED_Y,
   PONG_FIELD_HEIGHT,
@@ -55,10 +51,7 @@ export {
   PONG_RIGHT_PADDLE_X,
   PONG_TICK_RATE,
   PONG_SERVE_DELAY_TICKS,
-} from "../constants.js";
-
-export { pongDefinitionV1_0_0 } from "./v1.js";
-export { pongDefinitionV1_1_0 } from "./v1_1.js";
+} from "../v1_1/constants.js";
 
 const slotSchema = z.string().min(1);
 const directionSchema = z.union([z.literal(-1), z.literal(0), z.literal(1)]);
@@ -347,29 +340,6 @@ function bouncedVelocityY(ballY: number, paddleY: number): number {
   );
 }
 
-function bouncedVelocity(
-  ballY: number,
-  paddleY: number,
-  velocityX: number,
-  velocityY: number,
-): Pick<PongState["ball"], "velocityX" | "velocityY"> {
-  const speed = Math.min(
-    PONG_BALL_MAX_SPEED,
-    Math.floor(Math.sqrt(velocityX ** 2 + velocityY ** 2)) +
-      PONG_BALL_SPEED_INCREMENT,
-  );
-  const aimY = bouncedVelocityY(ballY, paddleY);
-  const aimLength = Math.sqrt(PONG_BALL_SPEED_X ** 2 + aimY ** 2);
-  // Normalize the new aim so a flatter return cannot reset the rally speed.
-  return {
-    velocityX:
-      -Math.sign(velocityX) *
-      Math.floor((PONG_BALL_SPEED_X * speed) / aimLength),
-    velocityY:
-      Math.sign(aimY) * Math.floor((Math.abs(aimY) * speed) / aimLength),
-  };
-}
-
 export function step(context: {
   readonly state: Readonly<PongState>;
   readonly tick: number;
@@ -465,12 +435,8 @@ export function step(context: {
     paddleHit(nextY, paddles[0].y)
   ) {
     nextX = leftSurface + PONG_BALL_RADIUS;
-    ({ velocityX, velocityY } = bouncedVelocity(
-      nextY,
-      paddles[0].y,
-      velocityX,
-      velocityY,
-    ));
+    velocityX = Math.abs(velocityX);
+    velocityY = bouncedVelocityY(nextY, paddles[0].y);
   } else if (
     velocityX > 0 &&
     state.ball.x + PONG_BALL_RADIUS <= rightSurface &&
@@ -478,12 +444,8 @@ export function step(context: {
     paddleHit(nextY, paddles[1].y)
   ) {
     nextX = rightSurface - PONG_BALL_RADIUS;
-    ({ velocityX, velocityY } = bouncedVelocity(
-      nextY,
-      paddles[1].y,
-      velocityX,
-      velocityY,
-    ));
+    velocityX = -Math.abs(velocityX);
+    velocityY = bouncedVelocityY(nextY, paddles[1].y);
   }
 
   const scores: [number, number] = [...state.scores];
@@ -583,8 +545,8 @@ export function projectView(context: {
   }) as PongView;
 }
 
-export const pongDefinition = Object.freeze({
-  manifest: pongManifest,
+export const pongDefinitionV1_1_0 = Object.freeze({
+  manifest: pongManifestV1_1_0,
   configSchema: pongConfigSchema,
   inputSchema: pongInputSchema,
   createInitialState,

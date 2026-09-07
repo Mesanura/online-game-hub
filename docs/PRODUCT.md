@@ -146,6 +146,8 @@ M7-A 提供用户名+密码账户。用户名规范化为 lowercase ASCII `[a-z0
 
 M8 选择双人 Pong 作为实时 2D 验证游戏。它使用固定 tick 的服务端权威模拟、服务器决定的输入生效 tick 和仅含公开视图的快照；Phaser 只负责采集输入、插值和渲染。Realtime runtime 与离散 Action runtime 并列，继续复用目录、身份、ticket、房间码、stable slots、ready/reconnect、Round/Match 生命周期、账户归属和私有 replay 授权边界，但不复用回合制 `GameDefinition`、`game.action`、revision 或客户端 Host。完整范围和不变量以 [REALTIME_RUNTIME_DESIGN.md](./REALTIME_RUNTIME_DESIGN.md) 为准。
 
+Pong 维护调整（2026-09-07）：当前 `1.2.0` 提供两次水平发球提示、更快的球拍及随连续回球递增的有界球速。玩家回放功能暂时取消，等待后续重新设计；包括历史 `1.0.0`、`1.1.0` 在内的全部支持版本改为 `record-only`，账户战绩继续保留，但没有播放入口或可读取的玩家回放。服务器 canonical journal、确定性校验与已保存比赛不会删除。
+
 ## 7. 当前明确非目标
 
 M6 完成后当前仍不实现：

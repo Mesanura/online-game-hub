@@ -6,10 +6,10 @@ import type { RealtimeGameManifest } from "@online-game-hub/realtime-game-sdk";
 
 import { PONG_TICK_RATE } from "./constants.js";
 
-export const pongManifestV1_0_0 = Object.freeze({
+export const pongManifestV1_1_0 = Object.freeze({
   runtime: "realtime",
   id: defineRealtimeGameId("pong"),
-  gameVersion: defineRealtimeGameVersion("1.0.0"),
+  gameVersion: defineRealtimeGameVersion("1.1.0"),
   title: "乒乓对战",
   description: "两名玩家实时控制球拍，率先达到目标分数者获胜。",
   defaultConfig: Object.freeze({ targetScore: 3 }),

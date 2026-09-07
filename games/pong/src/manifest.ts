@@ -9,7 +9,7 @@ import { PONG_TICK_RATE } from "./constants.js";
 export const pongManifest = Object.freeze({
   runtime: "realtime",
   id: defineRealtimeGameId("pong"),
-  gameVersion: defineRealtimeGameVersion("1.1.0"),
+  gameVersion: defineRealtimeGameVersion("1.2.0"),
   title: "乒乓对战",
   description: "两名玩家实时控制球拍，率先达到目标分数者获胜。",
   defaultConfig: Object.freeze({ targetScore: 3 }),
@@ -19,6 +19,6 @@ export const pongManifest = Object.freeze({
   capabilities: Object.freeze({
     hiddenInformation: false,
     deterministicRandomness: true,
-    replay: "player-playback",
+    replay: "record-only",
   }),
 }) satisfies RealtimeGameManifest;

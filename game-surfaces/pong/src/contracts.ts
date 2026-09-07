@@ -7,7 +7,8 @@ export const PONG_PADDLE_HEIGHT = 80_000;
 export const PONG_LEFT_PADDLE_X = 30_000;
 export const PONG_RIGHT_PADDLE_X = 770_000;
 export const PONG_BALL_RADIUS = 8_000;
-export const PONG_SERVE_DELAY_TICKS = 210;
+export const PONG_SERVE_DELAY_TICKS = 120;
+export const PONG_LEGACY_SERVE_DELAY_TICKS = 210;
 
 const stableSlotIdSchema = z.string().min(1).max(128);
 const scoreSchema = z.number().int().min(0).max(9);
@@ -122,6 +123,19 @@ export const pongPlayViewSchema = pongLegacyPlayViewSchema.extend({
 });
 export type PongPlayView = z.infer<typeof pongPlayViewSchema>;
 
+const pongV1_1PlayViewSchema = pongPlayViewSchema.extend({
+  serve: pongPlayViewSchema.shape.serve
+    .unwrap()
+    .extend({
+      ticksRemaining: z
+        .number()
+        .int()
+        .min(1)
+        .max(PONG_LEGACY_SERVE_DELAY_TICKS),
+    })
+    .nullable(),
+});
+
 export function parsePlayView(
   input: unknown,
   gameVersion: string,
@@ -129,7 +143,8 @@ export function parsePlayView(
   if (gameVersion === "1.0.0") {
     return { ...pongLegacyPlayViewSchema.parse(input), serve: null };
   }
-  if (gameVersion === "1.1.0") return pongPlayViewSchema.parse(input);
+  if (gameVersion === "1.1.0") return pongV1_1PlayViewSchema.parse(input);
+  if (gameVersion === "1.2.0") return pongPlayViewSchema.parse(input);
   throw new Error("Unsupported Pong version.");
 }
 

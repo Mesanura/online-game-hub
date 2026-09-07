@@ -6,18 +6,24 @@ import type {
   PongSetupIntent,
   PongSetupView,
 } from "./contracts";
-import { PONG_SERVE_DELAY_TICKS } from "./contracts";
+import {
+  PONG_LEGACY_SERVE_DELAY_TICKS,
+  PONG_SERVE_DELAY_TICKS,
+} from "./contracts";
 
 export function serveArrowVisible(
   view: Readonly<PongPlayView>,
   reducedMotion: boolean,
+  gameVersion = "1.2.0",
 ): boolean {
   if (view.serve === null || view.outcome !== null) return false;
+  const duration =
+    gameVersion === "1.1.0"
+      ? PONG_LEGACY_SERVE_DELAY_TICKS
+      : PONG_SERVE_DELAY_TICKS;
   return (
     reducedMotion ||
-    Math.floor((PONG_SERVE_DELAY_TICKS - view.serve.ticksRemaining) / 30) %
-      2 ===
-      0
+    Math.floor((duration - view.serve.ticksRemaining) / 30) % 2 === 0
   );
 }
 

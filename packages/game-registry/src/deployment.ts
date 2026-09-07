@@ -76,20 +76,19 @@ const ticTacToeSurface = (
 const pongSurfaceArtifactV1 = {
   schemaVersion: 1,
   gameId: "pong",
-  supportedGameVersions: ["1.0.0", "1.1.0"],
-  surfaceVersion: "1.1.0",
+  supportedGameVersions: ["1.0.0", "1.1.0", "1.2.0"],
+  surfaceVersion: "1.2.0",
   bridgeVersion: 2,
   entrypoints: {
     setup: "setup/index.html",
     play: "play/index.html",
-    replay: "replay/index.html",
   },
   capabilities: {},
-  contentDigest: "sha256-3QMjyVsXSEaRhrc3LmKnNvu7aWE1qHS51vtPv+wRi5M=",
+  contentDigest: "sha256-fZBrN7VTxH+m+khvknmdfBF5so37gY94R6FG9/y9rQU=",
 } satisfies SurfaceArtifactManifestV1;
 
 const pongSurface = (
-  gameVersion: "1.0.0" | "1.1.0",
+  gameVersion: "1.0.0" | "1.1.0" | "1.2.0",
 ): GameDeploymentRegistration =>
   Object.freeze({
     gameId: "pong",
@@ -98,7 +97,7 @@ const pongSurface = (
     platformControls: resignPlatformControls,
     presentation: Object.freeze({
       kind: "surface-v1",
-      publicBasePath: "/game-surfaces/pong/1.1.0",
+      publicBasePath: "/game-surfaces/pong/1.2.0",
       artifact: pongSurfaceArtifactV1,
     }),
   });
@@ -291,6 +290,7 @@ const gameDeployments = Object.freeze([
   chineseCheckersSurface("1.1.0"),
   pongSurface("1.0.0"),
   pongSurface("1.1.0"),
+  pongSurface("1.2.0"),
   badmintonSurfaceV1,
 ]) satisfies readonly GameDeploymentRegistration[];
 

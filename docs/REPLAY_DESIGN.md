@@ -23,7 +23,7 @@ V1 已要求生成、持久化到 PostgreSQL、跨新连接读取并验证 repla
 - `record-only`：保存和验证流程完全相同，但玩家回放 API 稳定返回 `PLAYER_PLAYBACK_NOT_SUPPORTED`；
 - `none`：类型与注册语义已保留，首轮 runtime 在注册或启动阶段稳定拒绝，直到出现真实游戏后再设计可空 Match–Replay 关联、journal 替代与数据库迁移。
 
-既有棋牌、Pong 及其历史版本保持 `player-playback`；新增 `badminton@1.0.0` 显式选择 `record-only`。简单棋牌回合制新游戏建议选择 `player-playback`；实时游戏应逐个评估，通常从 `record-only` 开始。脚手架不得默认选择。能力变化必须按 exact `gameVersion` 审查历史承诺，不能靠 UI 隐藏来改变服务器审计行为。
+既有棋牌及其历史版本保持 `player-playback`；`badminton@1.0.0` 显式选择 `record-only`。按产品要求（2026-09-07），Pong 的 `1.0.0`、`1.1.0` 与当前 `1.2.0` 均调整为 `record-only`，暂停全部玩家回放，等待后续重新设计。旧规则、canonical 记录和 exact verifier 保留；账户历史的 `replayAvailable` 为 false，已授权玩家的播放 API 返回 `409 PLAYER_PLAYBACK_NOT_SUPPORTED`，Surface 不再发布 Replay entrypoint。简单棋牌回合制新游戏建议选择 `player-playback`；实时游戏应逐个评估，通常从 `record-only` 开始。脚手架不得默认选择。能力变化必须按 exact `gameVersion` 审查历史承诺，不能靠 UI 隐藏来改变服务器审计行为。
 
 本格式只描述离散 Action runtime。M8 的固定 tick realtime runtime 不能把客户端到达时间或每个网络包当作 Action replay；它将定义独立的 realtime replay format，归档由服务端决定生效 tick 的规范化 input changes，并以 exact realtime definition 逐 tick 重建。旧 Replay Format V1、所有现有 golden fixture 和它们的 verifier 必须保持不变；详细设计见 [REALTIME_RUNTIME_DESIGN.md](./REALTIME_RUNTIME_DESIGN.md)。
 
@@ -211,7 +211,7 @@ Bug fix 是否提升版本以“相同 replay 是否可能得到不同 State、R
 
 独立 Realtime Replay Format V1 还支持：
 
-- `pong@1.0.0`：`pong-1.0.0-resignation.json`。
+- `pong@1.0.0`：`pong-1.0.0-resignation.json`、`pong-1.0.0-score.json`；`pong@1.1.0`：`pong-1.1.0-score.json`；`pong@1.2.0`：`pong-1.2.0-score.json`。三代计分 fixture 的 final tick 分别为 326、956、677，新版覆盖短准备期与球拍加速后的确定性结果；这些记录仅用于服务器校验，不再提供玩家播放。
 - `badminton@1.0.0`：`badminton-1.0.0-score.json`、`badminton-1.0.0-resignation.json`、`badminton-1.0.0-rally.json`，分别覆盖自动发球至比分终局、投降和连续回球。header 保存目标比分与实际左右顺序，事件只含服务器规范化的 accepted `CONTROL | RESIGN`；Core 逐 tick 重建移动、跳跃、挥拍有效期、碰撞、分数和 Outcome，gameplay RNG cursor 始终为 0。随机首发的 Setup RNG 不进入 gameplay record。
 
 羽毛球的 `record-only` 仅限制玩家读取，不改变 create/append/complete/verify。更改整数物理、输入持续时间、球拍判定、发球、比分或同时事件顺序时，必须评估新 `gameVersion`，不能改写现有 fixtures。

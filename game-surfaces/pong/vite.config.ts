@@ -11,7 +11,6 @@ export default defineConfig({
     rollupOptions: {
       input: {
         play: `${workspaceRoot}play/index.html`,
-        replay: `${workspaceRoot}replay/index.html`,
         setup: `${workspaceRoot}setup/index.html`,
       },
     },

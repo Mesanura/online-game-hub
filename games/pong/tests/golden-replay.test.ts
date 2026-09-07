@@ -7,7 +7,11 @@ import {
   verifyRealtimeReplay,
 } from "@online-game-hub/realtime-game-sdk";
 
-import { pongDefinition, pongDefinitionV1_0_0 } from "../src/core/index.js";
+import {
+  pongDefinition,
+  pongDefinitionV1_0_0,
+  pongDefinitionV1_1_0,
+} from "../src/core/index.js";
 
 const fixture = JSON.parse(
   readFileSync(
@@ -20,6 +24,7 @@ const resolve = (gameId: string, gameVersion: string) =>
   gameId === "pong"
     ? [
         eraseRealtimeGameDefinition(pongDefinitionV1_0_0),
+        eraseRealtimeGameDefinition(pongDefinitionV1_1_0),
         eraseRealtimeGameDefinition(pongDefinition),
       ].find((definition) => definition.manifest.gameVersion === gameVersion)
     : undefined;
@@ -28,6 +33,7 @@ describe("Pong realtime golden replay", () => {
   it.each([
     ["1.0.0", 326],
     ["1.1.0", 956],
+    ["1.2.0", 677],
   ] as const)(
     "rebuilds every serve and score with exact %s rules",
     (gameVersion, finalTick) => {

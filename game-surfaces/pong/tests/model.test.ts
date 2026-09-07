@@ -4,6 +4,7 @@ import { surfaceHostMessageSchema } from "@online-game-hub/game-surface-bridge";
 
 import {
   parsePlayView,
+  PONG_LEGACY_SERVE_DELAY_TICKS,
   PONG_SERVE_DELAY_TICKS,
   pongPlayIntentSchema,
   pongPlayViewSchema,
@@ -42,7 +43,7 @@ const playView = pongPlayViewSchema.parse({
 });
 
 describe("Pong Surface model", () => {
-  it("shows three disappear/reappear cycles before launch, or a steady reduced-motion arrow", () => {
+  it("shows exactly two flashes including the first display, then hides before launch", () => {
     const phases: boolean[] = [];
     for (let elapsed = 0; elapsed < PONG_SERVE_DELAY_TICKS; elapsed += 1) {
       const preparing = {
@@ -58,12 +59,33 @@ describe("Pong Surface model", () => {
       expect(serveArrowVisible(preparing, true)).toBe(true);
       if (phases.at(-1) !== visible) phases.push(visible);
     }
-    expect(phases).toEqual([true, false, true, false, true, false, true]);
+    expect(PONG_SERVE_DELAY_TICKS).toBe(120);
+    expect(phases).toEqual([true, false, true, false]);
     expect(serveArrowVisible(playView, false)).toBe(false);
     expect(serveArrowVisible(playView, true)).toBe(false);
   });
 
-  it("parses only the exact version's public view, including historical replay", () => {
+  it("preserves the historical preparation phase for old active rooms", () => {
+    for (
+      let elapsed = 0;
+      elapsed < PONG_LEGACY_SERVE_DELAY_TICKS;
+      elapsed += 1
+    ) {
+      const preparing = {
+        ...playView,
+        serve: {
+          ticksRemaining: PONG_LEGACY_SERVE_DELAY_TICKS - elapsed,
+          directionX: 1 as const,
+          directionY: -1 as const,
+        },
+      };
+      expect(serveArrowVisible(preparing, false, "1.1.0")).toBe(
+        Math.floor(elapsed / 30) % 2 === 0,
+      );
+    }
+  });
+
+  it("parses only the exact version's public view and countdown bounds", () => {
     const legacyView = Object.fromEntries(
       Object.entries(playView).filter(([key]) => key !== "serve"),
     );
@@ -71,20 +93,36 @@ describe("Pong Surface model", () => {
     expect(() => parsePlayView(legacyView, "1.1.0")).toThrow();
     expect(() => parsePlayView(playView, "1.0.0")).toThrow();
     expect(parsePlayView(playView, "1.1.0")).toEqual(playView);
-    expect(() => parsePlayView(playView, "1.2.0")).toThrow();
-    for (const ticksRemaining of [0, -1, 1.5, PONG_SERVE_DELAY_TICKS + 1]) {
-      expect(() =>
+    expect(parsePlayView(playView, "1.2.0")).toEqual(playView);
+    expect(() => parsePlayView(legacyView, "1.2.0")).toThrow();
+    expect(() => parsePlayView(playView, "1.3.0")).toThrow();
+    for (const [version, duration] of [
+      ["1.1.0", 210],
+      ["1.2.0", 120],
+    ] as const) {
+      for (const ticksRemaining of [0, -1, 1.5, duration + 1]) {
+        expect(() =>
+          parsePlayView(
+            {
+              ...playView,
+              serve: { ticksRemaining, directionX: 1, directionY: -1 },
+            },
+            version,
+          ),
+        ).toThrow();
+      }
+      expect(
         parsePlayView(
           {
             ...playView,
-            serve: { ticksRemaining, directionX: 1, directionY: -1 },
+            serve: { ticksRemaining: duration, directionX: 1, directionY: -1 },
           },
-          "1.1.0",
-        ),
-      ).toThrow();
+          version,
+        ).serve?.ticksRemaining,
+      ).toBe(duration);
     }
     expect(() =>
-      parsePlayView({ ...playView, rng: { seed: "private" } }, "1.1.0"),
+      parsePlayView({ ...playView, rng: { seed: "private" } }, "1.2.0"),
     ).toThrow();
   });
 

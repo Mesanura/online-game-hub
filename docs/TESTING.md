@@ -430,7 +430,7 @@ pnpm test:database
 - Playwright E2E：两个隔离 browser contexts 经过目录、独立 Setup Surface、ready、独立 Phaser Play Surface、完成、reconnect 与只读 Replay Surface；检查 canvas 非空、800×400 逻辑尺寸、视口矩阵及 2560×1440 的 100%/150% 缩放等效视口下的 2:1 FIT、安全留白和四边边界可辨识性、键盘输入可用、reduced motion 和终局 UI，不以客户端位置推断权威结果；
 - 全仓 `lint`、`typecheck`、`test`、`build`、`deps:check`，以及受影响的 `test:integration`、`test:database` 和 `test:e2e`。Phaser 依赖必须由 legacy `games/pong` client 或独立 `game-surfaces/pong` 明确拥有，Core 和 server runtime 的依赖检查必须继续拒绝 Phaser/DOM。
 
-Pong `1.1.0` 回归还需覆盖 210 tick 准备期、每次非终局得分后的重新准备、期间球拍移动/投降/输入拒绝与 RNG 不推进；同时运行 `1.0.0` 和 `1.1.0` 的得分及历史投降 golden。Surface model 验证三次消失再出现、reduced motion 常亮及 exact View schema；双浏览器 E2E 用中心 canvas 像素验证显隐与发射、移动端截图、倒计时中刷新重连，并通过 DOM MutationObserver 确认 W/S 按下和释放到服务器确认全过程不重写连接提示。
+Pong `1.2.0` 回归需覆盖 120 tick 准备期、更快的双侧球拍、每次非终局得分后的重新准备与初速复位、两侧连续反弹加速（含边缘转中央）、速率上限、边界反弹不加速、期间投降/输入拒绝与 RNG 不推进；同时运行 `1.0.0`、`1.1.0`、`1.2.0` 的得分及历史投降 golden，保留旧模拟。Surface model/scene 验证“显示、消失、显示、消失”的两次闪烁、左右水平实心小箭头、边框同色无描边、reduced motion 常亮及 exact View schema；双浏览器 E2E 用中线两侧和中心 canvas 像素验证显隐与发射、移动端截图、倒计时中刷新重连，并通过 DOM MutationObserver 确认 W/S 按下和释放到服务器确认全过程不重写连接提示。Pong 按产品要求暂停玩家回放，覆盖所有支持版本 `record-only`、历史无播放入口、API 私有 409、无 Replay Surface 和服务端记录继续可验证，替代该游戏原只读播放 E2E；其他游戏的玩家回放覆盖不变。
 
 ### 13.1 额外实时游戏：羽毛球验收
 

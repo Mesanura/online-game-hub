@@ -41,7 +41,7 @@ async function activePongRound(
   await expect(pageA.getByTestId("connection-state")).toHaveText("已连接");
   await expect(pageA.getByTestId("game-surface-iframe")).toHaveAttribute(
     "src",
-    "/game-surfaces/pong/1.1.0/setup/index.html",
+    "/game-surfaces/pong/1.2.0/setup/index.html",
   );
   await pongSurface(pageA).getByRole("button", { name: "房主发球" }).click();
   const inviteUrl = await pageA.getByTestId("invite-link").getAttribute("href");
@@ -50,7 +50,7 @@ async function activePongRound(
   await expect(pageB.getByTestId("connection-state")).toHaveText("已连接");
   await expect(pageB.getByTestId("game-surface-iframe")).toHaveAttribute(
     "src",
-    "/game-surfaces/pong/1.1.0/setup/index.html",
+    "/game-surfaces/pong/1.2.0/setup/index.html",
   );
   await pageA.getByTestId("toggle-round-ready").click();
   await pageB.getByTestId("toggle-round-ready").click();
@@ -59,7 +59,7 @@ async function activePongRound(
       await expect(page.getByTestId("match-status")).toHaveText("对局进行中");
       await expect(page.getByTestId("game-surface-iframe")).toHaveAttribute(
         "src",
-        "/game-surfaces/pong/1.1.0/play/index.html",
+        "/game-surfaces/pong/1.2.0/play/index.html",
       );
     }),
   );
@@ -285,7 +285,7 @@ async function closeContexts(
   await Promise.all([contextA.close(), contextB.close()]);
 }
 
-test("two isolated browsers control authoritative Pong, reconnect, and read private replay", async ({
+test("two isolated browsers control authoritative Pong, reconnect, and retain records without player playback", async ({
   browser,
 }) => {
   const contextA = await browser.newContext({ reducedMotion: "reduce" });
@@ -420,7 +420,7 @@ test("two isolated browsers control authoritative Pong, reconnect, and read priv
       throw new Error("Pong replay id was not persisted.");
     const persistedReplay = await replayStore.get(replayId);
     expect(persistedReplay).not.toBeNull();
-    expect(persistedReplay?.header.gameVersion).toBe("1.1.0");
+    expect(persistedReplay?.header.gameVersion).toBe("1.2.0");
     expect(
       persistedReplay?.events.slice(0, 4).map((event) => event.input),
     ).toEqual([
@@ -449,68 +449,30 @@ test("two isolated browsers control authoritative Pong, reconnect, and read priv
     );
     if (match === undefined)
       throw new Error("Completed Pong match was not in private history.");
-    expect(match.replayAvailable).toBe(true);
+    expect(match.replayAvailable).toBe(false);
 
     const replayResponse = await reconnected.request.get(
       `${harness.webUrl}/api/matches/${encodeURIComponent(match.matchId)}/replay`,
     );
-    expect(replayResponse.status()).toBe(200);
-    const replayPayload = (await replayResponse.json()) as {
-      readonly runtime: "realtime";
-      readonly match: { readonly finalRevision: number };
-      readonly frames: readonly {
-        readonly tick: number;
-        readonly view: unknown;
-      }[];
-    };
-    expect(replayPayload.runtime).toBe("realtime");
-    expect(replayPayload.frames.length - 1).toBe(
-      replayPayload.match.finalRevision,
-    );
-    expect(replayPayload.frames[0]?.tick).toBe(0);
-    expect(replayPayload.frames.at(-1)?.tick).toBe(
-      replayPayload.match.finalRevision,
-    );
-    expect(
-      replayPayload.frames.every((frame, index, frames) => {
-        const previous = frames[index - 1];
-        return (
-          index === 0 || (previous !== undefined && frame.tick > previous.tick)
-        );
-      }),
-    ).toBe(true);
-    expect(replayPayload.frames.at(-1)?.view).toMatchObject({
-      field: { width: 800_000, height: 400_000 },
-      scores: finalScore,
-      outcome: { reason: "SCORE" },
+    expect(replayResponse.status()).toBe(409);
+    expect(replayResponse.headers()["cache-control"]).toBe("no-store, private");
+    expect(await replayResponse.json()).toEqual({
+      code: "PLAYER_PLAYBACK_NOT_SUPPORTED",
     });
-    expect(JSON.stringify(replayPayload)).not.toMatch(
-      /canonicalInputLog|rawState|rngSeed|session|ticket/u,
-    );
+
+    await reconnected.goto(`${harness.webUrl}/account/matches`);
+    await expect(
+      reconnected.getByRole("article").filter({ hasText: "乒乓对战" }),
+    ).toBeVisible();
+    await expect(
+      reconnected.getByTestId(`replay-entry-${match.matchId}`),
+    ).toHaveCount(0);
 
     await reconnected.goto(
       `${harness.webUrl}/account/matches/${encodeURIComponent(match.matchId)}/replay`,
     );
-    await expect(reconnected.getByTestId("replay-page")).toBeVisible();
-    await expect(
-      reconnected.getByTestId("game-surface-iframe"),
-    ).toHaveAttribute("src", "/game-surfaces/pong/1.1.0/replay/index.html");
-    await expectNonBlankCanvas(reconnected);
-    const replayFrameCount = replayPayload.frames.length;
-    await reconnected.getByTestId("replay-last").click();
-    await expect(reconnected.getByTestId("replay-frame-count")).toHaveText(
-      `${replayFrameCount} / ${replayFrameCount}`,
-    );
-    await expect.poll(() => readScore(reconnected)).toEqual(finalScore);
-    await reconnected.getByTestId("replay-first").click();
-    await expect(reconnected.getByTestId("replay-frame-count")).toHaveText(
-      `1 / ${replayFrameCount}`,
-    );
-    await expect.poll(() => readScore(reconnected)).toEqual([0, 0]);
-    await reconnected.getByTestId("replay-next").click();
-    await expect(reconnected.getByTestId("replay-frame-count")).toHaveText(
-      `2 / ${replayFrameCount}`,
-    );
+    await expect(reconnected.getByTestId("replay-error")).toBeVisible();
+    await expect(reconnected.getByTestId("game-surface-iframe")).toHaveCount(0);
   } finally {
     await database.close();
     await closeContexts(contextA, contextB);
@@ -547,7 +509,39 @@ async function centerMarkerPixels(
     });
 }
 
-test("Pong blinks the serve arrow three times, preserves preparation on reconnect, and supports reduced motion", async ({
+async function serveArrowPixels(
+  page: Page,
+): Promise<{ total: number; matchingBorder: number; white: number }> {
+  return pongSurface(page)
+    .locator("#pong-canvas canvas")
+    .evaluate((element) => {
+      const context = (element as HTMLCanvasElement).getContext("2d");
+      if (context === null) throw new Error("Missing Pong canvas context.");
+      const border = context.getImageData(4, 200, 1, 1).data;
+      const pixels = context.getImageData(360, 84, 80, 32).data;
+      let total = 0;
+      let matchingBorder = 0;
+      let white = 0;
+      for (let index = 0; index < pixels.length; index += 4) {
+        const x = 360 + ((index / 4) % 80);
+        if (x >= 396 && x <= 404) continue;
+        const red = pixels[index] ?? 0;
+        const green = pixels[index + 1] ?? 0;
+        const blue = pixels[index + 2] ?? 0;
+        if (red > 60 && green > 80 && blue > 60) total += 1;
+        if (
+          Math.abs(red - (border[0] ?? 0)) <= 1 &&
+          Math.abs(green - (border[1] ?? 0)) <= 1 &&
+          Math.abs(blue - (border[2] ?? 0)) <= 1
+        )
+          matchingBorder += 1;
+        if (red > 230 && green > 230 && blue > 230) white += 1;
+      }
+      return { total, matchingBorder, white };
+    });
+}
+
+test("Pong flashes a border-colored horizontal arrow exactly twice, preserves preparation on reconnect, and supports reduced motion", async ({
   browser,
 }, testInfo) => {
   const contextA = await browser.newContext({
@@ -565,26 +559,28 @@ test("Pong blinks the serve arrow three times, preserves preparation on reconnec
     for (const page of [pageA, pageB]) {
       await expectNonBlankCanvas(page);
       await expect
-        .poll(async () => (await centerMarkerPixels(page)).outsideBall)
-        .toBeGreaterThan(40);
+        .poll(async () => (await serveArrowPixels(page)).matchingBorder)
+        .toBeGreaterThan(150);
+      expect((await serveArrowPixels(page)).white).toBe(0);
+      expect((await centerMarkerPixels(page)).total).toBe(0);
     }
     await pageA.screenshot({ path: testInfo.outputPath("serve-desktop.png") });
     await pageB.screenshot({ path: testInfo.outputPath("serve-mobile.png") });
-    for (let phase = 1; phase <= 6; phase += 1) {
+    for (let phase = 1; phase <= 3; phase += 1) {
       await advanceRealtimeTicksAndWait(pageA, 30);
       await expect.poll(() => readServerTick(pageB)).toBe(phase * 30);
       if (phase % 2 === 1) {
         await expect
-          .poll(async () => (await centerMarkerPixels(pageA)).total)
+          .poll(async () => (await serveArrowPixels(pageA)).total)
           .toBe(0);
       } else {
         await expect
-          .poll(async () => (await centerMarkerPixels(pageA)).outsideBall)
-          .toBeGreaterThan(40);
+          .poll(async () => (await serveArrowPixels(pageA)).matchingBorder)
+          .toBeGreaterThan(150);
       }
       await expect
-        .poll(async () => (await centerMarkerPixels(pageB)).outsideBall)
-        .toBeGreaterThan(40);
+        .poll(async () => (await serveArrowPixels(pageB)).matchingBorder)
+        .toBeGreaterThan(150);
       await expect.poll(() => readScore(pageA)).toEqual([0, 0]);
       if (phase === 3) {
         await pageA.reload();
@@ -592,7 +588,7 @@ test("Pong blinks the serve arrow three times, preserves preparation on reconnec
         await expect.poll(() => readServerTick(pageA)).toBe(90);
         await expectNonBlankCanvas(pageA);
         await expect
-          .poll(async () => (await centerMarkerPixels(pageA)).total)
+          .poll(async () => (await serveArrowPixels(pageA)).total)
           .toBe(0);
         await pageA.screenshot({
           path: testInfo.outputPath("serve-hidden-reconnected.png"),
@@ -601,11 +597,17 @@ test("Pong blinks the serve arrow three times, preserves preparation on reconnec
     }
     await advanceRealtimeTicksAndWait(pageA, 29);
     await expect
-      .poll(async () => (await centerMarkerPixels(pageA)).outsideBall)
-      .toBeGreaterThan(40);
+      .poll(async () => (await serveArrowPixels(pageA)).total)
+      .toBe(0);
+    await expect
+      .poll(async () => (await centerMarkerPixels(pageA)).total)
+      .toBe(0);
     await advanceRealtimeTicksAndWait(pageA, 1);
     await expect
-      .poll(async () => (await centerMarkerPixels(pageA)).outsideBall)
+      .poll(async () => (await serveArrowPixels(pageA)).total)
+      .toBe(0);
+    await expect
+      .poll(async () => (await serveArrowPixels(pageB)).total)
       .toBe(0);
     await expect
       .poll(async () => (await centerMarkerPixels(pageA)).total)

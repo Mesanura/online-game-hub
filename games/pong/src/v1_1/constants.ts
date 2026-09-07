@@ -1,14 +1,12 @@
 export const PONG_TICK_RATE = 60 as const;
-export const PONG_SERVE_DELAY_TICKS = PONG_TICK_RATE * 2;
+export const PONG_SERVE_DELAY_TICKS = PONG_TICK_RATE * 3.5;
 export const PONG_FIELD_WIDTH = 800_000;
 export const PONG_FIELD_HEIGHT = 400_000;
 export const PONG_PADDLE_WIDTH = 12_000;
 export const PONG_PADDLE_HEIGHT = 80_000;
-export const PONG_PADDLE_SPEED = 7_000;
+export const PONG_PADDLE_SPEED = 5_000;
 export const PONG_LEFT_PADDLE_X = 30_000;
 export const PONG_RIGHT_PADDLE_X = PONG_FIELD_WIDTH - PONG_LEFT_PADDLE_X;
 export const PONG_BALL_RADIUS = 8_000;
 export const PONG_BALL_SPEED_X = 6_000;
 export const PONG_BALL_SPEED_Y = 3_000;
-export const PONG_BALL_SPEED_INCREMENT = 500;
-export const PONG_BALL_MAX_SPEED = 16_000;

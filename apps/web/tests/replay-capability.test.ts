@@ -96,7 +96,9 @@ describe("exact game replay capability", () => {
   it.each([
     ["tic-tac-toe", "1.0.0", "player-playback"],
     ["tic-tac-toe", "1.1.0", "player-playback"],
-    ["pong", "1.0.0", "player-playback"],
+    ["pong", "1.0.0", "record-only"],
+    ["pong", "1.1.0", "record-only"],
+    ["pong", "1.2.0", "record-only"],
     ["badminton", "1.0.0", "record-only"],
     ["badminton", "2.0.0", undefined],
     ["missing", "1.0.0", undefined],
@@ -114,6 +116,8 @@ describe("exact game replay capability", () => {
       match("pong", "1.0.0"),
       match("badminton", "1.0.0"),
       match("unknown", "1.0.0"),
+      match("pong", "1.1.0"),
+      match("pong", "1.2.0"),
     ];
     mocks.turnList.mockResolvedValue(records.slice(0, 2));
     mocks.realtimeList.mockResolvedValue(records.slice(2));
@@ -125,7 +129,9 @@ describe("exact game replay capability", () => {
     ).toEqual({
       "tic-tac-toe-1.0.0": true,
       "tic-tac-toe-1.1.0": false,
-      "pong-1.0.0": true,
+      "pong-1.0.0": false,
+      "pong-1.1.0": false,
+      "pong-1.2.0": false,
       "badminton-1.0.0": false,
       "unknown-1.0.0": false,
     });
@@ -135,21 +141,29 @@ describe("exact game replay capability", () => {
     expect(mocks.close).toHaveBeenCalledTimes(1);
   });
 
-  it("rejects record-only playback before frame construction and returns private headers", async () => {
-    mocks.realtimeRead.mockResolvedValue({
-      status: "available",
-      match: match("badminton", "1.0.0"),
-      playerSlotId: "player-a",
-      replay: { deliberatelyInvalid: "must-not-be-reconstructed" },
-    });
-    const response = await readReplay();
-    expect(response.status).toBe(409);
-    expect(response.headers.get("cache-control")).toBe("no-store, private");
-    expect(response.headers.get("vary")).toBe("Cookie");
-    expect(await response.json()).toEqual({
-      code: "PLAYER_PLAYBACK_NOT_SUPPORTED",
-    });
-  });
+  it.each([
+    ["badminton", "1.0.0"],
+    ["pong", "1.0.0"],
+    ["pong", "1.1.0"],
+    ["pong", "1.2.0"],
+  ])(
+    "rejects %s@%s playback before frame construction and returns private headers",
+    async (gameId, gameVersion) => {
+      mocks.realtimeRead.mockResolvedValue({
+        status: "available",
+        match: match(gameId, gameVersion),
+        playerSlotId: "player-a",
+        replay: { deliberatelyInvalid: "must-not-be-reconstructed" },
+      });
+      const response = await readReplay();
+      expect(response.status).toBe(409);
+      expect(response.headers.get("cache-control")).toBe("no-store, private");
+      expect(response.headers.get("vary")).toBe("Cookie");
+      expect(await response.json()).toEqual({
+        code: "PLAYER_PLAYBACK_NOT_SUPPORTED",
+      });
+    },
+  );
 
   it("fails closed on an unavailable exact version", async () => {
     mocks.realtimeRead.mockResolvedValue({

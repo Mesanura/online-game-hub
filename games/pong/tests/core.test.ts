@@ -10,13 +10,18 @@ import type {
 } from "@online-game-hub/realtime-game-sdk";
 
 import {
+  PONG_BALL_MAX_SPEED,
   PONG_BALL_RADIUS,
+  PONG_BALL_SPEED_INCREMENT,
+  PONG_BALL_SPEED_X,
+  PONG_BALL_SPEED_Y,
   PONG_FIELD_HEIGHT,
   PONG_FIELD_WIDTH,
   PONG_LEFT_PADDLE_X,
   PONG_PADDLE_HEIGHT,
   PONG_PADDLE_SPEED,
   PONG_PADDLE_WIDTH,
+  PONG_RIGHT_PADDLE_X,
   PONG_SERVE_DELAY_TICKS,
   createInitialState,
   getOutcome,
@@ -101,6 +106,24 @@ describe("Pong initialization and schemas", () => {
 });
 
 describe("Pong input and paddle movement", () => {
+  it("moves both paddles 40 percent faster, including during the two-second serve", () => {
+    const game = initial();
+    expect(PONG_PADDLE_SPEED).toBe(7_000);
+    expect(PONG_SERVE_DELAY_TICKS).toBe(120);
+    const moved = step({
+      ...game,
+      tick: 0,
+      inputs: [
+        change(left, { type: "DIRECTION", direction: -1 }),
+        change(right, { type: "DIRECTION", direction: 1 }),
+      ],
+    });
+    expect(moved.state.paddles.map((paddle) => paddle.y)).toEqual([
+      193_000, 207_000,
+    ]);
+    expect(moved.state.ball).toEqual(game.state.ball);
+  });
+
   it.each([
     [-1, -PONG_PADDLE_SPEED],
     [0, 0],
@@ -176,6 +199,87 @@ describe("Pong input and paddle movement", () => {
 });
 
 describe("Pong collisions, scoring and outcome", () => {
+  it("accelerates both paddle returns, including flatter angles, until a bounded maximum", () => {
+    const game = initial();
+    let ball = game.state.ball;
+    for (let hit = 0; hit < 32; hit += 1) {
+      const side = hit % 2 === 0 ? 0 : 1;
+      const contactX =
+        side === 0
+          ? PONG_LEFT_PADDLE_X + PONG_PADDLE_WIDTH / 2 + PONG_BALL_RADIUS
+          : PONG_RIGHT_PADDLE_X - PONG_PADDLE_WIDTH / 2 - PONG_BALL_RADIUS;
+      const direction = side === 0 ? -1 : 1;
+      const offset = hit % 3 === 0 ? 38_000 : hit % 3 === 1 ? 0 : -20_000;
+      const state = withState(game.state, {
+        ball: {
+          ...ball,
+          x: contactX - direction * 1_000,
+          y: PONG_FIELD_HEIGHT / 2 + offset - ball.velocityY,
+          velocityX: direction * Math.abs(ball.velocityX),
+        },
+      });
+      const before = structuredClone(state);
+      const incomingSpeed = Math.hypot(ball.velocityX, ball.velocityY);
+      const targetSpeed = Math.min(
+        PONG_BALL_MAX_SPEED,
+        Math.floor(incomingSpeed) + PONG_BALL_SPEED_INCREMENT,
+      );
+      const bounced = step({ state, tick: 0, inputs: [], rng: game.rng });
+      ball = bounced.state.ball;
+      const speed = Math.hypot(ball.velocityX, ball.velocityY);
+      expect(speed).toBeLessThanOrEqual(targetSpeed);
+      expect(speed).toBeGreaterThan(targetSpeed - 2);
+      if (incomingSpeed < PONG_BALL_MAX_SPEED - 2) {
+        expect(speed).toBeGreaterThan(incomingSpeed);
+      }
+      expect(Math.sign(ball.velocityX)).toBe(-direction);
+      expect(Math.sign(ball.velocityY)).toBe(offset < 0 ? -1 : 1);
+      expect(ball.x).toBe(contactX);
+      expect(Object.values(ball).every(Number.isInteger)).toBe(true);
+      expect(bounced.rng).toEqual(game.rng);
+      expect(state).toEqual(before);
+      expect(JSON.parse(JSON.stringify(bounced.state))).toEqual(bounced.state);
+    }
+    expect(Math.hypot(ball.velocityX, ball.velocityY)).toBeGreaterThan(
+      PONG_BALL_MAX_SPEED - 2,
+    );
+  });
+
+  it.each([-1, 1] as const)(
+    "does not accelerate on the %s wall or a paddle miss",
+    (direction) => {
+      const game = initial();
+      const state = withState(game.state, {
+        ball: {
+          x: 400_000,
+          y:
+            direction === -1
+              ? PONG_BALL_RADIUS + 1_000
+              : PONG_FIELD_HEIGHT - PONG_BALL_RADIUS - 1_000,
+          velocityX: 12_000,
+          velocityY: direction * 6_000,
+        },
+      });
+      const bounced = step({ state, tick: 0, inputs: [], rng: game.rng });
+      expect(bounced.state.ball.velocityX).toBe(12_000);
+      expect(bounced.state.ball.velocityY).toBe(-direction * 6_000);
+      const missed = withState(game.state, {
+        ball: { x: 750_000, y: 50_000, velocityX: 12_000, velocityY: 1_000 },
+      });
+      const result = step({
+        state: missed,
+        tick: 0,
+        inputs: [],
+        rng: game.rng,
+      });
+      expect(result.state.ball).toMatchObject({
+        velocityX: 12_000,
+        velocityY: 1_000,
+      });
+      expect(result.rng).toEqual(game.rng);
+    },
+  );
+
   it("keeps the ball centered for the full preparation and launches in the projected direction", () => {
     let game = initial();
     const startingBall = game.state.ball;
@@ -287,8 +391,8 @@ describe("Pong collisions, scoring and outcome", () => {
       ball: {
         x: -3_000,
         y: PONG_FIELD_HEIGHT - 10_000,
-        velocityX: -6_000,
-        velocityY: 0,
+        velocityX: -14_000,
+        velocityY: 2_000,
       },
     });
     const result = step({ state, tick: 0, inputs: [], rng: game.rng });
@@ -297,6 +401,8 @@ describe("Pong collisions, scoring and outcome", () => {
       x: PONG_FIELD_WIDTH / 2,
       y: PONG_FIELD_HEIGHT / 2,
     });
+    expect(Math.abs(result.state.ball.velocityX)).toBe(PONG_BALL_SPEED_X);
+    expect(Math.abs(result.state.ball.velocityY)).toBe(PONG_BALL_SPEED_Y);
     expect(result.rng.cursor).toBe(game.rng.cursor + 2);
     expect(result.state.serveTicksRemaining).toBe(PONG_SERVE_DELAY_TICKS);
     const waiting = step({

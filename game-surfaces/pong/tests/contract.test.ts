@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { surfaceArtifactManifestV1Schema } from "@online-game-hub/game-surface-bridge";
 
 describe("Pong Surface artifact contract", () => {
-  it("publishes exact Setup, Play, and Replay entrypoints with a locked digest", async () => {
+  it("publishes only Setup and Play entrypoints with a locked digest", async () => {
     const manifest = surfaceArtifactManifestV1Schema.parse(
       JSON.parse(
         await readFile(
@@ -20,16 +20,19 @@ describe("Pong Surface artifact contract", () => {
     expect(manifest).toMatchObject({
       schemaVersion: 1,
       gameId: "pong",
-      supportedGameVersions: ["1.0.0", "1.1.0"],
-      surfaceVersion: "1.1.0",
+      supportedGameVersions: ["1.0.0", "1.1.0", "1.2.0"],
+      surfaceVersion: "1.2.0",
       bridgeVersion: 2,
       entrypoints: {
         setup: "setup/index.html",
         play: "play/index.html",
-        replay: "replay/index.html",
       },
       capabilities: {},
     });
+    expect(manifest.entrypoints).not.toHaveProperty("replay");
+    await expect(
+      readFile(new URL("../dist/replay/index.html", import.meta.url)),
+    ).rejects.toMatchObject({ code: "ENOENT" });
     expect(lock).toEqual({
       schemaVersion: 1,
       gameId: manifest.gameId,

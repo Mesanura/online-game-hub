@@ -11,7 +11,7 @@
     "build": "vite build && node ../../tooling/surface-artifact/src/cli.ts finalize .",
     "contract-test": "pnpm build && node ../../tooling/surface-artifact/src/cli.ts verify-workspace . && vitest run tests/contract.test.ts",
     "dev": "vite --host 127.0.0.1",
-    "test": "vitest run tests/model.test.ts",
+    "test": "vitest run tests/model.test.ts tests/scene.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

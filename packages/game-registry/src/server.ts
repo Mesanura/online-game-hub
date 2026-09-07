@@ -28,6 +28,7 @@ import { ticTacToeSetupDefinition } from "@online-game-hub/tic-tac-toe/setup";
 import {
   pongDefinition,
   pongDefinitionV1_0_0,
+  pongDefinitionV1_1_0,
 } from "@online-game-hub/pong/core";
 import { pongSetupDefinition } from "@online-game-hub/pong/setup";
 import { badmintonDefinition } from "@online-game-hub/badminton/core";
@@ -85,6 +86,7 @@ export type GameDefinitionResolver = typeof resolveGameDefinition;
 
 const realtimeServerDefinitions = Object.freeze([
   eraseRealtimeGameDefinition(pongDefinitionV1_0_0),
+  eraseRealtimeGameDefinition(pongDefinitionV1_1_0),
   eraseRealtimeGameDefinition(pongDefinition),
   eraseRealtimeGameDefinition(badmintonDefinition),
 ]) as readonly UnknownRealtimeGameDefinition[];
@@ -133,6 +135,11 @@ const roundSetupDefinitions = Object.freeze([
   Object.freeze({
     gameId: pongDefinitionV1_0_0.manifest.id,
     gameVersion: pongDefinitionV1_0_0.manifest.gameVersion,
+    definition: eraseRoundSetupDefinition(pongSetupDefinition),
+  }),
+  Object.freeze({
+    gameId: pongDefinitionV1_1_0.manifest.id,
+    gameVersion: pongDefinitionV1_1_0.manifest.gameVersion,
     definition: eraseRoundSetupDefinition(pongSetupDefinition),
   }),
   Object.freeze({

@@ -3,7 +3,6 @@ import Phaser from "phaser";
 import {
   GameSurfaceBridge,
   type HostSurfaceMessage,
-  type SurfaceMode,
 } from "@online-game-hub/game-surface-bridge";
 
 import {
@@ -29,7 +28,7 @@ type HostState = Extract<HostSurfaceMessage, { readonly type: "host.state" }>;
 type SurfacePayload = PongSetupView | PongPlayView;
 
 interface RuntimeState {
-  readonly mode: SurfaceMode;
+  readonly mode: "setup" | "play";
   readonly init: HostInit | null;
   readonly hostState: HostState | null;
   readonly payload: SurfacePayload | null;
@@ -42,9 +41,8 @@ interface RuntimeState {
   readonly disposed: boolean;
 }
 
-function modeFromLocation(): SurfaceMode {
+function modeFromLocation(): RuntimeState["mode"] {
   if (window.location.pathname.includes("/setup/")) return "setup";
-  if (window.location.pathname.includes("/replay/")) return "replay";
   return "play";
 }
 
@@ -93,7 +91,7 @@ function handleHostMessage(message: HostSurfaceMessage): void {
   if (message.type === "host.init") {
     if (
       message.gameId !== "pong" ||
-      !["1.0.0", "1.1.0"].includes(message.gameVersion) ||
+      !["1.0.0", "1.1.0", "1.2.0"].includes(message.gameVersion) ||
       message.mode !== runtime.mode
     ) {
       reportSurfaceError(
@@ -244,6 +242,7 @@ function ensureGame(): void {
     getRenderState: (): PongRenderState | null => {
       if (runtime.payload === null || runtime.mode === "setup") return null;
       return {
+        gameVersion: runtime.init?.gameVersion ?? "",
         current: runtime.payload as PongPlayView,
         previous: runtime.previousPlayView,
         receivedAt: runtime.receivedAt,
@@ -318,9 +317,7 @@ function renderPlay(hostState: HostState, view: PongPlayView): string {
   const status =
     view.outcome === null
       ? hostState.connectionState === "connected"
-        ? runtime.mode === "replay"
-          ? "对局回放"
-          : "比赛进行中"
+        ? "比赛进行中"
         : "正在恢复比赛"
       : winnerText(view);
   const role =
@@ -328,7 +325,7 @@ function renderPlay(hostState: HostState, view: PongPlayView): string {
       ? "旁观"
       : `你在${view.yourSide === "LEFT" ? "左" : "右"}侧`;
   return `<main class="play-surface"><section class="pong-shell" aria-labelledby="pong-title">
-    <header class="pong-header"><div><div class="eyebrow">${runtime.mode === "replay" ? "对局回放" : "Pong"}</div><h1 id="pong-title">${status}</h1></div><span class="side-chip" id="pong-side">${role}</span></header>
+    <header class="pong-header"><div><div class="eyebrow">Pong</div><h1 id="pong-title">${status}</h1></div><span class="side-chip" id="pong-side">${role}</span></header>
     <span class="sr-only" data-testid="score-left" id="score-left">${view.scores[0]}</span>
     <span class="sr-only" data-testid="score-right" id="score-right">${view.scores[1]}</span>
     <span class="sr-only" data-testid="pong-outcome" id="pong-outcome">${view.outcome === null ? "" : view.outcome.reason}</span>
@@ -343,9 +340,7 @@ function updatePlayChrome(hostState: HostState, view: PongPlayView): void {
     title.textContent =
       view.outcome === null
         ? hostState.connectionState === "connected"
-          ? runtime.mode === "replay"
-            ? "对局回放"
-            : "比赛进行中"
+          ? "比赛进行中"
           : "正在恢复比赛"
         : winnerText(view);
   }
