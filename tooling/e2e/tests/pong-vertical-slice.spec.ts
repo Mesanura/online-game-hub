@@ -41,7 +41,7 @@ async function activePongRound(
   await expect(pageA.getByTestId("connection-state")).toHaveText("已连接");
   await expect(pageA.getByTestId("game-surface-iframe")).toHaveAttribute(
     "src",
-    "/game-surfaces/pong/1.0.4/setup/index.html",
+    "/game-surfaces/pong/1.1.0/setup/index.html",
   );
   await pongSurface(pageA).getByRole("button", { name: "房主发球" }).click();
   const inviteUrl = await pageA.getByTestId("invite-link").getAttribute("href");
@@ -50,7 +50,7 @@ async function activePongRound(
   await expect(pageB.getByTestId("connection-state")).toHaveText("已连接");
   await expect(pageB.getByTestId("game-surface-iframe")).toHaveAttribute(
     "src",
-    "/game-surfaces/pong/1.0.4/setup/index.html",
+    "/game-surfaces/pong/1.1.0/setup/index.html",
   );
   await pageA.getByTestId("toggle-round-ready").click();
   await pageB.getByTestId("toggle-round-ready").click();
@@ -59,7 +59,7 @@ async function activePongRound(
       await expect(page.getByTestId("match-status")).toHaveText("对局进行中");
       await expect(page.getByTestId("game-surface-iframe")).toHaveAttribute(
         "src",
-        "/game-surfaces/pong/1.0.4/play/index.html",
+        "/game-surfaces/pong/1.1.0/play/index.html",
       );
     }),
   );
@@ -268,14 +268,14 @@ async function advanceUntilScore(
 }
 
 async function advanceUntilCompleted(page: Page): Promise<void> {
-  for (let batch = 0; batch < 80; batch += 1) {
+  for (let batch = 0; batch < 200; batch += 1) {
     const status = await page
       .getByTestId("match-status")
       .getAttribute("data-status");
     if (status === "completed") return;
     await advanceRealtimeTicksAndWait(page, 10);
   }
-  throw new Error("Pong did not complete within 800 controlled ticks.");
+  throw new Error("Pong did not complete within 2000 controlled ticks.");
 }
 
 async function closeContexts(
@@ -321,24 +321,45 @@ test("two isolated browsers control authoritative Pong, reconnect, and read priv
       .locator("canvas")
       .boundingBox();
     expect(initialCanvasBox).not.toBeNull();
+    const meta = pongSurface(pageA).locator("#pong-meta");
+    await expect(meta).toHaveText("已连接");
+    await meta.evaluate((element) => {
+      element.setAttribute("data-status-mutations", "0");
+      new MutationObserver((mutations) => {
+        element.setAttribute(
+          "data-status-mutations",
+          String(
+            Number(element.getAttribute("data-status-mutations")) +
+              mutations.length,
+          ),
+        );
+      }).observe(element, {
+        childList: true,
+        characterData: true,
+        subtree: true,
+      });
+    });
     await pongSurface(pageA).locator("#pong-canvas").click();
-    await pageA.keyboard.down("ArrowUp");
-    await expect
-      .poll(async () => {
-        harness.advanceRealtimeTicks(1);
-        return pageA.getByTestId("acknowledged-input-sequence").textContent();
-      })
-      .not.toBe("0");
-    await pageA.keyboard.up("ArrowUp");
-    await expect
-      .poll(async () => {
-        harness.advanceRealtimeTicks(1);
-        return pageA
-          .getByTestId("server-tick")
-          .textContent()
-          .then((value) => Number(value));
-      })
-      .toBeGreaterThan(1);
+    let expectedAcknowledgement = 0;
+    for (const key of ["w", "s"]) {
+      for (const pressed of [true, false]) {
+        if (pressed) await pageA.keyboard.down(key);
+        else await pageA.keyboard.up(key);
+        expectedAcknowledgement += 1;
+        await expect
+          .poll(async () => {
+            harness.advanceRealtimeTicks(1);
+            return Number(
+              await pageA
+                .getByTestId("acknowledged-input-sequence")
+                .textContent(),
+            );
+          })
+          .toBe(expectedAcknowledgement);
+        await expect(meta).toHaveText("已连接");
+        await expect(meta).toHaveAttribute("data-status-mutations", "0");
+      }
+    }
     const afterInputCanvasBox = await pageA
       .frameLocator('[data-testid="game-surface-iframe"]')
       .locator("#pong-canvas")
@@ -399,6 +420,15 @@ test("two isolated browsers control authoritative Pong, reconnect, and read priv
       throw new Error("Pong replay id was not persisted.");
     const persistedReplay = await replayStore.get(replayId);
     expect(persistedReplay).not.toBeNull();
+    expect(persistedReplay?.header.gameVersion).toBe("1.1.0");
+    expect(
+      persistedReplay?.events.slice(0, 4).map((event) => event.input),
+    ).toEqual([
+      { type: "DIRECTION", direction: -1 },
+      { type: "DIRECTION", direction: 0 },
+      { type: "DIRECTION", direction: 1 },
+      { type: "DIRECTION", direction: 0 },
+    ]);
     expect(
       verifyRealtimeReplay(persistedReplay, resolveRealtimeGameDefinition),
     ).toMatchObject({ ok: true });
@@ -464,7 +494,7 @@ test("two isolated browsers control authoritative Pong, reconnect, and read priv
     await expect(reconnected.getByTestId("replay-page")).toBeVisible();
     await expect(
       reconnected.getByTestId("game-surface-iframe"),
-    ).toHaveAttribute("src", "/game-surfaces/pong/1.0.4/replay/index.html");
+    ).toHaveAttribute("src", "/game-surfaces/pong/1.1.0/replay/index.html");
     await expectNonBlankCanvas(reconnected);
     const replayFrameCount = replayPayload.frames.length;
     await reconnected.getByTestId("replay-last").click();
@@ -483,6 +513,109 @@ test("two isolated browsers control authoritative Pong, reconnect, and read priv
     );
   } finally {
     await database.close();
+    await closeContexts(contextA, contextB);
+  }
+});
+
+async function centerMarkerPixels(
+  page: Page,
+): Promise<{ total: number; outsideBall: number }> {
+  return pongSurface(page)
+    .locator("#pong-canvas canvas")
+    .evaluate((element) => {
+      const context = (element as HTMLCanvasElement).getContext("2d");
+      if (context === null) throw new Error("Missing Pong canvas context.");
+      const pixels = context.getImageData(370, 170, 60, 60).data;
+      let total = 0;
+      let outsideBall = 0;
+      for (let index = 0; index < pixels.length; index += 4) {
+        if (
+          (pixels[index] ?? 0) < 250 ||
+          (pixels[index + 1] ?? 0) < 240 ||
+          (pixels[index + 2] ?? 0) < 190
+        )
+          continue;
+        total += 1;
+        const pixelIndex = index / 4;
+        if (
+          Math.hypot((pixelIndex % 60) - 30, Math.floor(pixelIndex / 60) - 30) >
+          12
+        )
+          outsideBall += 1;
+      }
+      return { total, outsideBall };
+    });
+}
+
+test("Pong blinks the serve arrow three times, preserves preparation on reconnect, and supports reduced motion", async ({
+  browser,
+}, testInfo) => {
+  const contextA = await browser.newContext({
+    viewport: { width: 1440, height: 900 },
+    reducedMotion: "no-preference",
+  });
+  const contextB = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    reducedMotion: "reduce",
+  });
+  const pageA = await contextA.newPage();
+  const pageB = await contextB.newPage();
+  try {
+    const round = await activePongRound(pageA, pageB);
+    for (const page of [pageA, pageB]) {
+      await expectNonBlankCanvas(page);
+      await expect
+        .poll(async () => (await centerMarkerPixels(page)).outsideBall)
+        .toBeGreaterThan(40);
+    }
+    await pageA.screenshot({ path: testInfo.outputPath("serve-desktop.png") });
+    await pageB.screenshot({ path: testInfo.outputPath("serve-mobile.png") });
+    for (let phase = 1; phase <= 6; phase += 1) {
+      await advanceRealtimeTicksAndWait(pageA, 30);
+      await expect.poll(() => readServerTick(pageB)).toBe(phase * 30);
+      if (phase % 2 === 1) {
+        await expect
+          .poll(async () => (await centerMarkerPixels(pageA)).total)
+          .toBe(0);
+      } else {
+        await expect
+          .poll(async () => (await centerMarkerPixels(pageA)).outsideBall)
+          .toBeGreaterThan(40);
+      }
+      await expect
+        .poll(async () => (await centerMarkerPixels(pageB)).outsideBall)
+        .toBeGreaterThan(40);
+      await expect.poll(() => readScore(pageA)).toEqual([0, 0]);
+      if (phase === 3) {
+        await pageA.reload();
+        await expect(pageA.getByTestId("player-slot")).toHaveText(round.slotA);
+        await expect.poll(() => readServerTick(pageA)).toBe(90);
+        await expectNonBlankCanvas(pageA);
+        await expect
+          .poll(async () => (await centerMarkerPixels(pageA)).total)
+          .toBe(0);
+        await pageA.screenshot({
+          path: testInfo.outputPath("serve-hidden-reconnected.png"),
+        });
+      }
+    }
+    await advanceRealtimeTicksAndWait(pageA, 29);
+    await expect
+      .poll(async () => (await centerMarkerPixels(pageA)).outsideBall)
+      .toBeGreaterThan(40);
+    await advanceRealtimeTicksAndWait(pageA, 1);
+    await expect
+      .poll(async () => (await centerMarkerPixels(pageA)).outsideBall)
+      .toBe(0);
+    await expect
+      .poll(async () => (await centerMarkerPixels(pageA)).total)
+      .toBeGreaterThan(100);
+    await advanceRealtimeTicksAndWait(pageA, 10);
+    await expect
+      .poll(async () => (await centerMarkerPixels(pageA)).total)
+      .toBe(0);
+    await pageA.screenshot({ path: testInfo.outputPath("serve-launched.png") });
+  } finally {
     await closeContexts(contextA, contextB);
   }
 });

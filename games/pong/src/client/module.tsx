@@ -18,9 +18,9 @@ import {
   PONG_PADDLE_HEIGHT,
   PONG_PADDLE_WIDTH,
   PONG_RIGHT_PADDLE_X,
-} from "../constants.js";
-import { pongManifest } from "../manifest.js";
-import type { PongInput, PongView } from "../types.js";
+} from "../v1/constants.js";
+import { pongManifestV1_0_0 } from "../v1/manifest.js";
+import type { PongInput, PongView } from "../v1/types.js";
 
 const slotSchema = z.string().min(1);
 const scoreSchema = z.number().int().min(0).max(9);
@@ -318,8 +318,8 @@ export function PongClient(
 }
 
 export const pongClientModule = {
-  gameId: pongManifest.id,
-  gameVersion: pongManifest.gameVersion,
+  gameId: pongManifestV1_0_0.id,
+  gameVersion: pongManifestV1_0_0.gameVersion,
   parseView(input) {
     return pongClientViewSchema.parse(input) as unknown as PongView;
   },

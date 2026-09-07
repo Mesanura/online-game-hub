@@ -6,6 +6,20 @@ import type {
   PongSetupIntent,
   PongSetupView,
 } from "./contracts";
+import { PONG_SERVE_DELAY_TICKS } from "./contracts";
+
+export function serveArrowVisible(
+  view: Readonly<PongPlayView>,
+  reducedMotion: boolean,
+): boolean {
+  if (view.serve === null || view.outcome !== null) return false;
+  return (
+    reducedMotion ||
+    Math.floor((PONG_SERVE_DELAY_TICKS - view.serve.ticksRemaining) / 30) %
+      2 ===
+      0
+  );
+}
 
 export function createSetupIntent(
   starter: PongSetupIntent["starter"],

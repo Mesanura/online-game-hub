@@ -10,7 +10,12 @@ import {
   PONG_RIGHT_PADDLE_X,
   type PongPlayView,
 } from "./contracts";
-import { interpolationAlpha, lerp, winnerText } from "./model";
+import {
+  interpolationAlpha,
+  lerp,
+  serveArrowVisible,
+  winnerText,
+} from "./model";
 
 export interface PongRenderState {
   readonly current: PongPlayView;
@@ -79,8 +84,15 @@ export class PongScene extends Phaser.Scene {
         ? 1
         : interpolationAlpha(performance.now() - render.receivedAt);
     const previous = render.previous ?? render.current;
-    const ballX = lerp(previous.ball.x, render.current.ball.x, alpha);
-    const ballY = lerp(previous.ball.y, render.current.ball.y, alpha);
+    const serve = render.current.serve;
+    const ballX =
+      serve === null
+        ? lerp(previous.ball.x, render.current.ball.x, alpha)
+        : render.current.ball.x;
+    const ballY =
+      serve === null
+        ? lerp(previous.ball.y, render.current.ball.y, alpha)
+        : render.current.ball.y;
     const leftY = lerp(
       previous.paddles[0].y,
       render.current.paddles[0].y,
@@ -115,12 +127,27 @@ export class PongScene extends Phaser.Scene {
       PONG_PADDLE_HEIGHT * scaleY,
       5,
     );
-    this.#graphics.fillStyle(0xfff4c7, 1);
-    this.#graphics.fillCircle(
-      ballX * scaleX,
-      ballY * scaleY,
-      PONG_BALL_RADIUS * scaleX,
-    );
+    if (serve !== null && render.current.outcome === null) {
+      if (serveArrowVisible(render.current, render.reducedMotion)) {
+        this.#graphics.save();
+        this.#graphics.translateCanvas(ballX * scaleX, ballY * scaleY);
+        this.#graphics.rotateCanvas(
+          Math.atan2(serve.directionY, serve.directionX * 2),
+        );
+        this.#graphics.lineStyle(4, 0xfff4c7, 1);
+        this.#graphics.lineBetween(-20, 0, 20, 0);
+        this.#graphics.lineBetween(8, -12, 20, 0);
+        this.#graphics.lineBetween(8, 12, 20, 0);
+        this.#graphics.restore();
+      }
+    } else {
+      this.#graphics.fillStyle(0xfff4c7, 1);
+      this.#graphics.fillCircle(
+        ballX * scaleX,
+        ballY * scaleY,
+        PONG_BALL_RADIUS * scaleX,
+      );
+    }
     this.#score.setText(
       `${render.current.scores[0]}  :  ${render.current.scores[1]}`,
     );

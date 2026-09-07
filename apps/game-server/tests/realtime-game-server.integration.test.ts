@@ -242,6 +242,8 @@ describe.sequential("realtime Pong Game Server", () => {
       realtimeSchedulerTimer: schedulerTimer,
       realtimeReconnectGraceMilliseconds: 60_000,
       realtimeTerminalRoomTtlMilliseconds: 300_000,
+      resolveCurrentRealtimeDefinition: (gameId) =>
+        resolveRealtimeGameDefinition(gameId, "1.0.0"),
       resolveSetupProtocol: (gameId, gameVersion) =>
         gameId === "pong" && gameVersion === "1.0.0"
           ? PROTOCOL_VERSION
@@ -483,7 +485,7 @@ describe.sequential("realtime Pong Protocol V6 setup", () => {
   const archive = new RecordingRealtimeArchive();
   const gameplaySeeds: string[] = [];
   const setupSeeds: string[] = [];
-  const pongDefinition = resolveRealtimeGameDefinition("pong", "1.0.0");
+  const pongDefinition = resolveRealtimeGameDefinition("pong", "1.1.0");
   if (pongDefinition === undefined) {
     throw new Error("Pong realtime definition is unavailable.");
   }
@@ -551,11 +553,11 @@ describe.sequential("realtime Pong Protocol V6 setup", () => {
       resolveCurrentRealtimeDefinition: (gameId) =>
         gameId === "pong" ? v6PongDefinition : undefined,
       resolveRealtimeDefinition: (gameId, gameVersion) =>
-        gameId === "pong" && gameVersion === "1.0.0"
+        gameId === "pong" && gameVersion === "1.1.0"
           ? v6PongDefinition
           : undefined,
       resolveSetupProtocol: (gameId, gameVersion) =>
-        gameId === "pong" && gameVersion === "1.0.0"
+        gameId === "pong" && gameVersion === "1.1.0"
           ? SETUP_PROTOCOL_VERSION
           : undefined,
       logger: { write: () => undefined },
@@ -678,6 +680,36 @@ describe.sequential("realtime Pong Protocol V6 setup", () => {
     });
     expect(activeStoredRoom).not.toHaveProperty("nextRoundSetup");
 
+    await waitUntil(
+      () => inboxA.snapshots.length > 0 && inboxB.snapshots.length > 0,
+    );
+    for (const inbox of [inboxA, inboxB]) {
+      expect(inbox.snapshots.at(-1)).toMatchObject({
+        tick: 0,
+        view: {
+          ball: { x: 400_000, y: 200_000 },
+          serve: { ticksRemaining: 210 },
+        },
+      });
+      expect(JSON.stringify(inbox.snapshots.at(-1)?.view)).not.toMatch(
+        /velocity|rng|seed|serveTicksRemaining/u,
+      );
+    }
+    for (let tick = 1; tick <= 210; tick += 1) {
+      await schedulerTimer.tick();
+      await waitUntil(() => inboxA.snapshots.at(-1)?.tick === tick);
+      expect(inboxA.snapshots.at(-1)?.view).toMatchObject({
+        ball: { x: 400_000, y: 200_000 },
+        serve: tick === 210 ? null : { ticksRemaining: 210 - tick },
+      });
+    }
+    await schedulerTimer.tick();
+    await waitUntil(() => inboxB.snapshots.at(-1)?.tick === 211);
+    expect(inboxB.snapshots.at(-1)?.view).toMatchObject({ serve: null });
+    expect(inboxB.snapshots.at(-1)?.view).not.toMatchObject({
+      ball: { x: 400_000, y: 200_000 },
+    });
+
     roomA.send(
       REALTIME_INPUT_MESSAGE,
       input("v6-resign", 1, { type: "RESIGN" }),
@@ -690,6 +722,11 @@ describe.sequential("realtime Pong Protocol V6 setup", () => {
       ),
     );
     const completed = await roomStore.getByRoomCode("VSPN2345");
+    const replay = await replayStore.get("realtime-v6-replay-1");
+    expect(replay?.header.gameVersion).toBe("1.1.0");
+    expect(
+      verifyRealtimeReplay(replay, resolveRealtimeGameDefinition),
+    ).toMatchObject({ ok: true });
     expect(completed).toMatchObject({
       currentRound: { roundNumber: 1, status: "completed" },
       nextRoundSetup: {

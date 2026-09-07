@@ -76,8 +76,8 @@ const ticTacToeSurface = (
 const pongSurfaceArtifactV1 = {
   schemaVersion: 1,
   gameId: "pong",
-  supportedGameVersions: ["1.0.0"],
-  surfaceVersion: "1.0.4",
+  supportedGameVersions: ["1.0.0", "1.1.0"],
+  surfaceVersion: "1.1.0",
   bridgeVersion: 2,
   entrypoints: {
     setup: "setup/index.html",
@@ -85,20 +85,23 @@ const pongSurfaceArtifactV1 = {
     replay: "replay/index.html",
   },
   capabilities: {},
-  contentDigest: "sha256-lpj7C/9bQhLZnepl5eHQI5nWi+qdATcfWeazRspsvjI=",
+  contentDigest: "sha256-3QMjyVsXSEaRhrc3LmKnNvu7aWE1qHS51vtPv+wRi5M=",
 } satisfies SurfaceArtifactManifestV1;
 
-const pongSurfaceV1: GameDeploymentRegistration = Object.freeze({
-  gameId: "pong",
-  gameVersion: "1.0.0",
-  setupProtocol: 6,
-  platformControls: resignPlatformControls,
-  presentation: Object.freeze({
-    kind: "surface-v1",
-    publicBasePath: "/game-surfaces/pong/1.0.4",
-    artifact: pongSurfaceArtifactV1,
-  }),
-});
+const pongSurface = (
+  gameVersion: "1.0.0" | "1.1.0",
+): GameDeploymentRegistration =>
+  Object.freeze({
+    gameId: "pong",
+    gameVersion,
+    setupProtocol: 6,
+    platformControls: resignPlatformControls,
+    presentation: Object.freeze({
+      kind: "surface-v1",
+      publicBasePath: "/game-surfaces/pong/1.1.0",
+      artifact: pongSurfaceArtifactV1,
+    }),
+  });
 
 const connectFourSurfaceArtifactV1 = {
   schemaVersion: 1,
@@ -286,7 +289,8 @@ const gameDeployments = Object.freeze([
   reversiSurface("1.1.0", 6),
   chineseCheckersSurface("1.0.0"),
   chineseCheckersSurface("1.1.0"),
-  pongSurfaceV1,
+  pongSurface("1.0.0"),
+  pongSurface("1.1.0"),
   badmintonSurfaceV1,
 ]) satisfies readonly GameDeploymentRegistration[];
 

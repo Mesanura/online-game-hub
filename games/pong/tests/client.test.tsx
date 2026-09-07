@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { defineRealtimePlayerSlotId } from "@online-game-hub/realtime-game-sdk";
 
 import { PongClient } from "../src/client/module.js";
-import type { PongView } from "../src/types.js";
+import type { PongView } from "../src/v1/types.js";
 
 const view: PongView = {
   field: { width: 800_000, height: 400_000 },

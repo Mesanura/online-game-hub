@@ -18,9 +18,8 @@ import {
   PONG_PADDLE_SPEED,
   PONG_PADDLE_WIDTH,
   PONG_RIGHT_PADDLE_X,
-  PONG_SERVE_DELAY_TICKS,
-} from "../constants.js";
-import { pongManifest } from "../manifest.js";
+} from "../v1/constants.js";
+import { pongManifestV1_0_0 } from "../v1/manifest.js";
 import type {
   PongConfig,
   PongDirection,
@@ -28,7 +27,7 @@ import type {
   PongOutcome,
   PongState,
   PongView,
-} from "../types.js";
+} from "../v1/types.js";
 
 export type {
   PongConfig,
@@ -37,7 +36,7 @@ export type {
   PongOutcome,
   PongState,
   PongView,
-} from "../types.js";
+} from "../v1/types.js";
 export {
   PONG_BALL_RADIUS,
   PONG_BALL_SPEED_X,
@@ -50,10 +49,7 @@ export {
   PONG_PADDLE_WIDTH,
   PONG_RIGHT_PADDLE_X,
   PONG_TICK_RATE,
-  PONG_SERVE_DELAY_TICKS,
-} from "../constants.js";
-
-export { pongDefinitionV1_0_0 } from "./v1.js";
+} from "../v1/constants.js";
 
 const slotSchema = z.string().min(1);
 const directionSchema = z.union([z.literal(-1), z.literal(0), z.literal(1)]);
@@ -95,7 +91,6 @@ export const pongStateSchema = z
     players: z.tuple([slotSchema, slotSchema]),
     targetScore: z.number().int().min(1).max(9),
     tick: z.number().int().min(0),
-    serveTicksRemaining: z.number().int().min(0).max(PONG_SERVE_DELAY_TICKS),
     paddles: z.tuple([
       z.object({ y: z.number().int(), direction: directionSchema }).strict(),
       z.object({ y: z.number().int(), direction: directionSchema }).strict(),
@@ -113,19 +108,6 @@ export const pongStateSchema = z
   })
   .strict()
   .superRefine((state, context) => {
-    if (
-      state.serveTicksRemaining > 0 &&
-      (state.ball.x !== PONG_FIELD_WIDTH / 2 ||
-        state.ball.y !== PONG_FIELD_HEIGHT / 2 ||
-        Math.abs(state.ball.velocityX) !== PONG_BALL_SPEED_X ||
-        Math.abs(state.ball.velocityY) !== PONG_BALL_SPEED_Y)
-    ) {
-      context.addIssue({
-        code: "custom",
-        message:
-          "Pending serve must stay at the center with its launch velocity.",
-      });
-    }
     if (state.players[0] === state.players[1]) {
       context.addIssue({
         code: "custom",
@@ -187,14 +169,6 @@ export const pongViewSchema = z
     tick: z.number().int().min(0),
     targetScore: z.number().int().min(1).max(9),
     yourSide: z.enum(["LEFT", "RIGHT"]).nullable(),
-    serve: z
-      .object({
-        ticksRemaining: z.number().int().min(1).max(PONG_SERVE_DELAY_TICKS),
-        directionX: z.union([z.literal(-1), z.literal(1)]),
-        directionY: z.union([z.literal(-1), z.literal(1)]),
-      })
-      .strict()
-      .nullable(),
     outcome: pongOutcomeSchema.nullable(),
   })
   .strict();
@@ -231,7 +205,6 @@ function freezeState(input: unknown): PongState {
     ],
     targetScore: state.targetScore,
     tick: state.tick,
-    serveTicksRemaining: state.serveTicksRemaining,
     paddles: Object.freeze(
       state.paddles.map((paddle) => Object.freeze({ ...paddle })),
     ) as PongState["paddles"],
@@ -272,7 +245,6 @@ export function createInitialState(context: {
       players,
       targetScore: config.targetScore,
       tick: 0,
-      serveTicksRemaining: PONG_SERVE_DELAY_TICKS,
       paddles: [
         { y: PONG_FIELD_HEIGHT / 2, direction: 0 },
         { y: PONG_FIELD_HEIGHT / 2, direction: 0 },
@@ -400,18 +372,6 @@ export function step(context: {
     };
   }
 
-  if (state.serveTicksRemaining > 0) {
-    return {
-      state: freezeState({
-        ...state,
-        tick: state.tick + 1,
-        paddles,
-        serveTicksRemaining: state.serveTicksRemaining - 1,
-      }),
-      rng: context.rng as RealtimeRngState,
-    };
-  }
-
   let nextX = state.ball.x + state.ball.velocityX;
   let nextY = state.ball.y + state.ball.velocityY;
   let velocityX = state.ball.velocityX;
@@ -451,7 +411,6 @@ export function step(context: {
   }
 
   const scores: [number, number] = [...state.scores];
-  let serveTicksRemaining = 0;
   let rng = context.rng as RealtimeRngState;
   let ball: PongState["ball"] = Object.freeze({
     x: nextX,
@@ -471,7 +430,6 @@ export function step(context: {
       const served = serveBall(rng);
       ball = served.ball;
       rng = served.rng;
-      serveTicksRemaining = PONG_SERVE_DELAY_TICKS;
     }
   }
 
@@ -482,7 +440,6 @@ export function step(context: {
       paddles,
       ball,
       scores,
-      serveTicksRemaining,
       resignedSlotId: null,
     }),
     rng,
@@ -518,14 +475,6 @@ export function projectView(context: {
           ? "RIGHT"
           : null,
     outcome: getOutcome(state),
-    serve:
-      state.serveTicksRemaining > 0 && getOutcome(state) === null
-        ? {
-            ticksRemaining: state.serveTicksRemaining,
-            directionX: state.ball.velocityX < 0 ? -1 : 1,
-            directionY: state.ball.velocityY < 0 ? -1 : 1,
-          }
-        : null,
   };
   const parsed = pongViewSchema.parse(input);
   return Object.freeze({
@@ -538,7 +487,6 @@ export function projectView(context: {
       parsed.paddles.map((paddle) => Object.freeze({ ...paddle })),
     ) as PongView["paddles"],
     ball: Object.freeze({ ...parsed.ball }),
-    serve: parsed.serve === null ? null : Object.freeze({ ...parsed.serve }),
     scores: Object.freeze([...parsed.scores]) as readonly [number, number],
     outcome:
       parsed.outcome === null
@@ -547,8 +495,8 @@ export function projectView(context: {
   }) as PongView;
 }
 
-export const pongDefinition = Object.freeze({
-  manifest: pongManifest,
+export const pongDefinitionV1_0_0 = Object.freeze({
+  manifest: pongManifestV1_0_0,
   configSchema: pongConfigSchema,
   inputSchema: pongInputSchema,
   createInitialState,

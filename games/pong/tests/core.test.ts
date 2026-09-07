@@ -17,6 +17,7 @@ import {
   PONG_PADDLE_HEIGHT,
   PONG_PADDLE_SPEED,
   PONG_PADDLE_WIDTH,
+  PONG_SERVE_DELAY_TICKS,
   createInitialState,
   getOutcome,
   pongConfigSchema,
@@ -45,6 +46,7 @@ function withState(
 ): PongState {
   return pongStateSchema.parse({
     ...state,
+    serveTicksRemaining: 0,
     ...replacement,
   }) as unknown as PongState;
 }
@@ -65,6 +67,7 @@ describe("Pong initialization and schemas", () => {
       players,
       targetScore: 3,
       tick: 0,
+      serveTicksRemaining: PONG_SERVE_DELAY_TICKS,
       paddles: [
         { y: PONG_FIELD_HEIGHT / 2, direction: 0 },
         { y: PONG_FIELD_HEIGHT / 2, direction: 0 },
@@ -173,6 +176,76 @@ describe("Pong input and paddle movement", () => {
 });
 
 describe("Pong collisions, scoring and outcome", () => {
+  it("keeps the ball centered for the full preparation and launches in the projected direction", () => {
+    let game = initial();
+    const startingBall = game.state.ball;
+    const startingRng = game.rng;
+    const view = projectView({
+      state: game.state,
+      viewer: { kind: "player", slotId: right },
+    });
+    expect(view.serve).toEqual({
+      ticksRemaining: PONG_SERVE_DELAY_TICKS,
+      directionX: Math.sign(startingBall.velocityX),
+      directionY: Math.sign(startingBall.velocityY),
+    });
+    for (let tick = 0; tick < PONG_SERVE_DELAY_TICKS; tick += 1) {
+      game = step({ state: game.state, rng: game.rng, tick, inputs: [] });
+      expect(game.state.ball).toEqual(startingBall);
+      expect(game.state.serveTicksRemaining).toBe(
+        PONG_SERVE_DELAY_TICKS - tick - 1,
+      );
+      expect(game.rng).toEqual(startingRng);
+      expect(game.state.scores).toEqual([0, 0]);
+    }
+    const launched = step({
+      state: game.state,
+      rng: game.rng,
+      tick: game.state.tick,
+      inputs: [],
+    });
+    expect(launched.state.ball).toEqual({
+      ...startingBall,
+      x: startingBall.x + startingBall.velocityX,
+      y: startingBall.y + startingBall.velocityY,
+    });
+    expect(
+      projectView({
+        state: launched.state,
+        viewer: { kind: "player", slotId: left },
+      }).serve,
+    ).toBeNull();
+  });
+
+  it("rejects invalid countdown state and still validates inputs while preparing", () => {
+    const game = initial();
+    for (const serveTicksRemaining of [-1, 1.5, PONG_SERVE_DELAY_TICKS + 1]) {
+      expect(
+        pongStateSchema.safeParse({ ...game.state, serveTicksRemaining })
+          .success,
+      ).toBe(false);
+    }
+    expect(
+      pongStateSchema.safeParse({
+        ...game.state,
+        ball: { ...game.state.ball, x: 1 },
+      }).success,
+    ).toBe(false);
+    expect(() =>
+      step({ state: game.state, tick: 1, inputs: [], rng: game.rng }),
+    ).toThrow("not contiguous");
+    expect(() =>
+      step({
+        state: game.state,
+        tick: 0,
+        inputs: [
+          change(defineRealtimePlayerSlotId("outsider"), { type: "RESIGN" }),
+        ],
+        rng: game.rng,
+      }),
+    ).toThrow("not a player");
+  });
+
   it("reflects from the top boundary using integer coordinates", () => {
     const game = initial();
     const state = withState(game.state, {
@@ -225,6 +298,15 @@ describe("Pong collisions, scoring and outcome", () => {
       y: PONG_FIELD_HEIGHT / 2,
     });
     expect(result.rng.cursor).toBe(game.rng.cursor + 2);
+    expect(result.state.serveTicksRemaining).toBe(PONG_SERVE_DELAY_TICKS);
+    const waiting = step({
+      state: result.state,
+      tick: 1,
+      inputs: [],
+      rng: result.rng,
+    });
+    expect(waiting.state.ball).toEqual(result.state.ball);
+    expect(waiting.state.serveTicksRemaining).toBe(PONG_SERVE_DELAY_TICKS - 1);
   });
 
   it("finishes at target score and no longer advances", () => {
@@ -247,6 +329,8 @@ describe("Pong collisions, scoring and outcome", () => {
     expect(() =>
       step({ state: result.state, tick: 1, inputs: [], rng: result.rng }),
     ).toThrow("already finished");
+    expect(result.state.serveTicksRemaining).toBe(0);
+    expect(result.rng).toEqual(game.rng);
   });
 
   it("accepts off-turn resignation as an authoritative input", () => {
@@ -264,6 +348,12 @@ describe("Pong collisions, scoring and outcome", () => {
       resignedSlotId: right,
       scores: [0, 0],
     });
+    expect(
+      projectView({
+        state: result.state,
+        viewer: { kind: "player", slotId: left },
+      }).serve,
+    ).toBeNull();
   });
 });
 
@@ -291,12 +381,18 @@ describe("Pong purity, projection and determinism", () => {
     expect(view).not.toHaveProperty("directions");
     expect(JSON.stringify(view)).not.toContain("pong-test-seed");
     expect(Object.isFrozen(view)).toBe(true);
+    expect(Object.isFrozen(view.serve)).toBe(true);
+    expect(JSON.parse(JSON.stringify(view))).toEqual(view);
   });
 
   it("repeats the same State, RNG and Outcome for a fixed input log", () => {
     const run = () => {
       let game = initial();
-      for (let tick = 0; tick < 80; tick += 1) {
+      for (
+        let tick = 0;
+        tick < 1000 && getOutcome(game.state) === null;
+        tick += 1
+      ) {
         const inputs =
           tick === 0
             ? [change(left, { type: "DIRECTION", direction: -1 })]

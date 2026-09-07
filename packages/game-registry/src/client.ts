@@ -178,7 +178,7 @@ const loadPongEntrypoint = () => import("@online-game-hub/pong/client");
 const realtimeClientRegistrations = Object.freeze([
   {
     gameId: pongManifest.id,
-    gameVersion: pongManifest.gameVersion,
+    gameVersion: "1.0.0",
     loadEntrypoint: loadPongEntrypoint,
     loadModule: async () =>
       eraseRealtimeGameClientModule(

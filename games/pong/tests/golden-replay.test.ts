@@ -7,7 +7,7 @@ import {
   verifyRealtimeReplay,
 } from "@online-game-hub/realtime-game-sdk";
 
-import { pongDefinition } from "../src/core/index.js";
+import { pongDefinition, pongDefinitionV1_0_0 } from "../src/core/index.js";
 
 const fixture = JSON.parse(
   readFileSync(
@@ -17,11 +17,57 @@ const fixture = JSON.parse(
 ) as unknown;
 
 const resolve = (gameId: string, gameVersion: string) =>
-  gameId === "pong" && gameVersion === "1.0.0"
-    ? eraseRealtimeGameDefinition(pongDefinition)
+  gameId === "pong"
+    ? [
+        eraseRealtimeGameDefinition(pongDefinitionV1_0_0),
+        eraseRealtimeGameDefinition(pongDefinition),
+      ].find((definition) => definition.manifest.gameVersion === gameVersion)
     : undefined;
 
 describe("Pong realtime golden replay", () => {
+  it.each([
+    ["1.0.0", 326],
+    ["1.1.0", 956],
+  ] as const)(
+    "rebuilds every serve and score with exact %s rules",
+    (gameVersion, finalTick) => {
+      const currentFixture = JSON.parse(
+        readFileSync(
+          new URL(`./fixtures/pong-${gameVersion}-score.json`, import.meta.url),
+          "utf8",
+        ),
+      ) as {
+        finalTick: number;
+        recordedRngCursor: number;
+        recordedOutcome: unknown;
+      };
+      const first = verifyRealtimeReplay(currentFixture, resolve);
+      expect(first).toEqual(verifyRealtimeReplay(currentFixture, resolve));
+      expect(first).toMatchObject({
+        ok: true,
+        result: {
+          finalTick,
+          outcome: currentFixture.recordedOutcome,
+        },
+      });
+      expect(
+        verifyRealtimeReplay(
+          { ...currentFixture, finalTick: currentFixture.finalTick - 1 },
+          resolve,
+        ).ok,
+      ).toBe(false);
+      expect(
+        verifyRealtimeReplay(
+          {
+            ...currentFixture,
+            recordedRngCursor: currentFixture.recordedRngCursor + 2,
+          },
+          resolve,
+        ).ok,
+      ).toBe(false);
+    },
+  );
+
   it("exactly rebuilds the recorded outcome", () => {
     const first = verifyRealtimeReplay(fixture, resolve);
     const second = verifyRealtimeReplay(fixture, resolve);

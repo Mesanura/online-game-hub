@@ -1,5 +1,4 @@
 export const PONG_TICK_RATE = 60 as const;
-export const PONG_SERVE_DELAY_TICKS = PONG_TICK_RATE * 3.5;
 export const PONG_FIELD_WIDTH = 800_000;
 export const PONG_FIELD_HEIGHT = 400_000;
 export const PONG_PADDLE_WIDTH = 12_000;

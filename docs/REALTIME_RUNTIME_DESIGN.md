@@ -73,6 +73,8 @@ interface RealtimeGameDefinition<Config, State, Input, View, Outcome> {
 
 Pong 的最小规则为双人 paddle、上下方向 intent（`-1 | 0 | 1`）、球拍/场地边界碰撞、得分至目标分数、确定性发球、`RESIGN` 和 `WIN`/`RESIGNATION` Outcome。客户端不提交位置、速度、碰撞、分数、Outcome 或目标 tick；服务器从 slot 映射 actor 并在 Core 之外处理输入权限。
 
+当前 `pong@1.1.0` 的开局及非终局得分发球加入服务器权威准备期，表现层仅消费公开倒计时和方向；具体 tick 与动画约定见 [Pong GAME_SPEC](../games/pong/GAME_SPEC.md)。历史 `1.0.0` 仍由 frozen definition 立即发球，两个 exact 版本均可重建回放；本次不修改 runtime、网络或 realtime replay envelope。
+
 ## 5. Realtime Protocol V1
 
 Realtime Protocol V1 是独立 message family，不改写或宽松解析 Protocol V5。现有 ticket、room code、lifecycle 和 reconnect 继续沿用 V5 平台消息；只有进入 realtime room 后才使用以下消息：

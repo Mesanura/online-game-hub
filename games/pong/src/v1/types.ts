@@ -18,7 +18,6 @@ export type PongState = {
   readonly players: readonly [RealtimePlayerSlotId, RealtimePlayerSlotId];
   readonly targetScore: number;
   readonly tick: number;
-  readonly serveTicksRemaining: number;
   readonly paddles: readonly [
     { readonly y: number; readonly direction: PongDirection },
     { readonly y: number; readonly direction: PongDirection },
@@ -52,10 +51,5 @@ export type PongView = {
   readonly tick: number;
   readonly targetScore: number;
   readonly yourSide: "LEFT" | "RIGHT" | null;
-  readonly serve: {
-    readonly ticksRemaining: number;
-    readonly directionX: -1 | 1;
-    readonly directionY: -1 | 1;
-  } | null;
   readonly outcome: PongOutcome | null;
 };

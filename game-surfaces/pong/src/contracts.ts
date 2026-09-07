@@ -7,6 +7,7 @@ export const PONG_PADDLE_HEIGHT = 80_000;
 export const PONG_LEFT_PADDLE_X = 30_000;
 export const PONG_RIGHT_PADDLE_X = 770_000;
 export const PONG_BALL_RADIUS = 8_000;
+export const PONG_SERVE_DELAY_TICKS = 210;
 
 const stableSlotIdSchema = z.string().min(1).max(128);
 const scoreSchema = z.number().int().min(0).max(9);
@@ -65,7 +66,7 @@ const pongOutcomeSchema = z.union([
     .strict(),
 ]);
 
-export const pongPlayViewSchema = z
+const pongLegacyPlayViewSchema = z
   .object({
     field: z
       .object({
@@ -109,7 +110,28 @@ export const pongPlayViewSchema = z
     outcome: pongOutcomeSchema.nullable(),
   })
   .strict();
+export const pongPlayViewSchema = pongLegacyPlayViewSchema.extend({
+  serve: z
+    .object({
+      ticksRemaining: z.number().int().min(1).max(PONG_SERVE_DELAY_TICKS),
+      directionX: z.union([z.literal(-1), z.literal(1)]),
+      directionY: z.union([z.literal(-1), z.literal(1)]),
+    })
+    .strict()
+    .nullable(),
+});
 export type PongPlayView = z.infer<typeof pongPlayViewSchema>;
+
+export function parsePlayView(
+  input: unknown,
+  gameVersion: string,
+): PongPlayView {
+  if (gameVersion === "1.0.0") {
+    return { ...pongLegacyPlayViewSchema.parse(input), serve: null };
+  }
+  if (gameVersion === "1.1.0") return pongPlayViewSchema.parse(input);
+  throw new Error("Unsupported Pong version.");
+}
 
 export const pongSetupIntentSchema = z
   .object({

@@ -7,7 +7,7 @@ import {
 } from "@online-game-hub/game-surface-bridge";
 
 import {
-  pongPlayViewSchema,
+  parsePlayView,
   pongSetupViewSchema,
   type PongPlayView,
   type PongSetupIntent,
@@ -36,6 +36,7 @@ interface RuntimeState {
   readonly previousPlayView: PongPlayView | null;
   readonly receivedAt: number;
   readonly pendingIntentId: string | null;
+  readonly pendingIntentType: "SELECT_STARTER" | "DIRECTION" | "RESIGN" | null;
   readonly notice: string | null;
   readonly error: string | null;
   readonly disposed: boolean;
@@ -62,6 +63,7 @@ let runtime: RuntimeState = {
   previousPlayView: null,
   receivedAt: 0,
   pendingIntentId: null,
+  pendingIntentType: null,
   notice: null,
   error: null,
   disposed: false,
@@ -73,21 +75,25 @@ function updateRuntime(patch: Partial<RuntimeState>): void {
 }
 
 function reportSurfaceError(code: string, message: string): void {
-  updateRuntime({ error: message, pendingIntentId: null });
+  updateRuntime({
+    error: message,
+    pendingIntentId: null,
+    pendingIntentType: null,
+  });
   bridge?.send({ type: "surface.error", code, message });
 }
 
 function parsePayload(message: HostState): SurfacePayload {
   return runtime.mode === "setup"
     ? pongSetupViewSchema.parse(message.payload)
-    : pongPlayViewSchema.parse(message.payload);
+    : parsePlayView(message.payload, runtime.init?.gameVersion ?? "");
 }
 
 function handleHostMessage(message: HostSurfaceMessage): void {
   if (message.type === "host.init") {
     if (
       message.gameId !== "pong" ||
-      message.gameVersion !== "1.0.0" ||
+      !["1.0.0", "1.1.0"].includes(message.gameVersion) ||
       message.mode !== runtime.mode
     ) {
       reportSurfaceError(
@@ -180,13 +186,17 @@ function handleHostMessage(message: HostSurfaceMessage): void {
         : message.status === "stale"
           ? "房间状态已更新，请重新操作。"
           : `操作未被接受${message.code === undefined ? "" : `：${message.code}`}`;
-    updateRuntime({ pendingIntentId: null, notice });
+    updateRuntime({ pendingIntentId: null, pendingIntentType: null, notice });
     return;
   }
   game?.destroy(true);
   game = null;
   pongScene = null;
-  updateRuntime({ disposed: true, pendingIntentId: null });
+  updateRuntime({
+    disposed: true,
+    pendingIntentId: null,
+    pendingIntentType: null,
+  });
 }
 
 function submitIntent(
@@ -206,7 +216,11 @@ function submitIntent(
   const clientIntentId =
     requestedIntentId ?? `pong-${runtime.mode}-${intentSequence}`;
   if (bridge.send({ type: "surface.intent", clientIntentId, intent })) {
-    updateRuntime({ pendingIntentId: clientIntentId, notice: null });
+    updateRuntime({
+      pendingIntentId: clientIntentId,
+      pendingIntentType: intent.type,
+      notice: null,
+    });
   } else {
     updateRuntime({ notice: "游戏连接尚未就绪。" });
   }
@@ -217,6 +231,7 @@ function canControl(): boolean {
     runtime.mode === "play" &&
     runtime.hostState?.connectionState === "connected" &&
     runtime.hostState.readOnly === false &&
+    runtime.pendingIntentType !== "RESIGN" &&
     (runtime.payload as PongPlayView | null)?.outcome === null
   );
 }
@@ -263,7 +278,10 @@ function renderStatus(hostState: HostState): string {
         ? "正在重连"
         : "等待连接";
   return `<span data-connection="${hostState.connectionState}">${connectionLabel}</span>${
-    runtime.pendingIntentId === null ? "" : "<span>正在确认操作…</span>"
+    runtime.pendingIntentId === null ||
+    runtime.pendingIntentType === "DIRECTION"
+      ? ""
+      : "<span>正在确认操作…</span>"
   }`;
 }
 
@@ -339,7 +357,8 @@ function updatePlayChrome(hostState: HostState, view: PongPlayView): void {
         : `你在${view.yourSide === "LEFT" ? "左" : "右"}侧`;
   }
   const meta = document.getElementById("pong-meta");
-  if (meta !== null) meta.innerHTML = renderStatus(hostState);
+  const status = renderStatus(hostState);
+  if (meta !== null && meta.innerHTML !== status) meta.innerHTML = status;
   const scoreLeft = document.getElementById("score-left");
   if (scoreLeft !== null) scoreLeft.textContent = String(view.scores[0]);
   const scoreRight = document.getElementById("score-right");
@@ -415,6 +434,10 @@ bridge = new GameSurfaceBridge({
   allowedHostOrigin: "*",
   onMessage: handleHostMessage,
   onProtocolError: () =>
-    updateRuntime({ error: "与网站的安全通信已中断。", pendingIntentId: null }),
+    updateRuntime({
+      error: "与网站的安全通信已中断。",
+      pendingIntentId: null,
+      pendingIntentType: null,
+    }),
 });
 bridge.start();

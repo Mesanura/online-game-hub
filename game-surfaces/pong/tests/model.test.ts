@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import { surfaceHostMessageSchema } from "@online-game-hub/game-surface-bridge";
 
 import {
+  parsePlayView,
+  PONG_SERVE_DELAY_TICKS,
   pongPlayIntentSchema,
   pongPlayViewSchema,
   pongSetupIntentSchema,
@@ -15,6 +17,7 @@ import {
   interpolationAlpha,
   lerp,
   resultSummary,
+  serveArrowVisible,
   setupStatusLabel,
   winnerText,
 } from "../src/model";
@@ -35,9 +38,56 @@ const playView = pongPlayViewSchema.parse({
   targetScore: 3,
   yourSide: "LEFT",
   outcome: null,
+  serve: null,
 });
 
 describe("Pong Surface model", () => {
+  it("shows three disappear/reappear cycles before launch, or a steady reduced-motion arrow", () => {
+    const phases: boolean[] = [];
+    for (let elapsed = 0; elapsed < PONG_SERVE_DELAY_TICKS; elapsed += 1) {
+      const preparing = {
+        ...playView,
+        serve: {
+          ticksRemaining: PONG_SERVE_DELAY_TICKS - elapsed,
+          directionX: -1 as const,
+          directionY: 1 as const,
+        },
+      };
+      const visible = serveArrowVisible(preparing, false);
+      expect(visible).toBe(Math.floor(elapsed / 30) % 2 === 0);
+      expect(serveArrowVisible(preparing, true)).toBe(true);
+      if (phases.at(-1) !== visible) phases.push(visible);
+    }
+    expect(phases).toEqual([true, false, true, false, true, false, true]);
+    expect(serveArrowVisible(playView, false)).toBe(false);
+    expect(serveArrowVisible(playView, true)).toBe(false);
+  });
+
+  it("parses only the exact version's public view, including historical replay", () => {
+    const legacyView = Object.fromEntries(
+      Object.entries(playView).filter(([key]) => key !== "serve"),
+    );
+    expect(parsePlayView(legacyView, "1.0.0")).toEqual(playView);
+    expect(() => parsePlayView(legacyView, "1.1.0")).toThrow();
+    expect(() => parsePlayView(playView, "1.0.0")).toThrow();
+    expect(parsePlayView(playView, "1.1.0")).toEqual(playView);
+    expect(() => parsePlayView(playView, "1.2.0")).toThrow();
+    for (const ticksRemaining of [0, -1, 1.5, PONG_SERVE_DELAY_TICKS + 1]) {
+      expect(() =>
+        parsePlayView(
+          {
+            ...playView,
+            serve: { ticksRemaining, directionX: 1, directionY: -1 },
+          },
+          "1.1.0",
+        ),
+      ).toThrow();
+    }
+    expect(() =>
+      parsePlayView({ ...playView, rng: { seed: "private" } }, "1.1.0"),
+    ).toThrow();
+  });
+
   it("accepts strict projected Setup views and minimal Setup intents", () => {
     const setup = pongSetupViewSchema.parse({
       config: { targetScore: 3 },

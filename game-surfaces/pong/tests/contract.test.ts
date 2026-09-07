@@ -20,8 +20,8 @@ describe("Pong Surface artifact contract", () => {
     expect(manifest).toMatchObject({
       schemaVersion: 1,
       gameId: "pong",
-      supportedGameVersions: ["1.0.0"],
-      surfaceVersion: "1.0.4",
+      supportedGameVersions: ["1.0.0", "1.1.0"],
+      surfaceVersion: "1.1.0",
       bridgeVersion: 2,
       entrypoints: {
         setup: "setup/index.html",

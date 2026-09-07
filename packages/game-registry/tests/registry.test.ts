@@ -194,30 +194,33 @@ describe("explicit game registry", () => {
         });
       }
     }
-    expect(resolveGameDeployment("pong", "1.0.0")).toMatchObject({
-      setupProtocol: 6,
-      presentation: {
-        kind: "surface-v1",
-        publicBasePath: "/game-surfaces/pong/1.0.4",
-        artifact: {
-          supportedGameVersions: ["1.0.0"],
-          surfaceVersion: "1.0.4",
-          contentDigest: "sha256-lpj7C/9bQhLZnepl5eHQI5nWi+qdATcfWeazRspsvjI=",
+    for (const gameVersion of ["1.0.0", "1.1.0"] as const) {
+      expect(resolveGameDeployment("pong", gameVersion)).toMatchObject({
+        setupProtocol: 6,
+        presentation: {
+          kind: "surface-v1",
+          publicBasePath: "/game-surfaces/pong/1.1.0",
+          artifact: {
+            supportedGameVersions: ["1.0.0", "1.1.0"],
+            surfaceVersion: "1.1.0",
+            contentDigest:
+              "sha256-3QMjyVsXSEaRhrc3LmKnNvu7aWE1qHS51vtPv+wRi5M=",
+          },
         },
-      },
-      platformControls: ["RESIGN"],
-    });
-    for (const mode of ["setup", "play", "replay"] as const) {
-      expect(resolveGameSurfaceEntrypoint("pong", "1.0.0", mode)).toMatchObject(
-        {
+        platformControls: ["RESIGN"],
+      });
+      for (const mode of ["setup", "play", "replay"] as const) {
+        expect(
+          resolveGameSurfaceEntrypoint("pong", gameVersion, mode),
+        ).toMatchObject({
           gameId: "pong",
-          gameVersion: "1.0.0",
-          surfaceVersion: "1.0.4",
+          gameVersion,
+          surfaceVersion: "1.1.0",
           mode,
           platformControls: ["RESIGN"],
-          url: `/game-surfaces/pong/1.0.4/${mode}/index.html`,
-        },
-      );
+          url: `/game-surfaces/pong/1.1.0/${mode}/index.html`,
+        });
+      }
     }
     for (const gameVersion of ["1.0.0", "1.1.0"] as const) {
       expect(resolveGameDeployment("connect-four", gameVersion)).toMatchObject({
@@ -381,6 +384,7 @@ describe("explicit game registry", () => {
     for (const [gameId, gameVersion] of [
       ["tic-tac-toe", "1.1.0"],
       ["pong", "1.0.0"],
+      ["pong", "1.1.0"],
       ["badminton", "1.0.0"],
       ["connect-four", "1.1.0"],
       ["gomoku", "1.1.0"],
@@ -435,6 +439,21 @@ describe("explicit game registry", () => {
     ).toBeDefined();
   });
 
+  it("preserves immediate-serve Pong for historical replays and uses delayed serves for new rooms", async () => {
+    const current = resolveCurrentRealtimeGameDefinition("pong");
+    const legacy = resolveRealtimeGameDefinition("pong", "1.0.0");
+    expect(current?.manifest.gameVersion).toBe("1.1.0");
+    expect(legacy).toBeDefined();
+    expect(Object.isFrozen(legacy)).toBe(true);
+    expect(legacy).not.toBe(current);
+    await expect(
+      loadRealtimeGameClientModule("pong", "1.1.0"),
+    ).resolves.toBeUndefined();
+    await expect(
+      loadRealtimeGameClientEntrypoint("pong", "1.1.0"),
+    ).resolves.toBeUndefined();
+  });
+
   it("resolves every supported exact historical client module independently", async () => {
     const historicalVersions = [
       ["tic-tac-toe", "1.0.0"],
@@ -464,20 +483,21 @@ describe("explicit game registry", () => {
       (game) => game.id !== "badminton",
     )) {
       if (manifest.runtime === "realtime") {
+        const gameVersion = "1.0.0";
         const entrypoint = await loadRealtimeGameClientEntrypoint(
           manifest.id,
-          manifest.gameVersion,
+          gameVersion,
         );
         expect(entrypoint).toHaveProperty(clientModuleSymbol(manifest.id));
         expect(entrypoint).not.toHaveProperty("step");
         expect(entrypoint).not.toHaveProperty("createInitialState");
         const clientModule = await loadRealtimeGameClientModule(
           manifest.id,
-          manifest.gameVersion,
+          gameVersion,
         );
         expect(clientModule).toMatchObject({
           gameId: manifest.id,
-          gameVersion: manifest.gameVersion,
+          gameVersion,
         });
         expect(clientModule?.parseView).toEqual(expect.any(Function));
         expect(clientModule?.createResignInput).toEqual(expect.any(Function));
