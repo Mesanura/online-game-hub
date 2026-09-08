@@ -16,6 +16,6 @@ A/D 或左右方向键移动，W/上方向键/空格起跳，S 手动发球，J 
 
 只有同一回合、同一阶段且连续的公开快照进行显示插值，包含持球移动与跳跃；触球转折经过公开接触点。重新发球、重连和终局立即收敛。reduced-motion 关闭粒子拖尾、摆腿、残影和位置插值。终局摘要由本 Surface 以中文纯文本提交给平台 HUD。
 
-Surface `1.1.1` exact 支持 `badminton@1.0.0`/`1.1.0`，按版本严格解析 View/Input；旧版保留自动发球。新版脚底、影子、落点、发球线与双立柱球网共用投影；后场边界和脚部偏移来自公开 View。`presentation.ts` 负责可测的骨架/插值/粒子/音效事件模型，`audio.ts` 拥有 Web Audio 合成和释放。音效首次交互解锁，可通过复选框静音，不发起外部素材请求。
+Surface `1.2.1` exact 支持 `badminton@1.0.0`/`1.1.0`/`1.2.0`，按版本严格解析 View/Input 和网高；旧版保留自动发球。脚底、影子、落点、发球线与双立柱球网共用投影。`presentation.ts` 负责骨架、插值、稀疏黄绿色粒子与音效事件；人物缩小、后腿伸直，球拍加长。`audio.ts` 在首次用户交互预生成噪声，圆角立体按钮切换静音。静态球场缓存、文字纹理避免逐帧更新，同 tick 状态保持插值进度；不发起外部素材请求。
 
 内容更改后提升 `surfaceVersion`，再运行 `pnpm --filter @online-game-hub/badminton-surface artifact:lock` 并同步 exact deployment 摘要；普通 build 不修改锁。

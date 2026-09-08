@@ -931,7 +931,7 @@ describe.sequential("realtime badminton Protocol V6", () => {
     expect(await discovery.json()).toEqual({
       roomCode: "BDMN2345",
       gameId: "badminton",
-      gameVersion: "1.1.0",
+      gameVersion: "1.2.0",
       setupProtocol: SETUP_PROTOCOL_VERSION,
       runtime: "realtime",
     });

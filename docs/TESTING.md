@@ -434,6 +434,8 @@ Pong `1.2.0` 回归需覆盖 120 tick 准备期、更快的双侧球拍、每次
 
 ### 13.1 额外实时游戏：羽毛球验收
 
+`1.2.0` 另覆盖降网后上方通过/下方高速拦截、左右对称后下方捞球、范围外漏接与连续触球拒绝；保留 `1.0.0`/`1.1.0` 全部 golden 并新增当前版本记录。Surface 覆盖缩小骨架、站立后腿共线、前膝微弯、加长拍杆及 exact 网高，浏览器验证音效按钮点击/键盘状态。
+
 - `apps/game-server/tests/realtime-game-server.integration.test.ts` 的羽毛球 V6 suite 覆盖真实双客户端、非房主/非法/过期 Setup、accepted 设置清 ready、左右 slot 映射、伪造 actor/State/tick/位置/分数、重复 command、过期 input sequence、错轮、输入释放、同 session 接管、投降、完整设置重开、无限发球等待与非发球方无效 intent、真实客户端逐球发球计分终局和两轮 exact replay。
 - `tooling/e2e/tests/badminton-vertical-slice.spec.ts` 使用两个隔离账户、临时 PostgreSQL 和真实 Next/Colyseus/Chromium。验证独立 Setup/Play、键盘组合、真实 Chromium 多点触控及取消、失焦释放、刷新重连、完整计分、终局重开与取消/确认投降。跨新数据库连接重读记录并 verify，私有 history 保留战绩但 `replayAvailable: false`，玩家播放返回 409 `PLAYER_PLAYBACK_NOT_SUPPORTED`。
 - 当前 Surface 验证新旧 exact View/Input、快速发球 latch、左右上下手方向、持球手和触球位置对齐、统一透视线/前脚/网顶几何、限位不踏步、粒子间距/数量/清理、音效解锁/静音/去重及重连不补播。真实浏览器覆盖七个触控按钮、S 空中发球、脚线位置、音效开关和逐球手动计分；截图只用于人工验收，不创建像素基线。

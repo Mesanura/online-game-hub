@@ -81,7 +81,7 @@ export const playViewSchema = z
         leftLine: z.literal(80_000),
         rightLine: z.literal(920_000),
         netX: z.literal(500_000),
-        netTop: z.literal(340_000),
+        netTop: z.union([z.literal(340_000), z.literal(370_000)]),
         netWidth: z.literal(6_000),
         shuttleRadius: z.literal(6_000),
         leftServeLine: z.literal(360_000),
@@ -179,7 +179,12 @@ export type PlayIntent = z.infer<typeof playIntentSchema>;
 export type ControlIntent = Extract<PlayIntent, { type: "CONTROL" }>;
 
 export function parsePlayView(input: unknown, gameVersion: string): PlayView {
-  if (gameVersion === "1.1.0") return playViewSchema.parse(input);
+  if (gameVersion === "1.1.0" || gameVersion === "1.2.0") {
+    const view = playViewSchema.parse(input);
+    if (view.court.netTop !== (gameVersion === "1.2.0" ? 370_000 : 340_000))
+      throw new Error("Badminton court does not match the exact version.");
+    return view;
+  }
   if (gameVersion !== "1.0.0")
     throw new Error("Unsupported badminton version.");
   const legacy = legacyPlayViewSchema.parse(input);
@@ -205,7 +210,8 @@ export function encodePlayIntent(
   input: PlayIntent,
   gameVersion: string,
 ): unknown {
-  if (gameVersion === "1.1.0") return playIntentSchema.parse(input);
+  if (gameVersion === "1.1.0" || gameVersion === "1.2.0")
+    return playIntentSchema.parse(input);
   if (gameVersion !== "1.0.0")
     throw new Error("Unsupported badminton version.");
   if (input.type === "RESIGN") return legacyPlayIntentSchema.parse(input);

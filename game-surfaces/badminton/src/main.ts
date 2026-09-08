@@ -181,7 +181,7 @@ function setupMarkup(current: SetupView): string {
         .join("")}
     </div>${current.starter === "FIXED" ? '<p class="muted">沿用上一局的实际首发方与场地。</p>' : ""}</section></div>
     <p class="rule-note">先到 ${current.config.targetScore} 分且领先 2 分获胜，${cap} 分封顶。每球得分者发球。</p>
-    <div class="how-to"><span><kbd>A</kbd><kbd>D</kbd> 移动</span><span><kbd>W</kbd> 起跳</span>${init?.gameVersion === "1.1.0" ? "<span><kbd>S</kbd> 发球</span>" : ""}<span><kbd>J</kbd> 高远球</span><span><kbd>K</kbd> 扣杀</span><span><kbd>L</kbd> 吊球</span></div>
+    <div class="how-to"><span><kbd>A</kbd><kbd>D</kbd> 移动</span><span><kbd>W</kbd> 起跳</span>${init?.gameVersion === "1.1.0" || init?.gameVersion === "1.2.0" ? "<span><kbd>S</kbd> 发球</span>" : ""}<span><kbd>J</kbd> 高远球</span><span><kbd>K</kbd> 扣杀</span><span><kbd>L</kbd> 吊球</span></div>
     <p class="setup-bottom">${current.canEdit ? "选好后，两位玩家分别点击房间中的准备按钮。" : "房主正在设置。确认规则后，点击房间中的准备按钮。"}手机可使用屏幕按钮。</p>
     <p class="notice" id="surface-notice" role="status"></p>
   </section></main>`;
@@ -233,7 +233,7 @@ function playMarkup(): string {
   return `<main class="play-page"><section class="match-shell" aria-label="火柴人羽毛球对局">
     <header class="match-header"><div class="game-brand"><span class="game-mark">${shuttleIcon}</span><div><p class="eyebrow">晴日球场</p><h1>火柴人羽毛球</h1></div></div><div class="scoreboard" aria-label="比分" aria-live="polite"><div class="score-side blue"><span id="left-label">蓝方</span><strong id="score-left" data-testid="score-left">0</strong></div><span class="score-divider">:</span><div class="score-side coral"><strong id="score-right" data-testid="score-right">0</strong><span id="right-label">橙方</span></div></div><div class="match-format"><strong id="match-target">7 分制</strong><span id="best-rally">最长 0 拍</span></div></header>
     <div class="rally-bar"><span class="live-dot" aria-hidden="true"></span><span id="phase-label" role="status">准备发球</span><span class="rally-number" id="rally-number"></span></div>
-    <div class="court-stage"><div id="badminton-canvas" class="court-canvas" tabindex="0" role="application" aria-label="火柴人羽毛球球场" aria-describedby="control-help"></div><label class="audio-toggle"><input id="audio-enabled" type="checkbox" checked>音效</label><div class="connection-cover" id="connection-cover" hidden role="status">正在恢复连接…</div></div>
+    <div class="court-stage"><div id="badminton-canvas" class="court-canvas" tabindex="0" role="application" aria-label="火柴人羽毛球球场" aria-describedby="control-help"></div><button class="audio-toggle" id="audio-enabled" type="button" aria-label="音效" aria-pressed="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4Z"/><path class="sound-waves" d="M17 8q5 4 0 8M19 4q9 8 0 16"/></svg><span>音效开</span></button><div class="connection-cover" id="connection-cover" hidden role="status">正在恢复连接…</div></div>
     <div class="controls" role="group" aria-label="球场操作"><div class="movement-controls">
       <button type="button" data-control="left" aria-label="向左移动" aria-pressed="false"><span class="control-symbol">←</span><kbd>A</kbd></button><button type="button" data-control="right" aria-label="向右移动" aria-pressed="false"><span class="control-symbol">→</span><kbd>D</kbd></button><button class="jump-button" type="button" data-control="jump" aria-label="起跳" aria-pressed="false"><span>起跳</span><kbd>W</kbd></button>
     </div><div class="shot-controls"><button type="button" data-control="serve" aria-label="发球" aria-pressed="false"><span>发球</span><kbd>S</kbd></button><button type="button" data-control="clear" aria-label="高远球" aria-pressed="false"><span>高远球</span><kbd>J</kbd></button><button class="smash-button" type="button" data-control="smash" aria-label="扣杀" aria-pressed="false"><span>扣杀</span><kbd>K</kbd></button><button type="button" data-control="drop" aria-label="吊球" aria-pressed="false"><span>吊球</span><kbd>L</kbd></button></div></div>
@@ -245,9 +245,14 @@ function playMarkup(): string {
 function bindControls(): void {
   const options = { signal: events.signal };
   document.getElementById("audio-enabled")?.addEventListener(
-    "change",
+    "click",
     (event) => {
-      audio.setEnabled((event.currentTarget as HTMLInputElement).checked);
+      audio.setEnabled(!audio.enabled);
+      const button = event.currentTarget as HTMLButtonElement;
+      button.setAttribute("aria-pressed", String(audio.enabled));
+      const label = button.querySelector("span");
+      if (label !== null)
+        label.textContent = audio.enabled ? "音效开" : "音效关";
     },
     options,
   );
@@ -417,7 +422,7 @@ function renderPlay(): void {
         button.dataset.control === "serve" && init?.gameVersion === "1.0.0";
       button.disabled =
         !canControl() ||
-        (init?.gameVersion === "1.1.0" &&
+        ((init?.gameVersion === "1.1.0" || init?.gameVersion === "1.2.0") &&
           (button.dataset.control === "serve"
             ? !serving || view?.phase !== "SERVE"
             : ["clear", "drop", "smash"].includes(
@@ -431,7 +436,7 @@ function handleHost(message: HostSurfaceMessage): void {
   if (message.type === "host.init") {
     if (
       message.gameId !== "badminton" ||
-      !["1.0.0", "1.1.0"].includes(message.gameVersion) ||
+      !["1.0.0", "1.1.0", "1.2.0"].includes(message.gameVersion) ||
       message.mode !== mode
     ) {
       fail("SURFACE_TARGET_MISMATCH", "游戏画面与房间版本不一致。");
@@ -470,10 +475,13 @@ function handleHost(message: HostSurfaceMessage): void {
             (next.tick < view.tick || next.tick - view.tick > 12))
         )
           renderEpoch++;
-        previous = reconnecting || newRound ? null : view;
+        const advanced = view === null || next.tick !== view.tick;
+        if (advanced || reconnecting || newRound) {
+          previous = reconnecting || newRound ? null : view;
+          receivedAt = performance.now();
+        }
         view = next;
         host = message;
-        receivedAt = performance.now();
         const requestedServe = serveRequest.pending;
         serveRequest.observe(next);
         if (!canControl() || reconnecting || newRound) resetControls(false);
@@ -546,7 +554,7 @@ function pressControl(source: string, control: Control): void {
     control === "serve" &&
     !held &&
     view !== null &&
-    init?.gameVersion === "1.1.0"
+    (init?.gameVersion === "1.1.0" || init?.gameVersion === "1.2.0")
   )
     serveRequest.press(view);
 }
@@ -554,7 +562,8 @@ function pressControl(source: string, control: Control): void {
 function usesNativeKeyboard(target: EventTarget | null): boolean {
   return (
     target instanceof HTMLElement &&
-    (target.matches("input, select, textarea") || target.isContentEditable)
+    (target.matches("input, select, textarea, button:not([data-control])") ||
+      target.isContentEditable)
   );
 }
 

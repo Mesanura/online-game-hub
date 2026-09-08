@@ -9,14 +9,17 @@ import { describe, expect, it } from "vitest";
 import {
   badmintonDefinition,
   badmintonDefinitionV1_0_0,
+  badmintonDefinitionV1_1_0,
 } from "../src/core/index.js";
 
 const resolve = (gameId: string, gameVersion: string) =>
   gameId === "badminton" && gameVersion === "1.0.0"
     ? eraseRealtimeGameDefinition(badmintonDefinitionV1_0_0)
     : gameId === "badminton" && gameVersion === "1.1.0"
-      ? eraseRealtimeGameDefinition(badmintonDefinition)
-      : undefined;
+      ? eraseRealtimeGameDefinition(badmintonDefinitionV1_1_0)
+      : gameId === "badminton" && gameVersion === "1.2.0"
+        ? eraseRealtimeGameDefinition(badmintonDefinition)
+        : undefined;
 const fixture = (name: string, version = "1.0.0") =>
   JSON.parse(
     readFileSync(
@@ -26,6 +29,19 @@ const fixture = (name: string, version = "1.0.0") =>
   ) as RealtimeCanonicalReplay;
 
 describe("badminton exact realtime golden records", () => {
+  it("reconstructs the 1.2.0 journal with the new exact definition", () => {
+    const replay = fixture("resignation", "1.2.0");
+    const result = verifyRealtimeReplay(replay, resolve);
+    expect(result).toMatchObject({
+      ok: true,
+      result: {
+        finalTick: 41,
+        outcome: replay.recordedOutcome,
+        rng: { cursor: 0 },
+      },
+    });
+    expect(verifyRealtimeReplay(replay, resolve)).toEqual(result);
+  });
   it.each(["resignation", "score", "rally"])(
     "reconstructs the frozen %s journal twice",
     (name) => {

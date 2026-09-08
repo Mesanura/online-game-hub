@@ -512,10 +512,35 @@ kbd {
   min-height: 44px;
   cursor: pointer;
 }
-.audio-toggle input {
-  accent-color: #467faa;
-  width: 17px;
-  height: 17px;
+.audio-toggle {
+  padding: 7px 12px;
+  border: 2px solid #fffdf1;
+  border-radius: 16px;
+  background: #f4efd9;
+  box-shadow:
+    inset 0 2px 3px #ffffff,
+    0 4px 0 #aebdb0,
+    0 5px 10px #31545a18;
+  font-weight: 700;
+}
+.audio-toggle[aria-pressed="true"] {
+  transform: none;
+  background: #e2eed5;
+}
+.audio-toggle:hover {
+  background: #faffec;
+}
+.audio-toggle svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.audio-toggle[aria-pressed="false"] .sound-waves {
+  visibility: hidden;
 }
 .controls button[aria-pressed="true"] {
   background: #dfeccd;

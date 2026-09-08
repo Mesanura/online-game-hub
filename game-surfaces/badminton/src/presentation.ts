@@ -79,7 +79,7 @@ export function playerPose(
     y: airborne ? -9 : 0,
   };
   const back = { x: -16 - stride, y: airborne ? -17 : 0 };
-  const shoulder = { x: 0, y: -109 };
+  const shoulder = { x: 0, y: -90 };
   const start = athlete.swingStartedTick;
   const age = start === null ? 100 : Math.max(0, tick - start);
   const duration = athlete.swingKind === "SERVE" ? 18 : 10;
@@ -99,8 +99,8 @@ export function playerPose(
       angle = lerp(angle, readyAngle, Math.min(1, (age - duration) / 7));
   }
   let racket = {
-    x: Math.cos(angle) * 89,
-    y: shoulder.y + Math.sin(angle) * 89,
+    x: Math.cos(angle) * 108,
+    y: shoulder.y + Math.sin(angle) * 108,
   };
   const contact = athlete.lastContact;
   if (contact !== null && start !== null && contact.tick >= start) {
@@ -113,12 +113,12 @@ export function playerPose(
   const length = Math.max(1, Math.hypot(racket.x, racket.y - shoulder.y));
   const ux = racket.x / length;
   const uy = (racket.y - shoulder.y) / length;
-  const hand = { x: racket.x - ux * 32, y: racket.y - uy * 32 };
+  const hand = { x: racket.x - ux * 52, y: racket.y - uy * 52 };
   const elbow = {
     x: hand.x * 0.53 - uy * 8,
     y: lerp(shoulder.y, hand.y, 0.53) + ux * 8,
   };
-  const freeHand = holding ? { x: 40, y: -70 } : { x: 24, y: -126 };
+  const freeHand = holding ? { x: 40, y: -70 } : { x: 24, y: -104 };
   const point = (p: Point): Point =>
     projectPoint(x + facing * p.x * 1000, y + p.y * 1000);
   return {
@@ -126,15 +126,15 @@ export function playerPose(
     back: point(back),
     frontHeel: point({ x: front.x - 8, y: front.y }),
     backHeel: point({ x: back.x + 8, y: back.y }),
-    hip: point({ x: 0, y: -63 }),
-    frontKnee: point({ x: 9 + stride / 2, y: -32 }),
-    backKnee: point({ x: -9 - stride / 2, y: -34 }),
+    hip: point({ x: 0, y: -52 }),
+    frontKnee: point({ x: 11 + stride / 2, y: -26 }),
+    backKnee: point({ x: (back.x + 8) / 2, y: (-52 + back.y) / 2 }),
     shoulder: point(shoulder),
-    head: point({ x: -1, y: -136 }),
+    head: point({ x: -1, y: -113 }),
     hand: point(hand),
     elbow: point(elbow),
     freeHand: point(freeHand),
-    freeElbow: point(holding ? { x: 26, y: -94 } : { x: 15, y: -104 }),
+    freeElbow: point(holding ? { x: 26, y: -80 } : { x: 15, y: -86 }),
     racket: point(racket),
     racketAngle: Math.atan2(uy, facing * ux * 0.88),
     swing: playing,
@@ -158,13 +158,14 @@ export class ShuttleTrail {
       this.#lastEmission = -Infinity;
       this.#identity = identity;
     }
-    this.#points = this.#points.filter((p) => now - p.born < 300);
+    while (this.#points[0] !== undefined && now - this.#points[0].born >= 420)
+      this.#points.shift();
     const previous = this.#points.at(-1);
     if (
       active &&
-      now - this.#lastEmission >= 60 &&
+      now - this.#lastEmission >= 75 &&
       (previous === undefined ||
-        Math.hypot(point.x - previous.x, point.y - previous.y) >= 10)
+        Math.hypot(point.x - previous.x, point.y - previous.y) >= 16)
     ) {
       this.#points.push({ ...point, born: now });
       if (this.#points.length > 8) this.#points.shift();

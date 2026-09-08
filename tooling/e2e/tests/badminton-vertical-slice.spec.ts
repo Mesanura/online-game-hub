@@ -247,7 +247,7 @@ test("two accounts play badminton with keyboard and multitouch, reconnect, finis
     await expect(pageA.getByTestId("connection-state")).toHaveText("已连接");
     await expect(pageA.getByTestId("game-surface-iframe")).toHaveAttribute(
       "src",
-      "/game-surfaces/badminton/1.1.1/setup/index.html",
+      "/game-surfaces/badminton/1.2.1/setup/index.html",
     );
     const inviteUrl = await pageA
       .getByTestId("invite-link")
@@ -282,7 +282,7 @@ test("two accounts play badminton with keyboard and multitouch, reconnect, finis
       await expect(page.getByTestId("match-status")).toHaveText("对局进行中");
       await expect(page.getByTestId("game-surface-iframe")).toHaveAttribute(
         "src",
-        "/game-surfaces/badminton/1.1.1/play/index.html",
+        "/game-surfaces/badminton/1.2.1/play/index.html",
       );
       await expectCourt(page);
     }
@@ -306,6 +306,15 @@ test("two accounts play badminton with keyboard and multitouch, reconnect, finis
       "true",
     );
     await expectLayouts(pageA, info);
+    const sound = surface(pageA).getByRole("button", {
+      name: "音效",
+      exact: true,
+    });
+    await expect(sound).toHaveAttribute("aria-pressed", "true");
+    await sound.click();
+    await expect(sound).toHaveAttribute("aria-pressed", "false");
+    await sound.press("Enter");
+    await expect(sound).toHaveAttribute("aria-pressed", "true");
     const initialRoom = await roomStore.getByRoomCode(roomCode);
     const replayId = initialRoom?.currentRound?.replayId;
     if (replayId === undefined)
@@ -412,9 +421,9 @@ test("two accounts play badminton with keyboard and multitouch, reconnect, finis
         serve: false,
         shot: "NONE",
       });
-    await expect(surface(pageB).locator('[aria-pressed="true"]')).toHaveCount(
-      0,
-    );
+    await expect(
+      surface(pageB).locator('[data-control][aria-pressed="true"]'),
+    ).toHaveCount(0);
     await touch.detach();
 
     // Leaving the game frame while holding a key must also release movement.
@@ -489,23 +498,15 @@ test("two accounts play badminton with keyboard and multitouch, reconnect, finis
     await pageA.screenshot({
       path: info.outputPath("badminton-airborne-serve.png"),
     });
-    await expect(
-      surface(pageA).getByRole("checkbox", { name: "音效" }),
-    ).toBeChecked();
-    await surface(pageA).getByRole("checkbox", { name: "音效" }).focus();
+    await expect(sound).toHaveAttribute("aria-pressed", "true");
+    await sound.focus();
     await pageA.keyboard.press("Space");
-    await expect(
-      surface(pageA).getByRole("checkbox", { name: "音效" }),
-    ).not.toBeChecked();
+    await expect(sound).toHaveAttribute("aria-pressed", "false");
     await pageA.keyboard.press("Space");
-    await expect(
-      surface(pageA).getByRole("checkbox", { name: "音效" }),
-    ).toBeChecked();
-    await surface(pageA).getByRole("checkbox", { name: "音效" }).uncheck();
-    await expect(
-      surface(pageA).getByRole("checkbox", { name: "音效" }),
-    ).not.toBeChecked();
-    await surface(pageA).getByRole("checkbox", { name: "音效" }).check();
+    await expect(sound).toHaveAttribute("aria-pressed", "true");
+    await sound.click();
+    await expect(sound).toHaveAttribute("aria-pressed", "false");
+    await sound.click();
     await advance(pageA, 100);
     const firstScore = await score(pageA);
     expect(firstScore[0] + firstScore[1]).toBeGreaterThan(0);

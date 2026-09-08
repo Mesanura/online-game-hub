@@ -5,8 +5,8 @@ import type {
   RealtimeRngState,
 } from "@online-game-hub/realtime-game-sdk";
 
-import { COURT, PHYSICS, scoreLimit } from "../constants.js";
-import { badmintonManifest } from "../manifest.js";
+import { COURT, PHYSICS, scoreLimit } from "../v1/constants-v1_1.js";
+import { badmintonManifest } from "../v1/manifest-v1_1.js";
 import {
   badmintonConfigSchema,
   badmintonInputSchema,
@@ -17,17 +17,16 @@ import {
   type BadmintonOutcome,
   type BadmintonSide,
   type BadmintonState,
-} from "./schemas.js";
+} from "./v1_1-schemas.js";
 
-export { COURT, PHYSICS, scoreLimit } from "../constants.js";
+export { COURT, PHYSICS, scoreLimit } from "../v1/constants-v1_1.js";
 export { badmintonDefinitionV1_0_0 } from "./v1.js";
-export { badmintonDefinitionV1_1_0 } from "./v1_1.js";
 export {
   badmintonConfigSchema,
   badmintonInputSchema,
   badmintonStateSchema,
   badmintonOutcomeSchema,
-} from "./schemas.js";
+} from "./v1_1-schemas.js";
 export type {
   BadmintonConfig,
   BadmintonControls,
@@ -35,7 +34,7 @@ export type {
   BadmintonOutcome,
   BadmintonState,
   BadmintonSide,
-} from "./schemas.js";
+} from "./v1_1-schemas.js";
 
 function freeze<T>(value: T): T {
   if (value !== null && typeof value === "object") {
@@ -359,15 +358,7 @@ function canHit(state: BadmintonState, side: BadmintonSide): boolean {
     ((state.shuttle.y - player.y + PHYSICS.racketOffsetY) * 1000) /
       PHYSICS.racketRadiusY,
   );
-  if (dx * dx + dy * dy <= 1_000_000) return true;
-  // A separate low arc reaches behind the heel without enlarging overhead reach.
-  const scoopX = Math.trunc(
-    ((state.shuttle.x - player.x + facing * 20_000) * 1000) / 105_000,
-  );
-  const scoopY = Math.trunc(
-    ((state.shuttle.y - player.y + 35_000) * 1000) / 65_000,
-  );
-  return scoopX * scoopX + scoopY * scoopY <= 1_000_000;
+  return dx * dx + dy * dy <= 1_000_000;
 }
 
 function awardPoint(
@@ -571,7 +562,7 @@ export function projectView(context: {
 
 export type BadmintonView = ReturnType<typeof projectView>;
 
-export const badmintonDefinition = Object.freeze({
+export const badmintonDefinitionV1_1_0 = Object.freeze({
   manifest: badmintonManifest,
   configSchema: badmintonConfigSchema,
   inputSchema: badmintonInputSchema,

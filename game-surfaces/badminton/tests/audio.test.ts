@@ -5,7 +5,8 @@ afterEach(() => vi.unstubAllGlobals());
 describe("audio lifecycle", () => {
   it("gates sound on user unlock, supports mute and releases its context", async () => {
     const started = vi.fn(),
-      closed = vi.fn();
+      closed = vi.fn(),
+      allocated = vi.fn();
     const parameter = () => ({
       setValueAtTime: vi.fn(),
       exponentialRampToValueAtTime: vi.fn(),
@@ -38,6 +39,7 @@ describe("audio lifecycle", () => {
         this.state = "closed";
       }
       createBuffer() {
+        allocated();
         return { getChannelData: () => new Float32Array(1120) };
       }
       createBufferSource = node;
@@ -51,6 +53,7 @@ describe("audio lifecycle", () => {
     audio.play(cue);
     expect(started).not.toHaveBeenCalled();
     await audio.unlock();
+    expect(allocated).toHaveBeenCalledOnce();
     expect(audio.ready).toBe(true);
     audio.play(cue);
     expect(started).toHaveBeenCalledTimes(2);
@@ -61,6 +64,7 @@ describe("audio lifecycle", () => {
     await audio.unlock();
     audio.play({ kind: "swing", tick: 2, smash: false });
     expect(started).toHaveBeenCalledTimes(3);
+    expect(allocated).toHaveBeenCalledOnce();
     audio.dispose();
     expect(closed).toHaveBeenCalledOnce();
     expect(audio.ready).toBe(false);

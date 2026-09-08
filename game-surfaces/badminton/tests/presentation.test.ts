@@ -22,6 +22,13 @@ const fixture = () =>
     ),
   );
 describe("exact versions and serve intent", () => {
+  it("accepts the lowered net only for the new exact rule version", () => {
+    const view = fixture();
+    expect(() => parsePlayView(view, "1.2.0")).toThrow();
+    view.court.netTop = 370_000;
+    expect(parsePlayView(view, "1.2.0").court.netTop).toBe(370_000);
+    expect(() => parsePlayView(view, "1.1.0")).toThrow();
+  });
   it("keeps old view and input schemas isolated from manual serving", () => {
     const old = JSON.parse(
       readFileSync(new URL("./fixtures/play-v1.json", import.meta.url), "utf8"),
@@ -68,6 +75,29 @@ describe("exact versions and serve intent", () => {
 });
 
 describe("court and skeleton geometry", () => {
+  it.each([0, 1] as const)(
+    "keeps side %s's rear leg straight and front knee slightly bent",
+    (side) => {
+      const view = fixture();
+      const pose = playerPose(
+        view,
+        side,
+        view.athletes[side].x,
+        500000,
+        0,
+        false,
+      );
+      expect(pose.backKnee.x).toBeCloseTo((pose.hip.x + pose.backHeel.x) / 2);
+      expect(pose.backKnee.y).toBeCloseTo((pose.hip.y + pose.backHeel.y) / 2);
+      expect(
+        Math.abs(pose.frontKnee.x - (pose.hip.x + pose.frontHeel.x) / 2),
+      ).toBeGreaterThan(3);
+      expect(pose.front.y - pose.head.y).toBe(113);
+      expect(
+        Math.hypot(pose.racket.x - pose.hand.x, pose.racket.y - pose.hand.y),
+      ).toBeGreaterThan(45);
+    },
+  );
   it.each([0, 1] as const)(
     "plants side %s's front toe on the projected serve line without a gait",
     (side) => {

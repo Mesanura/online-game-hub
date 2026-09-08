@@ -378,6 +378,43 @@ describe("serving and racket contacts", () => {
 
 describe("collision and scoring rules", () => {
   it.each([0, 1] as const)(
+    "reaches low behind side %s while preserving miss and own-side guards",
+    (side) => {
+      const facing = side === 0 ? 1 : -1;
+      const make = (behind: number) => {
+        const state = rally();
+        const player = state.athletes[side];
+        state.shuttle = {
+          x: player.x - facing * behind,
+          y: player.y - 20_000,
+          velocityX: 0,
+          velocityY: 0,
+          lastHit: side === 0 ? 1 : 0,
+        };
+        return state;
+      };
+      const caught = advance(make(100_000), { shot: "CLEAR" }, side);
+      expect(caught.shuttle.lastHit).toBe(side);
+      expect(caught.athletes[side].swingKind).toBe("UNDERHAND");
+      expect(advance(make(140_000), { shot: "CLEAR" }, side).rallyHits).toBe(0);
+      const own = make(100_000);
+      own.shuttle.lastHit = side;
+      expect(advance(own, { shot: "CLEAR" }, side).rallyHits).toBe(0);
+    },
+  );
+  it("lets a shuttle pass above the lowered net", () => {
+    const state = rally({
+      shuttle: {
+        x: 487_000,
+        y: 350_000,
+        velocityX: 28_000,
+        velocityY: 0,
+        lastHit: 0,
+      },
+    });
+    expect(advance(state).lastPoint).toBeNull();
+  });
+  it.each([0, 1] as const)(
     "awards the opponent when the shuttle lands in side %s",
     (side) => {
       const next = advance(grounded(side));
@@ -424,7 +461,7 @@ describe("collision and scoring rules", () => {
       const state = rally({
         shuttle: {
           x: side === 0 ? 487_000 : 513_000,
-          y: 350_000,
+          y: COURT.netTop + 10_000,
           velocityX: side === 0 ? 28_000 : -28_000,
           velocityY: 0,
           lastHit: side,

@@ -35,6 +35,8 @@ export class BadmintonScene extends Phaser.Scene {
   #trail = new ShuttleTrail();
   #sounds = new SoundTimeline();
   #court: Phaser.GameObjects.Graphics | null = null;
+  #courtKey = "";
+  #youSide: string | null = null;
 
   constructor(getState: () => RenderState | null) {
     super({ key: "badminton" });
@@ -172,9 +174,12 @@ export class BadmintonScene extends Phaser.Scene {
       const py = lerp(older.y, current.y, alpha);
       this.drawPlayer(g, view, px, py, side, renderTick, render.reducedMotion);
       if (view.yourSide === (side === 0 ? "LEFT" : "RIGHT")) {
+        if (this.#youSide !== view.yourSide) {
+          this.#youSide = view.yourSide;
+          this.#you?.setBackgroundColor(side === 0 ? "#467faa" : "#ca715a");
+        }
         this.#you
-          ?.setPosition(projectPoint(px, py).x, projectPoint(px, py).y - 177)
-          .setBackgroundColor(side === 0 ? "#467faa" : "#ca715a")
+          ?.setPosition(projectPoint(px, py).x, projectPoint(px, py).y - 150)
           .setVisible(true);
       }
     }
@@ -186,9 +191,12 @@ export class BadmintonScene extends Phaser.Scene {
       view.phase === "RALLY" && !render.reducedMotion && render.active && fresh,
       identity,
     )) {
-      const life = 1 - (now - point.born) / 300;
-      g.fillStyle(0xffffff, life * 0.7);
-      g.fillCircle(point.x, point.y, 1 + life * 1.4);
+      const life = 1 - (now - point.born) / 420;
+      const drift = Math.sin(point.born * 0.17) * 5;
+      g.fillStyle(0xc5a52a, life * 0.9);
+      g.fillEllipse(point.x + drift, point.y + (1 - life) * 7, 5, 8);
+      g.fillStyle(0xf4ff58, life);
+      g.fillEllipse(point.x + drift, point.y + (1 - life) * 7 - 1, 3, 6);
     }
     const angle =
       view.phase !== "RALLY"
@@ -263,8 +271,8 @@ export class BadmintonScene extends Phaser.Scene {
     line(pose.backHeel, pose.back, 6, color);
     line(pose.hip, pose.shoulder, 8);
     line(
-      { x: center.x, y: center.y - 95 },
-      { x: center.x, y: center.y - 76 },
+      { x: center.x, y: center.y - 80 },
+      { x: center.x, y: center.y - 63 },
       12,
       color,
     );
@@ -287,19 +295,19 @@ export class BadmintonScene extends Phaser.Scene {
     g.translateCanvas(pose.racket.x, pose.racket.y);
     g.rotateCanvas(pose.racketAngle);
     g.fillStyle(0xfffcf0, 0.35);
-    g.fillEllipse(0, 0, 36, 22);
+    g.fillEllipse(0, 0, 50, 24);
     g.lineStyle(2.5, color);
-    g.strokeEllipse(0, 0, 36, 22);
+    g.strokeEllipse(0, 0, 50, 24);
     g.lineStyle(0.8, color, 0.45);
     for (const offset of [-6, 0, 6]) {
-      g.lineBetween(-13, offset, 13, offset);
+      g.lineBetween(-21, offset, 21, offset);
       g.lineBetween(offset, -8, offset, 8);
     }
     g.restore();
     g.fillStyle(INK);
-    g.fillCircle(pose.head.x, pose.head.y, 18);
+    g.fillCircle(pose.head.x, pose.head.y, 15);
     g.fillStyle(0xfff8df);
-    g.fillCircle(pose.head.x, pose.head.y - 1, 13);
+    g.fillCircle(pose.head.x, pose.head.y - 1, 11);
     this.line(
       g,
       pose.head.x - 13,
@@ -325,6 +333,9 @@ export class BadmintonScene extends Phaser.Scene {
   private drawCourt(view: PlayView): void {
     const g = this.#court;
     if (g === null) return;
+    const key = JSON.stringify(view.court);
+    if (key === this.#courtKey) return;
+    this.#courtKey = key;
     g.clear();
     const { leftLine, rightLine, ground, netX, leftServeLine, rightServeLine } =
       view.court;

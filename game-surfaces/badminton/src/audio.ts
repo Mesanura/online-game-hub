@@ -15,6 +15,7 @@ export class BadmintonAudio {
     if (!this.#enabled || this.#disposed) return;
     try {
       this.#context ??= new AudioContext();
+      this.prepareNoise(this.#context);
       if (this.#context.state === "suspended") await this.#context.resume();
     } catch {
       /* An unavailable audio device must not interrupt gameplay. */
@@ -28,6 +29,9 @@ export class BadmintonAudio {
   play(cue: SoundCue): void {
     const context = this.#context;
     if (!this.ready || context === null || this.#disposed) return;
+    this.playPrepared(context, cue);
+  }
+  private prepareNoise(context: AudioContext): void {
     if (this.#noise === null) {
       this.#noise = context.createBuffer(
         1,
@@ -41,6 +45,8 @@ export class BadmintonAudio {
         data[i] = seed / 2147483648;
       }
     }
+  }
+  private playPrepared(context: AudioContext, cue: SoundCue): void {
     const now = context.currentTime;
     const duration = cue.kind === "swing" ? 0.12 : 0.065;
     const source = context.createBufferSource();
