@@ -280,6 +280,26 @@ const badmintonSurface = (
   });
 
 const gameDeployments = Object.freeze([
+  {
+    gameId: "tank-maze",
+    gameVersion: "1.0.0",
+    setupProtocol: 6,
+    platformControls: resignPlatformControls,
+    presentation: {
+      kind: "surface-v1",
+      publicBasePath: "/game-surfaces/tank-maze/1.0.3",
+      artifact: {
+        schemaVersion: 1,
+        gameId: "tank-maze",
+        supportedGameVersions: ["1.0.0"],
+        surfaceVersion: "1.0.3",
+        bridgeVersion: 2,
+        entrypoints: { setup: "setup/index.html", play: "play/index.html" },
+        capabilities: {},
+        contentDigest: "sha256-JrluQNan6uh1EXSHBvVULn8E7/S9fkI8S/P/syBngno=",
+      },
+    },
+  },
   ticTacToeSurface("1.0.0", 5),
   ticTacToeSurface("1.1.0", 6),
   connectFourSurface("1.0.0", 5),

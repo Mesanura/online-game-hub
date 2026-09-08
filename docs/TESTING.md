@@ -1,5 +1,7 @@
 # 测试策略
 
+坦克迷战扩展最低验证：2/3/8 人 Core/Setup；按次 FIRE 同 tick 不丢失与旧 latest-input 兼容；地图至少 85% 主区域、出生分散、推挤与墙体；全部弹药的容量/寿命/反弹、自伤与盾内外边界；导弹延迟/切换/惯性；全灭、4 秒幸存、120 秒小局超时、目标分与投降；八人多小局 golden。真实 Colyseus 验证容量、输入权限/幂等、takeover、rematch；临时 PostgreSQL 验证八人 archive/replay/room 重读；八浏览器覆盖 SVG、键盘、多指触控、刷新重连及重新对局。新增 Surface contract-test 与全仓质量门禁，不跳过历史实时 golden。
+
 > 状态：Protocol V5/V6 双轨、Game Surface Bridge V1/V2、Setup Core 与 replay capability 测试策略
 > 本文是测试层级、职责、最低场景和质量门禁的权威来源。具体业务范围见 [PRODUCT.md](./PRODUCT.md)。
 

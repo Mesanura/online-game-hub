@@ -1,5 +1,7 @@
 # 产品目标与范围
 
+当前用户指定内容扩展：新增原创“坦克迷战”，2–8 人实时对战、随机迷宫、反弹弹药、五种道具、目标比分与独立 SVG 键盘/触屏界面。使用 V6 Setup 和 record-only journal；一场 Match 内自动换图进行计分小局，不新增 AI、候补或公开观战。规则以 [坦克迷战规格](../games/tank-maze/GAME_SPEC.md) 为准。
+
 > 状态：产品基线（M1–M8 已完成；独立 Game Surface 与 Setup Protocol V6 正在分阶段迁移，井字棋纵切已上线，房间继续固定其创建时的 V5/V6 代际）
 > 本文是产品目标、范围和非目标的权威来源。技术实现边界见 [ARCHITECTURE.md](./ARCHITECTURE.md)。
 

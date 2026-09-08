@@ -1,5 +1,9 @@
 # 开发路线图
 
+## 用户指定内容扩展：坦克迷战
+
+在现有 realtime/V6/独立 Surface 基础上增加 tank-maze。必要平台扩展限于 2–8 人参与者、V6 八席位 envelope、多人 PostgreSQL/replay 校验，以及可选 events 输入交付模式；保留所有现有游戏和 V5 的双人语义。游戏提供随机迷宫、反弹弹药、五道具、目标分、多小局、推挤、SVG 与键盘/触屏/可关闭音效。退出条件为 Core/Setup/golden、2/3/8 客户端 integration、临时 PostgreSQL 八浏览器链路及全仓检查。规则见 [游戏规格](../games/tank-maze/GAME_SPEC.md)。
+
 > 状态：M1–M8 已完成；M9 独立 Game Surface、Setup V6 与显示系统正在实施
 > 本文是项目阶段顺序和里程碑退出条件的权威来源。里程碑按依赖排序，不承诺具体日期。
 

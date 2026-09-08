@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "gameId": "tank-maze",
+  "supportedGameVersions": ["1.0.0"],
+  "surfaceVersion": "1.0.3",
+  "bridgeVersion": 2,
+  "entrypoints": {
+    "setup": "setup/index.html",
+    "play": "play/index.html"
+  },
+  "capabilities": {}
+}

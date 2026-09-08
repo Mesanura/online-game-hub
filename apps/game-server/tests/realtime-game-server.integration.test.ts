@@ -45,25 +45,20 @@ import {
   TestTicketAuthority,
 } from "@online-game-hub/game-server-runtime/testing";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-
 import { createGameServer } from "../src/index.js";
 import type { GameServerAddress, GameServerApplication } from "../src/index.js";
-
 class ManualSchedulerTimer implements RealtimeSchedulerTimer {
   #nextId = 1;
   readonly #callbacks = new Map<number, () => void>();
-
   public setInterval(callback: () => void, milliseconds: number): number {
     expect(milliseconds).toBeCloseTo(1000 / 60);
     const id = this.#nextId++;
     this.#callbacks.set(id, callback);
     return id;
   }
-
   public clearInterval(handle: unknown): void {
     if (typeof handle === "number") this.#callbacks.delete(handle);
   }
-
   public async tick(): Promise<void> {
     for (const callback of [...this.#callbacks.values()]) callback();
     // The scheduler and room writer both use promise queues.
@@ -72,27 +67,22 @@ class ManualSchedulerTimer implements RealtimeSchedulerTimer {
     await Promise.resolve();
   }
 }
-
 class RecordingRealtimeArchive implements RealtimeMatchArchive {
   readonly created: RealtimeStoredRoom[] = [];
   readonly saved: RealtimeStoredRoom[] = [];
-
   public async createRound(room: RealtimeStoredRoom): Promise<void> {
     this.created.push(structuredClone(room));
   }
-
   public async saveRound(room: RealtimeStoredRoom): Promise<void> {
     this.saved.push(structuredClone(room));
   }
 }
-
 interface RoomMessages {
   readonly connected: RoomConnected[];
   readonly lifecycle: RoomLifecycleState[];
   readonly snapshots: RealtimeSnapshot[];
   readonly rejections: RealtimeRejected[];
 }
-
 interface RoomMessagesV6 {
   readonly connected: RoomConnectedV6[];
   readonly lifecycle: RoomLifecycleStateV6[];
@@ -100,7 +90,6 @@ interface RoomMessagesV6 {
   readonly rejections: CommandRejectedV6[];
   readonly realtimeRejections: RealtimeRejected[];
 }
-
 function messagesV6(room: ClientRoom): RoomMessagesV6 {
   const value: RoomMessagesV6 = {
     connected: [],
@@ -135,7 +124,6 @@ function messagesV6(room: ClientRoom): RoomMessagesV6 {
   });
   return value;
 }
-
 function messages(room: ClientRoom): RoomMessages {
   const value: RoomMessages = {
     connected: [],
@@ -168,10 +156,9 @@ function messages(room: ClientRoom): RoomMessages {
   });
   return value;
 }
-
 async function waitUntil(
   predicate: () => boolean | Promise<boolean>,
-  timeoutMilliseconds = 3_000,
+  timeoutMilliseconds = 3000,
 ): Promise<void> {
   const deadline = Date.now() + timeoutMilliseconds;
   while (!(await predicate())) {
@@ -180,7 +167,6 @@ async function waitUntil(
     await new Promise((resolve) => setTimeout(resolve, 2));
   }
 }
-
 function control(
   commandId: string,
   operation: "SELECT_STARTER" | "READY_FOR_ROUND" | "CLOSE_ROOM",
@@ -193,7 +179,6 @@ function control(
     ...(operation === "SELECT_STARTER" ? { starter: "OWNER" as const } : {}),
   };
 }
-
 function input(commandId: string, sequence: number, value: unknown) {
   return {
     type: "realtime.input",
@@ -204,9 +189,8 @@ function input(commandId: string, sequence: number, value: unknown) {
     input: value,
   };
 }
-
 describe.sequential("realtime Pong Game Server", () => {
-  const clock = new FakeRuntimeClock(1_000_000);
+  const clock = new FakeRuntimeClock(1000000);
   const schedulerTimer = new ManualSchedulerTimer();
   const authority = new TestTicketAuthority({
     issuer: "realtime-integration",
@@ -229,7 +213,6 @@ describe.sequential("realtime Pong Game Server", () => {
   };
   let app: GameServerApplication;
   let address: GameServerAddress;
-
   beforeAll(async () => {
     app = createGameServer({
       ticketVerifier: authority,
@@ -240,8 +223,8 @@ describe.sequential("realtime Pong Game Server", () => {
       realtimeClock: clock as unknown as RealtimeRuntimeClock,
       realtimeIds: ids,
       realtimeSchedulerTimer: schedulerTimer,
-      realtimeReconnectGraceMilliseconds: 60_000,
-      realtimeTerminalRoomTtlMilliseconds: 300_000,
+      realtimeReconnectGraceMilliseconds: 60000,
+      realtimeTerminalRoomTtlMilliseconds: 300000,
       resolveCurrentRealtimeDefinition: (gameId) =>
         resolveRealtimeGameDefinition(gameId, "1.0.0"),
       resolveSetupProtocol: (gameId, gameVersion) =>
@@ -252,11 +235,9 @@ describe.sequential("realtime Pong Game Server", () => {
     });
     address = await app.start({ port: 0 });
   });
-
   afterAll(async () => {
     await app?.stop();
   });
-
   it("runs authoritative create/join/ready/input/reconnect/complete flow", async () => {
     const clientA = new ColyseusClient(address.httpUrl);
     const clientB = new ColyseusClient(address.httpUrl);
@@ -313,7 +294,6 @@ describe.sequential("realtime Pong Game Server", () => {
       playerSlotId: "slot-2",
       roomCode: "PANG2345",
     });
-
     roomA.send(ROOM_CONTROL_MESSAGE, control("starter", "SELECT_STARTER"));
     roomA.send(ROOM_CONTROL_MESSAGE, control("ready-a", "READY_FOR_ROUND"));
     roomB.send(ROOM_CONTROL_MESSAGE, control("ready-b", "READY_FOR_ROUND"));
@@ -326,7 +306,6 @@ describe.sequential("realtime Pong Game Server", () => {
     await waitUntil(() =>
       inboxB.snapshots.some((snapshot) => snapshot.tick === 0),
     );
-
     await schedulerTimer.tick();
     await waitUntil(() =>
       inboxA.snapshots.some((snapshot) => snapshot.tick === 1),
@@ -338,7 +317,6 @@ describe.sequential("realtime Pong Game Server", () => {
       tick: 1,
       acknowledgedInputSequence: 0,
     });
-
     // Strict envelope rejects forged actor/state/position/tick fields without
     // allowing them to reach Pong Core.
     roomA.send(REALTIME_INPUT_MESSAGE, {
@@ -353,7 +331,6 @@ describe.sequential("realtime Pong Game Server", () => {
       ),
     );
     expect(inboxA.snapshots.at(-1)?.tick).toBe(1);
-
     roomA.send(
       REALTIME_INPUT_MESSAGE,
       input("direction", 1, { type: "DIRECTION", direction: -1 }),
@@ -368,7 +345,6 @@ describe.sequential("realtime Pong Game Server", () => {
         (snapshot) => snapshot.acknowledgedInputSequence === 1,
       ),
     );
-
     roomA.send(
       REALTIME_INPUT_MESSAGE,
       input("direction-duplicate", 1, { type: "DIRECTION", direction: 1 }),
@@ -378,7 +354,6 @@ describe.sequential("realtime Pong Game Server", () => {
         (rejection) => rejection.code === "STALE_INPUT_SEQUENCE",
       ),
     );
-
     // A second connection with the same session takes over the stable slot.
     const clientATakeover = new ColyseusClient(address.httpUrl);
     const roomATakeover = await clientATakeover.join(REALTIME_GAME_ROOM_NAME, {
@@ -394,7 +369,6 @@ describe.sequential("realtime Pong Game Server", () => {
         inboxATakeover.snapshots.some((snapshot) => snapshot.tick === 2),
     );
     expect(inboxATakeover.connected[0]?.playerSlotId).toBe("slot-1");
-
     roomATakeover.send(
       REALTIME_INPUT_MESSAGE,
       input("resign", 2, { type: "RESIGN" }),
@@ -420,7 +394,6 @@ describe.sequential("realtime Pong Game Server", () => {
       status: "completed",
     });
   });
-
   it("abandonment closes an active room after the reconnect grace window", async () => {
     const clientA = new ColyseusClient(address.httpUrl);
     const clientB = new ColyseusClient(address.httpUrl);
@@ -462,7 +435,7 @@ describe.sequential("realtime Pong Game Server", () => {
       const reservedUntil = stored?.players[1]?.reservedUntilMilliseconds;
       return reservedUntil !== null && reservedUntil !== undefined;
     });
-    clock.advanceBy(60_000);
+    clock.advanceBy(60000);
     await waitUntil(() => inboxA.lifecycle.some((state) => state.closed));
     expect(inboxA.lifecycle.at(-1)).toMatchObject({
       closed: true,
@@ -470,9 +443,8 @@ describe.sequential("realtime Pong Game Server", () => {
     });
   });
 });
-
 describe.sequential("realtime Pong Protocol V6 setup", () => {
-  const clock = new FakeRuntimeClock(2_000_000);
+  const clock = new FakeRuntimeClock(2000000);
   const schedulerTimer = new ManualSchedulerTimer();
   const authority = new TestTicketAuthority({
     issuer: "realtime-v6-integration",
@@ -518,7 +490,6 @@ describe.sequential("realtime Pong Protocol V6 setup", () => {
   };
   let app: GameServerApplication;
   let address: GameServerAddress;
-
   const ticket = (session: string) =>
     authority.issue(session, { protocolVersion: SETUP_PROTOCOL_VERSION });
   const setupCommand = (
@@ -539,7 +510,6 @@ describe.sequential("realtime Pong Protocol V6 setup", () => {
     commandId,
     operation: "READY_FOR_ROUND" as const,
   });
-
   beforeAll(async () => {
     app = createGameServer({
       ticketVerifier: authority,
@@ -564,11 +534,9 @@ describe.sequential("realtime Pong Protocol V6 setup", () => {
     });
     address = await app.start({ port: 0 });
   });
-
   afterAll(async () => {
     await app?.stop();
   });
-
   it("pins V6, finalizes setup, clears ready on changes and reuses the full setup", async () => {
     const clientA = new ColyseusClient(address.httpUrl);
     await expect(
@@ -580,7 +548,6 @@ describe.sequential("realtime Pong Protocol V6 setup", () => {
         initialConfig: { targetScore: 3 },
       }),
     ).rejects.toBeDefined();
-
     const roomA = await clientA.create(REALTIME_GAME_ROOM_NAME, {
       type: "room.create",
       protocolVersion: SETUP_PROTOCOL_VERSION,
@@ -598,7 +565,6 @@ describe.sequential("realtime Pong Protocol V6 setup", () => {
       setupView: { starter: "UNSELECTED", canEdit: true },
       readiness: { canReady: false, readySlotIds: [] },
     });
-
     const clientB = new ColyseusClient(address.httpUrl);
     const roomB = await clientB.join(REALTIME_GAME_ROOM_NAME, {
       type: "room.join",
@@ -614,7 +580,6 @@ describe.sequential("realtime Pong Protocol V6 setup", () => {
       canEdit: false,
       participantSlotIds: ["v6-slot-1", "v6-slot-2"],
     });
-
     roomB.send(GAME_SETUP_MESSAGE, setupCommand("guest-forged", 0, "OWNER"));
     await waitUntil(() => inboxB.rejections.length >= 1);
     expect(inboxB.rejections.at(-1)).toMatchObject({
@@ -622,7 +587,6 @@ describe.sequential("realtime Pong Protocol V6 setup", () => {
       setupRevision: 0,
       gameRuleCode: "NOT_OWNER",
     });
-
     roomA.send(GAME_SETUP_MESSAGE, setupCommand("owner-first", 0, "OWNER"));
     await waitUntil(() =>
       inboxA.lifecycle.some((state) => state.nextRound?.setupRevision === 1),
@@ -636,7 +600,6 @@ describe.sequential("realtime Pong Protocol V6 setup", () => {
     expect(inboxA.rejections.at(-1)).toMatchObject({
       setupRevision: 1,
     });
-
     roomA.send(ROOM_CONTROL_MESSAGE, readyCommand("ready-before-change"));
     await waitUntil(() =>
       inboxA.lifecycle.some(
@@ -666,7 +629,6 @@ describe.sequential("realtime Pong Protocol V6 setup", () => {
     await waitUntil(() =>
       inboxA.snapshots.some((snapshot) => snapshot.tick === 0),
     );
-
     expect(setupSeeds).toEqual(["realtime-v6-setup-1"]);
     expect(gameplaySeeds).toEqual(["realtime-v6-gameplay-1"]);
     const activeStoredRoom = await roomStore.getByRoomCode("VSPN2345");
@@ -679,7 +641,6 @@ describe.sequential("realtime Pong Protocol V6 setup", () => {
       currentRound: { roundNumber: 1, status: "active" },
     });
     expect(activeStoredRoom).not.toHaveProperty("nextRoundSetup");
-
     await waitUntil(
       () => inboxA.snapshots.length > 0 && inboxB.snapshots.length > 0,
     );
@@ -687,7 +648,7 @@ describe.sequential("realtime Pong Protocol V6 setup", () => {
       expect(inbox.snapshots.at(-1)).toMatchObject({
         tick: 0,
         view: {
-          ball: { x: 400_000, y: 200_000 },
+          ball: { x: 400000, y: 200000 },
           serve: { ticksRemaining: 120 },
         },
       });
@@ -699,7 +660,7 @@ describe.sequential("realtime Pong Protocol V6 setup", () => {
       await schedulerTimer.tick();
       await waitUntil(() => inboxA.snapshots.at(-1)?.tick === tick);
       expect(inboxA.snapshots.at(-1)?.view).toMatchObject({
-        ball: { x: 400_000, y: 200_000 },
+        ball: { x: 400000, y: 200000 },
         serve: tick === 120 ? null : { ticksRemaining: 120 - tick },
       });
     }
@@ -707,9 +668,8 @@ describe.sequential("realtime Pong Protocol V6 setup", () => {
     await waitUntil(() => inboxB.snapshots.at(-1)?.tick === 121);
     expect(inboxB.snapshots.at(-1)?.view).toMatchObject({ serve: null });
     expect(inboxB.snapshots.at(-1)?.view).not.toMatchObject({
-      ball: { x: 400_000, y: 200_000 },
+      ball: { x: 400000, y: 200000 },
     });
-
     roomA.send(
       REALTIME_INPUT_MESSAGE,
       input("v6-resign", 1, { type: "RESIGN" }),
@@ -740,7 +700,6 @@ describe.sequential("realtime Pong Protocol V6 setup", () => {
       },
     });
     expect(setupSeeds).toEqual(["realtime-v6-setup-1", "realtime-v6-setup-2"]);
-
     const nextA = inboxA.lifecycle.at(-1)?.nextRound;
     const nextB = inboxB.lifecycle.at(-1)?.nextRound;
     expect(nextA?.readiness.selfReady).toBe(false);
@@ -773,7 +732,6 @@ describe.sequential("realtime Pong Protocol V6 setup", () => {
     expect(archive.created.at(-1)?.currentRound?.replayId).toBe(
       "realtime-v6-replay-2",
     );
-
     failNextSimulationStep = true;
     await schedulerTimer.tick();
     expect(failNextSimulationStep).toBe(false);
@@ -811,14 +769,203 @@ describe.sequential("realtime Pong Protocol V6 setup", () => {
         },
       },
     });
-
     await roomA.leave(true);
     await roomB.leave(true);
   });
 });
-
+describe.sequential("tank maze multiplayer Protocol V6", () => {
+  it.each([2, 3, 8])(
+    "runs %i real clients, preserves every FIRE, rebuilds replay and rematches",
+    async (count) => {
+      const clock = new FakeRuntimeClock(4000000),
+        timer = new ManualSchedulerTimer();
+      const authority = new TestTicketAuthority({
+        issuer: "tank-integration",
+        secret: "tank-integration-secret",
+        clock,
+        lifetimeSeconds: 600,
+      });
+      const replayStore = new InMemoryRealtimeReplayStore(),
+        roomStore = new InMemoryRealtimeRoomStore(),
+        archive = new RecordingRealtimeArchive();
+      let replayId = 0;
+      const app = createGameServer({
+        ticketVerifier: authority,
+        realtimeTicketVerifier: authority,
+        realtimeReplayStore: replayStore,
+        realtimeRoomStore: roomStore,
+        realtimeMatchArchive: archive,
+        realtimeClock: clock as unknown as RealtimeRuntimeClock,
+        realtimeSchedulerTimer: timer,
+        realtimeIds: {
+          createRoomCode: () => "TANK2345",
+          createReplayId: () => "tank-replay-" + ++replayId,
+          createSetupRngSeed: () => "tank-setup",
+          createRngSeed: () => "tank-game",
+          createPlayerSlotId: (i) => ("tank-slot-" + i) as never,
+        },
+        logger: { write: () => undefined },
+      });
+      const rooms: ClientRoom[] = [],
+        inboxes: RoomMessagesV6[] = [];
+      const ticket = (i: number) =>
+        authority.issue("tank-user-" + i, { protocolVersion: 6 });
+      try {
+        const address = await app.start({ port: 0 });
+        for (let i = 0; i < count; i++) {
+          const client = new ColyseusClient(address.httpUrl);
+          const room =
+            i === 0
+              ? await client.create(REALTIME_GAME_ROOM_NAME, {
+                  type: "room.create",
+                  protocolVersion: 6,
+                  ticket: ticket(i),
+                  gameId: "tank-maze",
+                  initialConfig: {
+                    playerCount: count,
+                    targetScore: 5,
+                    colors: [],
+                  },
+                })
+              : await client.join(REALTIME_GAME_ROOM_NAME, {
+                  type: "room.join",
+                  protocolVersion: 6,
+                  ticket: ticket(i),
+                  roomCode: "TANK2345",
+                });
+          rooms.push(room);
+          inboxes.push(messagesV6(room));
+          await waitUntil(() => required(inboxes[i]).lifecycle.length > 0);
+        }
+        expect(required(inboxes[0]).lifecycle.at(-1)?.players).toHaveLength(8);
+        if (count === 8)
+          await expect(
+            new ColyseusClient(address.httpUrl).join(REALTIME_GAME_ROOM_NAME, {
+              type: "room.join",
+              protocolVersion: 6,
+              ticket: ticket(9),
+              roomCode: "TANK2345",
+            }),
+          ).rejects.toThrow();
+        for (let i = 0; i < count; i++)
+          required(rooms[i]).send(ROOM_CONTROL_MESSAGE, {
+            type: "room.control",
+            protocolVersion: 6,
+            commandId: "tank-ready-" + i,
+            operation: "READY_FOR_ROUND",
+          });
+        await waitUntil(() => inboxes.every((i) => i.snapshots.length > 0));
+        expect(archive.created[0]?.currentRound?.playerOrder).toHaveLength(
+          count,
+        );
+        for (let n = 0; n < 180; n++) await timer.tick();
+        await waitUntil(
+          () => required(inboxes[0]).snapshots.at(-1)?.tick === 180,
+        );
+        const input = (id: string, sequence: number, data: unknown) => ({
+          type: "realtime.input",
+          realtimeProtocolVersion: 1,
+          commandId: id,
+          roundNumber: 1,
+          inputSequence: sequence,
+          input: data,
+        });
+        required(rooms[0]).send(
+          REALTIME_INPUT_MESSAGE,
+          input("forged", 1, { type: "FIRE", actor: "tank-slot-1" }),
+        );
+        await waitUntil(
+          () => required(inboxes[0]).realtimeRejections.length === 1,
+        );
+        const fires = [
+          input("fire-one", 1, { type: "FIRE" }),
+          input("fire-two", 2, { type: "FIRE" }),
+        ];
+        for (const fire of fires)
+          required(rooms[0]).send(REALTIME_INPUT_MESSAGE, fire);
+        required(rooms[0]).send(REALTIME_INPUT_MESSAGE, required(fires[0]));
+        required(rooms[0]).send(REALTIME_INPUT_MESSAGE, { barrier: true });
+        await waitUntil(
+          () => required(inboxes[0]).realtimeRejections.length >= 2,
+        );
+        await timer.tick();
+        await waitUntil(
+          () => required(inboxes[0]).snapshots.at(-1)?.tick === 181,
+        );
+        const record = await replayStore.get("tank-replay-1");
+        expect(record?.events).toHaveLength(2);
+        const projected = required(required(inboxes[0]).snapshots.at(-1))
+          .view as {
+          tanks: unknown[];
+          bullets: unknown[];
+        };
+        expect(projected.tanks).toHaveLength(count);
+        expect(projected).not.toHaveProperty("nextId");
+        expect(projected.bullets).toHaveLength(2);
+        const takeover = await new ColyseusClient(address.httpUrl).join(
+          REALTIME_GAME_ROOM_NAME,
+          {
+            type: "room.join",
+            protocolVersion: 6,
+            ticket: ticket(0),
+            roomCode: "TANK2345",
+          },
+        );
+        const resumed = messagesV6(takeover);
+        rooms.push(takeover);
+        await waitUntil(() => resumed.snapshots.length > 0);
+        expect(resumed.connected[0]?.playerSlotId).toBe("tank-slot-0");
+        expect(resumed.snapshots.at(-1)?.tick).toBe(181);
+        for (let i = 1; i < count; i++) {
+          required(rooms[i]).send(
+            REALTIME_INPUT_MESSAGE,
+            input("resign-" + i, 1, { type: "RESIGN" }),
+          );
+          required(rooms[i]).send(REALTIME_INPUT_MESSAGE, { barrier: true });
+          await waitUntil(
+            () => required(inboxes[i]).realtimeRejections.length > 0,
+          );
+        }
+        await timer.tick();
+        await waitUntil(
+          () => resumed.lifecycle.at(-1)?.currentRound?.status === "completed",
+        );
+        const completed = await replayStore.get("tank-replay-1");
+        expect(
+          verifyRealtimeReplay(completed, resolveRealtimeGameDefinition).ok,
+        ).toBe(true);
+        expect(completed?.recordedOutcome).toMatchObject({
+          winnerSlotId: "tank-slot-0",
+        });
+        for (let i = 1; i < count; i++)
+          required(rooms[i]).send(ROOM_CONTROL_MESSAGE, {
+            type: "room.control",
+            protocolVersion: 6,
+            commandId: "again-" + i,
+            operation: "READY_FOR_ROUND",
+          });
+        takeover.send(ROOM_CONTROL_MESSAGE, {
+          type: "room.control",
+          protocolVersion: 6,
+          commandId: "again-0",
+          operation: "READY_FOR_ROUND",
+        });
+        await waitUntil(
+          () => resumed.lifecycle.at(-1)?.currentRound?.roundNumber === 2,
+        );
+        expect(archive.created).toHaveLength(2);
+        expect(archive.created[1]?.currentRound?.playerOrder).toHaveLength(
+          count,
+        );
+      } finally {
+        await app.stop();
+      }
+    },
+    20000,
+  );
+});
 describe.sequential("realtime badminton Protocol V6", () => {
-  const clock = new FakeRuntimeClock(3_000_000);
+  const clock = new FakeRuntimeClock(3000000);
   const schedulerTimer = new ManualSchedulerTimer();
   const authority = new TestTicketAuthority({
     issuer: "badminton-integration",
@@ -834,7 +981,6 @@ describe.sequential("realtime badminton Protocol V6", () => {
   let setupSeedSequence = 0;
   let app: GameServerApplication;
   let address: GameServerAddress;
-
   const ticket = (session: string) =>
     authority.issue(session, { protocolVersion: SETUP_PROTOCOL_VERSION });
   const ready = (commandId: string) => ({
@@ -857,10 +1003,18 @@ describe.sequential("realtime badminton Protocol V6", () => {
   });
   const view = (inbox: RoomMessagesV6) =>
     inbox.snapshots.at(-1)?.view as {
-      athletes: [{ x: number; y: number }, { x: number; y: number }];
+      athletes: [
+        {
+          x: number;
+          y: number;
+        },
+        {
+          x: number;
+          y: number;
+        },
+      ];
       scores: [number, number];
     };
-
   async function deliveryBarrier(
     room: ClientRoom,
     inbox: RoomMessagesV6,
@@ -871,13 +1025,11 @@ describe.sequential("realtime badminton Protocol V6", () => {
     room.send(REALTIME_INPUT_MESSAGE, { testBarrier: true });
     await waitUntil(() => inbox.realtimeRejections.length > count);
   }
-
   async function advance(inbox: RoomMessagesV6): Promise<void> {
     const tick = inbox.snapshots.at(-1)?.tick ?? 0;
     await schedulerTimer.tick();
     await waitUntil(() => (inbox.snapshots.at(-1)?.tick ?? 0) > tick);
   }
-
   beforeAll(async () => {
     app = createGameServer({
       ticketVerifier: authority,
@@ -898,11 +1050,9 @@ describe.sequential("realtime badminton Protocol V6", () => {
     });
     address = await app.start({ port: 0 });
   });
-
   afterAll(async () => {
     await app?.stop();
   });
-
   it("validates setup and input authority, reconnects, resigns, rematches and scores with exact replay", async () => {
     const roomA = await new ColyseusClient(address.httpUrl).create(
       REALTIME_GAME_ROOM_NAME,
@@ -935,7 +1085,6 @@ describe.sequential("realtime badminton Protocol V6", () => {
       setupProtocol: SETUP_PROTOCOL_VERSION,
       runtime: "realtime",
     });
-
     const roomB = await new ColyseusClient(address.httpUrl).join(
       REALTIME_GAME_ROOM_NAME,
       {
@@ -961,7 +1110,6 @@ describe.sequential("realtime badminton Protocol V6", () => {
       gameRuleCode: "NOT_OWNER",
       setupRevision: 0,
     });
-
     roomA.send(ROOM_CONTROL_MESSAGE, ready("ready-before-change"));
     await waitUntil(
       () => inboxA.lifecycle.at(-1)?.nextRound?.readiness.selfReady === true,
@@ -1022,13 +1170,12 @@ describe.sequential("realtime badminton Protocol V6", () => {
     expect(JSON.stringify(inboxA.snapshots.at(-1)?.view)).not.toMatch(
       /velocity|controls|inputAge|rng|seed|session|ticket|events/iu,
     );
-
     for (const payload of [
       {
         ...input("forged-actor", 1, { type: "RESIGN" }),
         actorSlotId: "badminton-slot-2",
         state: { scores: [7, 0] },
-        tick: 10_000,
+        tick: 10000,
       },
       input("forged-position", 1, {
         type: "CONTROL",
@@ -1036,7 +1183,7 @@ describe.sequential("realtime badminton Protocol V6", () => {
         jump: false,
         serve: false,
         shot: "CLEAR",
-        x: 900_000,
+        x: 900000,
       }),
       input("invalid-direction", 1, {
         type: "CONTROL",
@@ -1073,7 +1220,6 @@ describe.sequential("realtime badminton Protocol V6", () => {
     expect((await replayStore.get("badminton-replay-1"))?.events).toHaveLength(
       1,
     );
-
     roomB.send(REALTIME_INPUT_MESSAGE, movement);
     await waitUntil(() => inboxB.realtimeRejections.length > 0);
     expect(inboxB.realtimeRejections.at(-1)?.code).toBe("DUPLICATE_COMMAND");
@@ -1094,7 +1240,6 @@ describe.sequential("realtime badminton Protocol V6", () => {
     expect((await replayStore.get("badminton-replay-1"))?.events).toHaveLength(
       1,
     );
-
     roomA.send(
       REALTIME_INPUT_MESSAGE,
       input("release-a", 2, {
@@ -1110,7 +1255,6 @@ describe.sequential("realtime badminton Protocol V6", () => {
     const stoppedX = view(inboxA).athletes[1].x;
     await advance(inboxA);
     expect(view(inboxA).athletes[1].x).toBe(stoppedX);
-
     const takeover = await new ColyseusClient(address.httpUrl).join(
       REALTIME_GAME_ROOM_NAME,
       {
@@ -1158,7 +1302,6 @@ describe.sequential("realtime badminton Protocol V6", () => {
         },
       },
     });
-
     takeover.send(ROOM_CONTROL_MESSAGE, ready("rematch-a"));
     await waitUntil(
       () => resumed.lifecycle.at(-1)?.nextRound?.readiness.selfReady === true,
@@ -1220,8 +1363,11 @@ describe.sequential("realtime badminton Protocol V6", () => {
       for (let tick = 0; tick < 5; tick++) await schedulerTimer.tick();
       await waitUntil(
         () =>
-          (resumed.snapshots.at(-1)?.view as { phase: string }).phase ===
-          "RALLY",
+          (
+            resumed.snapshots.at(-1)?.view as {
+              phase: string;
+            }
+          ).phase === "RALLY",
       );
       roomB.send(REALTIME_INPUT_MESSAGE, {
         ...input(`serve-release-${point}`, ++serveSequence, {
@@ -1255,8 +1401,11 @@ describe.sequential("realtime badminton Protocol V6", () => {
     expect(
       scoredReplay?.events.filter(
         (event) =>
-          (event.input as { serve?: boolean }).serve &&
-          event.actorSlotId === "badminton-slot-2",
+          (
+            event.input as {
+              serve?: boolean;
+            }
+          ).serve && event.actorSlotId === "badminton-slot-2",
       ),
     ).toHaveLength(7);
     expect(scoredReplay?.recordedRngCursor).toBe(0);
@@ -1269,5 +1418,11 @@ describe.sequential("realtime badminton Protocol V6", () => {
     expect(archive.saved.at(-1)?.currentRound?.status).toBe("completed");
     await takeover.leave(true);
     await roomB.leave(true);
-  }, 30_000);
+  }, 30000);
 });
+
+function required<T>(value: T | null | undefined): T {
+  if (value === null || value === undefined)
+    throw new Error("Required tank value is missing.");
+  return value;
+}

@@ -6,6 +6,7 @@ import { reversiManifest } from "@online-game-hub/reversi/manifest";
 import { ticTacToeManifest } from "@online-game-hub/tic-tac-toe/manifest";
 import { pongManifest } from "@online-game-hub/pong/manifest";
 import { badmintonManifest } from "@online-game-hub/badminton/manifest";
+import { tankMazeManifest } from "@online-game-hub/tank-maze/manifest";
 // create-game:catalog-import
 import type { GameManifest } from "@online-game-hub/game-sdk";
 import type { RealtimeGameManifest } from "@online-game-hub/realtime-game-sdk";
@@ -21,6 +22,7 @@ export const gameCatalog = Object.freeze([
   chineseCheckersManifest,
   pongManifest,
   badmintonManifest,
+  tankMazeManifest,
   // create-game:catalog-entry
 ]) satisfies readonly CatalogGameManifest[];
 

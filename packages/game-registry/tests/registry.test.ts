@@ -57,7 +57,7 @@ describe("explicit game registry", () => {
 
     for (const manifest of gameCatalog) {
       expect(manifest.capabilities.replay).toBe(
-        ["pong", "badminton"].includes(manifest.id)
+        ["pong", "badminton", "tank-maze"].includes(manifest.id)
           ? "record-only"
           : "player-playback",
       );
@@ -79,6 +79,7 @@ describe("explicit game registry", () => {
           "tic-tac-toe",
           "pong",
           "badminton",
+          "tank-maze",
           "connect-four",
           "gomoku",
           "hex",
@@ -394,6 +395,7 @@ describe("explicit game registry", () => {
       ["badminton", "1.0.0"],
       ["badminton", "1.1.0"],
       ["badminton", "1.2.0"],
+      ["tank-maze", "1.0.0"],
       ["connect-four", "1.1.0"],
       ["gomoku", "1.1.0"],
       ["hex", "1.0.0"],
@@ -495,7 +497,7 @@ describe("explicit game registry", () => {
 
   it("keeps the retained legacy client entries lazy, isolated, and free of UI business", async () => {
     for (const manifest of gameCatalog.filter(
-      (game) => game.id !== "badminton",
+      (game) => !["badminton", "tank-maze"].includes(game.id),
     )) {
       if (manifest.runtime === "realtime") {
         const gameVersion = "1.0.0";

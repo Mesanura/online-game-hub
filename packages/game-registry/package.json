@@ -44,6 +44,7 @@
     "@online-game-hub/realtime-game-client-sdk": "workspace:*",
     "@online-game-hub/realtime-game-sdk": "workspace:*",
     "@online-game-hub/reversi": "workspace:*",
+    "@online-game-hub/tank-maze": "workspace:*",
     "@online-game-hub/tic-tac-toe": "workspace:*"
   }
 }
