@@ -16,7 +16,7 @@ describe("badminton independent Surface artifact", () => {
       schemaVersion: 1,
       gameId: "badminton",
       supportedGameVersions: ["1.0.0", "1.1.0", "1.2.0"],
-      surfaceVersion: "1.2.1",
+      surfaceVersion: "1.2.2",
       bridgeVersion: 2,
       entrypoints: { setup: "setup/index.html", play: "play/index.html" },
       capabilities: {},

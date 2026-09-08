@@ -163,6 +163,23 @@ describe("court and skeleton geometry", () => {
       );
     }
   });
+  it("keeps the serving rear arm straight into the racket", () => {
+    const view = fixture();
+    view.phase = "SERVE";
+    view.servingSide = "LEFT";
+    const pose = playerPose(view, 0, 300000, 500000, 20, false);
+    const shoulderToHand = {
+      x: pose.hand.x - pose.shoulder.x,
+      y: pose.hand.y - pose.shoulder.y,
+    };
+    const shoulderToElbow = {
+      x: pose.elbow.x - pose.shoulder.x,
+      y: pose.elbow.y - pose.shoulder.y,
+    };
+    expect(shoulderToElbow.x * shoulderToHand.y).toBeCloseTo(
+      shoulderToElbow.y * shoulderToHand.x,
+    );
+  });
   it("segments interpolation through the exact contact rather than cutting across a return", () => {
     const previous = fixture(),
       current = fixture();

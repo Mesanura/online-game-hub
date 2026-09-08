@@ -114,10 +114,15 @@ export function playerPose(
   const ux = racket.x / length;
   const uy = (racket.y - shoulder.y) / length;
   const hand = { x: racket.x - ux * 52, y: racket.y - uy * 52 };
-  const elbow = {
-    x: hand.x * 0.53 - uy * 8,
-    y: lerp(shoulder.y, hand.y, 0.53) + ux * 8,
-  };
+  const elbow = holding
+    ? {
+        x: shoulder.x + (hand.x - shoulder.x) * 0.52,
+        y: shoulder.y + (hand.y - shoulder.y) * 0.52,
+      }
+    : {
+        x: hand.x * 0.53 - uy * 8,
+        y: lerp(shoulder.y, hand.y, 0.53) + ux * 8,
+      };
   const freeHand = holding ? { x: 40, y: -70 } : { x: 24, y: -104 };
   const point = (p: Point): Point =>
     projectPoint(x + facing * p.x * 1000, y + p.y * 1000);

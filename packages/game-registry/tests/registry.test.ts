@@ -567,7 +567,7 @@ describe("explicit game registry", () => {
       expect(
         resolveGameSurfaceEntrypoint("badminton", "1.0.0", mode),
       ).toMatchObject({
-        url: `/game-surfaces/badminton/1.2.1/${mode}/index.html`,
+        url: `/game-surfaces/badminton/1.2.2/${mode}/index.html`,
         mode,
       });
     }
@@ -590,6 +590,6 @@ describe("explicit game registry", () => {
     expect(previous?.step).not.toBe(current?.step);
     expect(
       resolveGameSurfaceEntrypoint("badminton", "1.1.0", "play")?.url,
-    ).toBe("/game-surfaces/badminton/1.2.1/play/index.html");
+    ).toBe("/game-surfaces/badminton/1.2.2/play/index.html");
   });
 });
