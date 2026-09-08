@@ -1,6 +1,6 @@
-# Chinese Checkers Surface
+# 中国跳棋 Surface
 
-中国跳棋的独立 Setup、Play 与 Replay 画面。可使用 `pnpm dev`、`pnpm build`、`pnpm test` 和 `pnpm contract-test` 在不启动 Next 或游戏服务端的情况下开发与验证。
+中国跳棋的独立 Setup、Play 与 Replay 画面。从仓库根运行 `pnpm --filter @online-game-hub/chinese-checkers-surface dev` 即可启动；无需 Next 或 Game Server 的验证、Workbench 与发布流程见 [Game Surface 规范](../../docs/GAME_SURFACE_SPEC.md)。
 
 Surface 只依赖 Game Surface Bridge 与本地投影 schema，不导入游戏 Core、React、Next、WebSocket、ticket、seed 或原始 State。Setup intent 不携带 actor；Play intent 只提交 `MOVE_PIECE(from,to)` 或平台确认后的 `RESIGN`。
 

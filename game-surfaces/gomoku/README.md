@@ -8,3 +8,7 @@
 - `pnpm --filter @online-game-hub/gomoku-surface contract-test`
 
 可通过 Surface Workbench 注入 `gomoku@1.0.0` 或 `1.1.0` 的 Setup/Play/Replay fixture 独立调试。
+
+棋盘使用暖木 Clay 风格和容器自适应尺寸，可落子位显示当前棋色的 hover/focus 预览。Play 只发送 `PLACE_STONE` 或支持版本的 `RESIGN`，Setup 发送 `SELECT_STARTER`。历史 View 与投降能力按 exact 版本区分。
+
+共享开发、Workbench 与 artifact 更新步骤见 [Game Surface 规范](../../docs/GAME_SURFACE_SPEC.md)。

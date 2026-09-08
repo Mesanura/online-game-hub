@@ -1,507 +1,292 @@
 # 测试策略
 
-坦克迷战扩展最低验证：2/3/8 人 Core/Setup；按次 FIRE 同 tick 不丢失与旧 latest-input 兼容；地图至少 85% 主区域、出生分散、推挤与墙体；全部弹药的容量/寿命/反弹、自伤与盾内外边界；导弹延迟/切换/惯性；全灭、4 秒幸存、120 秒小局超时、目标分与投降；八人多小局 golden。真实 Colyseus 验证容量、输入权限/幂等、takeover、rematch；临时 PostgreSQL 验证八人 archive/replay/room 重读；八浏览器覆盖 SVG、键盘、多指触控、刷新重连及重新对局。新增 Surface contract-test 与全仓质量门禁，不跳过历史实时 golden。
+本文定义改动对应的最低检查、各层职责和测试环境。业务规则以 [游戏规格](../games/README.md) 为准，架构边界见 [ARCHITECTURE.md](./ARCHITECTURE.md)。测试要求描述应长期成立的不变量，不记录某次任务的通过日志。
 
-坦克迷战 `1.1.0` 维护回归另覆盖所有起始 tick 相位下的左右 75 tick 整周转向、6–10 格宽与 6–9 格高的 seeded 地图、导弹真实绕墙到达/封闭区域/目标切换/转向上限/不穿墙及 JSON 重建；`1.0.0`/`1.1.0` 的 exact golden 同时执行。独立 Surface Playwright 覆盖五种道具符号的 SVG 中心、桌面/手机视口、321 倒计时、轻震幅度/复位、HUD 不动、重复快照与 reduced-motion；真实八浏览器继续验证新版创建、归档、重连及重开。
+## 按改动选择检查
 
-> 状态：Protocol V5/V6 双轨、Game Surface Bridge V1/V2、Setup Core 与 replay capability 测试策略
-> 本文是测试层级、职责、最低场景和质量门禁的权威来源。具体业务范围见 [PRODUCT.md](./PRODUCT.md)。
+优先在纯 Core/Setup 中覆盖规则组合，在 integration 中覆盖跨 package 与 transport，在 E2E 中验证关键用户旅程。修改同时影响多行时取检查并集，不能只运行改动文件的 happy path。
 
-M7-B 私有历史与回放测试覆盖：UserId + matchId 数据库授权、双账户共享同局、游客永久不可见、abandoned/incomplete 拒绝、损坏数据安全错误和跨连接读取；runtime revision 0..N frame reconstruction、exact historical definition、determinism、RNG/Outcome/sequence/actor/payload 篡改、projection 异常及帧数/响应大小上限；五款游戏 historical client module 独立解析和 replay read-only 不提交 Action；Web/API 的 401、not-found、unavailable、私有 headers、帧控制、slider、播放清理、移动端大棋盘容器和无 WebSocket。
+| 改动                       | 最低检查                                                                 |
+| -------------------------- | ------------------------------------------------------------------------ |
+| 仅文档                     | format:check + docs:check；核对涉及的命令、类型、状态与源码              |
+| 单游戏 Core                | 该游戏 unit、determinism、所有支持版本 golden、typecheck                 |
+| Manifest / legacy client   | registry contract、相关组件和 E2E                                        |
+| `game-sdk`                 | 全部游戏 Core/replay、public API type tests、依赖检查                    |
+| `realtime-game-sdk`        | 全部实时 simulation/replay、两种输入交付、public API/type 与依赖检查     |
+| `protocol`                 | exact schema contract、server integration、multiplayer/E2E smoke         |
+| `game-setup`               | contract/unit、两类 runtime integration、replay header 不变量            |
+| `game-surface-bridge`      | schema/handshake/security、Host 与各 Surface conformance                 |
+| Surface artifact           | 独立 test/typecheck/build/contract、digest/publish、viewport E2E         |
+| 回合制 server runtime      | server integration、multiplayer、replay/store tests                      |
+| 实时 server/client runtime | simulation/replay、输入排序/ack、scheduler、真实 integration、受影响 E2E |
+| Database/schema            | migration/db:check、真实 PostgreSQL、跨连接重读与 shutdown               |
+| Match/history/identity     | PostgreSQL、API authorization/privacy、相关 E2E                          |
+| Session/ticket             | auth contract、join/reconnect、关键安全负例                              |
+| Replay format/version      | reader compatibility、所有支持版本 golden、相关持久化检查                |
+| Replay capability          | exact registry、history/API 权限矩阵、对应播放或拒绝 E2E                 |
+| Web 路由/交互              | 相关组件、Host 与真实浏览器流程；涉及历史/身份时包含 PostgreSQL          |
+| Build/dependency config    | 全仓 typecheck/lint/unit、受影响 build graph                             |
+| `tools/create-game`        | 生成器 test/typecheck/build、registry contract、根质量门禁               |
 
-账户资料测试额外覆盖：显示名 NFC、空白/控制字符、1–24 grapheme 边界、按首位顺序处理 Han/完整 emoji/普通字母数字（含 `1a2b`、`1你好2` 和 `🐷a`）头像生成；游客固定 `localStorage` 的刷新持久化与账户资料隔离；`PATCH /api/auth/profile` 的严格 body、同源、JSON、session 授权和失效 cookie 清理；PostgreSQL 旧用户迁移回填、注册默认值、更新持久化和新连接读取；ProfileMenu 的 hover/focus/click、Escape、外部关闭、游客/登录操作切换、跨浏览器资料读取及 room 身份变更确认。
+新增游戏必须完成 Plugin Definition of Done，覆盖 Core、Setup、Surface、registry、真实 integration、PostgreSQL 和浏览器链路。公共契约、数据库与 replay 变更不得只验证单个消费者。
 
-## 1. 目标
+## 命令入口
 
-测试体系必须让开发者和 Agent 快速回答：
+所有命令从仓库根运行，实际脚本见 [package.json](../package.json)。
 
-- Game Core 的规则、确定性和不变量是否仍然成立；
-- Game Server 是否真正 authoritative；
-- 玩家、观众和重连连接是否只收到有权看到的数据；
-- replay 是否仍能被对应 `gameVersion` 重建；
-- PostgreSQL migrations、durable replay、match archive 和身份关联是否保持事务与授权不变量；
-- 两个真实浏览器是否能完成创建、加入、对局和重连；
-- package public API 和依赖方向是否被破坏。
-- Surface 是否能脱离 Next/Game Server 构建测试，且 iframe/Bridge 不泄漏身份或权威数据。
-- Setup accepted/rejected/stale/duplicate、逐玩家 ready 与完整重新对局复用是否保持一致。
+| 命令                    | 范围/前提                                                                    |
+| ----------------------- | ---------------------------------------------------------------------------- |
+| `pnpm format:check`     | Prettier，只检查不修改                                                       |
+| `pnpm docs:check`       | 本地 Markdown 链接目标；不检查外部 URL 或 heading anchor                     |
+| `pnpm deps:check`       | Public exports、依赖边界与循环依赖                                           |
+| `pnpm lint`             | format:check、ESLint、docs:check、deps:check                                 |
+| `pnpm typecheck`        | Turbo 图中的各包 TypeScript 检查                                             |
+| `pnpm test`             | 各包 unit、Core、Setup、client、golden、Host、store、工具与故意违规 fixtures |
+| `pnpm contract-test`    | Surface/Workbench 的独立契约门禁                                             |
+| `pnpm build`            | 完整 workspace build                                                         |
+| `pnpm surface:verify`   | 校验已构建的发布型 Surface、entrypoint、版本锁与 canonical digest            |
+| `pnpm surface:publish`  | 校验后 immutable 复制到 Web 静态目录；相同摘要重复发布为 no-op               |
+| `pnpm test:integration` | 真实 Colyseus SDK/WebSocket，使用内存 stores 与可控 clock                    |
+| `pnpm test:database`    | 先构建服务端依赖，再运行 database 与 game-server 真实 PostgreSQL suites      |
+| `pnpm test:e2e`         | 先 build、Surface verify/publish，再执行 PostgreSQL-backed Playwright        |
+| `pnpm db:check`         | 只读 schema/migration metadata 一致性检查                                    |
+| `pnpm db:migrate`       | 显式 `DATABASE_URL` 的运维 migration，不能代替测试环境隔离                   |
 
-优先把规则覆盖放在快速、无网络的 Core tests；只把跨 package、transport 或浏览器行为放入较慢层级。
+运行所有游戏 golden 可使用：
 
-## 2. 测试层级
-
-```text
-                 Playwright E2E
-              Multiplayer integration
-             PostgreSQL integration
-             Server/Protocol integration
-            Replay compatibility tests
-              Game Core unit tests
-          Static types / dependency checks
+```sh
+pnpm --filter "./games/*" -r test:golden
 ```
 
-越靠下运行越快、失败定位越直接，应覆盖更多组合。E2E 只验证关键用户旅程，不复制所有规则排列。
+单包检查使用 `pnpm --filter @online-game-hub/<package> <script>`。直接运行某个 E2E 文件前，仍须完成 build、surface verify/publish，并提供下文的临时数据库；不能因绕过根包装命令而省略前置条件。
 
-## 3. Static 与 Architecture Checks
+首次本机 E2E 安装浏览器：
 
-当前 Monorepo 基线提供：
+```sh
+pnpm exec playwright install chromium
+```
 
-- strict TypeScript typecheck；
-- ESLint 及 import boundary 规则；
-- package export map 检查；
-- 循环依赖检查；
-- 禁止 Core 使用 `Math.random()`、DOM、React、Next.js、Colyseus、WebSocket、ORM、Redis 或跨游戏 import；
-- 格式与 Markdown link 检查；
-- `pnpm-lock.yaml` 与 workspace manifest 一致性检查。
+CI 使用 [workflow](../.github/workflows/ci.yml) 中固定的 PostgreSQL service，并安装 Playwright 匹配的 Chromium；依次执行 lint、typecheck、test、contract-test、database、integration、build、Surface verify/publish 和 E2E。新增包须进入 Turbo graph，不要求维护者记忆私有测试入口。
 
-依赖边界以 [ARCHITECTURE.md](./ARCHITECTURE.md) 为准。检查必须自动化，不能只依赖 code review 记忆。
+## 静态与工具检查
 
-### 3.1 `tools/create-game` Generator Tests
+静态检查覆盖 strict TypeScript、ESLint、public exports、依赖/cycle、Core 禁止 API、格式和 Markdown 本地路径；lockfile 通过 frozen install 校验。文档中的 anchor、命令示例和当前状态需要额外核对，不能只凭 docs:check 通过断言内容正确。
 
-生成器测试只使用系统临时目录中的最小隔离 workspace，并注入本地 lockfile runner；不得写真实 `games/`、访问网络、启动数据库或调用外部服务。最低覆盖：
+create-game tests 使用系统临时目录中的隔离 workspace 和本地 lockfile runner，不写真实 games 目录、访问网络或启动服务。最低覆盖合法输出、完全幂等、非法 ID/路径/保留名/symbol 冲突、部分/重复登记、预检零写入、lockfile 失败回滚、退出码与稳定输出。生成器 suite 只验证实际模板，不代替新游戏验收。
 
-- 合法 gameId 产生精确 package/export/tsconfig/目录和显式 registry/Next 登记；不产生 manifest、Core 或 Client 假实现；
-- 第二次运行返回成功且整个 fixture 零 diff，dependency、imports、catalog/definition/client arrays 与 transpile entry 都只出现一次；
-- 大小写、空段、路径穿越、绝对路径、保留名、已有目录，以及 package/gameId/derived symbol 冲突全部在写入前拒绝；
-- 已有文件内容冲突、重复登记和部分登记 fail closed，fixture 不新增任何写入；
-- 固定 pnpm lockfile runner 失败后，package、registry、Next 与 lockfile 全部恢复，且不误删 preflight 前已存在的目录；
-- `--help`、参数缺失、成功/失败退出码、人工清单顺序、LF 换行和输出格式保持稳定。
+## Core、Setup 与确定性
 
-该 suite 验证机械生成器自身，不替代新游戏必须拥有的 Core、Client、golden、authoritative integration 和 Playwright 场景。generator-only 改动若未触及 database、Protocol、transport 或浏览器行为，按 change-to-test matrix 不要求运行真实 PostgreSQL、Colyseus integration 或 E2E。
+### Core 公共要求
 
-## 4. Game Core Unit Tests
+| 类别       | 最低场景                                                                  |
+| ---------- | ------------------------------------------------------------------------- |
+| 初始化     | 同 Config、slots、seed 得到同 State/RNG；非法 Config 拒绝                 |
+| 合法操作   | 每种 Action/Input 的合法路径、顺序和状态推进                              |
+| 非法操作   | 错 slot/回合、越界、占用、终局后操作；拒绝不改变候选 State/RNG            |
+| Outcome    | 各获胜/平局/排名/投降路径、非终局与终局不可继续                           |
+| 不变性     | State、Action/Input、Config 和 RNG 入参不被修改                           |
+| 序列化     | State/View/Action/Input/Outcome JSON-safe，无 class/Date/BigInt/undefined |
+| Projection | 每个 viewer 只见授权字段，不发送 raw State 或 seed                        |
+| 确定性     | 固定 seed 和事件序列得到相同 State/RNG/Outcome；实时逐 tick 验证          |
 
-每个游戏在自己的 package 中使用 Vitest 测试，不启动浏览器、网络或数据库。
+优先使用 table-driven cases；property tests 必须能复现失败 seed。纯测试不启动网络、浏览器或数据库，不依赖真实时钟和随机执行顺序。历史 definition 独立冻结，每个支持版本至少一份 golden；不能改写 fixture 来掩盖回归。
 
-### 4.1 必测类别
+### 单游戏回归重点
 
-| 类别            | 最低场景                                                                |
-| --------------- | ----------------------------------------------------------------------- |
-| Initialization  | 同一 Config、slots、seed 产生相同 State/RNG；非法 Config 被 schema 拒绝 |
-| Legal actions   | 每种 Action 的合法路径、轮次推进和预期 State                            |
-| Illegal actions | 错误 slot、错误回合、越界输入、占用位置、终局后动作；State/RNG 不变     |
-| Outcome         | 每种获胜路径、平局、未结束状态和终局不可继续                            |
-| Immutability    | 输入 State、Action、Config 和 RNG 不被修改                              |
-| Serialization   | State/View/Action/Outcome 是 JSON-safe，无 class/Date/BigInt/undefined  |
-| Projection      | 每种 viewer 只得到被授权字段，State 不直接泄漏                          |
-| Determinism     | 相同输入重复运行得到深度相等的 State、RNG 和 Outcome                    |
+下表补充公共要求；完整规则、数值与历史差异由链接的 GAME_SPEC 定义，已有回归用例继续保留。
 
-井字棋至少覆盖所有获胜方向、平局、重复落子、错误回合、越界 cell、strict/off-turn `RESIGN`、resignation projection 和终局后 Action；frozen `1.0.0` fixture 必须继续拒绝 `RESIGN` 并 exact 重建。
+| 游戏                                               | 最低特有覆盖                                                                                                                                                                                                                                  |
+| -------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [井字棋](../games/tic-tac-toe/GAME_SPEC.md)        | 全部获胜方向、平局、重复落子、错轮、off-turn RESIGN；历史版本拒绝新 Action                                                                                                                                                                    |
+| [四子棋](../games/connect-four/GAME_SPEC.md)       | 重力、所有满列、横纵双对角、完整平局、投降、历史 exact replay                                                                                                                                                                                 |
+| [五子棋](../games/gomoku/GAME_SPEC.md)             | 两种棋盘 Config、默认值、长连、满盘平局、边界/占用/错轮、投降与历史 fixture                                                                                                                                                                   |
+| [六贯棋](../games/hex/GAME_SPEC.md)                | 六方向邻接含第三轴、四边/角落、禁止 row wrap、双颜色连接、BFS 最短路径/tie-break、无 DRAW、投降与损坏 State                                                                                                                                   |
+| [黑白棋](../games/reversi/GAME_SPEC.md)            | 八方向翻转、边角、无翻转拒绝、同 slot 续行、双方无行动的非满盘终局、计数/合法落点投影、PASS-free replay                                                                                                                                       |
+| [中国跳棋](../games/chinese-checkers/GAME_SPEC.md) | 2/3/6 人、唯一营地、相邻/连续跳跃、完成/阻塞/投降排名、自动跳过；新版逐格几何与 ASCII 图一致、旋转对称、等距邻接，旧编号/拓扑隔离                                                                                                             |
+| [Pong](../games/pong/GAME_SPEC.md)                 | 准备期、球拍/边界碰撞、两侧连续回球加速与上限、非终局得分重置、投降优先级、RNG 和各历史计分/投降 golden                                                                                                                                       |
+| [羽毛球](../games/badminton/GAME_SPEC.md)          | 各比分 Config、半场/跳跃、输入有效期、三类击球/冷却/重复触球、球网高速拦截/落地/出界、领先两分与封顶；手动/空中发球、非发球方拒绝、长按不连发、起手时序/前脚对齐、阻力和历史自动发球                                                          |
+| [坦克迷战](../games/tank-maze/GAME_SPEC.md)        | 2/3/8 人、events 同 tick 多次 FIRE、随机地图主区域/分散出生、推挤/墙体；各弹药容量/寿命/反弹/自伤与盾边界、导弹延迟/换目标/绕墙/封闭区域/转向上限/不穿墙；全灭/幸存/超时/目标分/投降、多小局八人 golden、各起始 tick 相位整周转向与 JSON 重建 |
 
-四子棋至少覆盖重力、轮次切换、7 个满列、越界 column、非当前玩家、横向/纵向/双对角获胜、合法 42-action 平局、strict/off-turn `RESIGN`、resignation projection、终局拒绝、immutability、serialization、projection 和零 RNG cursor determinism；frozen `1.0.0` fixture 保持 exact。
+### Setup
 
-五子棋至少覆盖 15×15/19×19 strict Config、默认 Config、初始化、轮次、越界/占用 cell、非当前玩家、横向/纵向/双对角胜局、连续五子以上长连、合法 225-action 满盘平局、strict/off-turn `RESIGN`、resignation projection、终局拒绝、Config/State/Action/RNG immutability、serialization、projection 和零 RNG cursor seeded determinism；frozen `1.0.0` fixture 保持 exact。
+- initialize/transition/project/readiness/finalize 的 strict schema、不变性、序列化、viewer privacy 与独立 seeded determinism。
+- owner/player 权限由服务端 actor 推导；合法/非法、normalization、stale、duplicate 和保存失败重试。
+- accepted 设置清空全部 ready，rejected/stale/duplicate 不清；只有 selected participants 可 ready。
+- 参与者不足、人数上限、离线/重连、席位替换、playerOrder 排列、assignment 完整唯一与随机结果重试稳定。
+- 下一局复用完整 Config/participants/order/assignments，生成新 gameplay seed、State、revision/tick、Match/replay，并要求全员重新 ready。
 
-六贯棋至少覆盖 null Config、strict `PLACE_STONE | RESIGN`、固定 11×11 初始化、BLUE 先手、六方向邻接、四边/四角、禁止 row wrap、BLUE/RED 连接、未完成路径、canonical 最短路径与 tie-break、所有领域拒绝顺序、off-turn resignation、无 DRAW、终局拒绝、损坏 State 不变量、immutability、serialization、player/spectator projection 和零 RNG cursor seeded determinism。
+## Replay 与 Protocol
 
-黑白棋至少覆盖 null Config、标准 8×8 初始四子与 BLACK/WHITE slot 映射、八方向单线/多线同时翻转、边界/角落/禁止 row wrap、错误 slot/回合/越界/占用/无翻转落子、对方无行动时同 slot 续行、双方无行动的非满盘终局、满盘 BLACK/WHITE 胜局与平局、strict/off-turn `RESIGN`、resignation projection、终局拒绝、Config/State/Action/RNG immutability、serialization、player/spectator projection、服务器 View 的合法落点/棋子数/Outcome 和零 RNG cursor seeded determinism；frozen `1.0.0` fixture 保持 exact。
+Replay tests 使用 exact definition 和内存 fixtures，验证重建 State/RNG/Outcome、sequence gap/重复、未知版本、非法 actor/schema、非 canonical payload、规则拒绝、输入交付差异与结果篡改。Rejected/duplicate/stale 不进入日志；append/complete 幂等且冲突失败。实时还覆盖 tick/finalTick、空输入 tick 和 latest/events 的一致性。两种格式的历史 golden 均须持续通过。
 
-中国跳棋至少覆盖 2/3/6 人初始化、73 位坐标和六子营地、唯一 assignment、相邻移动、连续跳跃、越界/占用/错回合、完成/投降/阻塞排名、自动跳过、State/View/Action/Outcome immutability、JSON serialization、projection 和零 RNG cursor determinism；golden replay 必须验证 header assignment 可重建。
+Protocol contract 至少验证：
 
-火柴人羽毛球至少覆盖 7/11/21 分 Config、strict CONTROL/RESIGN、左右半场限制、跳跃/发球按下边沿、45-tick 输入有效期、挥拍持续/冷却/重复击球限制、高远球/吊球/高点扣杀与低位降级、球网/界外/落地计分、领先两分和封顶、投降优先级、终局停止、immutability、JSON serialization、公开投影和逐 tick seeded determinism。当前 `1.1.0` 另覆盖无限等待、非发球方拒绝、后场边界/前脚对齐、地面/空中发球、第六 tick 出球、长按跨球不连发、触球不重启动画与横纵阻力。Setup 覆盖房主比分/首发权限、RANDOM 与独立 RNG、上一局完整设置复用；`1.0.0` 的自动发球及原 score/resignation/rally golden records 保持 exact，新增 `1.1.0` 对应记录。
+- V5/V6 exact 互拒、V1–V4 拒绝、缺字段/extra fields/非法 discriminator、大小限制和序列化 round trip。
+- Ticket 的账户/游客 claims、伪造 UserId、过期、issuer/audience 和代际一致性；payload 不含未授权身份或秘密。
+- roundNumber、revision、inputSequence、readiness 集合与 current/next Round 不变量。
+- V5 冻结的 starter/人数/assignment/rematch 与 V6 opaque Setup 分别解析；Realtime V1 不与平台 envelope 混用。
+- Discovery 只允许 roomCode/gameId/gameVersion/setupProtocol/runtime，规范化 code，拒绝敏感 extra fields，并验证 404/503/private cache 行为。
+- Platform error 与 opaque gameRuleCode 分开，响应不泄漏 stack、DSN、ticket、seed、State 或 canonical record。
 
-### 4.2 Property 与 Table-driven Tests
+## Server 与多人 integration
 
-- 对有限规则优先使用 table-driven cases 表达规则矩阵。
-- 对棋盘不变量、动作序列和序列化可加入 property-based tests，但只有在能稳定复现失败 seed 时才引入额外依赖。
-- 测试使用固定 seed；禁止依赖真实时钟、随机测试顺序或网络。
+[apps/game-server/tests](../apps/game-server/tests) 以 `port: 0` 启动真实 Colyseus/SDK/WebSocket；只把 clock、scheduler、ID、ticket authority 与故障注入 stores 作为可控 ports，不 mock 被验证的 room/Action pipeline。
 
-## 5. Replay Compatibility Tests
+### 权威与提交
 
-Replay tests 使用真实 Game Definition 和 in-memory fixtures，不启动 Colyseus。
+- 伪造 actor/slot/State/tick/分数、非法 schema、非成员、过期 ticket、错轮与 stale revision 在进入 Core 前拒绝。
+- 同 command 重试返回原结果，不重复推进 revision/RNG/replay；跨轮旧 duplicate 不进入新轮，旧 snapshot 不覆盖新轮。
+- 并发命令串行提交；replay append/complete 或 RoomStore 失败时不提前确认候选 State。
+- Round 启动失败保留 replay ID、seed、实际 playerOrder；V6 finalized RANDOM、取消后再次准备和同 command 重试不重新随机。
+- 各 viewer 的 snapshot 均来自 projectView。隐藏信息游戏加入时必须提供不同玩家秘密隔离 fixture，不能仅以公开棋盘证明私密投影安全。
 
-最低场景：
+### 生命周期与重连
 
-- 从 header 和 accepted actions 重建与记录相同的 Outcome、最终 State 和 RNG cursor；
-- 同一 replay 多次运行结果完全一致；
-- sequence gap、重复 sequence、未知 game/version、错误 actor、schema-invalid Action 和被 Core 拒绝的历史可靠失败；
-- rejected、duplicate 和 stale command 不进入 canonical actions；
-- `ReplayStore.append` 拒绝乱序并保持已有记录不变；
-- `complete` 幂等，且拒绝冲突 Outcome；
-- 每个仍受支持的 `gameVersion` 至少保留一个 golden replay。
+- 创建/加入获得不同 stable slots；首局 Setup 没有 gameplay snapshot、Match 或 replay。
+- 设置、逐人 ready/cancel、accepted 清 ready、断线/takeover 清对应 ready、V6 完整设置重开与 V5 immediate rematch 各自符合代际。
+- active/completed/abandoned、terminal outsider 拒绝、owner close、non-owner leave、60 秒 reconnect timeout 与 5 分钟 terminal TTL。
+- 同 session 与账户身份通过新 ticket/new reservation 恢复，错误 session 不能窃取 slot，新连接接管后旧连接不能写入。
+- generation 从 create 固定到 ticket/join/lifecycle/reconnect；加入 legacy room 后再创建仍读取 deployment default，异步旧尝试不能污染新目标。
+- Discovery 覆盖两类 runtime、开放/关闭/未知房间、gameId 不匹配、同码歧义、store 故障和损坏 generation。
 
-Golden fixture 只在确认规则或版本策略变化后更新。不能通过覆盖 fixture 来隐藏意外行为变化。
+时间边界用 fake clock，不真实等待一分钟。重启测试只验证 archive/replay/history 仍可读取与遗留 active 标记 abandoned，不声称恢复 live State。
 
-## 6. Protocol Contract Tests
+### 实时与多人
 
-对 `protocol` 的 Zod schemas 和序列化进行独立测试：
+真实双客户端验证 scheduler 单 writer、输入速率/大小限制、sequence/ack、拒绝与重复、快照顺序、输入释放、takeover 和重连收敛。latest 与 events 两种交付均需验证，拒绝命令不能改变输入队列或日志，正常 tick 推进不因此停机。
 
-- 接受当前 `protocolVersion` 的合法 envelope；
-- 拒绝缺字段、未知 discriminator、超大 payload、非法 revision 和不支持版本；
-- 确认 `action` 在通用层保持 `unknown`，并由选中的 game schema 再解析；
-- server response 不包含 stack、ticket、cookie、完整 State 或 RNG seed；
-- encode/decode round trip 保持稳定字段；
-- Protocol V5 exact schemas 拒绝 V1–V4、缺字段和 extra fields；ticket 覆盖账户/游客 claim、伪造 UserId 与 extra fields；`room.control` 严格区分 starter/人数/assignment/ready/cancel/immediate rematch/close，拒绝非法 starter、人数、assignment 与 identity 字段；`room.lifecycle` 拒绝不一致 current/next Round、ready/closed 状态；Action/snapshot 的 `roundNumber` 必填并拒绝非法值；
-- room discovery query/response 必须 strict、规范化 room code，并且只允许 `roomCode/gameId/gameVersion/setupProtocol/runtime`；额外 identity、ticket、slot、State、seed 或 replay 字段一律拒绝；
-- platform error 与 `gameRuleCode` 的映射不混淆。
+中国跳棋增加人数、营地权限、playerOrder、排名和 assignment metadata；坦克迷战使用 2/3/8 客户端覆盖容量、输入权限/幂等、多小局和重开。羽毛球覆盖逐球发球到计分终局、两轮 exact record 与旧版本兼容。所有游戏继续验证投降、终局拒绝和历史规则。
 
-Protocol V6 另须覆盖 exact V5/V6 互拒、`game.setup` payload/identity/size、`expectedSetupRevision`、Setup rejection codes、viewer-specific `setupView`、readiness slot 集合与 current/next Round 不变量；确认 Realtime Input/Snapshot Protocol V1 的 schema 和语义未改变。
+## 真实 PostgreSQL
 
-### 6.1 Game Surface Contract 与安全测试
+`packages/database/tests/database.integration.test.ts` 与 `apps/game-server/tests/database.integration.test.ts` 使用真实 PostgreSQL 和正式 adapters，不用 SQLite 或 mock Drizzle。缺少测试 DSN 时命令 fail closed，不能据此跳过或声称通过。
 
-- artifact 的 game/version/mode 必须 exact 匹配；缺失 entrypoint、重复版本、路径穿越、bridge 不兼容与摘要漂移 fail closed；
-- nonce/source/window 校验、MessageChannel 单次移交、unknown/extra fields、重复 intent、dispose、crash 与 10 秒初始化超时；
-- `host.command/RESIGN` 只在 exact deployment capability 允许时发送，命令不含 Action/Input payload 或 identity；Surface 以同一 `clientIntentId` 产生普通 intent，历史不支持投降的版本必须拒绝该能力；Surface 已有 intent 时 Host 拒绝并发平台命令，10 秒内未转化为 intent、retry、dispose 或 bridge failure 必须解除本地 pending 且不提交过期 intent；
-- Host 消息与日志不包含 ticket、session、actor、raw State、seed 或 canonical replay；
-- Bridge V1 拒绝 result-summary；Bridge V2 拒绝非法 tone、未知字段、超长 headline、超过六行或单行超长 details。Web 只显示与最近 completed play state sequence 匹配的摘要，并在 active、新 Round、retry 或 dispose 时清除；
-- iframe 没有 `allow-same-origin`、表单、弹窗、下载或顶层导航能力，CSP 禁止直接联网；
-- Surface 加载失败可重试，失败期间不会提交游戏 intent；
-- 每个 Surface 的 conformance suite 无需启动 Next、Game Server 或数据库。
+### 本地临时数据库
 
-### 6.2 Setup Core 与 runtime 测试
+不要求预先配置 `TEST_DATABASE_URL`，也不写入 `.env`。凡矩阵要求 database 或 PostgreSQL-backed E2E，本地 Agent 必须启动一次性 `postgres:17.6-alpine3.22`：仅发布 loopback 随机端口，不挂载数据目录，等待 pg_isready，再在测试进程注入 DSN。同一轮检查可复用该临时容器。
 
-- initialize/transition/project/finalize 的 schema、immutability、serialization、viewer privacy 与独立 seeded determinism；
-- owner/player 权限、服务端 actor 推导、合法/非法 Setup Action、normalization、stale、duplicate、幂等与持久化失败重试；
-- accepted 设置清空全部 ready；rejected/stale/duplicate 不清；只有 selected participant 可 ready；
-- 参与者不完整、断线/重连、席位替换、playerOrder 排列、assignment 键冲突和 setup RNG 重试稳定；
-- 下一轮复用完整 config/participant/playerOrder/assignment，但生成新 gameplay seed/RNG/revision/tick/Match/replay ID，并要求所有玩家分别重新 ready；
-- V5/V6 房间并存、恢复、创建时 generation pinning、注册回滚只影响新房间与 V5 排空策略。
-- Client Host 以 discovery generation 加入并在 ticket/request/reconnect 全链路固定；非法 generation 不发请求，加入 V6 后再创建仍恢复 deployment default V5。
-
-## 7. Game Server Integration Tests
-
-Server integration tests 位于 `apps/game-server/tests/game-server.integration.test.ts`，使用 `port: 0` 启动真实 `game-server-runtime`、Colyseus room、WebSocket transport 和 in-memory stores。两个独立 `@colyseus/sdk` 客户端走真实 matchmaking/WebSocket；只把 clock、ID、ticket authority 和故障注入 store 作为可控 ports，不 mock 被验证的 room/Action pipeline。
-
-### 7.1 Authoritative 与安全
-
-- 伪造 actor 字段不会改变服务器从 session 推导的 actor；最好由 schema 直接拒绝多余字段。
-- 非成员连接、错误 slot、过期 ticket 和无效 reservation 不能操作房间。
-- schema-invalid Action 不进入 Core。
-- stale `expectedRevision` 被拒绝并返回最新 snapshot。
-- 同一 `commandId` 重试返回原结果，不重复推进 revision/RNG/replay。
-- 第二轮 revision 重置后，旧轮 duplicate 仍返回原 outcome 但不进入新轮；缺失/错轮命令 fail closed，旧轮 snapshot 不覆盖当前轮。
-- 两个同时到达的命令按单一顺序处理，不产生双写。
-- Game rule rejection 保持 State、revision、RNG 和 replay 不变。
-
-### 7.2 View 与 Lifecycle
-
-- 每个连接只收到 `projectView` 产生的 View。
-- M3 使用两个 viewer slot 验证每个 snapshot 都来自 `projectView`，且不含 State、RNG seed 或 Core-only 字段。第一个隐藏信息游戏加入时，再提供最小 fixture 证明不同 slots 不会互相看到秘密字段；不为 M3 虚构新游戏。
-- 首局允许 `currentRound = null` 且没有 snapshot；满足全部设置条件后直接创建 active Round，active → completed/abandoned 合法且不可逆；同 live room 下一轮创建新的 Match/replay/RNG/revision 序列，不重写上一轮。
-- Outcome 只由 Core 产生，断线状态只由平台 lifecycle 处理。
-- 房主加入前预选/提前 ready、非房主伪造选择、未选 starter 时拒绝 ready、随机先手只改变本轮 playerOrder 而不消费游戏 RNG、不同选择清全部 ready、重复选择保留 ready、断线/takeover 只清对应 ready、双方 ready 开新轮、双方在线时复用上一轮 playerOrder 的 immediate rematch、terminal outsider 拒绝、owner close、non-owner leave 和 5 分钟 terminal TTL 都由平台处理。
-- 首局与后续轮都注入 Round 启动失败，验证 replay header 已创建而 Match archive 失败时保留相同 pending replay ID/seed/playerOrder，并以新 command ID 幂等重试。
-- `GET /room-discovery` 对 turn-based/realtime 开放房间只返回最小白名单与固定 generation；小写 code 被规范化，未知/关闭/gameId 不匹配/双 runtime 同码返回 404，store 或损坏记录返回 503，所有响应禁用缓存。
-
-Web 同源代理另以独立 route tests 覆盖 strict query、规范化转发、上游 404、上游 5xx/网络失败、非法或 game/code 不一致 payload、敏感 extra field 拒绝，以及 `no-store, private`。
-
-### 7.3 Reconnect
-
-- 断线后 60 秒内同一 session 能恢复原 slot 并获得当前完整 snapshot。
-- 新有效连接接管后旧连接无法继续提交 Action。
-- 不同 session 不能窃取保留 slot。
-- 超时后执行房间策略，旧 reconnection token 不再恢复席位。
-- V3 明确不测试进程重启后的 live room 恢复；只验证重启后已完成 replay、match history 仍可读取，并验证启动协调会把单实例遗留的旧 `waiting`/当前 `active` archive 标记为 `abandoned`。从未开始 Round 的 room 不应产生 archive。
-
-使用 fake clock 驱动 60 秒超时，测试不得真实等待一分钟。
-
-## 8. Multiplayer Tests
-
-Multiplayer integration 使用两个独立客户端连接同一真实 room，验证：
-
-- 创建者和加入者获得不同稳定 slots；
-- 两方看到一致 revision 和各自 View；
-- 只有合法玩家可在正确时机行动；
-- accepted Action 对双方只产生一次 snapshot 更新；
-- 一方断线时另一方收到正确 lifecycle 信息；
-- 重连客户端从服务器 snapshot 收敛，而不是依赖本地 action history。
-
-这些测试覆盖网络时序，不承担穷举游戏规则的职责。
-
-真实 integration cases 覆盖：health/metrics 与 Protocol V5 ticket trust boundary；井字棋、四子棋、五子棋、六贯棋、黑白棋和中国跳棋 stable slots、无 snapshot setup、active/completed、invalid/rule-rejected commands、per-viewer snapshot 与 verified canonical replay；replay append failure 不确认/不提交；新 ticket + 新 reservation 的 reconnect、connection takeover、错误 session theft 和 fake-clock 60 秒 abandoned；逐局 starter/ready/cancel、随机 starter、复用 playerOrder 的 immediate rematch、跨轮 duplicate/错轮防护、terminal outsider、房主关闭、非房主 active leave 和 terminal TTL。中国跳棋额外覆盖 2–6 人人数控制、唯一营地权限、多人 playerOrder、排名和 assignment replay metadata。ticket verifier、ports、composition logger 另有无 transport 的 contract/unit tests。
-
-Protocol V6 turn-based integration fixture 使用 V6 ticket/create/join/connected/lifecycle/Action 全链路，覆盖非 owner、伪造敏感字段、schema invalid、stale setup revision、duplicate ready、accepted 设置清 ready、Setup RoomStore 保存失败同 command 重试、finalized RANDOM setup 在 archive 失败后的原 command 重试、revision 0 active snapshot，以及第二局完整复用 config/order/assignments 但生成独立 gameplay seed/replay。`tic-tac-toe@1.1.0` 的 production deployment 默认使用 V6；既有 V5 suites 显式固定 V5 resolver，持续验证两代房间并存。
-
-黑白棋 integration 额外覆盖本轮 BLACK/WHITE role、schema-invalid/伪造 actor、错回合与无翻转拒绝不推进 revision/replay、权威翻转、revision 18 后 WHITE 强制连续行动、25-action 非满盘终局、PASS-free canonical replay，以及同房间第二轮 revision 重置、独立 Match/replay 与 11-action 非满盘终局。
-
-四个 current `1.1.0` 游戏另以 table 覆盖一个正常 accepted Action 后同 actor off-turn `RESIGN`：revision 只加到 `2`、比赛 completed、对手 `RESIGNATION` WIN、replay 恰有一条 `RESIGN` 且 exact verification 通过。六贯棋连接轮使用必须经过 `(+1,-1)` 邻格的 21-action BLUE canonical path，并覆盖终局拒绝；Core 另以 accepted Action 同时回归 BLUE/RED 两个第三轴方向。
-
-## 9. PostgreSQL Integration Tests
-
-`packages/database/tests/database.integration.test.ts` 和 `apps/game-server/tests/database.integration.test.ts` 连接真实 PostgreSQL，不使用 SQLite，也不 mock Drizzle driver。根 `pnpm test:database` 会先构建依赖 package，再执行这两组 tests；缺少显式的测试 DSN 时 fail closed，不会回退或连接默认开发数据库。这个 fail-closed 行为用于防止误连，不是跳过数据库测试的理由。
-
-### 9.1 本地 Agent 的临时 PostgreSQL
-
-本地不要求预先配置 `TEST_DATABASE_URL`，也不要把它写入 `.env`。当环境没有该变量时，Agent 必须在完成开发后用 Docker 启动一次性的 `postgres:17.6-alpine3.22` 容器：只发布 loopback 随机端口、不挂载数据目录，等待 `pg_isready` 成功后，把临时 DSN 注入需要运行的测试命令。按 change-to-test matrix 运行所有受影响的 `pnpm test:database`、PostgreSQL-backed `pnpm test:e2e` 或其他真实数据库检查；同一个容器可供同一轮检查复用。
-
-Bash 示例：
+Bash：
 
 ```bash
 set -eu
-container="ogh-test-postgres-$RANDOM-$$"
-docker run --detach --rm --name "$container" \
+test_container="ogh-test-postgres-$RANDOM-$$"
+cleanup() { docker rm --force "$test_container" >/dev/null 2>&1 || true; }
+trap cleanup EXIT INT TERM
+docker run --detach --rm --name "$test_container" \
   --env POSTGRES_DB=postgres \
   --env POSTGRES_USER=postgres \
   --env POSTGRES_PASSWORD=postgres \
   --publish 127.0.0.1::5432 \
   postgres:17.6-alpine3.22
-cleanup() { docker rm --force "$container" >/dev/null 2>&1 || true; }
-trap cleanup EXIT INT TERM
-host_port="$(docker port "$container" 5432/tcp | sed -E 's/.*:([0-9]+)$/\1/')"
+test_port="$(docker port "$test_container" 5432/tcp | sed -E 's/.*:([0-9]+)$/\1/')"
 ready=false
 for attempt in $(seq 1 60); do
-  if docker exec "$container" pg_isready -U postgres -d postgres >/dev/null 2>&1; then
+  if docker exec "$test_container" pg_isready -U postgres -d postgres >/dev/null 2>&1; then
     ready=true
     break
   fi
   sleep 1
 done
 test "$ready" = true
-export TEST_DATABASE_URL="postgresql://postgres:postgres@127.0.0.1:${host_port}/postgres"
+export TEST_DATABASE_URL="postgresql://postgres:postgres@127.0.0.1:${test_port}/postgres"
 pnpm test:database
-# 按改动矩阵需要时，在同一临时容器中继续运行：
+# 矩阵要求浏览器检查时，在同一容器中继续执行：
 # pnpm test:e2e
 ```
 
-PowerShell 等价流程：
+PowerShell：
 
 ```powershell
-$container = "ogh-test-postgres-$([guid]::NewGuid().ToString('N').Substring(0, 12))"
-docker run --detach --rm --name $container `
-  --env POSTGRES_DB=postgres `
-  --env POSTGRES_USER=postgres `
-  --env POSTGRES_PASSWORD=postgres `
-  --publish 127.0.0.1::5432 `
-  postgres:17.6-alpine3.22
+$testContainer = "ogh-test-postgres-$([guid]::NewGuid().ToString('N').Substring(0, 12))"
+$previousTestDatabaseUrl = $env:TEST_DATABASE_URL
 try {
-  $published = docker port $container 5432/tcp
-  $hostPort = [int](($published -split ':')[-1])
+  docker run --detach --rm --name $testContainer `
+    --env POSTGRES_DB=postgres `
+    --env POSTGRES_USER=postgres `
+    --env POSTGRES_PASSWORD=postgres `
+    --publish 127.0.0.1::5432 `
+    postgres:17.6-alpine3.22
+  if ($LASTEXITCODE -ne 0) { throw 'Temporary PostgreSQL could not start.' }
+  $publishedPort = docker port $testContainer 5432/tcp
+  if ($LASTEXITCODE -ne 0) { throw 'Temporary PostgreSQL port is unavailable.' }
+  $testPort = [int](($publishedPort -split ':')[-1])
   $ready = $false
-  1..60 | ForEach-Object {
-    if ($ready) { return }
-    docker exec $container pg_isready -U postgres -d postgres *> $null
+  for ($attempt = 0; $attempt -lt 60 -and -not $ready; $attempt++) {
+    docker exec $testContainer pg_isready -U postgres -d postgres *> $null
     if ($LASTEXITCODE -eq 0) { $ready = $true } else { Start-Sleep -Seconds 1 }
   }
-  if (-not $ready) { throw "Temporary PostgreSQL did not become ready." }
-  $env:TEST_DATABASE_URL = "postgresql://postgres:postgres@127.0.0.1:$hostPort/postgres"
+  if (-not $ready) { throw 'Temporary PostgreSQL did not become ready.' }
+  $env:TEST_DATABASE_URL = "postgresql://postgres:postgres@127.0.0.1:$testPort/postgres"
   pnpm test:database
-  # 按改动矩阵需要时，在同一临时容器中继续运行：pnpm test:e2e
+  if ($LASTEXITCODE -ne 0) { throw 'Database tests failed.' }
+  # 矩阵要求浏览器检查时，在此运行 pnpm test:e2e 并检查 $LASTEXITCODE。
 } finally {
-  Remove-Item Env:TEST_DATABASE_URL -ErrorAction SilentlyContinue
-  docker rm --force $container *> $null
+  if ($null -eq $previousTestDatabaseUrl) {
+    Remove-Item Env:TEST_DATABASE_URL -ErrorAction SilentlyContinue
+  } else {
+    $env:TEST_DATABASE_URL = $previousTestDatabaseUrl
+  }
+  docker rm --force $testContainer *> $null
 }
 ```
 
-测试结束必须执行 cleanup，即使测试失败也不能留下容器或复用临时数据库。若 Docker daemon 不可用，数据库检查应报告为 blocked；不得以未配置 `TEST_DATABASE_URL` 为理由跳过或标记通过。测试输出、日志和制品仍不得包含完整 DSN。
+无论成功或失败都必须清理容器。Docker daemon 不可用时明确报告数据库检查 blocked；不得以未配置变量为由跳过，不得使用开发 DATABASE_URL、固定共享库、SQLite 或外部托管数据库替代。测试输出、日志和制品不包含完整 DSN。
 
-测试 owner 必须创建带随机名称的独立 database，并在连接前验证名称前缀；cleanup 只删除该测试自己创建的 database，且先终止属于该 database 的测试连接。Windows 本地开发可用 WSL/Docker 中的精确 PostgreSQL 版本，但测试不得依赖公共固定端口或外部托管服务。CI 使用 `postgres:17.6-alpine3.22` service container，并只把 workflow 创建的测试 credential 注入相关 steps；应用日志、错误和测试制品不得包含 DSN。
+测试 owner 在临时实例中创建随机命名的独立 database，连接前校验名称前缀；cleanup 只终止并删除本测试的连接/数据库。CI 使用 workflow 创建的固定版本 service 和测试凭据，不连接开发数据。
 
-最低覆盖：
+### 最低数据库场景
 
-- 空 database 应用 checked-in migrations，随后由 `db:check` 验证 schema/migration metadata 无漂移；
-- replay create/append/complete/get 可由新 connection 和新 adapter 重建，并通过 exact registry 的现有 `verifyReplay`；
-- sequence gap、重复/冲突 payload、并发 append 和冲突 completion fail closed；相同重试幂等；
-- schema-invalid、stale、duplicate、game-rule rejected command 不增加 `replay_actions`；
-- Match/MatchPlayer waiting、active、completed、abandoned archive 及 final revision 正确；completed 必须关联已完成 replay，abandoned 不伪造 Outcome；
-- 创建但未开始首局的 live room 没有 Match/MatchPlayer；首局真正启动时直接创建 active Match，旧 waiting rows 继续兼容；
-- 同一 `runtime_room_id` 可有连续正整数轮次，但 `(runtime_room_id, round_number)` 唯一；后续轮只接受与 completed 前轮相同 game/version/slot/session 的参与者，并持有独立 replay；
-- participants 集合不随 `playerOrder` 反转；两轮 Replay header 的有序 players 与各自 Core 初始化顺序一致；
-- 匿名 `/api/matches` 返回 401；账户历史只按 UserId 返回最近 50 条安全 metadata，不能查询其他账户，也不泄漏 replay ID/seed/State/session ID；
-- 匿名 Round 的 `match_players.user_id` 永久为 null；注册/登录、归档重试不回填；登录后新 Round 正确记录 UserId；
-- `users.display_name` 迁移从凭证回填用户名、无凭证回填“游客”；注册默认显示名等于用户名，更新只影响目标 UserId，新数据库连接可读取更新结果；
-- adapter/connection shutdown 后无遗留 client；数据库错误经稳定 code 清洗，不泄漏 SQL、DSN、session、ticket、State、seed 或 canonical replay。
-- realtime room 的 V5/V6 generation 可在新 adapter/connection 重读，save 不得改代际；旧行省略列时默认 V5，数据库 constraint 拒绝其他整数，损坏 generation 由 adapter 以稳定 `DATABASE_DATA_INVALID` fail closed。
+- 空库应用 checked-in migrations，db:check 无 schema/metadata 漂移。
+- Replay create/append/complete/get 可跨 adapter/connection 读取并 exact verify；gap、冲突、并发和幂等均正确，拒绝命令不增加 events。
+- Round 启动才创建 Match/players；完成关联 completed replay，abandoned 不伪造 Outcome；多轮唯一、连续、参与者集合固定且 playerOrder 正确。
+- 用户归属只在开局快照，旧游客永久不回填；私有历史最多 50 条，不泄漏其他参与者、identity、seed 或记录。
+- 密码/session/显示名迁移与更新可跨连接读取，旧资料回填正确，错误与 shutdown 无 credential 或连接泄漏。
+- V5/V6 room generation 创建后不可变；旧 realtime 行默认 V5，非法整数/损坏记录 fail closed。
+- 多人 room/archive/replay 校验覆盖 2–8 人与 exact manifest；坦克迷战包含八人归档、重开和重读。
 
-## 10. Playwright E2E
+## Surface、Host 与 E2E
 
-`tooling/e2e/tests/web-vertical-slice.spec.ts` 使用两个隔离且已登录的 browser contexts 验证账户归属与既有房间行为；`auth-vertical-slice.spec.ts` 另以双浏览器先完成游客局，再注册并完成账户局：
+### Bridge 与 artifact
 
-1. A 创建井字棋 V6 room 后在独立 Setup Surface 选择“房主先手”，B 以规范化 room code 加入；所需参与者到齐后双方分别 ready，自动切换至独立 Play Surface，并获得不同 stable slots、相同 room code/revision 和各自完整 View；
-2. 确认非当前玩家的 Surface 棋格被禁用；伪造 actor、schema-invalid、stale 与 duplicate intent 的权威拒绝由 Protocol V6 integration 覆盖，均不得推进 revision、棋盘或 replay action；
-3. 两者完成第 1 局 5-revision 胜局并验证 WIN；临时断线仍以同一账户身份和 PlayerSessionId、新 ticket/new reservation 恢复原 slot；
-4. completed 后进入同一 Setup Surface，默认复用上一局完整 finalized setup；A 再选择“另一位玩家先手”，ready、cancel、再次 ready，B ready 后在同一 room code 和 stable slots 进入新 `playerOrder`，页面显示轮次且 revision 重置为 `0`；
-5. 两者以交换后的 X/O 角色完成第 2 局 9-revision 平局并验证 DRAW；两轮各有独立 Match/replay/history，Replay header 顺序相反且均通过 `verifyReplay`，history 返回 `roundNumber`；
-6. 第三 context 猜到 completed room code 仍被 `ROOM_NOT_JOINABLE` 拒绝；另一账户查询不到 A/B history；
-7. completed room 由房主关闭并返回入口；另一个尚未开始首局的 room 由房主无确认关闭，且不产生 abandoned Match；
-8. active room 中非房主确认离开后当前 Match abandoned、双方返回入口；取消确认不会离开；
-9. 另一 active room 用 fake clock 前进 60,001 ms，验证 `RECONNECT_TIMEOUT` abandoned 并关闭 live room；
-10. 关闭并重建 database adapter 后，两轮 history metadata 和 completed canonical replays 仍存在；浏览器只看到安全 metadata，不看到数据库或 replay 细节。
+- game/version/mode 精确匹配，缺失 entrypoint、重复版本、路径穿越、Bridge 不兼容与 digest 漂移失败。
+- nonce/source/window、单次 MessageChannel、exact V1/V2、strict fields、重复 intent、timeout/crash/retry/dispose 和发送异常。
+- 受限 RESIGN 只在 deployment 允许时触发，复用 clientIntentId；并发 pending、超时和失效命令清理，不把 payload/identity 放进 host.command。
+- V2 摘要的 tone、headline/行数/行长与最新 completed sequence；V1/过期/active/Setup/Replay 拒绝，retry/新局/dispose 清除。
+- iframe 无 same-origin/form/popup/download/top-navigation 权限，CSP 禁止直接联网；静态 headers 与 session proxy 豁免由实际 Next production build 验证。
+- Web live room/replay 不导入 legacy loader，公共 CSS 不含游戏专属 selector；加载失败不转发 intent。
+- 每个 Surface 与 Workbench 都能脱离 Next/Game Server 完成 test/typecheck/build/contract；公开 fixtures 不含敏感 key。
 
-Web E2E 同时验证三阶段 App Router：创建/加入和 canonical 邀请进入等待页，旧 `?roomCode=` 兼容入口规范化，双方 ready 后自动进入 `/play`，active 刷新/reconnect 回到 `/play`，completed 保留最终棋盘并通过“调整设置”返回等待页，closed 返回入口并显示原因。井字棋还验证 exact Setup/Play/Replay Surface entrypoint、iframe 内交互、只读历史回放和 production V6；复制邀请覆盖 Clipboard 成功状态与 API 失败后的可操作手动复制后备。各游戏从默认收起的覆盖式 HUD 执行通用投降/关闭/离开，验证 Web 不加载 legacy module、投降取消不产生 Action、确认经 `host.command` 只产生一个 exact `RESIGN` intent/revision、双方收敛到 `RESIGNATION` WIN 且 PostgreSQL replay exact verification 通过；中国跳棋额外覆盖 3 人营地选择、排名和 assignment replay metadata。
+完整 build 后依次 surface:verify、surface:publish；重复同 digest 必须 no-op，不重写目标。Workbench 覆盖各 mode、connection/read-only/terminal、revision/tick、reduced-motion、viewport 与 fullscreen/focus mode。
 
-`realtime-navigation.spec.ts` 使用生产 realtime scheduler 持续推进 Pong 与羽毛球，并让真实页面导航跨越多个服务器快照。两名玩家必须在 Round 仍为 active 时从准备页进入 `/play` 并显示 canvas；从邀请链接重连、终局调整设置后再次全员准备也必须正常切换，并保留 stable slots。此回归不能只用暂停 tick 的手动 scheduler 验证，否则无法发现高频 snapshot 反复触发路由、直到终局才完成导航的问题。
+### 浏览器旅程
 
-`auth-vertical-slice.spec.ts` 还验证右上角 ProfileMenu：游客显示“游客”并可修改显示名、实时更新头像且刷新后仍保留；登录后下半部切换为历史/设置/退出，账户更新由另一 browser context 读取，退出后恢复为独立游客资料；键盘 Escape、外部点击和 live room 中身份变化确认均有效。
+[tooling/e2e/tests](../tooling/e2e/tests) 使用真实 Next production、Colyseus、Chromium 与临时 PostgreSQL，随机 loopback ports 和隔离账户 contexts。除已有 clock/ID/logger 等 ports 外，不 mock 数据库、ticket、matchmaking、WebSocket 或规则管线；结束时清理服务和连接。
 
-`tooling/e2e/tests/connect-four-vertical-slice.spec.ts` 保留上述真实 Next/PostgreSQL/Colyseus harness，独立验证：
+公共旅程覆盖目录/邀请、独立 Setup、逐人 ready、独立 Play、合法对局、终局、取消/确认投降、调整设置、完整设置重开、刷新/reconnect、第三方拒绝、关闭/离开、timeout 与跨数据库连接的 replay/history。私有回放验证 exact Replay Surface、逐帧/播放/暂停/slider、只读和无游戏 WebSocket；record-only 验证无播放入口、授权 API 409 和服务器记录仍可验证。
 
-1. 两个 account contexts 从统一目录进入四子棋，并以同一通用游戏页创建/加入真实 room；
-2. 越过非当前玩家 disabled column 操作提交真实恶意 intent，双方 revision/棋盘保持 `0`；
-3. 双方完成 7-revision 权威横向胜局，浏览器只显示服务器 View；
-4. 房主再次选择先手，双方 ready 后在相同 room code/stable slots 进入第 2 局并再次完成胜局；
-5. 两轮使用不同 Match/replay，均由新 PostgreSQL connection 读取并通过 exact registry verifier；
-6. 两个账户的 history 只含各自 slot 的安全平台 metadata，第三账户与伪造 query 无法读取；认证纵切同时验证游客 API 401、游客局不认领、退出失效与同账户另一设备恢复历史。
+认证旅程先完成游客局，再注册完成账户局，验证不认领旧比赛、账户隔离、退出失效和跨设备历史。资料菜单覆盖 NFC/grapheme/头像边界、游客 localStorage 与账户隔离、同源 strict PATCH、Escape/外部关闭和 live room 身份变更确认。
 
-`tooling/e2e/tests/gomoku-vertical-slice.spec.ts` 使用相同真实 harness，独立验证：
+路由回归使用生产实时 scheduler，确保连续快照期间仍能从准备页导航到 active `/play`，邀请重连、终局调整设置后再次全员 ready 也正常；不能仅用暂停 tick 的 scheduler 验证。
 
-1. 目录卡片、页面标题与棋盘无障碍名称统一显示“五子棋”，URL 为 `/games/gomoku`；
-2. 通用 Web 从 manifest 传递默认 `{ boardSize: 15, winLength: 5 }`，两个 account contexts 创建/加入，在独立 Setup iframe 选择先手并 ready 后切换至独立 225-cell Play iframe 与不同 stable slots；
-3. 非当前玩家在独立 Surface 中只能看到 disabled cell 且 revision/棋盘保持 `0`；伪造 actor、schema-invalid、stale 与 duplicate intent 的权威拒绝继续由 Protocol V6 integration 覆盖；
-4. 双方完成 9-revision 权威横向胜局，浏览器只显示服务器 View；
-5. completed replay 从 PostgreSQL 新 connection 重读并由 exact registry 验证，双方 private history 只返回安全 metadata，历史页使用 exact Replay Surface。
+单游戏 E2E 保留相应差异：双人棋类的权威胜局/平局/翻转/连接路径，三人中国跳棋的营地/排名/完整重开，羽毛球的逐球发球计分与键盘/真实多指触控，坦克迷战的八浏览器 SVG、多小局、刷新、输入和归档重读。伪造 payload、stale 和 duplicate 的权威负例由 Bridge/Protocol/integration 验证，不通过篡改 iframe 内框架私有对象制造攻击。
 
-`tooling/e2e/tests/hex-vertical-slice.spec.ts` 使用相同真实 harness，独立验证：
+### 布局与画面回归
 
-1. 目录、页面、独立 Setup/Play/Replay iframe、11×11 菱形棋盘、四条红蓝边、A–K/1–11 坐标和本轮 BLUE/RED roles；
-2. RED 错轮 cell 在独立 Surface 内保持 disabled 且 revision 为 `0`；伪造 actor、schema-invalid、stale 与 duplicate intent 的权威拒绝由 Protocol V6 integration 覆盖；
-3. 第一轮完成 21-revision BLUE 连接胜局，11-cell canonical path 只以白色模糊发光边框高亮；
-4. 双方点击“重新对局”直接复用上一局完整 finalized setup，在同一 room/stable slots 开始第二轮且角色保持不变；RED 在 BLUE 回合从共用 HUD 取消投降确认时不产生 Action；
-5. RED 再次确认投降后产生 1-revision RESIGNATION WIN，不显示连接路径 glow；
-6. 两轮独立 Match/replay 从 PostgreSQL 新 connection 重读并验证，双方 private history 返回两条安全 metadata，历史页按 exact `gameVersion` 加载只读 Replay Surface。
+E2E 优先断言可访问 role/test id、用户文本和自然 DOM/SVG 几何，不使用 `toHaveScreenshot()` 或维护整页像素基线；不得注入固定宽高或克隆棋盘来掩盖错误。少量 canvas 内容/显隐采样只验证渲染，不替代权威结果断言。
 
-`tooling/e2e/tests/chinese-checkers-vertical-slice.spec.ts` 使用三个隔离账户和相同真实 harness，独立验证：
+- 覆盖桌面、平板、手机横竖屏、reduced-motion、全屏失败后 focus mode、焦点/ESC、44px 操作目标与舞台不被 HUD 挤压。
+- 棋盘验证格数、行列、颜色、落点/路径投影、边界与跨缩放稳定性；大视口包含 2560×1440 的 100%/150% 等效布局。
+- 中国跳棋逐格验证新版 13 行、73 格、180 条等距线、圆形按钮/SVG 端点、自然营地几何及旧拓扑隔离；390×844 与 844×390 下保留触屏目标并能滚动到各角。
+- Pong 验证 800×400、2:1 FIT、边界留白、准备期箭头显隐/reduced-motion、倒计时重连，以及持续输入确认不重写连接提示。
+- 羽毛球验证 1000×600、5:3 FIT、按键/多指/取消/失焦释放、发球 latch、人物/球拍/接触点/网高投影、动画不误重启、粒子清理、音效解锁/静音/去重与重连不补播。
+- 坦克迷战验证道具图标居中、321 倒计时、击毁轻震幅度/复位、HUD 不震、重复快照不重复触发和 reduced-motion。
 
-1. 房主在独立 Setup Surface 选择 3 人并指定 `NE`（2号）首位，三位玩家分别为自己的稳定席位选择唯一 `N`、`S`、`NE` 营地并分别 ready；验证只有指定/随机两个首位选项、顺时针 1–6 号下拉框、非房主禁用、空营地不能开局、切换首位清 ready 和随机模式切换；
-2. V6 RoomStore 固定 current `1.1.0` 并保存 canonical Setup State，Play Surface 精确显示 13 行 73 格、37 个中心格、六个 6 格营地、180 条等距连线与 18 枚棋子，非当前玩家没有可操作棋位；
-3. 当前玩家只通过服务器 projected `legalMoves` 完成一次两阶段移动，随后两位非房主玩家 off-turn 投降，形成三人 canonical 排名；
-4. 下一局复用上一局目标人数、参与席位、实际 `playerOrder` 和全部营地，不重新随机且三位玩家必须分别点击“重新对局”；两轮各自使用新的 gameplay seed、Match 和 replay；
-5. 两轮 replay 由新的 PostgreSQL connection 重读并通过 exact registry verifier，三个账户历史一致；Replay Surface 验证首帧、末帧、最终排名和全棋盘只读。
+Playwright 保留 only-on-failure 截图用于排障；trace/video 关闭，避免 bearer ticket 进入制品。截图不是通过条件。
 
-`tooling/e2e/tests/reversi-vertical-slice.spec.ts` 使用相同真实 harness，独立验证：
+## 完成标准
 
-1. 目录卡片、中文标题、`/games/reversi`、独立 Setup/Play iframe、8×8 可访问棋盘、本轮 BLACK/WHITE roles、棋子数和服务器合法落点；
-2. 两个隔离 account contexts 创建/加入真实 V6 room；WHITE 只能看到 disabled 合法落点且 revision、棋盘和棋子数保持不变，伪造 intent 的权威拒绝由 Protocol V6 integration 覆盖；
-3. 两方完成 11-revision 真实对局，验证落子后的权威翻转，以及 WHITE 被清空时仍有 49 个空格的非满盘终局；
-4. completed replay 从新 PostgreSQL connection 重读并通过 exact registry verifier，RNG cursor 为 0；
-5. 双方 private history 只含完全相同的安全 metadata key 集合，不返回 Config、Action、Outcome、seed 或 canonical replay。
-
-Harness 为 Web 预留随机 loopback port，并用 `port: 0` 启动正式 ticket verifier/CORS composition 的真实 Colyseus Server；随后启动真实 Next production server 和 Chromium。M5/M6 E2E 使用测试 owner 创建的隔离 PostgreSQL database 和正式 adapters，只注入 fake clock、deterministic IDs 与测试 logger 等已有可控 ports，不 mock 数据库、浏览器、ticket route、matchmaking、WebSocket 或 Action pipeline，也不访问外部服务。活动 RoomStore 仍在内存中，因此该测试只验证 archive/replay 跨 adapter 重建，不声称恢复活动 room。
-
-断言优先使用可访问 role/test id 和用户可见文本；legacy Client Module 的恶意 intent case 只保留在兼容组件/Host 测试，不再代表 Web 渲染路径；sandboxed Surface 不通过篡改 iframe 内框架私有属性制造攻击，权威负例由 Bridge contract 与 V6 integration 覆盖。Web unit contract 还须以源码边界断言 live room/replay 不导入 legacy loader、公共 CSS 不含游戏专属 selector。Playwright trace/video 关闭，避免 bearer ticket 进入测试制品；失败 screenshot 只包含不显示 credential 的 UI。harness 在 `afterAll` 对两个进程执行停止清理。
-
-### 10.1 布局回归与失败截图
-
-E2E 使用真实 DOM/SVG 几何、布局和交互断言，不使用 `toHaveScreenshot()` 等图片像素比对，也不维护平台截图基线，避免系统字体和抗锯齿差异导致误报。棋盘布局必须使用自然尺寸，不为截图注入固定宽高或克隆棋盘；保留各游戏的棋位、连线、营地形状、坐标对齐、视口适配及触屏尺寸断言，以及完整联机、重连、排名、重开和数据库回放测试。
-
-Playwright 保留 `screenshot: "only-on-failure"`，只在测试失败后生成排障截图，不与基线比对，也不作为测试通过条件。继续关闭 trace/video，避免身份凭据进入制品。
-
-## 11. Change-to-Test Matrix
-
-| 改动                    | 最低检查                                                              |
-| ----------------------- | --------------------------------------------------------------------- |
-| 单游戏 Core             | 该游戏 unit + determinism + replay fixtures + typecheck               |
-| Game manifest/client    | registry contract + client component + relevant E2E                   |
-| `game-sdk`              | 全部游戏 Core/replay + public API type tests + dependency checks      |
-| `protocol`              | protocol contract + server integration + multiplayer/E2E smoke        |
-| `game-setup`            | contract/unit + 两套 runtime integration + replay header invariants   |
-| `game-surface-bridge`   | schema/handshake/security contract + Host + Surface conformance       |
-| Surface artifact        | 独立 test/build/contract + digest/copy + viewport E2E                 |
-| `game-server-runtime`   | server integration + multiplayer + replay store tests                 |
-| database/schema         | migrations + real PostgreSQL integration + restart reads + shutdown   |
-| match/history/identity  | PostgreSQL integration + API authorization/privacy + relevant E2E     |
-| session/ticket          | auth contract + join/reconnect + security negative cases              |
-| replay format/version   | reader compatibility + all supported golden replays                   |
-| replay capability       | registry + history/API matrix + exact playback Surface                |
-| build/dependency config | full typecheck/lint/unit + affected build graph                       |
-| `tools/create-game`     | package test/typecheck/build + registry contract + root quality gates |
-
-Surface 包的独立契约门禁由 `pnpm contract-test` 进入 Turbo graph。全仓 `pnpm build` 后必须依次运行 `pnpm surface:verify` 与 `pnpm surface:publish`：前者验证所有显式发布 workspace 的 manifest、mode entrypoint、源码锁与 canonical digest，并拒绝未提升 `surfaceVersion` 的内容漂移；后者验证不可覆盖的 immutable 复制。相同 digest 的重复发布只能是 no-op，不得重写目标文件。
-
-Web iframe Host 的组件测试至少验证 sandbox 不含 same-origin/form/popup/top-navigation 权限，静态路径具备 immutable/CORS/CSP headers 且绕过 session proxy；Web production build 必须实际加载 `next.config.ts`，防止只在测试对象中成立而部署配置无效。握手、nonce、exact V1/V2 协商、非法消息、重复 intent、timeout、retry、dispose 与 V2 result-summary 长度/行数限制继续由 `game-surface-bridge` 的 fake-channel contract tests 覆盖。
-
-Tic-Tac-Toe Surface 以 `surfaceVersion 1.0.3` 和 Bridge V2 同时覆盖 `gameVersion 1.0.0`/`1.1.0`；contract/model tests 必须证明历史版本只接受普通 WIN/DRAW 与落子 intent，而 current 版本另可显示 `RESIGNATION` WIN 并响应平台投降命令。历史版本仍保留 V5 Setup/lifecycle 与 frozen Core/golden replay，不得因表现层共用而放宽 Action 或 Outcome。
-
-Workbench contract tests必须覆盖 Setup/Play/Replay mode、active/terminal projected payload 的 strict Bridge parse、敏感 key 扫描、完整 viewport 矩阵及 `surfaceArtifact: false`/唯一 workspace dependency。其 `test`、`typecheck`、`build` 与 `contract-test` 均可在不启动 Next 或 Game Server 时独立运行。
-
-## 12. Root Commands
-
-M5 提供以下稳定根命令：
-
-```text
-pnpm lint
-pnpm typecheck
-pnpm test
-pnpm build
-pnpm deps:check
-pnpm test:integration
-pnpm test:e2e
-pnpm db:check
-pnpm db:migrate
-pnpm test:database
-```
-
-`pnpm lint` 包含格式、ESLint、本地 Markdown 链接与依赖边界检查。`pnpm test` 纳入 Game SDK、Protocol、井字棋/四子棋/五子棋/六贯棋/黑白棋 Core/client/golden、registry、ticket authority、Web guest/config、runtime/replay stores、Game Server unit tests、create-game 隔离 fixture 和 repository-check 的全部故意违规 fixture tests。`pnpm test:integration` 执行真实 Colyseus SDK tests。`pnpm test:e2e` 先执行完整 workspace build、Surface verify/publish，再执行 PostgreSQL-backed Playwright。`pnpm test:database` 执行真实 PostgreSQL tests；这些命令都不是空脚本。
-
-`pnpm db:check` 是只读 migration/schema 一致性检查。`pnpm db:migrate` 只在调用者显式提供 `DATABASE_URL` 时应用 checked-in migrations；应用 import 或 production startup 都不会自动 migration。本地创建、迁移与停止 PostgreSQL 的命令见根 README。测试必须使用独立 database/schema，禁止对默认 development `DATABASE_URL` 执行 destructive reset。
-
-## 13. M8 Realtime Runtime 测试要求
-
-本节是 M8 已实现的验收矩阵。realtime runtime 或 `games/pong` 的改动至少新增并实际运行：
-
-- 纯 simulation tests：固定整数 60 Hz tick、输入生效顺序、球拍/边界碰撞、得分/发球、终局/投降、immutability、JSON serialization、viewer projection，以及相同 seed/input log 的逐 tick determinism；
-- realtime replay tests：server-assigned tick 的 input change log 可 exact 重建；tick/sequence gap、错 actor、schema-invalid input、重复或倒退 `inputSequence`、被拒绝 command 和篡改 Outcome 可靠失败；既有 Replay Format V1 golden fixtures 持续通过；
-- realtime protocol/runtime integration：真实 Colyseus WebSocket + fake monotonic scheduler 验证 forged state/tick/score 拒绝、input rate/size 限制、单 writer ordering、快照顺序、viewer input acknowledgement、takeover reconnect 和 60 秒 abandonment；
-- PostgreSQL integration：realtime Match、input replay 和账户归属可由新 connection 重读并验证；私有 replay 授权不泄漏 raw State、seed、input log 或其他玩家数据；按数据库规则使用临时 Docker PostgreSQL；
-- Playwright E2E：两个隔离 browser contexts 经过目录、独立 Setup Surface、ready、独立 Phaser Play Surface、完成、reconnect 与只读 Replay Surface；检查 canvas 非空、800×400 逻辑尺寸、视口矩阵及 2560×1440 的 100%/150% 缩放等效视口下的 2:1 FIT、安全留白和四边边界可辨识性、键盘输入可用、reduced motion 和终局 UI，不以客户端位置推断权威结果；
-- 全仓 `lint`、`typecheck`、`test`、`build`、`deps:check`，以及受影响的 `test:integration`、`test:database` 和 `test:e2e`。Phaser 依赖必须由 legacy `games/pong` client 或独立 `game-surfaces/pong` 明确拥有，Core 和 server runtime 的依赖检查必须继续拒绝 Phaser/DOM。
-
-Pong `1.2.0` 回归需覆盖 120 tick 准备期、更快的双侧球拍、每次非终局得分后的重新准备与初速复位、两侧连续反弹加速（含边缘转中央）、速率上限、边界反弹不加速、期间投降/输入拒绝与 RNG 不推进；同时运行 `1.0.0`、`1.1.0`、`1.2.0` 的得分及历史投降 golden，保留旧模拟。Surface model/scene 验证“显示、消失、显示、消失”的两次闪烁、左右水平实心小箭头、边框同色无描边、reduced motion 常亮及 exact View schema；双浏览器 E2E 用中线两侧和中心 canvas 像素验证显隐与发射、移动端截图、倒计时中刷新重连，并通过 DOM MutationObserver 确认 W/S 按下和释放到服务器确认全过程不重写连接提示。Pong 按产品要求暂停玩家回放，覆盖所有支持版本 `record-only`、历史无播放入口、API 私有 409、无 Replay Surface 和服务端记录继续可验证，替代该游戏原只读播放 E2E；其他游戏的玩家回放覆盖不变。
-
-### 13.1 额外实时游戏：羽毛球验收
-
-`1.2.0` 另覆盖降网后上方通过/下方高速拦截、左右对称后下方捞球、范围外漏接与连续触球拒绝；保留 `1.0.0`/`1.1.0` 全部 golden 并新增当前版本记录。Surface 覆盖缩小骨架、站立后腿共线、前膝微弯、加长拍杆及 exact 网高，浏览器验证音效按钮点击/键盘状态。
-
-- `apps/game-server/tests/realtime-game-server.integration.test.ts` 的羽毛球 V6 suite 覆盖真实双客户端、非房主/非法/过期 Setup、accepted 设置清 ready、左右 slot 映射、伪造 actor/State/tick/位置/分数、重复 command、过期 input sequence、错轮、输入释放、同 session 接管、投降、完整设置重开、无限发球等待与非发球方无效 intent、真实客户端逐球发球计分终局和两轮 exact replay。
-- `tooling/e2e/tests/badminton-vertical-slice.spec.ts` 使用两个隔离账户、临时 PostgreSQL 和真实 Next/Colyseus/Chromium。验证独立 Setup/Play、键盘组合、真实 Chromium 多点触控及取消、失焦释放、刷新重连、完整计分、终局重开与取消/确认投降。跨新数据库连接重读记录并 verify，私有 history 保留战绩但 `replayAvailable: false`，玩家播放返回 409 `PLAYER_PLAYBACK_NOT_SUPPORTED`。
-- 当前 Surface 验证新旧 exact View/Input、快速发球 latch、左右上下手方向、持球手和触球位置对齐、统一透视线/前脚/网顶几何、限位不踏步、粒子间距/数量/清理、音效解锁/静音/去重及重连不补播。真实浏览器覆盖七个触控按钮、S 空中发球、脚线位置、音效开关和逐球手动计分；截图只用于人工验收，不创建像素基线。
-- 羽毛球 Surface 验证 1000×600 逻辑画布、5:3 比例、连续缩放后的最大可用尺寸、桌面/平板/手机横竖屏、44px 操作目标、非空 canvas、reduced motion 和安全终局摘要。手机横屏按钮分置球场两侧，不覆盖独立全屏控件。
-- Web replay capability tests 覆盖 `player-playback`、`record-only`、未知版本、现行/历史 definition、私有响应头和 401/404 授权顺序；既有游戏的 projected replay 保持可用。
-
-针对性命令（浏览器命令前须完成 build、surface verify/publish，并按第 9.1 节临时注入测试数据库）：
-
-```text
-pnpm --filter @online-game-hub/badminton test
-pnpm --filter @online-game-hub/badminton test:golden
-pnpm --filter @online-game-hub/tank-maze test:golden
-pnpm --filter @online-game-hub/badminton-surface contract-test
-pnpm test:integration
-pnpm --filter @online-game-hub/e2e test:e2e tests/badminton-vertical-slice.spec.ts
-```
-
-Connect Four Surface `1.0.3` 额外保持 `1.0.0`/`1.1.0` projected View 的同一 artifact contract；current E2E 必须覆盖 Setup iframe、42 格/7 列 Play iframe、`7:6` 棋盘及 2560×1440 的 100%/150% 缩放等效视口 containment、完整设置复用的第二局、平台投降和 Replay iframe。历史 `1.0.0` golden replay 继续用 frozen Core exact 验证。
-
-Gomoku Surface `1.0.2` 同时覆盖 `1.0.0`/`1.1.0` projected View；current E2E 必须覆盖保留 15×15 Config 的 Setup iframe、225 格暖木 Clay 棋盘、容器尺寸适配、当前棋色 hover/focus 预览、平台投降和 Replay iframe。19×19 Config、长连和历史 `1.0.0` exact 行为继续由 Core、Setup 与 golden tests 覆盖。
-
-Reversi Surface `1.0.4` 以同一 artifact 覆盖 `1.0.0`/`1.1.0` projected View；current E2E 必须覆盖 Setup iframe、64 格暖木 Clay 棋盘、八行八列等大正方形及落子前后几何稳定性、teal 合法落点、服务器 `legalMoves`、翻转与非满盘终局、平台投降和 Replay iframe。Surface 不得自行扫描夹线、判断强制跳过或产生 PASS。
-
-Hex Surface 迁移以一个 artifact 精确覆盖 `1.0.0`；E2E 必须覆盖 Setup/Play/Replay iframe、121 格菱形棋盘、四条连接边、44 个坐标标签、上一局完整设置复用、平台投降和服务器 canonical `winningPath` 高亮。Surface 只验证并显示 projected path，不自行运行 BFS、推断连接或生成 Outcome。
-
-Chinese Checkers Surface `1.1.1` 精确覆盖规则 `1.0.0` 与 `1.1.0`。Core tests 必须逐空格匹配 GAME_SPEC 的 ASCII 图，验证中央 37 格、六个边长 3 的正三角形、60° 旋转对称、180 条互为邻接的等距边和六方向跳跃。Setup tests 覆盖六个指定首位、营地变化与未占用营地阻止开局、2–6 人随机首位覆盖全部参赛者、权限/schema/immutability、旧设置兼容与完整重开。独立 Surface tests 使用两个版本的公开 projected fixtures，验证新版 geometry 与旧 162 边拓扑隔离、严格 schema 和缺失 geometry 时 fail closed。
-
-中国跳棋 E2E 必须覆盖三人 Setup/Play/Replay iframe、逐行棋位数 `1,2,3,10,9,8,7,8,9,10,3,2,1`、所有棋位实际屏幕坐标、圆形按钮、SVG 端点对齐及 180 条等长连线；桌面/平板横竖屏及 2560×1440 的 100%/150% 等效视口不得拉伸或溢出，390×844 与 844×390 触屏保留至少 44px 棋位并可滚动到所有角。几何断言使用自然布局，禁止给棋盘注入测试专用宽高来掩盖错误。继续验证棋子跨营地后保持玩家颜色、服务器 `legalMoves`、三人排名、下一局完整设置复用和 PostgreSQL exact 回放；Surface 不得搜索跳跃路径、推导当前玩家或生成排名/Outcome。
-
-所有当前支持 `gameVersion` 的 golden replay：
-
-```text
-pnpm --filter @online-game-hub/tic-tac-toe test:golden
-pnpm --filter @online-game-hub/connect-four test:golden
-pnpm --filter @online-game-hub/gomoku test:golden
-pnpm --filter @online-game-hub/hex test:golden
-pnpm --filter @online-game-hub/reversi test:golden
-pnpm --filter @online-game-hub/chinese-checkers test:golden
-pnpm --filter @online-game-hub/pong test:golden
-pnpm --filter @online-game-hub/badminton test:golden
-```
-
-首次本机运行 E2E 前执行 `pnpm exec playwright install chromium`。CI 在 frozen-lockfile install 后以 `pnpm exec playwright install --with-deps chromium` 安装与 Playwright 1.62.1 精确匹配的浏览器，使用固定 PostgreSQL 17.6 service，然后运行 lint、typecheck、unit、database、integration、build 和 E2E。
-
-新增 package 必须接入 Turbo task graph，而不是要求 Agent 记忆私有脚本。
-
-`tools/create-game` 可单独检查：
-
-```text
-pnpm --filter @online-game-hub/create-game test
-pnpm --filter @online-game-hub/create-game typecheck
-pnpm --filter @online-game-hub/create-game build
-pnpm --filter @online-game-hub/game-registry test
-```
-
-## 14. Definition of Done
-
-功能或架构变更只有在以下条件满足时完成：
-
-- 行为测试覆盖成功路径和关键拒绝路径；
-- 受影响的 typecheck、lint、unit 和 integration checks 通过；
-- 失败测试可重复，不依赖 sleep 或外部公共服务；
-- 没有跳过、删除或弱化既有测试来掩盖失败；
-- public API、protocol、game/replay version 和文档影响已评估；
-- 最终汇报列出实际运行的检查及未运行原因。
+- 成功路径和关键拒绝路径有覆盖，受影响的静态、unit、contract、integration 与 E2E 检查通过。
+- 测试可重复，不依赖任意 sleep、外部公共服务或未清理的共享环境。
+- 不跳过、删除或弱化既有测试来掩盖失败。
+- 评估 public API、规则/协议/replay/Surface 版本及文档影响。
+- 最终交付列出实际命令、结果，以及未执行或阻塞的检查与原因。

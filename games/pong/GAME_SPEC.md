@@ -8,8 +8,8 @@
 
 任一玩家可提交严格 `{ "type": "RESIGN" }` 投降输入。比分达标产生 `SCORE` 胜局，投降产生 `RESIGNATION` 胜局；终局不再推进 simulation。公开 View 只含场地、球拍、球、比分、tick、玩家方位、发球提示与 Outcome，不含 RNG seed 或 authoritative input log。
 
-Round Setup 由 Pong 自己定义：新房间必须由 owner 选择 `OWNER | NON_OWNER | RANDOM` 先手/方位顺序，`targetScore` 首阶段仍取当前默认值而不开放编辑。`RANDOM` 只消费独立 Setup RNG；Gameplay 继续获得新的独立 seed。下一局从上一局完整 finalized setup 初始化，复用实际 LEFT/RIGHT 顺序和 `targetScore`，不重新随机，并由两位玩家分别重新 ready。
+Round Setup 由 Pong 自己定义：新房间必须由 owner 选择 `OWNER | NON_OWNER | RANDOM` 先手/方位顺序，当前 Setup UI 不开放 `targetScore` 编辑。`RANDOM` 只消费独立 Setup RNG；Gameplay 继续获得新的独立 seed。下一局从上一局完整 finalized setup 初始化，复用实际 LEFT/RIGHT 顺序和 `targetScore`，不重新随机，并由两位玩家分别重新 ready。
 
-独立 `pong@surfaceVersion 1.2.0` 使用 Bridge V2 承载三个规则版本的 Setup 与 Phaser Play，按 exact gameVersion 校验公开 View。Play 始终保留 800×400 逻辑场地、2:1 FIT、容器内安全留白和可辨识的四边边界。准备期隐藏球，以中线对应一侧的 24×20 实心粗箭头提示水平方向，不显示竖直角度；箭头中心为 `(400 ± 24, 100)`，与场地边框使用相同颜色及透明度，无白边。新版每 30 tick 切换显隐，严格为“显示、消失、显示、消失、发球”，包括首次显示在内仅闪烁两次；reduced motion 保持箭头常亮至准备结束。旧 `1.1.0` 活跃房间保持原倒计时相位。动画只取决于 projected 倒计时，重连不会重新开始本地计时。方向输入等待确认时连接提示保持稳定；设置和投降仍保留确认反馈。completed Play View 的结果摘要只包含 viewer 胜负、最终比分和终局原因。
+独立 Bridge V2 Surface 按 exact gameVersion 解析公开 View，只采集操作意图。场地布局、发球箭头、插值与终局摘要由 [Surface README](../../game-surfaces/pong/README.md) 定义，不影响权威模拟。
 
 Pong 的玩家回放暂时取消，等待后续重新设计。`1.0.0`、`1.1.0` 和 `1.2.0` 均显式声明 `record-only`，历史战绩不再显示播放入口，已登录参赛者的玩家 replay API 返回 `409 PLAYER_PLAYBACK_NOT_SUPPORTED`，Surface 不再发布 replay entrypoint。服务端 canonical journal、比赛归档、账户战绩、exact verifier 和所有历史 golden fixtures 保留；这次能力调整不删除已保存记录，也不更改其规则或数据格式。

@@ -1,13 +1,12 @@
 # Game Plugin 规范
 
-> 状态：V1 权威 Core + Game-defined Setup + 独立 Surface 迁移规范；M8 realtime simulation 保持独立
-> 本文是游戏 Core、Setup、Surface、序列化与版本契约的权威来源。平台依赖边界见 [ARCHITECTURE.md](./ARCHITECTURE.md)。
+本文定义回合制 Core、游戏 Setup、序列化、注册与规则版本契约。平台依赖边界见 [ARCHITECTURE.md](./ARCHITECTURE.md)，独立画面见 [GAME_SURFACE_SPEC.md](./GAME_SURFACE_SPEC.md)。
 
 ## 1. 适用范围
 
-V1 Game Plugin 面向棋盘、卡牌和骰子等“客户端提交离散 Action、服务器产生下一个 State”的游戏。井字棋是首个规范验证实现。
+回合制 Game Plugin 面向“客户端提交离散 Action、服务器产生下一个 State”的游戏。当前以棋牌实现验证；卡牌和骰子可以使用同类接口，但不表示相关产品能力已经开放。
 
-Phaser 实时 2D 游戏通常需要 tick、输入缓冲、插值、预测或回滚，不强行复用本规范。M8 已确认使用独立 realtime runtime，具体 API、输入、快照、replay 与 Phaser 边界以 [REALTIME_RUNTIME_DESIGN.md](./REALTIME_RUNTIME_DESIGN.md) 为准。它仍复用平台目录、身份、房间和比赛生命周期，但不得把 realtime input、tick 或 snapshot 字段加入本规范的 `GameDefinition`、`GameClientModule` 或 turn-based Action envelope。
+固定 tick 的实时游戏使用独立 [Realtime Runtime](./REALTIME_RUNTIME_DESIGN.md)，不把 realtime input、tick 或 snapshot 字段加入 `GameDefinition`、`GameClientModule` 或回合制 Action envelope。Setup、显式注册与版本原则适用于两类游戏。
 
 ## 2. 设计原则
 
@@ -21,7 +20,7 @@ Phaser 实时 2D 游戏通常需要 tick、输入缓冲、插值、预测或回�
 
 ## 3. 基础类型
 
-以下接口用于说明 V1 public API；实现时由 `game-sdk` 导出等价的 strict TypeScript 类型。
+以下接口省略部分 readonly/泛型细节，完整 public API 由 [game-sdk](../packages/game-sdk/src/index.ts) 导出并由 contract tests 约束。
 
 ```ts
 type GameId = string & Brand<"GameId">;
@@ -62,7 +61,7 @@ interface GameManifest {
 - `title` 是面向玩家的简体中文正式展示名；新游戏加入 registry 前必须由产品确认译名，manifest 与中文文档统一使用该名称。
 - `description` 使用面向玩家的简体中文，不暴露内部架构或协议术语。
 - `defaultConfig` 是通用 Web 创建房间时使用的 JSON-safe 默认 Config，必须已是对应 `configSchema` 接受且不会进一步规范化为不同值的 canonical 数据；它不替代服务端 schema 校验，也不限制其他合法 Config。
-- `capabilities.replay` 对 exact `gameVersion` 必填。`record-only` 保存并验证 canonical journal，但不提供玩家回放；`player-playback` 额外提供 Replay Surface；`none` 已保留类型，但在首轮 runtime 中稳定拒绝注册/启动。
+- `capabilities.replay` 对 exact `gameVersion` 必填。`record-only` 保存并验证 canonical journal，但不提供玩家回放；`player-playback` 额外提供 Replay Surface；`none` 已保留类型，但当前 runtime 拒绝注册/启动。完整语义见 [Replay 设计](./REPLAY_DESIGN.md)。
 - 技术标识、代码符号和必要的英文诊断可以保留英文；不得把英文技术标识当作玩家展示名。
 - `PlayerSlotId` 表示比赛中的稳定席位，不是账号、session、connection 或数据库 ID。
 - `game-sdk` 使用 `defineGameId`、`defineGameVersion` 和 `definePlayerSlotId` 构造上述 branded string；brand 只存在于类型系统，wire/replay 中仍是普通字符串。
@@ -220,7 +219,7 @@ type Action = {
 
 ## 8. Legacy Client Module
 
-游戏 Client Module 是保留的兼容 API 与组件测试路径，可以依赖 React 和 `game-client-sdk`，但不得导入服务端 State 或自行实现 authoritative 规则。当前 Web 的 live room 与 replay 均不再加载 Client Module；新游戏使用下一节的独立 Surface，不再新增 Client Module。
+游戏 Client Module 是保留的兼容 API 与组件测试路径，可以依赖 React 和 `game-client-sdk`，但不得导入服务端 State 或自行实现 authoritative 规则。当前 Web 的 live room 与 replay 均不再加载 Client Module；新游戏使用 [独立 Surface](./GAME_SURFACE_SPEC.md)，不再新增 Client Module。
 
 概念契约：
 
@@ -246,7 +245,7 @@ interface GameClientModule<View, Action> {
 
 客户端可以重复实现提示性逻辑以改善 UX，但提示不是权威；服务器 Core 始终重新验证 Action。
 
-井字棋、四子棋、五子棋与黑白棋 current `1.1.0` 的兼容 module 仍暴露 `createResignAction`；各自 frozen `1.0.0` definition 继续只解析原落子 Action。六贯棋与中国跳棋的兼容 module 也保持各自既有契约。任何 client factory 都不属于 replay 或 wire envelope，不能让旧 Core 接受新 Action；Surface 是否支持平台投降只由 exact deployment 的 `platformControls` 与 Surface schema 决定。
+任何 client factory 都不属于 replay 或 wire envelope，不能让旧 Core 接受新 Action。保留的历史 module 必须符合对应版本；Surface 是否支持平台投降只由 exact deployment 的 `platformControls` 与 Surface schema 决定。
 
 ## 9. Round Setup Definition
 
@@ -258,33 +257,27 @@ interface GameClientModule<View, Action> {
 
 ## 10. Game Surface Artifact
 
-新表现层位于独立 `game-surfaces/<game-id>` workspace，可自行选择 React、Vue、Svelte、Phaser、Canvas、WebGL、WASM 或其他浏览器技术；契约不是 React component。每个 Surface 独立提供 dev/build/test/contract-test，并输出通过 `SurfaceArtifactManifestV1` 校验的静态 artifact：Setup 与 Play entrypoint 必填，Replay entrypoint 只在 `player-playback` 时需要。
+新表现层位于独立 `game-surfaces/<game-id>` workspace，只通过 Bridge 接收 projected View 并提交 intent。Setup 与 Play entrypoint 必填，`player-playback` 另需 Replay entrypoint；当前所有支持版本均按 exact deployment 解析为 Surface，Web 不提供 legacy 渲染 fallback。
 
-发布型 Surface 在 package manifest 中声明 `onlineGameHub.surfaceArtifact: true`，提交 `surface.config.json` 与 `surface.lock.json`，并把 `surface.manifest.json`、`setup/`、`play/`、可选 `replay/` 输出到 `dist`。仓库级 artifact CLI 负责 build 收尾和显式锁更新，不能成为 Surface 的 workspace 依赖。普通 build 不改锁，只有先提升 `surfaceVersion` 后才能显式更新内容摘要。`pnpm surface:verify` 检查 schema、gameId、mode 目录、entrypoint、锁和 canonical digest；`pnpm surface:publish` 只把校验通过的内容幂等复制到 Web 静态目录，并拒绝同一 `surfaceVersion` 的内容漂移。Workbench 等不发布 artifact 的 workspace 必须显式声明 `false`，不能靠缺失 manifest 被静默跳过。
-
-Surface 只实现 `@online-game-hub/game-surface-bridge` 的 JSON 消息协议。它解析 projected payload、渲染全部游戏专属信息并发送最小 intent；不得读取 Core、ticket、session、actor、raw State、RNG、canonical replay 或 WebSocket。平台 HUD 不解释比分、棋子、阵营、当前回合、排名或 Outcome；Bridge V2 可由 play Surface 为最近一次 completed state 发送 `surface.result-summary`，其中 headline 为 1–80 字符，details 最多六行且每行不超过 120 字符。Host 只接受匹配最新 state sequence 的摘要并按纯文本渲染，active、Setup、Replay、过期或 V1 摘要一律忽略，摘要不得触发任何 lifecycle 操作。需要由平台统一呈现的控制必须在 exact deployment 的 `platformControls` 显式声明；未声明时平台不得猜测游戏能力。
-
-JavaScript Surface 可选用 `GameSurfaceBridge` helper：实例只接受指定 parent window/origin 的一次 `host.hello`，随后只通过移交的 `MessagePort` 收发 strict message，并在 timeout、非法消息或 dispose 后关闭。平台侧 `SurfaceBridgeHost` 在 ready 前拒绝发消息，负责 timeout/crash/retry 与重复 `clientIntentId` 抑制。Host 按 artifact 的 exact `bridgeVersion` 选择 V1/V2 schema；V1 不接受 V2-only 消息。两端 helper 都不解释游戏 intent，也不补写 command ID、actor、round、revision 或 input sequence。`host.command/RESIGN` 只是无游戏 payload 的 UX 触发：Surface 必须按 exact `gameVersion` 决定是否生成自己的 `RESIGN` Action/Input，并以命令携带的 `clientIntentId` 发送普通 `surface.intent`。历史 Core 不支持投降时，deployment 不得声明该控制。
-
-Web 按 deployment registry 的 exact game/version/mode 解析静态 entrypoint，不导入 Surface workspace。`GameSurfaceFrame` 负责 opaque sandbox、握手状态、projected state、viewport/fullscreen、intent result、平台命令和 dispose；游戏只需在自己的 artifact 中实现 Bridge。当前全部受支持版本都必须解析到 `surface-v1`，Web 不提供 `legacy-react` 渲染 fallback；Surface 回滚通过切换 immutable `surfaceVersion` 引用完成，不改变已存在房间的 Core 或协议代际。
+Artifact schema、摘要锁、Bridge V1/V2、平台投降、终局摘要、安全限制、Workbench 与发布步骤统一由 [Game Surface 规范](./GAME_SURFACE_SPEC.md) 定义。游戏负责人必须同步规则版本支持范围与 deployment 能力，不能仅靠 UI 禁用放宽旧 Core 或隐藏服务端权限。
 
 ## 11. Manifest 与 Export Map
 
 `src/manifest.ts` 是单一 manifest 来源，必须无副作用且不导入 client 或 server runtime。避免同时维护 `game.json` 与 TypeScript manifest 造成重复。
 
-每个游戏 package 公开且仅公开必要子路径：
+新游戏 package 公开且仅公开必要子路径，以下源码路径仅为示意：
 
 ```json
 {
   "exports": {
     "./manifest": "./src/manifest.ts",
     "./core": "./src/core/index.ts",
-    "./client": "./src/client/index.ts"
+    "./setup": "./src/setup/index.ts"
   }
 }
 ```
 
-实际构建阶段可以将源码路径替换为 dist 路径，但子路径边界保持不变。Web 不得通过 registry server entry 导入 Core，Game Server 不得导入 `/client`。
+实际 export map 使用各包构建后的 dist 路径；历史 `/client` 只按兼容承诺保留。Web 不得通过 registry server entry 导入 Core，Game Server 不得导入 `/client`，Surface 不导入任何游戏 package。
 
 ## 12. Versioning
 
@@ -296,7 +289,7 @@ Web 按 deployment registry 的 exact game/version/mode 解析静态 entrypoint�
 - RNG 算法、seed 处理或消费顺序变化；
 - 会改变旧 action log 重建结果的 bug fix。
 
-只改变 CSS、动画、无语义文案或等价性能优化，不需要提升 `gameVersion`，而是提升独立 `surfaceVersion` 并更新 artifact digest。
+只改变表现层 CSS、动画或文案，不需要提升 `gameVersion`，但产物变化须提升 `surfaceVersion` 并更新 artifact digest。纯文档修改或不改变重建结果的 Core 等价优化不因此要求提升 Surface 版本。
 
 五种版本互不替代：`gameVersion` 固定规则与 replay 重建；`surfaceVersion` 固定静态表现 artifact；`bridgeVersion` 固定 iframe 消息协议；`protocolVersion` 固定 Web/Game Server envelope；`replayFormatVersion` 固定 canonical record envelope。一次变更只提升实际被破坏的边界。
 
@@ -311,11 +304,7 @@ Registry 必须能够按 exact `gameVersion` 读取旧 replay 所需的 definiti
 - Config/Action schema 能拒绝不可信输入；
 - 合法、非法、终局、不变性和 replay determinism 测试通过；
 - `projectView` 的信息泄漏测试通过；
-- package 只通过声明的 public subpath exports 被消费。
+- package 只通过声明的 public subpath exports 被消费；
 - Surface 可在不启动 Next 或 Game Server 时独立构建、运行 fixture、完成 contract test，并通过 artifact digest、Bridge 与 iframe 安全检查。
 
-M6 当时由五子棋证明非 `null` Config 可直接通过既有 create/runtime/replay 契约；为让通用 Web 无游戏分支地取得创建默认值，`GameManifest` 新增必填 `defaultConfig`，并同步迁移所有游戏与消费者。额外六贯棋证明 strict Action union 可同时承载落子与投降、Outcome 可保存变长 canonical path。黑白棋进一步证明一次 transition 可表达多方向翻转、无合法行动、同 slot 续行和非满盘终局；当时无需修改 `GameDefinition`、`GameClientModule`、Protocol V1 或 replay envelope。
-
-当前规则增强仅为跨五游戏共用 HUD 的真实需求给 `GameClientModule` 增加可选 `createResignAction`，typed/erased contract 同步且旧模块仍兼容。井字棋、四子棋、五子棋与黑白棋以 `1.1.0` 承载新 Action/State/Outcome schema，独立 frozen `1.0.0` 保留；六贯棋保持 `1.0.0`。后续 Protocol V3 只扩展房间控制，不改变任何游戏 Core、Replay Format V1 或数据库 schema。
-
-完整测试矩阵见 [TESTING.md](./TESTING.md)。
+接入还须验证 registry、权威 integration、真实数据库和浏览器链路，完整矩阵见 [TESTING.md](./TESTING.md)。现有 [脚手架](../tools/README.md) 尚未覆盖全部要求，其输出不等于完成接入。

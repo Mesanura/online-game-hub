@@ -1,157 +1,29 @@
 # Online Game Hub
 
-Online Game Hub 是一个面向多人在线网页游戏的 TypeScript monorepo，支持双人棋牌、2–6 人中国跳棋以及实时 2D 对战。平台采用服务端权威模型：浏览器只提交操作意图，Game Server 负责验证规则、推进状态和记录回放。
+多人在线网页游戏平台，采用 TypeScript monorepo、Next.js 和 Colyseus。浏览器提交操作意图，服务器验证规则、推进状态并记录可验证的比赛回放。
 
-## 1. 软件定位与功能
+支持井字棋、四子棋、五子棋、六贯棋、黑白棋、中国跳棋、乒乓对战（Pong）、火柴人羽毛球和坦克迷战，覆盖双人棋牌、2–6 人跳棋和 2–8 人实时对战。规则与版本见 [游戏索引](./games/README.md)。
 
-项目提供可复用的多人网页游戏平台能力，并以独立游戏插件承载具体规则。当前已支持：
+- 游客无需注册即可创建私人房间、邀请好友、准备、对局、重连和重新开局。
+- 用户名与密码账户提供私有比赛历史；登录不会认领此前的游客比赛。
+- 棋牌支持参赛账户的私有回放；三款实时游戏目前只保存服务端记录和账户战绩。
+- Game Core、逐局 Setup 和独立 Game Surface 分工明确，游戏通过显式注册接入平台。
 
-- 井字棋、四子棋、五子棋、六贯棋、黑白棋、多人中国跳棋、Pong 和火柴人羽毛球；
-- 匿名访客创建房间、邀请码加入、选择先手与双方准备；
-- 服务端权威对局、断线重连、同一房间多轮游戏；
-- 游客无需注册即可完整对局；用户名+密码账户、可撤销登录态和账户私有比赛历史；
-- 已完成比赛的 PostgreSQL 持久化和可验证的 canonical replay；
-- 显式注册的 Game Plugin，可通过 `pnpm create-game --game-id <id>` 创建开发骨架。
+## 运行
 
-游客可玩但没有历史或 replay 读取入口；注册/登录不会认领此前游客比赛，只有 Round 开始时已登录的玩家才归属账户。M7-B 已提供账户私有 replay UI：只有登录态参赛者可读取，响应只包含服务端逐帧 `projectView`；浏览器不会收到 canonical replay、seed、raw State 或 Actions。邮箱、OAuth、找回密码、公开回放、观战、匹配大厅和多实例协调尚未实现。
+- **本地开发**：需要 Node.js `24.14.0`、pnpm `11.24.0` 和 PostgreSQL。按 [本地开发指南](./docs/DEVELOPMENT.md) 安装依赖、配置环境、迁移数据库并启动两个服务。
+- **Docker 部署**：按 [Docker Compose 指南](./docs/DEPLOYMENT_DOCKER_COMPOSE.md) 拉取镜像并运行完整服务栈，无需在部署机器安装 Node.js。
 
-火柴人羽毛球首版与 Pong 所有受支持版本采用 `record-only`：保存可验证的服务器记录和账户战绩，暂不提供玩家回放页面。Pong 历史局的玩家回放也已取消，等待后续重新设计；其余当前游戏继续提供账户私有回放。
+默认 Web 地址为 [http://127.0.0.1:3000](http://127.0.0.1:3000)，Game Server 健康检查为 [http://127.0.0.1:2567/health](http://127.0.0.1:2567/health)。当前只支持单个 Game Server；重启会终止进行中的对局，已保存的比赛记录保留。
 
-## 2. 运行代码
+## 开发入口
 
-### 环境要求
+| 内容               | 位置                                                                         |
+| ------------------ | ---------------------------------------------------------------------------- |
+| Web 与 Game Server | [apps/web](./apps/web)、[apps/game-server](./apps/game-server)               |
+| 平台契约与运行时   | [packages](./packages)、[系统架构](./docs/ARCHITECTURE.md)                   |
+| 游戏规则与画面     | [games](./games/README.md)、[Game Surface 规范](./docs/GAME_SURFACE_SPEC.md) |
+| 检查与测试         | [测试策略及命令](./docs/TESTING.md)                                          |
+| 开发约束与当前阶段 | [AGENTS.md](./AGENTS.md)、[路线图](./docs/ROADMAP.md)                        |
 
-- Node.js `24.14.0`；
-- pnpm `11.24.0`，通过 Corepack 管理；
-- PostgreSQL，用于本地持久化运行；
-- 可选：Docker Compose，用于部署完整服务栈。
-
-安装依赖：
-
-```sh
-corepack enable
-corepack install
-pnpm install --frozen-lockfile
-```
-
-### 配置数据库与服务
-
-分别复制环境变量示例，并替换其中的数据库 URL 和密钥占位符：
-
-```sh
-cp apps/web/.env.example apps/web/.env.local
-cp apps/game-server/.env.example apps/game-server/.env.local
-```
-
-PowerShell 可使用：
-
-```powershell
-Copy-Item apps/web/.env.example apps/web/.env.local
-Copy-Item apps/game-server/.env.example apps/game-server/.env.local
-```
-
-两个服务必须使用同一个 `DATABASE_URL`，并且 `GAME_SERVER_TICKET_ISSUER`、`GAME_SERVER_TICKET_SECRET` 必须完全相同。请先创建空数据库，再从仓库根目录执行 migration：
-
-```sh
-DATABASE_URL=postgresql://user:password@127.0.0.1:5432/online_game_hub pnpm db:migrate
-```
-
-PowerShell 中先设置 `$env:DATABASE_URL`，再运行 `pnpm db:migrate`。开发环境可在 `.env.local` 中保留 `APP_ENV=development` 和 `GUEST_COOKIE_SECURE=false`；生产环境必须使用 HTTPS 和安全 Cookie。
-
-### 启动开发服务
-
-首次运行或更新游戏画面后，先构建 workspace 并发布本地 Surface 静态文件：
-
-```sh
-pnpm build
-pnpm surface:verify
-pnpm surface:publish
-```
-
-在两个终端分别运行：
-
-```sh
-pnpm --filter @online-game-hub/game-server dev
-```
-
-```sh
-pnpm --filter @online-game-hub/web dev
-```
-
-打开 [http://127.0.0.1:3000](http://127.0.0.1:3000)。Game Server 默认监听 `http://127.0.0.1:2567`，可通过 [health endpoint](http://127.0.0.1:2567/health) 确认状态。
-
-Docker Compose 单机部署、生产配置和数据备份见 [部署文档](./docs/DEPLOYMENT_DOCKER_COMPOSE.md)。
-
-## 3. 使用说明
-
-1. 在首页选择游戏并创建房间。
-2. 将房间邀请链接发送给另一名玩家；对方加入后，双方选择本轮先手并准备开始。
-3. 对局页面只展示服务器下发的当前视图。落子、投降和终局均由服务端判定。
-4. 对局结束后可在同一房间设置下一轮；短暂断线会尝试恢复原有席位。
-
-火柴人羽毛球入口为 `/games/badminton`。房主可选择 7/11/21 分和首发方，双方分别准备后开始。A/D 或左右方向键移动，W/上方向键/空格起跳，J 高远球、K 扣杀、L 吊球；手机使用屏幕按钮并支持多指操作。跑到球下按住挥拍，起跳后的高点接触可扣杀。每球得分者发球，领先 2 分获胜，分别在 11/15/30 分封顶。完整规则见 [羽毛球 GAME_SPEC](./games/badminton/GAME_SPEC.md)。
-
-开发新游戏时，可先运行：
-
-```sh
-pnpm create-game --game-id example-game
-```
-
-该命令只生成 package 和登记骨架。游戏规则、客户端界面、测试与回放 fixture 仍须按 [Game Plugin 规范](./docs/GAME_PLUGIN_SPEC.md) 完成。
-
-独立开发 Game Surface 时，可以单独启动 Workbench：
-
-```sh
-pnpm --filter @online-game-hub/surface-workbench dev
-```
-
-打开 Vite 输出的本地地址后，输入任意 Surface dev URL，即可在不启动 Next 或 Game Server 的情况下切换 Setup、回合制 Play、Realtime Play、Replay fixture，并模拟断线、重连、只读、终局、revision/tick、reduced-motion、验收 viewport 和全屏/focus mode。
-
-## 4. 代码结构与基本原理
-
-```text
-apps/
-  web/                 Next.js 页面、匿名身份与连接票据
-  game-server/         Colyseus 服务、房间生命周期和权威执行入口
-packages/
-  game-sdk/            JSON 类型、游戏定义和确定性 RNG
-  protocol/            网络消息 schema 与类型
-  game-server-runtime/ 通用房间、动作和 replay 管线
-  game-client-sdk/     回合制浏览器连接与兼容 Client Module 合约
-  realtime-game-sdk/   固定 tick、输入与确定性 replay 合约
-  game-surface-bridge/ 独立游戏画面与网站的消息桥
-  game-registry/       游戏的显式 catalog 与解析
-  database/            PostgreSQL schema、migration 和持久化适配器
-game-surfaces/         独立构建的游戏画面与 Surface Workbench
-games/                 每个游戏独立的 manifest、Core、Setup 和测试
-tooling/               仓库检查、Surface artifact 发布、E2E 与测试工具
-tools/create-game/     新游戏机械骨架生成器
-```
-
-一次对局遵循以下流程：浏览器取得 Web 签发的短期 ticket，连接 Game Server 并提交 action intent；服务端根据 stable slot、revision 和游戏 Core 验证 action，只有被接受的 action 才会推进状态、写入 replay，并经 `projectView` 投影给各自客户端。平台负责身份、房间、网络、重连与回放；游戏包只负责确定性的状态、规则与结果。
-
-架构、协议和版本兼容性以 [系统架构](./docs/ARCHITECTURE.md)、[网络协议](./docs/NETWORK_PROTOCOL.md) 与 [Replay 设计](./docs/REPLAY_DESIGN.md) 为准。
-
-M8 已接入当前可运行组合：独立 realtime runtime、Realtime Protocol V1、固定 60 Hz Pong、Phaser client、Realtime Replay Format V1 与账户私有只读回放。范围、依赖边界和验收标准见 [Realtime Runtime 设计基线](./docs/REALTIME_RUNTIME_DESIGN.md)。
-
-火柴人羽毛球复用同一 realtime runtime，以纯 TypeScript 整数物理和独立 Phaser Setup/Play Surface 接入；没有修改公共协议、数据库结构或网站的游戏布局。
-
-## 5. 常见问题
-
-**安装时 pnpm 或 Node.js 版本不匹配**
-
-确认正在使用 Node.js `24.14.0`，然后运行 `corepack enable` 和 `corepack install`。项目的准确版本记录在 `package.json`、`.nvmrc` 和 `.node-version`。
-
-**migration 无法连接数据库**
-
-确认 PostgreSQL 已启动、目标数据库已创建，且当前终端的 `DATABASE_URL` 与两个 `.env.local` 中的值一致。应用启动不会自动执行 migration。
-
-**网页能打开，但无法创建或加入房间**
-
-检查 Game Server 是否可访问 `/health`，Web 的 `GAME_SERVER_PUBLIC_URL` 是否为浏览器可访问的地址，以及两个服务的 ticket issuer 和 secret 是否完全一致。浏览器地址也必须包含在 `GAME_SERVER_ALLOWED_WEB_ORIGINS` 中。
-
-**重启服务后正在进行的对局不见了**
-
-当前 live room 和权威 State 只保存在 Game Server 内存中；已完成的比赛、replay 和历史记录会持久化到 PostgreSQL。服务重启不会恢复进行中的对局。
-
-完整的质量检查、测试层级和改动对应验证见 [测试策略](./docs/TESTING.md)。产品范围、路线图、贡献约束和开发工具说明分别见 [产品文档](./docs/PRODUCT.md)、[开发路线图](./docs/ROADMAP.md)、[AGENTS.md](./AGENTS.md) 与 [tools 文档](./tools/README.md)。
+完整文档导航见 [docs/README.md](./docs/README.md)。

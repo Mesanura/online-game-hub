@@ -1,45 +1,35 @@
 # Replay 设计
 
-实时多人扩展保持 Replay Format V1 envelope：players 支持 2–8 个互异席位，读取时还须符合 exact game manifest。manifest.inputDelivery 省略或 latest 时保持历史每 tick 每玩家最后输入；events 时按 journal 中稳定席位顺序逐条交付，同席位保留接收顺序。验证与投影帧重建同时遵守该策略。坦克迷战使用 events 和 record-only，地图小局属于同一 canonical record；所有历史版本解释保持不变。
+本文定义 canonical record、存储端口、写入顺序、确定性重建和读取权限。回合制 Core/RNG 见 [Game Plugin](./GAME_PLUGIN_SPEC.md)，实时输入交付见 [Realtime Runtime](./REALTIME_RUNTIME_DESIGN.md)，支持版本见 [游戏索引](../games/README.md)。
 
-> 状态：Replay Format V1 与独立 Realtime Replay Format V1；exact game version 显式声明 replay 能力
-> 本文是 canonical replay 内容、确定性重建、版本兼容和存储端口的权威来源。Core 随机性规则见 [GAME_PLUGIN_SPEC.md](./GAME_PLUGIN_SPEC.md)。
+## 能力与用途
 
-## 1. 目标
+Canonical replay 是服务器内部可重建一轮比赛的最小日志，用于确定性验证、问题复现和受控历史读取。一个 live room 可有多轮，每轮拥有独立记录；记录不等同于活动房间恢复能力，也不直接发给浏览器。
 
-Canonical replay 是服务器记录的、可确定性重建一轮比赛的最小事件日志。一个 live room 可以承载多轮，但每轮拥有独立 replay。是否记录以及是否提供玩家回放由 exact game version 的 capability 决定。它服务于：
+每个 exact 游戏版本必须显式声明 replay capability：
 
-- 自动化 replay 测试与 bug 复现；
-- 断线或服务恢复能力的未来基础；
-- 比赛回放；
-- 举报审查与安全调查；
-- 数据分析和历史记录。
+| 模式              | 服务器行为                           | 玩家行为                                                           |
+| ----------------- | ------------------------------------ | ------------------------------------------------------------------ |
+| `player-playback` | 保存、验证 canonical journal         | 授权后通过 Replay Surface 查看 projected frames                    |
+| `record-only`     | 同样保存和验证 journal               | 无播放入口，已授权播放请求返回 `409 PLAYER_PLAYBACK_NOT_SUPPORTED` |
+| `none`            | 类型保留；当前 runtime 拒绝注册/启动 | 尚无受支持游戏或无记录数据库语义                                   |
 
-V1 已要求生成、持久化到 PostgreSQL、跨新连接读取并验证 replay。公开 replay API、下载和回放 UI 不在范围内。
+当前棋牌及其历史版本支持播放，三款实时游戏及其历史版本均为 record-only。能力调整须按 exact version 审查，不删除旧 canonical 记录，不用 UI 隐藏替代服务端授权。公开 replay、下载、分享和观战尚未提供。
 
-### 1.1 Replay 能力
+## 两类记录格式
 
-所有 turn-based 与 realtime manifest 都必须显式声明：
+两类格式分别标记版本 `1`，拥有独立类型与 reader；整数相同不表示 envelope 相同。Wrapper 可保存 replayId、matchId、时间和索引 metadata，这些值不进入 Core，不影响重建。
 
-- `player-playback`：保存 canonical journal、提供 verifier/server audit，并可向授权玩家提供只含 projected frames 的 Replay Surface；
-- `record-only`：保存和验证流程完全相同，但玩家回放 API 稳定返回 `PLAYER_PLAYBACK_NOT_SUPPORTED`；
-- `none`：类型与注册语义已保留，首轮 runtime 在注册或启动阶段稳定拒绝，直到出现真实游戏后再设计可空 Match–Replay 关联、journal 替代与数据库迁移。
+### 回合制 Replay Format V1
 
-既有棋牌及其历史版本保持 `player-playback`；`badminton@1.0.0` 显式选择 `record-only`。按产品要求（2026-09-07），Pong 的 `1.0.0`、`1.1.0` 与当前 `1.2.0` 均调整为 `record-only`，暂停全部玩家回放，等待后续重新设计。旧规则、canonical 记录和 exact verifier 保留；账户历史的 `replayAvailable` 为 false，已授权玩家的播放 API 返回 `409 PLAYER_PLAYBACK_NOT_SUPPORTED`，Surface 不再发布 Replay entrypoint。简单棋牌回合制新游戏建议选择 `player-playback`；实时游戏应逐个评估，通常从 `record-only` 开始。脚手架不得默认选择。能力变化必须按 exact `gameVersion` 审查历史承诺，不能靠 UI 隐藏来改变服务器审计行为。
-
-本格式只描述离散 Action runtime。M8 的固定 tick realtime runtime 不能把客户端到达时间或每个网络包当作 Action replay；它将定义独立的 realtime replay format，归档由服务端决定生效 tick 的规范化 input changes，并以 exact realtime definition 逐 tick 重建。旧 Replay Format V1、所有现有 golden fixture 和它们的 verifier 必须保持不变；详细设计见 [REALTIME_RUNTIME_DESIGN.md](./REALTIME_RUNTIME_DESIGN.md)。
-
-## 2. Canonical Record
+由 [game-server-runtime](../packages/game-server-runtime/src/index.ts) 定义：
 
 ```ts
 interface ReplayHeader {
   replayFormatVersion: 1;
   gameId: string;
   gameVersion: string;
-  rng: {
-    algorithm: string;
-    seed: string;
-  };
+  rng: { algorithm: string; seed: string };
   initialConfig: JsonValue;
   players: readonly {
     slotId: string;
@@ -62,78 +52,94 @@ interface CanonicalReplay {
 }
 ```
 
-持久化 wrapper 可以另行保存 `replayId`、`matchId`、创建/结束时间、可见性和索引字段。这些 metadata 不作为 Core 输入，不得影响重建结果。
+- `sequence` 从 1 连续递增，与 accepted Action 后的 match revision 对齐。
+- 只记录 schema 解析、规范化且被 Core accepted 的 Action；不记录原始 payload、客户端 actor claim、重试、拒绝或错误文本。
+- actor 使用 stable slot，不使用 connection、session 或 account ID。
+- 有序 `players` 与该轮 Core 初始化顺序完全一致；assignment 为游戏需要的位置/营地元数据。
+- `participantRef` 仅为可脱敏的平台引用，不能成为规则输入。显示名与头像不进入 canonical input。
 
-## 3. 字段语义
+### Realtime Replay Format V1
 
-### 3.1 Version
+由 [realtime-game-sdk](../packages/realtime-game-sdk/src/index.ts) 定义：
 
-- `replayFormatVersion` 描述 replay envelope 格式，V1 固定为整数 `1`。
-- `gameId + gameVersion` 精确选择用于重建的 `GameDefinition`。
-- `protocolVersion` 不属于 replay；transport 升级不应改变 canonical game history。
+```ts
+interface RealtimeReplayHeader {
+  replayFormatVersion: 1;
+  runtime: "realtime";
+  gameId: string;
+  gameVersion: string;
+  tickRate: 60;
+  rng: { algorithm: string; seed: string };
+  initialConfig: JsonValue;
+  players: readonly { slotId: string }[];
+}
 
-### 3.2 RNG
+interface RealtimeReplayEvent {
+  sequence: number;
+  tick: number;
+  actorSlotId: string;
+  input: JsonValue;
+}
 
-- Game Server 为每轮生成 seed，header 记录 seed 和 exact RNG algorithm version。
-- 重建从 cursor `0` 开始，依次执行初始化和 accepted actions。
-- Rejected、duplicate 和 stale commands 不记录，也不消耗 replay RNG。
-- 对隐藏信息游戏，seed 在比赛进行中属于服务器秘密。
+interface RealtimeCanonicalReplay {
+  header: RealtimeReplayHeader;
+  events: readonly RealtimeReplayEvent[];
+  recordedRngCursor: number | null;
+  recordedOutcome: JsonValue | null;
+  finalTick: number;
+}
+```
 
-### 3.3 Players
+事件记录服务端确定生效 tick 的 accepted input；sequence 连续，tick 非递减。`finalTick` 是执行步数，重建逐 tick 执行 `0..finalTick-1`，不能只处理有事件的 tick。客户端 inputSequence、到达时间和目标时间不进入 canonical event。
 
-- 重建只依赖 `PlayerSlotId`、该轮固定的 `playerOrder` 和可选 assignment 元数据。stable slots 在 live room 内不变，但不同轮的 header 顺序可以因首手策略或营地顺序变化。
-- `participantRef` 是可选、可脱敏的平台引用，不得成为规则输入。
-- `assignment` 是游戏定义的可选位置/营地元数据；中国跳棋 replay 必须为每个 slot 保存唯一营地，reader 会按 header 顺序传给 `createInitialState`。
-- 显示名称、头像和账号资料属于 match metadata，不进入 canonical input。
+有序 players 支持 2–8 个互异席位，并须符合 exact manifest 的人数范围。`inputDelivery` 省略或为 `latest` 时，每 tick 每玩家仅最后输入生效；为 `events` 时保留该 tick 全部事件，按 playerOrder 分组，同玩家保持接收顺序。服务器、verifier 与投影帧 runner 必须一致；旧版本继续使用自己的输入语义。
 
-### 3.4 Actions
+坦克迷战的地图小局属于同一平台 Match，因此写入同一记录。其具体地图、物理与弹药变化属于游戏规则版本，不扩展公共 replay envelope。
 
-- 只写入已经通过 Zod 解析、规范化并被 Core accepted 的 Action。
-- `sequence` 从 `1` 开始连续递增，并与 resulting match revision 对齐。
-- actor 使用 slot，不使用 connection/session/account ID。
-- 不记录客户端原始 payload、actor claim、网络重试、拒绝或人类可读错误。
+### 公共语义
 
-### 3.5 Outcome
+- `gameId + gameVersion` 精确选择 definition，不能用 current/latest 解释历史。
+- 每轮新 seed，重建从 RNG cursor 0 开始，依次执行初始化与 Action/tick。algorithm、seed 解释和随机消费顺序都是兼容契约。
+- recordedOutcome 与 recordedRngCursor 是完成后的完整性验证值，不能替代重新计算；未完成或 abandoned 记录可以保持 null，不伪造胜负。
+- `protocolVersion`、Setup State/Action、setup seed、ready 和网络重试不属于 gameplay replay。
+- V6 finalized Config、有序 slots 与已支持的 assignment 字段必须完整表达 Core 初始化输入。实时 header 只有 slots，不能擅自添加回合制 assignment 字段；新增初始化信息先评估对应格式。
 
-- 活跃或 abandoned 且无规则结果的 replay 可以暂时为 `null`。
-- completed match 保存 Core `getOutcome` 的 JSON 结果作为验证值。
-- `recordedOutcome` 是完整性检查，不替代从 actions 重新计算 Outcome。
-- `recordedRngCursor` 在完成时保存最终 cursor，用于检测随机消费顺序漂移；未完成记录可以为 `null`。
+## 写入顺序与原子性
 
-## 4. 写入顺序与原子性
+### Round 启动
 
-对于每个 live room，runtime 以同一个 Promise queue 串行 join、leave、timeout、room control 和 Action，是唯一 authoritative writer。创建房间时不初始化 Core，也不创建 Replay 或 Match。满足全部开局条件后，Round 固定按以下顺序启动：
+同一 room 的 join、leave、timeout、control 与 gameplay 操作通过唯一 writer 串行处理。创建房间不初始化 Core，也不创建 Match/replay。满足开局条件后：
 
-1. 根据已固化的 `FinalizedRoundSetup` 构造包含 `roundNumber`、`playerOrder`、replay ID 和 gameplay seed 的 pending candidate；V5 legacy 房间继续使用原 starter/assignment 结果；
-2. 使用该 `playerOrder` 初始化 Core；
-3. 使用完全相同的 `playerOrder` 创建 replay header；
-4. 通过 `MatchArchive.createRound` 幂等创建 active Match；
-5. 保存包含候选 Round 的内存 `RoomStore` record；
-6. 所有外部写入成功后才提交内存 aggregate，并清除 pending candidate。
+1. 从已固化的 `FinalizedRoundSetup` 构造 pending candidate，固定 roundNumber、playerOrder、replay ID 与 gameplay seed；V5 使用原 starter/assignment 结果。
+2. 使用相同 Config、顺序和 seed 初始化 Core 并创建 replay header。
+3. 通过 MatchArchive 幂等创建 active Match，再保存候选 RoomStore record。
+4. 所有外部写入成功后才提交内存 aggregate。
 
-失败时 live aggregate 仍停留在“尚未开始/上一轮 completed”，pending candidate 保留供新 command ID 幂等重试；不得重新生成 replay ID、seed 或 `playerOrder`。每轮 Action 按以下顺序构造并提交候选结果：
+失败保留 candidate，重试不重新生成 replay ID、seed 或 playerOrder。V6 Setup 持久化失败允许同 command 重试；legacy 启动失败按其原命令语义处理。下一轮默认复用完整设置，但生成新的游戏状态、seed、Match 与 replay，并要求重新 ready。
 
-1. 验证平台 envelope、session、slot、round 和 revision；
-2. 解析规范化 Action；
-3. 调用 Core `transition`；
-4. 构造包含新 State、RNG cursor、revision 和 `ReplayAction` 的 accepted candidate；
-5. 以当前 revision 作为 `expectedSequence` 先 append canonical action；
-6. 终局以最终 RNG cursor 和 Core Outcome complete replay，再保存 candidate `RoomStore` record；
-7. 所有写入成功后缓存 command outcome，并按 viewer 投影、发送完整 snapshot。
+### 回合制 Action 提交
 
-Schema-invalid、platform rejected、Core rejected、错轮、stale 或 duplicate command 不产生 `ReplayAction`，也不改变 revision 或 RNG cursor。
+1. 验证平台 envelope、session、slot、round 和 expectedRevision。
+2. 解析规范化 Action，调用 `transition`，构造新 State/RNG/revision 与 ReplayAction 候选。
+3. 以当前 revision 为 expectedSequence 先 append event。
+4. 终局 complete replay，再保存候选 RoomStore。
+5. 全部成功后提交内存、缓存命令结果，并逐 viewer 投影发送 snapshot。
 
-`append`、terminal `complete` 或 candidate room save 失败时 runtime 不更新内存 aggregate，返回 `INTERNAL_ERROR`，不缓存或发送 accepted snapshot，并增加 persistence failure 指标。相同 canonical header/action/completion 可安全幂等重试，冲突内容明确失败。
+Schema-invalid、platform/Core rejected、错轮、stale 和 duplicate 不追加 event，不增加 revision 或消费 RNG。append、complete 或 room save 失败时不提前提交内存或发送 accepted snapshot，返回安全错误并记录 persistence failure；相同规范化内容可幂等重试，冲突内容失败。
 
-M5 的 replay 与 Match archive 位于同一 PostgreSQL：header create 单独幂等写入；append 事务化写 `replay_actions` 并推进 Match final revision；terminal complete 事务化保存 cursor/Outcome 并把 Match 标记 completed。每个 replay row 在 append/complete 时加 row lock，`(replay_id, sequence)` 主键提供并发唯一顺序。
+### 数据库边界
 
-V6 同房间下一轮默认复用上一局 `FinalizedRoundSetup` 的 Config、stable slot 参与者集合、实际 `playerOrder` 和 assignments；只有 accepted Setup Action 才改变这些值。无论设置是否改变，都生成新 gameplay seed、replay ID 与 Match，ready 不复用。`matches` 以 `(runtime_room_id, round_number)` 唯一；创建后续轮次的 transaction 取得 runtime-room advisory lock，并验证上一轮 completed、轮次连续、game/version 和参与者集合一致，不要求 MatchPlayer 插入顺序等于上一轮。Replay header create 与 Match insert 是两个可幂等重试的 port 操作，不假装与内存 live `RoomStore` 具有跨存储原子性。`roundNumber` 和逐局设置是平台/wire metadata；只有实际用于 Core 的有序 slots 已经由既有 header `players` 表达，因此 Replay Format V1 不变。
+回合制 PostgreSQL header create 独立幂等；append 在事务内写 `replay_actions` 并推进 Match final revision，terminal complete 在事务内保存 cursor/Outcome 并完成 Match。Replay row lock 与 `(replay_id, sequence)` 主键维护并发顺序。
 
-live `RoomStore` 仍在进程内存，因此它与 PostgreSQL transaction 不具备跨存储原子性，也不提供 active State rollback/recovery。当前由单 room writer、先 durable 后内存 commit、pending candidate、唯一约束和幂等操作控制 crash window；证据不足以引入 outbox。重启时不从 replay 临时推导活动 State，只把旧 schema 遗留的 waiting 与当前 active Match archive 标记 abandoned。尚未开始首局的 live room 从未创建 Match，因此无需生成 abandoned 历史。
+实时 runtime 按规范化 tick frame 写 accepted input events，再按固定步骤推进 simulation；专用 replay/event 表保存 tick、format 和完成状态，由 realtime adapters 校验。它使用独立 port/reader，不伪装成离散 Action。
 
-## 5. Replay Store Port
+后续 Round 通过 `(runtime_room_id, round_number)` 唯一约束和 advisory lock 验证上一轮 completed、连续轮次、exact game/version 与参与者身份集合。playerOrder 可以改变，不要求参与者插入顺序相同。
 
-存储端口属于 `game-server-runtime`，不属于 Game Core。
+ReplayStore、MatchArchive 与内存权威 State 没有跨存储原子事务。当前由单 writer、pending candidate、数据库事务、唯一约束和幂等操作控制失败窗口；不提供 active State rollback/recovery，也不引入 outbox。单实例重启只把遗留 waiting/active archive 标记 abandoned；未开始首局的房间没有 Match 可标记。
+
+## 存储端口
+
+回合制端口属于 `game-server-runtime`，不属于 Core：
 
 ```ts
 interface ReplayStore {
@@ -153,103 +159,38 @@ interface ReplayStore {
 }
 ```
 
-- V1 同时保留测试用 `InMemoryReplayStore` 和生产 `PostgresReplayStore`；后者通过显式注入的可关闭 database client 跨进程持久化。
-- 相同 header 的重复 `create` 与相同 sequence/content 的重复 `append` 幂等成功；缺口、乱序或相同 ID/sequence 的冲突内容失败。
-- `complete` 只接受非 `null` 的 terminal Outcome；相同 cursor/Outcome 的重复调用幂等，且不得允许另一个结果覆盖已完成记录。
-- `get` 在 repeatable-read transaction 中读取 header/actions/completion；数据库 JSONB 视为 `unknown` 并重新 runtime validation，污染数据返回稳定安全错误。
+- 同时保留 InMemoryReplayStore 与生产 PostgresReplayStore，数据库 client 显式注入并关闭。
+- 相同 header 的 create、相同 sequence/content 的 append、相同 cursor/Outcome 的 complete 均幂等；缺口、乱序或冲突内容失败。
+- complete 只接受非 null terminal Outcome，不允许覆盖已完成结果。
+- get 使用 repeatable-read 读取一致 header/events/completion；JSONB 视为 unknown 重新校验，污染数据返回稳定安全错误。
 
-首局和每次后续局都在双方完成统一准备且本轮 Core 初始化完成后创建 replay header，其中保存 exact game/version、规范化 Config、房主选择所决定的本轮 `playerOrder` 和该轮初始 RNG algorithm/seed。创建房间本身不创建 header。每次 accepted transition 只追加到当前轮 replay；该轮进入 `completed` 时保存最终 RNG cursor 与 Core Outcome。`abandoned` 没有伪造游戏 Outcome，record 可以保持未完成状态。
+实时端口由 `realtime-game-server-runtime` 拥有，消费 RealtimeReplayHeader/Event，并以 finalTick 完成记录；其公共类型与回合制端口分开维护。
 
-Setup Protocol V6 不要求升级 Replay Format：`FinalizedRoundSetup.config` 写入现有 `initialConfig`，实际 `playerOrder` 写入现有有序 `players`，assignment 写入对应 player 条目，gameplay seed 仍写入现有 `rng`。Setup State/Action、setup seed 与 ready 不属于 gameplay replay。若未来 Setup 引入无法由这些现有字段完整表达且会影响 Core 重建的输入，必须先评估新的 replay format；若同一 header/actions 在旧 Core 下产生不同结果，则必须提升 `gameVersion`。
+## 重建与版本兼容
 
-## 6. 确定性重建
+回合制 verifier 按 exact resolver 取得 definition，验证 header、canonical Config、players、RNG 和连续 sequence；从 cursor 0 初始化，再逐条验证 actor/schema、调用 transition 并要求 accepted，最后比较 RNG cursor 与 Outcome。
 
-Replay runner 执行：
+实时 verifier 另检查 runtime/tick rate、事件 tick 和 finalTick，按 exact inputDelivery 构造每个 tick 的输入并执行 step。未知版本、非法 actor、非 canonical payload、sequence gap、无效 tick、规则拒绝或结果不一致均失败，不跳过事件或改写历史。纯 verifier 通过 resolver port 访问 definition，不依赖 registry、数据库、Colyseus 或系统时间。
 
-1. 按 `gameId + gameVersion` 从 server registry 解析 definition；
-2. 验证 `replayFormatVersion`、header、Config、slots 和 RNG algorithm；
-3. 使用 header seed 和 cursor `0` 调用 `createInitialState`；
-4. 按连续 sequence 验证每个 actor slot 和 Action schema；
-5. 依次调用 `transition`，要求每个记录事件再次得到 accepted；
-6. 验证最终 RNG cursor；
-7. 调用 `getOutcome` 并与 `recordedOutcome` 深度比较。
+影响相同日志重建结果的规则、schema、RNG 或 bug fix 必须评估新 gameVersion；envelope 不兼容变化提升对应 replayFormatVersion。旧 Core 独立冻结，不能 alias current。删除旧 definition 前，须迁移为经验证的稳定归档，或明确结束读取承诺并经过产品/架构审批。
 
-任意 schema error、未知版本、sequence gap、rejected transition 或 Outcome 不一致都使 replay verification 失败，并返回结构化诊断；runner 不静默跳过事件或自动改写历史。
+每个支持版本至少有一份 golden fixture，位于各游戏 `tests/fixtures/`，由各包 `test:golden` 执行。游戏规则与历史差异只维护在 [游戏目录](../games/README.md)，本文不重复列易漂移的 fixture 文件名。不能覆盖 fixture 来掩盖意外行为变化。
 
-M2 由 `game-server-runtime` 根 public entry 导出 `REPLAY_FORMAT_VERSION`、record 类型、`ReplayStore`、`InMemoryReplayStore` 和 `verifyReplay(input, resolver)`；M3 authoritative room 直接消费同一 port。Verifier 接受一个按 exact `gameId + gameVersion` 返回 `UnknownGameDefinition` 的 resolver port，因此 runtime 不依赖 registry 或具体游戏；结构化失败结果覆盖 envelope/header、Config/Action schema、canonical normalization、sequence、actor、Core rejection、RNG cursor 和 Outcome。
+## 授权播放与隐私
 
-## 7. Version Compatibility
+Canonical record 可通过 seed、Config 或 Actions 暴露隐藏信息，始终作为服务器内部数据处理。`projectView` 是游戏投影入口，不自动等同于公开导出授权。
 
-- 破坏重建结果的规则修改发布新 `gameVersion`。
-- Server registry 必须按 exact version 加载旧 definition；“latest”只用于创建新房间。
-- 每个保留版本至少拥有一个 golden replay fixture。
-- 删除旧 definition 前，必须把其 replay 迁移为经验证的稳定归档格式，或明确结束该版本的读取承诺并经过产品/架构审批。
-- Replay envelope 不兼容变化提升 `replayFormatVersion`，reader 应显式分派版本，不原地猜测字段。
+- `GET /api/matches` 只返回当前账户安全 metadata；replayAvailable 仅当 exact definition 为 player-playback 且记录完整时为 true。
+- `GET /api/matches/[matchId]/replay` 先验证账户和参赛归属，再判断版本、能力与完成状态。未登录返回 401，未参赛/不存在遵循安全 404；record-only 返回 409，未知或不可验证版本返回 REPLAY_UNAVAILABLE。
+- 只为 completed Match 与 completed record 重建有帧数/响应大小上限的 projected frames；浏览器不接收 canonical header/events、seed、raw State 或其他玩家私密数据。
+- 授权 viewer 由服务器根据账户参赛关系推导，不能由 query 指定。历史 frozen definition 与 exact Replay Surface 独立解析，播放严格只读且不建立游戏 WebSocket。
+- 游客 Round 的账户关联永久为空，注册/登录、归档重试和 session 轮换均不回填。
+- 所有响应保持 private/no-store；日志、错误和监控不得包含完整记录或 credential。
 
-Bug fix 是否提升版本以“相同 replay 是否可能得到不同 State、RNG cursor 或 Outcome”为判断标准，而不是以改动大小判断。
+当前没有隐藏信息游戏的玩家回放授权产品；未来公开分享、下载或审查权限须单独设计。
 
-当前支持版本及 fixture：
+## Checkpoint 与验收
 
-- `tic-tac-toe@1.0.0`：`tic-tac-toe-1.0.0-win.json`；current `1.1.0`：`tic-tac-toe-1.1.0-win.json`、`tic-tac-toe-1.1.0-resignation.json`
-- `connect-four@1.0.0`：`connect-four-1.0.0-win.json`；current `1.1.0`：`connect-four-1.1.0-win.json`、`connect-four-1.1.0-resignation.json`
-- `gomoku@1.0.0`：`gomoku-1.0.0-win.json`；current `1.1.0`：`gomoku-1.1.0-win.json`、`gomoku-1.1.0-resignation.json`
-- `hex@1.0.0`：`hex-1.0.0-win.json`
-- `reversi@1.0.0`：`reversi-1.0.0-win.json`；current `1.1.0`：`reversi-1.1.0-win.json`、`reversi-1.1.0-resignation.json`
-- `chinese-checkers@1.0.0`：`chinese-checkers-1.0.0-normal.json`、`chinese-checkers-1.0.0-resignation.json`、`chinese-checkers-1.0.0-multiplayer-ranking.json`；current `1.1.0`：同名的三份 `chinese-checkers-1.1.0-*.json` fixture
+当前 canonical record 不依赖 State checkpoint。未来 checkpoint 必须能由完整日志重建，携带 game/replay version、sequence/tick 与 digest；校验失败回退完整重建，不取代 accepted event log，也不绕过 Core。
 
-以上文件都位于对应 `games/<game-id>/tests/fixtures/`。四个原 `1.0.0` fixture 未改写，并由独立 frozen definition exact 重建；它们拒绝 `RESIGN`。current `1.1.0` normal fixture 证明原落子结果不变，resignation fixture 证明 off-turn accepted `RESIGN` 产生单一 replay event、`resignedSlotId` 与对手 `RESIGNATION` WIN。
-
-井字棋与四子棋 `1.1.0` golden replay 仍使用 Replay Format V1，分别记录规范化 `PLACE_MARK(cell) | RESIGN`、`DROP_DISC(column) | RESIGN` 与服务器推导的 actor slot。Exact registry 也可用 frozen `1.0.0` 重建原 State/Outcome；错轮、满列、schema-invalid、duplicate、stale 与终局后命令不进入 actions。
-
-五子棋 `1.1.0` golden replay 同样使用 Replay Format V1，header 保存规范化 `{ boardSize: 15, winLength: 5 }`，actions 只保存 accepted `PLACE_STONE(cell) | RESIGN` 与服务器推导的 slot。19×19 Config 由真实 Colyseus integration 验证，默认 15×15 canonical replay 由 PostgreSQL-backed E2E 从新 connection 重读并验证；frozen `1.0.0` 继续读取原 fixture。
-
-六贯棋 golden replay 使用 `initialConfig: null`，记录 21 个 accepted `PLACE_STONE(cell)` 并重建 BLUE 的 canonical `winningPath`、WIN Outcome 与零 RNG cursor。`RESIGN` 也是规范化且 accepted 的游戏 Action，按实际 actor slot 进入 replay；客户端取消确认、错轮/占用/越界、stale、duplicate 和 schema-invalid command 都不记录。BFS source/neighbor/tie-break 顺序属于 `hex@1.0.0` replay 兼容契约；改变它必须评估新 `gameVersion`，但无需改变 Replay Format V1。
-
-黑白棋 frozen `1.0.0` golden replay 使用 `initialConfig: null`，记录 60 个 accepted `PLACE_DISC(cell)` 并重建相同 64-cell State、WHITE 45–19 WIN Outcome 与零 RNG cursor。fixture 在 sequence 18 后出现 BLACK 无合法行动，因此 sequence 19 仍由 WHITE 行动；没有 `PASS` Action、sequence gap 或额外 revision。current `1.1.0` 的 normal/resignation fixtures 分别保留翻转/跳过结果并加入规范化 `RESIGN`。翻转、跳过和终局规则继续受 exact version 约束；Replay Format V1 不变。
-
-中国跳棋 `1.0.0` 的 normal、resignation 与三人 ranking golden replay 均使用 Replay Format V1，在 header 的 `players` 条目中保存最终有序玩家和唯一营地 assignment；`MOVE_PIECE` 只记录规范化起点/终点，`RESIGN` 与完成、阻塞和末位排名由 exact Core 重建。Setup V6 只负责在开局前固化同一 header 输入，不改变 Core、Action schema、重建结果、`gameVersion` 或 replay format。
-
-中国跳棋 `1.1.0` 重构棋位编号、营地与邻接拓扑，因此与 frozen `1.0.0` 分开注册。旧 Core、几何、类型和三份 golden fixture 保持不变，旧日志改标新版本必须拒绝。新版三份 fixture 覆盖新棋盘的普通移动、投降和三人排名，重复重建得到相同 State/Outcome 与零 RNG cursor。Replay Format V1 及 Action envelope 不变；客户端回放只接收 exact Core 的投影，新版 View 携带公开 geometry，旧版 View 使用 Surface 的冻结编号映射。
-
-独立 Realtime Replay Format V1 还支持：
-
-- `tank-maze@1.0.0`：`tank-maze-1.0.0-multiplayer.json`；当前 `1.1.0`：`tank-maze-1.1.0-multiplayer.json`。两版均重建八人、多次同 tick 射击与多小局；旧版地图、转速和直线追踪冻结，新版使用 6–10 格宽地图、75 tick 一周转向与确定性导弹寻路。保持 events 输入与 record-only 能力、既有 State/View 和 Replay Format V1 envelope，寻路缓存不进入记录或玩家视图。
-- `pong@1.0.0`：`pong-1.0.0-resignation.json`、`pong-1.0.0-score.json`；`pong@1.1.0`：`pong-1.1.0-score.json`；`pong@1.2.0`：`pong-1.2.0-score.json`。三代计分 fixture 的 final tick 分别为 326、956、677，新版覆盖短准备期与球拍加速后的确定性结果；这些记录仅用于服务器校验，不再提供玩家播放。
-- `badminton@1.0.0`：`badminton-1.0.0-score.json`、`badminton-1.0.0-resignation.json`、`badminton-1.0.0-rally.json`，分别覆盖自动发球至比分终局、投降和连续回球。header 保存目标比分与实际左右顺序，事件只含服务器规范化的 accepted `CONTROL | RESIGN`；Core 逐 tick 重建移动、跳跃、挥拍有效期、碰撞、分数和 Outcome，gameplay RNG cursor 始终为 0。随机首发的 Setup RNG 不进入 gameplay record。
-- 当前 `badminton@1.1.0`：对应的 `badminton-1.1.0-score.json`、`badminton-1.1.0-resignation.json`、`badminton-1.1.0-rally.json` 覆盖逐球手动发球、投降及连续回球，使用新增 `serve` intent、后场发球范围和横纵阻力。旧 `1.0.0` Core/schema/constants 与三份 fixture 保持冻结，两版均由 exact registry 重建；Realtime Replay Format V1 和零 gameplay RNG cursor 不变。
-
-羽毛球的 `record-only` 仅限制玩家读取，不改变 create/append/complete/verify。更改整数物理、输入持续时间、球拍判定、发球、比分或同时事件顺序时，必须评估新 `gameVersion`，不能改写现有 fixtures。
-
-## 8. Hidden Information 与访问控制
-
-Canonical replay 是服务器内部记录，可能通过 seed、Action 或 Config 暴露牌序、秘密目标和所有玩家私有信息。
-
-- 比赛进行中不得向客户端发送完整 canonical replay 或 seed。
-- `projectView` 不等于 replay 导出策略；公开 replay 需要独立的授权与脱敏设计。
-- 日志、监控和错误响应不得包含完整 replay payload。
-- `GET /api/matches` 保持既有 metadata 字段；`replayAvailable` 仅当 exact server definition 声明 `player-playback` 且记录完整时为 true。Web 使用包括 frozen 版本在内的 exact resolver，不以 current catalog 替代历史版本。它不返回 replay ID、header、actions、Config、Outcome 或 seed。
-- 玩家 replay API 先验证账户与参赛归属，再判断 exact replay 能力；`record-only` 返回 HTTP 409 与 `PLAYER_PLAYBACK_NOT_SUPPORTED`，未知版本返回 `REPLAY_UNAVAILABLE`。未登录/未参赛请求仍分别遵循 401/404，不因能力判断泄漏比赛信息；全部响应保持 private/no-store。
-- M7-A/M7-B 的账户历史和 replay 读取按 `UserId` 查询；匿名 Round 的 `match_players.user_id` 永久为 `null`，注册/登录、归档重试和 session 轮换都不会回填。M7-B 只返回服务端逐帧 `projectView`，不提供 canonical replay、seed、raw State、Actions、公开分享、下载或观战。
-- 举报审查、玩家下载和公开分享可能拥有不同访问级别，具体策略暂缓。
-- V1 井字棋、四子棋、五子棋、六贯棋与黑白棋都没有隐藏信息，但仍按内部 canonical record 处理。
-
-## 9. Checkpoint
-
-V1 不把 State snapshot/checkpoint 作为 canonical replay 的必要字段。未来长比赛可加入派生 checkpoint 以加速恢复或拖动时间轴，但必须满足：
-
-- checkpoint 可以由 header + actions 重新生成；
-- checkpoint 带 game/replay version、sequence 和 state digest；
-- checkpoint 验证失败时回退到完整重建；
-- checkpoint 不取代 accepted action log，也不允许绕过 Core。
-
-## 10. Replay 验收标准
-
-- 相同 replay 在重复运行中得到深度相等的 State、RNG cursor 和 Outcome；
-- 修改 action 顺序、actor、payload、seed 或版本时验证可靠失败或产生明确不同结果；
-- rejected、duplicate、stale command 不出现在 canonical actions；
-- replay runner 无 React、Colyseus、WebSocket、数据库或系统时钟依赖；
-- 旧 `gameVersion` 的 golden replay 在新代码中持续通过；
-- 隐藏 State、seed 和私密 Action 不通过 snapshot 或普通日志泄漏。
-- `record-only` 的 journal 仍可 create/append/complete/verify，但玩家 API 与历史 UI 不提供播放入口；`none` 在当前 runtime fail closed。
-
-更完整的自动化分层见 [TESTING.md](./TESTING.md)。
+Replay 变更至少验证重复重建、State/RNG/Outcome 一致、事件篡改失败、拒绝命令不入日志、全部历史 golden、数据库跨连接读取与玩家权限。record-only 仍须验证 create/append/complete/verify。实际命令与受影响层级见 [TESTING.md](./TESTING.md)。

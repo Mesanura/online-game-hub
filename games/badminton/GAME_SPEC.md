@@ -30,6 +30,6 @@ V6 Setup 默认房主首发，房主可选自己/对方/随机首发与 7/11/21 
 
 公开 View 包含场地（含两条发球线和前脚偏移）、人物坐标与实际移动状态、挥拍类型/开始 tick/剩余 tick、最近触球 tick/位置/有效球路、球坐标、比分、阶段、发球方、回合击球数、最长回合、上一分原因与 Outcome；不含速度、持续输入、输入租期、seed、原始 State 或 canonical journal。Gameplay 不消费 RNG，相同版本、Config、players 和输入日志逐 tick 得到完全一致的结果。
 
-Surface `1.2.2` 同时 exact 支持规则 `1.0.0`/`1.1.0`/`1.2.0`，旧版不发送 `serve`。统一显示投影令活动跑道位于 y=541，双立柱球网中央顶端与各版本 Core 网高对齐。人物约 128 像素高，站立后腿伸直、前膝略弯；拍杆至拍头中心长 52 像素，拍网长 50 像素。黄绿色粒子每 75ms 发射、最小间距 16px、寿命 420ms、上限 8 个，具有轻微离散偏移；重连/换球/终局清除。音效使用圆角立体按钮，可键盘切换并通过 aria-pressed 表达状态。Web Audio 在首次用户交互时预生成噪声，仅按权威动作和触球播放、按显示时间去重；空挥无击球声，恢复页面不补播历史声音。静态球场按几何缓存，“你”标签不再逐帧重建背景纹理，同 tick 状态不重启插值。reduced-motion 关闭粒子、装饰残影和步态，保留必要击球姿态。
+Surface 按 exact 规则版本解析 View/Input，旧自动发球版本不发送 `serve`；球网和接触动画必须与对应公开几何对齐。人物、球场投影、粒子、音效与布局说明集中在 [Surface README](../../game-surfaces/badminton/README.md)。
 
-使用 Realtime Protocol V1、Realtime Replay Format V1 与 Bridge V2；不修改任何公共协议。首版为 `record-only`：服务器照常保存并验证比赛，账户历史可查看记录，但不提供玩家回放。只提供独立 Setup/Play Surface。任何改变旧日志结果的规则调整必须提升 gameVersion，纯视觉修改只提升 surfaceVersion。
+使用 Realtime Protocol V1、Realtime Replay Format V1 与 Bridge V2。全部支持版本为 `record-only`：服务器保存并验证比赛，账户可查看战绩，不提供玩家回放。只发布 Setup/Play Surface。改变旧日志结果的规则调整须评估新 gameVersion，影响产物的纯视觉修改提升 surfaceVersion。

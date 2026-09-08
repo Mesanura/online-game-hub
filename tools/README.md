@@ -1,12 +1,12 @@
-# Tools
+# 仓库开发工具
 
 本目录拥有面向开发者、只在 workspace 中运行的仓库 CLI。仓库质量门禁本身仍由 `tooling/repository-check` 拥有。
 
 ## `tools/create-game`
 
-`@online-game-hub/create-game` 只减少五款现有游戏已经反复证明稳定的 package 与显式登记成本。它不是运行时插件系统，也不会让新目录自动满足 Game Plugin Definition of Done。
+`@online-game-hub/create-game` 生成 package 与显式登记骨架。当前模板仍基于早期回合制 Client Module，尚未支持 V6 Setup、独立 Surface 或 realtime；它不代表现行新游戏接入已经完成。
 
-必须从 workspace root 通过根目录固定的 pnpm 11.24.0 非交互运行：
+从 workspace root 使用 [package.json](../package.json) 固定的 pnpm 非交互运行：
 
 ```sh
 pnpm create-game --game-id example-game
@@ -40,6 +40,8 @@ CLI 拒绝绝对路径、路径分隔符、`.`/`..`、空段、大小写不稳�
 
 ### 不生成的内容
 
-生成器不接受也不猜测 title、description、Config、玩家数或 capabilities；这些产品/规则语义由游戏负责人写入 manifest。它也不会生成 Action、State、Outcome、可玩的 Core/Client、CSS、golden replay、authoritative integration、Playwright 对局序列、Protocol/runtime/database 特例。
+生成器不接受也不猜测 title、description、Config、人数或 replay capabilities；这些语义由游戏负责人定义。它不生成可玩的 Core、Setup、Surface、规则测试、golden 或纵切对局，也不登记 deployment artifact。
 
-成功输出会按稳定顺序列出人工后续清单：manifest、Core、Client Module、`GAME_SPEC.md`、局部 `AGENTS.md`、CSS、unit/client tests、golden replay、integration/E2E 场景和完整检查。只有这些内容经过审查并满足 [Game Plugin 规范](../docs/GAME_PLUGIN_SPEC.md) 后，新游戏才达到 Definition of Done。
+CLI 成功输出仍包含旧 Client Module/CSS 清单，不能作为当前实现方向。用于新游戏时，须调整生成的 legacy client 依赖与登记，补充 `/setup`、独立 Surface、exact deployment、显式 replay 模式和相应 tests；不要为满足旧清单把游戏 CSS 或 React 组件重新接入 Web。
+
+现行完成条件以 [Game Plugin](../docs/GAME_PLUGIN_SPEC.md)、[Game Surface](../docs/GAME_SURFACE_SPEC.md) 和 [测试策略](../docs/TESTING.md) 为准。生成器本身的升级属于独立代码任务。

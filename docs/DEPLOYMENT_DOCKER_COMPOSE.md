@@ -1,6 +1,6 @@
 # Docker Compose 单机部署
 
-本文说明如何在一台机器上使用 Docker Compose 运行 Web、Game Server 和 PostgreSQL。该部署保持当前 V1 单实例边界：active room 仍在 Game Server 内存中，服务重启会终止 waiting/active 对局；已完成的 Match、replay 和 history 由 PostgreSQL 持久化。
+本文说明单机 Docker Compose 的安装、更新、备份与验证。当前只支持一个 Game Server；活动权威 State 在内存中，服务重启会终止待开局或进行中的房间，已持久化的 Match、replay 和 history 保留。开发源码的启动步骤见 [本地开发指南](./DEVELOPMENT.md)。
 
 ## 服务拓扑
 
@@ -55,7 +55,7 @@ curl -fsSL https://raw.githubusercontent.com/Mesanura/online-game-hub/main/docke
   bash
 ```
 
-`ONLINE_GAME_HUB_IMAGE_NAMESPACE` 可覆盖默认 Docker Hub namespace `mesanura`。正式部署建议把脚本 URL、`ONLINE_GAME_HUB_REF` 和 `ONLINE_GAME_HUB_IMAGE_TAG` 同时固定到同一个已审查的版本 tag，而不是长期跟随 `main`/`latest`。目标父目录必须允许当前用户写入。
+`ONLINE_GAME_HUB_IMAGE_NAMESPACE` 可覆盖默认 Docker Hub namespace `mesanura`。示例中的 `v1.0.0` 应替换为实际已发布的 tag。正式部署将脚本 URL、`ONLINE_GAME_HUB_REF` 和 `ONLINE_GAME_HUB_IMAGE_TAG` 固定到同一已审查版本；目标父目录必须允许当前用户写入。
 
 ## 配置 `.env`
 
@@ -101,7 +101,7 @@ GAME_SERVER_PUBLIC_URL=https://game-server.example.com
 GUEST_COOKIE_SECURE=true
 ```
 
-`WEB_PUBLIC_ORIGIN` 必须精确出现在 Game Server CORS allowlist 中；`GAME_SERVER_PUBLIC_URL` 必须指向浏览器实际访问的 HTTP(S)/WebSocket 入口。若修改 `WEB_PORT` 或 `GAME_SERVER_PORT`，也要同步修改这两个公开地址。
+`WEB_PUBLIC_ORIGIN` 必须与浏览器实际 origin 一致，Compose 将其注入 Game Server allowlist。`GAME_SERVER_PUBLIC_URL` 必须指向可达的 HTTP(S)/WebSocket 入口。修改宿主 `WEB_PORT` 或 `GAME_SERVER_PORT` 后同步修改公开地址；容器端口由对应 `*_INTERNAL_PORT` 独立配置。
 
 ## 拉取与启动
 
@@ -195,16 +195,16 @@ Docker Hub 中必须预先创建或允许 token 创建上述三个 repository。
 
 ## 数据持久化与清理
 
-PostgreSQL 数据默认位于部署目录下的 `./data/postgres`。可通过 `.env` 的 `POSTGRES_DATA_DIR` 改为其他绝对或相对路径；相对路径从 `docker-compose.yml` 所在目录解析。官方 PostgreSQL entrypoint 会把目录改为容器内 postgres UID 所有且限制权限，因此普通宿主用户可能不能直接读取。默认路径可通过同版本容器安全备份：
+PostgreSQL 数据默认位于部署目录下的 `./data/postgres`，可通过 `POSTGRES_DATA_DIR` 修改；相对路径从 Compose 文件目录解析。官方 entrypoint 将目录改为容器 postgres UID 所有，普通宿主用户可能不能读取。以下是默认路径的停机备份：先结束活动对局并停止应用和数据库，再由同版本容器归档。
 
 ```bash
-docker compose stop postgres
+docker compose stop web game-server postgres
 docker run --rm \
   -v "$(pwd)/data/postgres:/source:ro" \
   -v "$(pwd):/backup" \
   postgres:17.6-alpine3.22 \
   tar -czf /backup/postgres-data-backup.tar.gz -C /source .
-docker compose start postgres
+docker compose up -d --wait
 ```
 
 迁移时在 Compose 停止状态下，用同版本容器把备份解压到新机器配置的 `POSTGRES_DATA_DIR`，再启动 Compose。PostgreSQL 主版本必须与 `docker-compose.yml` 固定的版本兼容。若修改了 `POSTGRES_DATA_DIR`，备份命令中的宿主 source path 也必须同步修改并核对绝对路径。
@@ -213,7 +213,7 @@ docker compose start postgres
 
 ```bash
 docker compose exec -T postgres sh -lc \
-  'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
+  'psql -h 127.0.0.1 -p "$POSTGRES_INTERNAL_PORT" -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
   -c "select count(*) from matches;" \
   -c "select count(*) from replays;" \
   -c "select count(*) from replay_actions;"'
@@ -222,7 +222,7 @@ docker compose down
 docker compose up -d --wait
 
 docker compose exec -T postgres sh -lc \
-  'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
+  'psql -h 127.0.0.1 -p "$POSTGRES_INTERNAL_PORT" -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
   -c "select count(*) from matches;" \
   -c "select count(*) from replays;" \
   -c "select count(*) from replay_actions;"'
@@ -249,44 +249,35 @@ docker run --rm \
 curl -fsS http://localhost:3000/ >/dev/null
 curl -fsS http://localhost:2567/health
 docker compose exec -T postgres sh -lc \
-  'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
+  'pg_isready -h 127.0.0.1 -p "$POSTGRES_INTERNAL_PORT" -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
 docker compose exec -T postgres sh -lc \
-  'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
+  'psql -h 127.0.0.1 -p "$POSTGRES_INTERNAL_PORT" -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
   -c "select count(*) as applied_migrations from drizzle.__drizzle_migrations;"'
 ```
 
 预期结果：Web 返回 HTTP 200；Game Server 返回 `{"status":"ok"}`；PostgreSQL 接受连接；migration 表至少包含 checked-in migration。
 
-从能够访问 Web 公开地址的浏览器打开 `http://localhost:3000/games/tic-tac-toe`：
+用两个隔离浏览器窗口打开实际 Web 地址，默认是 `http://localhost:3000/games/tic-tac-toe`：
 
-1. 在普通窗口创建房间，页面应显示“已连接”和 8 位房间码；
-2. 在无痕窗口打开邀请链接，两边应变为“对局进行中”；
-3. 完成一局，双方 revision 应同步且 history 出现 completed Match；
-4. 在浏览器开发者工具的 Network/WS 中确认连接目标是 `ws://localhost:2567`，而不是 Docker hostname。
+1. 验证账户历史时，先在两个窗口分别注册/登录；游客仍可游玩，但没有历史入口。
+2. A 创建房间并选择规则，B 打开邀请链接加入；检查 8 位房间码和席位一致。
+3. 双方分别准备后才进入 Play Surface，完成一局并确认两边视图与终局结果一致。
+4. 账户历史出现 completed Match，可打开棋牌的只读回放；实时 record-only 游戏只显示战绩。
+5. 双方分别确认重新对局，验证完整设置复用；刷新后仍能恢复原席位。
 
-也可用四子棋重复同样流程。该验证同时覆盖 ticket API、matchmaking HTTP、CORS、浏览器公开地址和 WebSocket。
+浏览器 Network/WS 的目标应为配置的 Game Server 公开地址，而非 Docker 内部 hostname。此流程覆盖 ticket、matchmaking、CORS、Surface 静态资源和 WebSocket。
 
 ## 完整验收清单
 
-每次发布部署配置时，在部署主机依次执行：
+修改部署配置后，在独立验收栈完成：
 
-```bash
-docker version
-docker compose version
-docker compose config
-docker compose pull
-docker compose up -d --wait
-docker compose ps -a
-docker compose logs --tail=200
-docker compose restart
-docker compose ps -a
-docker compose up -d --wait
-docker compose down
-docker compose up -d --wait
-docker compose ps -a
-```
+1. 环境与 Compose 配置检查、pull、up、healthcheck，以及 migrate `Exited (0)`。
+2. 上述浏览器流程和 Surface 加载。
+3. restart 后重新等待 healthy；进行中的房间不恢复，完成历史仍可读取。
+4. down/up 前后比较持久化记录，必要时验证备份恢复。
+5. 用 `docker compose down` 停止验收栈；保留数据目录。
 
-完成浏览器 WebSocket 流程和持久化行数对比后，使用 `docker compose down` 停止验收栈。该命令保留 `POSTGRES_DATA_DIR`。
+启动、重建和记录计数命令已列在前文，不在此重复。仓库代码测试仍按 [TESTING.md](./TESTING.md) 的临时 PostgreSQL 规则运行。
 
 ## 常见故障
 

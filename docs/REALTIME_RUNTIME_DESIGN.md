@@ -1,58 +1,34 @@
-# Realtime Runtime 设计基线
+# Realtime Runtime 设计
 
-## 当前扩展：2–8 人与事件输入
+本文定义固定 tick simulation、输入交付、实时协议和客户端职责。当前消费者为 Pong、火柴人羽毛球与坦克迷战；游戏规则和版本见 [游戏索引](../games/README.md)。共享房间协议见 [NETWORK_PROTOCOL.md](./NETWORK_PROTOCOL.md)，记录格式见 [REPLAY_DESIGN.md](./REPLAY_DESIGN.md)。
 
-坦克迷战使用 V6 Setup、独立 SVG Surface 和 record-only journal。实时 manifest 的 minPlayers/maxPlayers 允许 2–8，V6 lifecycle/readiness 上限扩至 8；runtime 根据 manifest 创建 stable slots，finalized setup 确定实际参与者。Pong、羽毛球及 V5 仍限定双人。数据库沿用现有 JSONB/关联表，房间、参与顺序、归档和 replay 读取校验同步支持多人，无 schema migration。
+## 范围与职责
 
-manifest 可声明 inputDelivery: latest | events，省略为 latest，保留历史同 tick 每人最后一次输入语义。events 保留该 tick 全部 accepted 输入，先按稳定 playerOrder 排列，同玩家内保留接收顺序；服务端执行、canonical journal 和两个 replay runner 使用相同语义。此选项解决按次射击与持续移动同 tick 被合并的问题，不添加具体游戏分支。Realtime Protocol V1 和 Replay Format V1 字段未变，精确游戏版本决定输入语义，旧 golden 重建不变。详情见 [坦克迷战规格](../games/tank-maze/GAME_SPEC.md)。
+实时管线与回合制 Action 管线并列，复用平台的目录、身份、ticket、room code、stable slots、准备、重连、Round/Match 和账户授权；不复用 `GameDefinition`、`GameClientModule`、`game.action`、`match.snapshot` 或 `expectedRevision`。
 
-> 状态：M8 已实现（单实例双人 Pong）；M9 已接入 Setup V6 与独立 Phaser Surface；额外火柴人羽毛球复用相同运行时
->
-> 本文是独立 realtime runtime 及其 Pong、羽毛球消费者的权威设计边界。M8 范围与退出条件保留为历史基线，额外游戏见第 10 节。现有回合制契约仍以 [GAME_PLUGIN_SPEC.md](./GAME_PLUGIN_SPEC.md)、[NETWORK_PROTOCOL.md](./NETWORK_PROTOCOL.md) 和 [REPLAY_DESIGN.md](./REPLAY_DESIGN.md) 为准。
+| Owner                   | 职责                                                                                            |
+| ----------------------- | ----------------------------------------------------------------------------------------------- |
+| Platform                | 身份、room membership、owner、参与者、Setup/ready、关闭/离开、重连与账户归属                    |
+| Realtime server runtime | 单 room writer、固定 tick scheduler、输入排序/规范化、生效 tick、完整 projected snapshot 和记录 |
+| Realtime client host    | ticket/join、协议代际、snapshot 顺序、input sequence/ack、重连、拒绝与 transport teardown       |
+| Game Core               | 纯 simulation、输入效果、持续控制有效期、物理、计分、Outcome 与 `projectView`                   |
+| Game Surface            | 输入采集、公开视图渲染、显示插值、终局摘要与可访问性                                            |
 
-## 1. 目标与范围
+wall clock 只决定 scheduler 何时执行 tick；系统时间、网络到达时间和浏览器时间戳不进入 Core 或 replay 输入。当前不实现客户端预测/回滚、通用 ECS、多实例 ownership 或 active-room recovery。
 
-M8 只交付一个双人 `games/pong` 纵切，用它证明平台可以承载需要固定 tick 和持续输入的实时 2D 游戏。第一版采用固定整数单位的 60 Hz authoritative simulation；客户端以 Phaser 绘制服务器投影的视图，在两个服务器快照之间做显示插值。
+## Package 边界
 
-本轮复用 Platform 的目录、ticket、身份、room code、stable slots、ready、reconnect、Round/Match lifecycle、账户归属和私有 replay 授权。它不复用回合制的 `GameDefinition`、`GameClientModule`、`game.action`、`match.snapshot`、`expectedRevision` 或 discrete replay verifier。
+- `realtime-game-sdk`：manifest、simulation、纯 RNG、实时 canonical 类型和 replay runner；不依赖 DOM、Phaser、transport、数据库或回合制 definition。
+- `realtime-game-server-runtime`：输入队列、scheduler、room adapter、snapshot/rejection 和存储 ports；不依赖具体游戏或 `game-server-runtime` 实现。
+- `realtime-game-client-sdk`：与 Phaser 无关的 Host、input sender 和显示插值时钟；不依赖回合制 Host、具体游戏或数据库。
+- `games/<id>`：各自的整数 simulation、manifest、Setup 与 golden tests。Pong 保留 legacy client API，其余实时游戏不新增 Client Module。
+- `game-surfaces/<id>`：独立画面；Pong/羽毛球使用 Phaser，坦克迷战使用 SVG，均只依赖 Bridge 和自身渲染栈。
 
-本轮明确不做：客户端预测或回滚、观战、公开 replay、Matchmaking、排行榜、AI、移动端虚拟摇杆、Redis、多实例 ownership、durable active-room recovery、共享 ECS、通用物理引擎和第二个 realtime 游戏。
+只有 composition layer 同时看到 registry、两个 runtime 和平台 adapters。共享代码先证明实际复用，再提取职责明确的纯契约；不建立泛化 shared 包。完整依赖约束见 [系统架构](./ARCHITECTURE.md)。
 
-## 2. 职责边界
+## Simulation 契约
 
-### Platform
-
-Platform 仍然决定 session、ticket、room membership、stable slot、owner、Round 启动条件、reconnect grace、关闭/离开、Match 状态和账户授权。Platform 不读取球的位置、碰撞或分数，也不根据 Phaser 帧率推进比赛。
-
-### Realtime runtime
-
-Realtime server runtime 维护单 room 的唯一 authoritative writer，运行固定 tick scheduler，按 server 接收顺序规范化 input、分配生效 tick、调用 simulation 一次并发送完整 projected snapshot。scheduler 使用 wall clock 只决定何时执行 tick；wall clock、socket 到达时间和浏览器时间戳不进入 simulation 或 replay 输入。
-
-Realtime client host 负责 ticket/join、lifecycle、snapshot 顺序、重连、输入 sequence、rejection 和 transport teardown。它不推导 State、Outcome、碰撞或下一个 tick。
-
-### Game
-
-`games/pong` 的 simulation 是纯、deterministic、JSON-serializable TypeScript。它只接受已规范化的每 tick inputs，产生新的 State/RNG 和 Outcome，并通过 `projectView` 暴露公开字段。Phaser、React、DOM、Colyseus、WebSocket、数据库和系统时间只能出现在 client/app 或 server composition 边界。
-
-## 3. 计划中的 package 边界
-
-以下 package 是 M8 当前实现的 public API 边界：
-
-| Package                        | 目标职责                                                                                               | 不得依赖                                                               |
-| ------------------------------ | ------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------- |
-| `realtime-game-sdk`            | realtime manifest、simulation definition、tick/input/view/outcome 类型与纯 replay runner               | React、Phaser、DOM、Colyseus、WebSocket、数据库、`GameDefinition`      |
-| `realtime-game-server-runtime` | 固定 tick、input queue、单 writer、snapshot/rejection、reconnect adapter 与 realtime replay port       | `game-server-runtime`、具体游戏、Phaser、DOM                           |
-| `realtime-game-client-sdk`     | realtime ticket/room host、snapshot interpolation clock、input sender 与 Phaser 无关的 client contract | `game-client-sdk` 的 turn-based host、具体游戏、数据库                 |
-| `games/pong`                   | Pong simulation、manifest、legacy Phaser client、Setup Core、规则说明与 golden/unit tests              | 其他游戏；simulation 依赖 realtime SDK，Core 不依赖 Phaser             |
-| `game-surfaces/pong`           | 独立 TypeScript + Phaser Setup/Play/Replay 表现层，只消费 Bridge projected View                        | Pong Core、React、Next、Protocol、WebSocket、ticket、seed 与 raw State |
-| `games/badminton`              | 羽毛球整数 simulation、manifest、Setup Core、规则与 golden/unit tests                                  | 其他游戏、DOM、Phaser、React、transport 与数据库                       |
-| `game-surfaces/badminton`      | 独立 Phaser Setup/Play、键盘/多指输入、公开快照插值和终局摘要                                          | Game Core、Next、Protocol、WebSocket、ticket、seed 与 raw State        |
-
-只有 composition layer 可以同时看到 manifest、registry、两个 runtime 和 Platform ports。若复用身份/lifecycle 代码，先提取不含游戏规则、tick 和 transport 的最小 port，并同步更新依赖检查；不要以 `packages/shared` 或“未来通用”接口承载未经证明的抽象。
-
-## 4. Simulation contract
-
-概念契约如下，实际命名以实现和 contract tests 为准：
+下面省略 readonly 与 JSON 泛型约束，完整类型见 [realtime-game-sdk](../packages/realtime-game-sdk/src/index.ts)：
 
 ```ts
 interface RealtimeGameDefinition<Config, State, Input, View, Outcome> {
@@ -61,29 +37,51 @@ interface RealtimeGameDefinition<Config, State, Input, View, Outcome> {
   inputSchema: ZodType<Input>;
   createInitialState(context: {
     config: Readonly<Config>;
-    players: readonly PlayerSlotId[];
-    rng: Readonly<RngState>;
-  }): { state: State; rng: RngState };
+    players: readonly RealtimePlayerSlotId[];
+    rng: Readonly<RealtimeRngState>;
+  }): { state: State; rng: RealtimeRngState };
   step(context: {
     state: Readonly<State>;
     tick: number;
-    inputs: readonly { slotId: PlayerSlotId; input: Readonly<Input> }[];
-    rng: Readonly<RngState>;
-  }): { state: State; rng: RngState };
-  projectView(context: { state: Readonly<State>; viewer: Viewer }): View;
+    inputs: readonly { slotId: RealtimePlayerSlotId; input: Input }[];
+    rng: Readonly<RealtimeRngState>;
+  }): { state: State; rng: RealtimeRngState };
+  projectView(context: {
+    state: Readonly<State>;
+    viewer: { kind: "player"; slotId: RealtimePlayerSlotId };
+  }): View;
   getOutcome(state: Readonly<State>): Outcome | null;
 }
 ```
 
-`tick` 从 `0` 开始且每次 `step` 恰好增加 `1`；输入数组按稳定 slot 顺序排列。State、Input、Config、RNG 均不可变，禁止 `Math.random()`、系统时间、环境 I/O 和浮点累积误差。Pong 使用固定整数坐标/速度，配置、边界、碰撞 tie-break、发球方向和得分终局均是 `pong@1.0.0` 的 replay 契约。
+当前 tick rate 固定为 60 Hz。simulation 从 tick `0` 开始，runner 顺序执行到 `finalTick - 1`；无输入的 tick 仍执行 `step`。State、Input、Config 与 RNG 均不可变、JSON-safe。禁止全局随机、时钟和环境 I/O；游戏自行固定整数单位、碰撞顺序和必要的中间量化规则，避免浮点累积漂移。
 
-Pong 的最小规则为双人 paddle、上下方向 intent（`-1 | 0 | 1`）、球拍/场地边界碰撞、得分至目标分数、确定性发球、`RESIGN` 和 `WIN`/`RESIGNATION` Outcome。客户端不提交位置、速度、碰撞、分数、Outcome 或目标 tick；服务器从 slot 映射 actor 并在 Core 之外处理输入权限。
+输入只表达操作意图，不携带 actor、位置、速度、命中、分数、Outcome 或目标 tick。服务器从连接推导 actor，具体输入效果由 exact Core 裁定。持续移动、按键边沿与输入过期时长属于游戏规则，不由 runtime 猜测。
 
-当前 `pong@1.2.0` 缩短服务器权威准备期，提高球拍速度，并按每次球拍反弹递增有上限的球速；具体数值与动画约定见 [Pong GAME_SPEC](../games/pong/GAME_SPEC.md)。历史 `1.0.0` 的立即发球和 `1.1.0` 的旧准备期及速度仍由 frozen definitions 重建。按产品要求，三个版本均改为 `record-only`，只保留服务端记录与校验，暂停玩家回放；本次不修改 shared runtime、网络、数据库 schema 或 realtime replay envelope。
+### 多人参与者
 
-## 5. Realtime Protocol V1
+Realtime manifest 的 `minPlayers/maxPlayers` 允许 2–8。V6 runtime 按 manifest 分配 stable slots，由 finalized Setup 固定实际参与者与 playerOrder；V6 lifecycle/readiness 上限为 8。Pong、羽毛球的 manifest 仍限定双人，V5 realtime 路径也保持双人语义。
 
-Realtime Protocol V1 是独立 message family，不改写或宽松解析 Protocol V5。现有 ticket、room code、lifecycle 和 reconnect 继续沿用 V5 平台消息；只有进入 realtime room 后才使用以下消息：
+RoomStore、archive 和 replay reader 同时校验参与者唯一性与 exact manifest 人数范围。扩展使用现有 JSONB/关联表，不把坦克颜色、地图或小局规则加入平台 schema。
+
+### 同 tick 输入交付
+
+`manifest.inputDelivery` 由 exact 游戏版本定义：
+
+| 值              | 交给 `step` 的内容                                                          |
+| --------------- | --------------------------------------------------------------------------- |
+| 省略或 `latest` | 同 tick 每名玩家最后一个 accepted input；按 playerOrder 排列                |
+| `events`        | 保留同 tick 全部 accepted inputs；先按 playerOrder 分组，同玩家保持接收顺序 |
+
+canonical journal 保存规范化且 accepted 的事件。服务器、验证器和投影帧重建器使用相同策略；`latest` 的历史语义不变。`events` 使按次 FIRE 不会被同 tick 的移动输入覆盖，平台不需要识别具体 Action。
+
+没有新输入时，Core 决定是否继续先前控制。Surface 应在释放、失焦、触控取消、断线或 dispose 时清理输入，并按游戏约定刷新持续控制；有输入租期的游戏还由 Core 在到期后归零。不能把某款游戏的有效期强加给历史规则。
+
+## Realtime Protocol V1
+
+平台 ticket、matchmaking、room lifecycle 和 Setup 按房间固定的 V5/V6 处理；实时 Input/Snapshot 使用独立 `realtimeProtocolVersion: 1`。平台升级到 V6 不会把实时消息改为回合制 envelope。
+
+Colyseus realtime room 名称为 `realtime-game`；输入 channel 为 `realtime.input`，服务端实时消息 channel 为 `realtime`，平台消息仍按 [网络协议](./NETWORK_PROTOCOL.md) 分派。
 
 ```ts
 interface RealtimeInputCommand {
@@ -109,46 +107,22 @@ interface RealtimeSnapshot {
 }
 ```
 
-服务端还提供严格的 `realtime.rejected` envelope，沿用安全的 platform/game error code 语义。客户端 input 不含 actor、slot、State、Outcome、client time 或 tick；服务端对每个 slot 要求 `inputSequence` 单调，重复/倒退 sequence、重复 command、schema-invalid 或非 active lifecycle 不进入 simulation。服务端在收到合法 input 后决定其生效 tick，并按每 tick 的稳定 slot 顺序调用 Core；snapshot 按固定 cadence 发送，且 `tick` 不得倒退。客户端不得以本地 tick 覆盖 server snapshot。
+完整 schema 与错误码见 [protocol](../packages/protocol/src/index.ts)。Input 必须 JSON-safe，序列化后最多 1 KiB，并通过游戏 `inputSchema`；runtime 还检查身份、active Round、单调 inputSequence、command 幂等和速率限制。拒绝命令不进入日志、不消费 gameplay RNG；scheduler 的正常 tick 推进独立于命令是否被拒绝。
 
-初版客户端不做预测或回滚。插值只影响视觉位置，不改变可发送 input、simulation、replay 或 Outcome。重连从当前完整 snapshot 和服务器 acknowledgement 收敛，不重放浏览器本地输入历史。
+`realtime.rejected` 含可选 commandId、稳定 code、retryable，以及可选 acknowledgement/snapshot。客户端以本 viewer 的确认序号和当前完整 snapshot 收敛，不提交或覆盖 server tick，不在重连后重放浏览器旧输入。
 
-## 6. Replay 与持久化
+## 记录、存储与播放
 
-M8 定义独立的 `Realtime Replay Format V1`，不能让 V1 离散 Action reader 猜测 realtime payload。Header 至少包含 `runtime: "realtime"`、`gameId`、`gameVersion`、固定 tick rate、canonical Config、seed 和有序 players；事件为服务端决定的 `{ sequence, tick, actorSlotId, input }`。
+实时记录使用独立 Realtime Replay Format V1，按服务端 tick 归档 accepted inputs，保存 exact game/version、tick rate、canonical Config、seed、有序 slots 与 finalTick。序列连续、tick 非递减，输入交付策略由 exact definition 决定，不能交给离散 Action reader 猜测。
 
-只记录规范化且 accepted 的 input change。被拒绝、重复、倒退、过期或连接断开前未接受的 command 不记录，也不推进 simulation。相同 header、seed、player order 和事件序列必须逐 tick 重建相同 State、RNG、score、Outcome 和最终 tick；事件必须有连续 sequence、非递减 tick，并拒绝跨版本/跨 runtime 读取。
+数据库有实时专用 replay/event、room/player 和 Match/player 表及 adapters。room metadata 可持久化，但不保存可恢复的 simulation State；启动协调按单实例策略处理遗留 archive。
 
-Realtime Round 复用 Platform 的 Match/账户授权边界，但存储 adapter 必须显式区分 realtime replay format 与现有 Replay Format V1。实现前先完成数据库 schema/port 评估：不得只把 tick 藏在未验证的 JSON 字符串中；如现有表无法表达约束，增加最小迁移或 realtime 专用事件表。M8 的私有 replay API/页面只返回经 verifier 生成的、有大小和帧数上限的 projected frames；不返回 canonical input log、seed、raw State 或其他玩家私密数据。旧五游戏的 replay、history 和 golden fixture 必须完全不变。
+所有当前实时游戏及其支持历史版本都是 `record-only`。账户战绩和服务器验证继续可用，玩家播放在授权之后返回不支持；保留的通用投影帧重建能力不代表这些游戏提供播放入口。完整格式、失败语义和权限见 [Replay 设计](./REPLAY_DESIGN.md)。
 
-## 7. Phaser client 边界
+## Surface 与版本维护
 
-当前 Web 的 Phaser 表现由独立 `game-surfaces/pong` 与 `game-surfaces/badminton` 拥有，`games/pong` client 仅保留兼容 API。Surface 通过 Bridge 接收 immutable View、connection/lifecycle 状态，负责 canvas、输入、视觉插值、结果摘要和 reduced-motion 降级；realtime client host 继续在平台侧管理 acknowledgement。Phaser scene 不创建 socket、不解析 ticket、不决定 actor、不写服务器 State，也不执行权威碰撞。
+Phaser/SVG 只显示公开视图并采集 intent。插值仅改变视觉位置；新 Round、重连、阶段变化和终局按游戏约定直接收敛，不执行本地权威碰撞。尺寸、reduced-motion、音效解锁和触屏布局属于 Surface；协议、安全及 artifact 发布见 [Game Surface 规范](./GAME_SURFACE_SPEC.md)。
 
-真实浏览器验收必须检查 canvas 非空、尺寸稳定、键盘输入可达、重连后视图收敛和终局画面；截图或像素断言不能被用来替代 server integration 的 authoritative 断言。
+改变 simulation、Input schema、tick rate、单位、碰撞 tie-break、RNG 或 inputDelivery 解释时，评估新的 `gameVersion` 并保留旧 Core/golden。改变实时 wire 或 replay envelope 时分别评估对应协议/格式版本；仅修改表现层提升 `surfaceVersion`。
 
-## 8. 版本与迁移
-
-- 现有 turn-based manifest、Protocol V5、Replay Format V1、六款已支持游戏和其 public exports 保持兼容。
-- `GameManifest.runtime` 扩展为 discriminated union、registry/runtime resolver、client host、replay API 或数据库 schema 的每一项修改都必须说明跨 package 价值、兼容性和迁移，并补 contract tests。
-- 改变 Pong simulation、输入 schema、tick rate、整数单位、碰撞 tie-break、发球 RNG 或 replay event 解释时提升 `gameVersion`；改变 Realtime Protocol V1 envelope 时提升 realtime protocol version；改变 realtime replay envelope 时提升 realtime replay format version。
-- M8 仍是单实例；进程重启不恢复 active realtime State，只按现有平台策略关闭/abandon，并保证已完成 archive/replay 可读取。
-
-## 9. M8 Definition of Done
-
-- 两个真实 browser contexts 可从统一目录创建/加入 Pong，完成 ready、实时对局、得分终局、投降、短暂断线恢复和关闭/离开；
-- Core、server runtime、protocol、replay verifier、PostgreSQL adapter、Phaser client 和 registry 都有针对合法/非法/边界/隐私/确定性的测试；
-- 伪造 actor、位置、速度、碰撞、分数、Outcome、tick 或 input sequence 不会改变权威结果；
-- fixed seed + accepted input log 的 golden replay 可重复验证，旧 Replay Format V1 fixtures 全部通过；
-- 受影响的 `pnpm lint`、`pnpm typecheck`、`pnpm test`、`pnpm build`、`pnpm deps:check`、`pnpm test:integration`、`pnpm test:database` 和 `pnpm test:e2e` 均通过；
-- 文档、迁移、registry 登记、package exports 和 Conventional Commit 均完成，没有把 Matchmaking、观战、预测/回滚、Redis、多实例或第二个 realtime 游戏带入本轮。
-
-## 10. M8 之后的羽毛球扩展
-
-当前 `badminton@1.2.0` 使用既有 60 Hz `RealtimeGameDefinition`，所有位置、速度、重力、阻力、球拍/球网/地面碰撞与计分均属于游戏 Core。Config 为 `{ targetScore: 7 | 11 | 21 }`；strict Input 为 `CONTROL { move: -1 | 0 | 1, jump: boolean, serve: boolean, shot: NONE | CLEAR | DROP | SMASH }` 或 `RESIGN`。手动发球、发球范围和上下手阈值属于游戏规则；公开 View 额外提供动作/接触时间和场地几何，Surface 用于同步动画和音效，不修改 shared runtime/Bridge。历史 `1.0.0` schema、自动发球、物理和 golden records 独立冻结。完整规则以 [GAME_SPEC](../games/badminton/GAME_SPEC.md) 为准，不复制到 runtime。
-
-连续控制由游戏保存在 State 中，无新输入时最多保持 45 ticks。Surface 按住时每 150ms 刷新，松开、失焦、触控取消和断线清除；Core 的有效期保证浏览器意外消失后不会永久移动。客户端只采集 intent，服务器仍决定生效 tick 和本轮 actor。同一 tick 的同 slot 输入以最后一个 accepted change 生效；投降待确认期间 Surface 停止普通控制，避免覆盖投降。
-
-初始球场和发球不消耗 gameplay RNG，所有完成记录的 cursor 为 0；随机首发只消费独立 Setup RNG，最终有序 slots 与 Config 写入既有 header。record-only 模式保留完整 canonical replay/verifier 与 PostgreSQL archive。Web 在账户授权之后按 exact definition 的 replay 能力拒绝玩家播放；历史 `replayAvailable` 也以相同能力为条件，旧 Pong 与 frozen 棋类版本保持可播放。
-
-新增的独立 Surface 只依赖 Bridge、Phaser 与 Zod，没有 legacy Client Module。CSS 固定 5:3 显示比例与 1000×600 逻辑画布，触屏按钮最小 44px；服务器重连、重新发球和新轮次直接收敛公开视图。此扩展不改变 SDK 公共 API、Setup Protocol V6、Realtime Protocol V1、Realtime Replay Format V1 或数据库 schema。
+验证须覆盖纯 simulation、逐 tick determinism、exact golden、输入权限/顺序/幂等、reconnect、真实数据库重读和多人浏览器；具体命令与场景统一见 [TESTING.md](./TESTING.md)。
