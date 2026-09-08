@@ -42,7 +42,7 @@ let failed = false,
 let pendingSetup: string | null = null;
 let arenaKey = "";
 const trails = new Map<string, { x: number; y: number }[]>();
-const explosions = new Map<number, { x: number; y: number; until: number }>();
+const explosions = new Map<string, { x: number; y: number; until: number }>();
 const p = (n: number) => n / 1000;
 function notice(text: string) {
   const el = document.getElementById("notice");
