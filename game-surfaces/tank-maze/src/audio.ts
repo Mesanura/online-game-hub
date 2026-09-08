@@ -20,7 +20,7 @@ export class TankAudio {
       g = c.createGain();
     o.type = kind === "hit" ? "sawtooth" : "triangle";
     o.frequency.setValueAtTime(
-      { fire: 170, bounce: 470, hit: 90, pickup: 650 }[kind],
+      { fire: 260, bounce: 470, hit: 90, pickup: 650 }[kind],
       c.currentTime,
     );
     o.frequency.exponentialRampToValueAtTime(

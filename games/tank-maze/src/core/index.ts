@@ -127,7 +127,7 @@ function moveTanks(s: State): void {
       t.turn = 0;
     }
     t.angle = (t.angle + t.turn * 5 + 720) % 720;
-    return vector(t.angle, t.move === 1 ? 1500 : t.move === -1 ? -1083 : 0);
+    return vector(t.angle, t.move === 1 ? 2000 : t.move === -1 ? -1083 : 0);
   });
   // Resolve connected contact groups simultaneously; stationary tanks are pushed,
   // opposing drivers cancel. No slot gets first-writer priority.

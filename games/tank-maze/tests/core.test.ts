@@ -211,7 +211,7 @@ describe("tank maze authoritative rules", () => {
       t.x = 100000 + 38000 * i;
     });
     c = step(c, [{ slotId: "p0", input: { type: "MOVE", move: 1, turn: 0 } }]);
-    expect(c.state.tanks.map((t) => t.x)).toEqual([101500, 139500, 177500]);
+    expect(c.state.tanks.map((t) => t.x)).toEqual([102000, 140000, 178000]);
     c.state.arena.walls.push({ x: 196501, y: 200000, w: 8000, h: 200000 });
     const positions = c.state.tanks.map((t) => t.x);
     c = step(c);

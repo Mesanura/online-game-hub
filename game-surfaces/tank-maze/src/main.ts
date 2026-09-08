@@ -41,13 +41,8 @@ let failed = false,
   lastEvent = 0;
 let pendingSetup: string | null = null;
 let arenaKey = "";
-const trails = new Map<
-  number,
-  {
-    x: number;
-    y: number;
-  }[]
->();
+const trails = new Map<string, { x: number; y: number }[]>();
+const explosions = new Map<number, { x: number; y: number; until: number }>();
 const p = (n: number) => n / 1000;
 function notice(text: string) {
   const el = document.getElementById("notice");
@@ -173,7 +168,7 @@ function renderSetup() {
 }
 function mountPlay() {
   root.innerHTML =
-    '<main class="play"><header><div><span class="eyebrow">TANK MAZE</span><strong>坦克迷战</strong></div><div id="phase" role="status"></div><button id="sound" aria-pressed="false">声音 开</button></header><div id="scores" class="scores"></div><div class="arena-wrap"><svg id="arena" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="坦克迷战实时战场"></svg></div><footer><span id="ammo"></span><span id="notice" role="status"></span><span class="keyboard-help">WASD / 方向键 · 空格按次开火</span></footer><div class="touch"><div class="drive"><button data-control="left" aria-label="向左旋转">↶</button><div><button data-control="up" aria-label="前进">▲</button><button data-control="down" aria-label="后退">▼</button></div><button data-control="right" aria-label="向右旋转">↷</button></div><button class="fire" data-control="fire" aria-label="发射炮弹">开火</button></div></main>';
+    '<main class="play"><header><div><span class="eyebrow">TANK MAZE</span><strong>坦克迷战</strong></div><div id="phase" role="status"></div><button id="sound" aria-pressed="false">声音 开</button></header><div id="scores" class="scores"></div><div class="arena-wrap"><div id="countdown" aria-live="polite"></div><svg id="arena" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="坦克迷战实时战场"></svg></div><footer><span id="ammo"></span><span id="notice" role="status"></span><span class="keyboard-help">WASD / 方向键 · 空格按次开火</span></footer><div class="touch"><div class="drive"><button data-control="left" aria-label="向左旋转">↶</button><div><button data-control="up" aria-label="前进">▲</button><button data-control="down" aria-label="后退">▼</button></div><button data-control="right" aria-label="向右旋转">↷</button></div><button class="fire" data-control="fire" aria-label="发射炮弹">开火</button></div></main>';
 }
 function renderHud() {
   if (view === null) return;
@@ -235,6 +230,8 @@ function draw(now: number) {
   const v = view;
   if (v !== null && !failed && mode === "play") {
     const svg = required(document.getElementById("arena"));
+    const countdown = document.getElementById("countdown");
+    if (countdown) countdown.textContent = v.phase === "PREPARE" && v.phaseTicks <= 180 ? String(Math.ceil(v.phaseTicks / 60)) : "";
     const alpha = init?.reducedMotion
       ? 1
       : Math.min(
@@ -271,6 +268,9 @@ function draw(now: number) {
         '<g id="dynamic"></g>';
     }
     let html = "";
+    const nowTick = v.tick;
+    for (const [id, fx] of explosions) if (fx.until <= nowTick) explosions.delete(id);
+    html += Array.from(explosions.values()).map((fx) => '<g class="explosion" transform="translate(' + p(fx.x) + ' ' + p(fx.y) + ')"><circle r="22" fill="#f39c4a" opacity=".75"/><circle r="11" fill="#4b4b4b" opacity=".8"/></g>').join("");
     html += v.aims
       .map(
         (a) =>
@@ -288,7 +288,7 @@ function draw(now: number) {
           p(q.x) +
           " " +
           p(q.y) +
-          ')"><rect x="-13" y="-13" width="26" height="26" rx="5" fill="#faf8eb" stroke="#626960" stroke-width="2"/><text text-anchor="middle" y="5" font-size="18" fill="#3c4940">' +
+          ')"><rect x="-13" y="-13" width="40" height="40" rx="5" fill="#faf8eb" stroke="#626960" stroke-width="2"/><text text-anchor="middle" y="5" font-size="28" fill="#3c4940">' +
           { laser: "⌁", missile: "➤", machine: "⋮", shotgun: "⁙", shield: "◇" }[
             q.kind
           ] +
@@ -471,6 +471,7 @@ function handle(message: HostSurfaceMessage) {
         for (const e of next.events)
           if (e.id > lastEvent) {
             audio.play(e.kind);
+            if (e.kind === "hit") explosions.set(e.id, { x: e.x, y: e.y, until: next.tick + 24 });
             lastEvent = e.id;
           }
         renderHud();
