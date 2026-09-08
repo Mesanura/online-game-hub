@@ -231,7 +231,11 @@ function draw(now: number) {
   if (v !== null && !failed && mode === "play") {
     const svg = required(document.getElementById("arena"));
     const countdown = document.getElementById("countdown");
-    if (countdown) countdown.textContent = v.phase === "PREPARE" && v.phaseTicks <= 180 ? String(Math.ceil(v.phaseTicks / 60)) : "";
+    if (countdown)
+      countdown.textContent =
+        v.phase === "PREPARE" && v.phaseTicks <= 180
+          ? String(Math.ceil(v.phaseTicks / 60))
+          : "";
     const alpha = init?.reducedMotion
       ? 1
       : Math.min(
@@ -269,8 +273,18 @@ function draw(now: number) {
     }
     let html = "";
     const nowTick = v.tick;
-    for (const [id, fx] of explosions) if (fx.until <= nowTick) explosions.delete(id);
-    html += Array.from(explosions.values()).map((fx) => '<g class="explosion" transform="translate(' + p(fx.x) + ' ' + p(fx.y) + ')"><circle r="22" fill="#f39c4a" opacity=".75"/><circle r="11" fill="#4b4b4b" opacity=".8"/></g>').join("");
+    for (const [id, fx] of explosions)
+      if (fx.until <= nowTick) explosions.delete(id);
+    html += Array.from(explosions.values())
+      .map(
+        (fx) =>
+          '<g class="explosion" transform="translate(' +
+          p(fx.x) +
+          " " +
+          p(fx.y) +
+          ')"><circle r="22" fill="#f39c4a" opacity=".75"/><circle r="11" fill="#4b4b4b" opacity=".8"/></g>',
+      )
+      .join("");
     html += v.aims
       .map(
         (a) =>
@@ -471,7 +485,8 @@ function handle(message: HostSurfaceMessage) {
         for (const e of next.events)
           if (e.id > lastEvent) {
             audio.play(e.kind);
-            if (e.kind === "hit") explosions.set(e.id, { x: e.x, y: e.y, until: next.tick + 24 });
+            if (e.kind === "hit")
+              explosions.set(e.id, { x: e.x, y: e.y, until: next.tick + 24 });
             lastEvent = e.id;
           }
         renderHud();
