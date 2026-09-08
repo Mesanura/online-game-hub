@@ -1,0 +1,214 @@
+{
+  "header": {
+    "replayFormatVersion": 1,
+    "runtime": "realtime",
+    "gameId": "badminton",
+    "gameVersion": "1.1.0",
+    "tickRate": 60,
+    "rng": {
+      "algorithm": "fnv1a32-counter-v1",
+      "seed": "badminton-golden-seed"
+    },
+    "initialConfig": {
+      "targetScore": 7
+    },
+    "players": [
+      {
+        "slotId": "left-slot"
+      },
+      {
+        "slotId": "right-slot"
+      }
+    ]
+  },
+  "events": [
+    {
+      "sequence": 1,
+      "tick": 0,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": 0,
+        "jump": false,
+        "serve": true,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 2,
+      "tick": 0,
+      "actorSlotId": "right-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": 0,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 3,
+      "tick": 1,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": 0,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 4,
+      "tick": 182,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": 0,
+        "jump": false,
+        "serve": true,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 5,
+      "tick": 183,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": 0,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 6,
+      "tick": 364,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": 0,
+        "jump": false,
+        "serve": true,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 7,
+      "tick": 365,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": 0,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 8,
+      "tick": 546,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": 0,
+        "jump": false,
+        "serve": true,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 9,
+      "tick": 547,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": 0,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 10,
+      "tick": 728,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": 0,
+        "jump": false,
+        "serve": true,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 11,
+      "tick": 729,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": 0,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 12,
+      "tick": 910,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": 0,
+        "jump": false,
+        "serve": true,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 13,
+      "tick": 911,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": 0,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 14,
+      "tick": 1092,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": 0,
+        "jump": false,
+        "serve": true,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 15,
+      "tick": 1093,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": 0,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    }
+  ],
+  "recordedRngCursor": 0,
+  "recordedOutcome": {
+    "type": "WIN",
+    "reason": "SCORE",
+    "winnerSlotId": "left-slot",
+    "scores": [7, 0]
+  },
+  "finalTick": 1184
+}

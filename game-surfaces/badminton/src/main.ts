@@ -5,7 +5,8 @@ import {
 } from "@online-game-hub/game-surface-bridge";
 
 import {
-  playViewSchema,
+  parsePlayView,
+  encodePlayIntent,
   setupViewSchema,
   type PlayIntent,
   type PlayView,
@@ -14,12 +15,14 @@ import {
 } from "./contracts";
 import {
   ControlState,
+  ServeRequest,
   KEY_CONTROLS,
   phaseLabel,
   resultSummary,
   type Control,
 } from "./model";
 import { BadmintonScene } from "./scene";
+import { BadmintonAudio } from "./audio";
 import "./styles.css";
 
 type HostInit = Extract<HostSurfaceMessage, { type: "host.init" }>;
@@ -29,6 +32,9 @@ if (root === null) throw new Error("Missing Surface root");
 const surfaceRoot = root;
 const mode = window.location.pathname.includes("/setup/") ? "setup" : "play";
 const controls = new ControlState();
+const serveRequest = new ServeRequest();
+const audio = new BadmintonAudio();
+let renderEpoch = 0;
 const events = new AbortController();
 let init: HostInit | null = null;
 let host: HostState | null = null;
@@ -76,7 +82,13 @@ function sendIntent(
 ): string | null {
   if (failed || disposed || init === null) return null;
   const clientIntentId = requestedId ?? `badminton-${mode}-${++sequence}`;
-  if (!bridge.send({ type: "surface.intent", clientIntentId, intent })) {
+  const payload =
+    mode === "play"
+      ? encodePlayIntent(intent as PlayIntent, init.gameVersion)
+      : intent;
+  if (
+    !bridge.send({ type: "surface.intent", clientIntentId, intent: payload })
+  ) {
     notice("操作暂未送达，请稍后再试。");
     return null;
   }
@@ -86,6 +98,7 @@ function sendIntent(
 function sendControl(force = false): void {
   if (!canControl()) return;
   const intent = controls.intent();
+  intent.serve ||= serveRequest.pending;
   const serialized = JSON.stringify(intent);
   if (!force && serialized === lastControl) return;
   if (sendIntent(intent) !== null) lastControl = serialized;
@@ -93,6 +106,7 @@ function sendControl(force = false): void {
 
 function resetControls(send = true): void {
   controls.reset();
+  serveRequest.reset();
   document
     .querySelectorAll("[data-control]")
     .forEach((button) => button.setAttribute("aria-pressed", "false"));
@@ -107,6 +121,7 @@ function stop(): void {
   pulses.clear();
   events.abort();
   game?.destroy(true);
+  audio.dispose();
   game = null;
 }
 
@@ -166,7 +181,7 @@ function setupMarkup(current: SetupView): string {
         .join("")}
     </div>${current.starter === "FIXED" ? '<p class="muted">沿用上一局的实际首发方与场地。</p>' : ""}</section></div>
     <p class="rule-note">先到 ${current.config.targetScore} 分且领先 2 分获胜，${cap} 分封顶。每球得分者发球。</p>
-    <div class="how-to"><span><kbd>A</kbd><kbd>D</kbd> 移动</span><span><kbd>W</kbd> 起跳</span><span><kbd>J</kbd> 高远球</span><span><kbd>K</kbd> 扣杀</span><span><kbd>L</kbd> 吊球</span></div>
+    <div class="how-to"><span><kbd>A</kbd><kbd>D</kbd> 移动</span><span><kbd>W</kbd> 起跳</span>${init?.gameVersion === "1.1.0" ? "<span><kbd>S</kbd> 发球</span>" : ""}<span><kbd>J</kbd> 高远球</span><span><kbd>K</kbd> 扣杀</span><span><kbd>L</kbd> 吊球</span></div>
     <p class="setup-bottom">${current.canEdit ? "选好后，两位玩家分别点击房间中的准备按钮。" : "房主正在设置。确认规则后，点击房间中的准备按钮。"}手机可使用屏幕按钮。</p>
     <p class="notice" id="surface-notice" role="status"></p>
   </section></main>`;
@@ -218,24 +233,31 @@ function playMarkup(): string {
   return `<main class="play-page"><section class="match-shell" aria-label="火柴人羽毛球对局">
     <header class="match-header"><div class="game-brand"><span class="game-mark">${shuttleIcon}</span><div><p class="eyebrow">晴日球场</p><h1>火柴人羽毛球</h1></div></div><div class="scoreboard" aria-label="比分" aria-live="polite"><div class="score-side blue"><span id="left-label">蓝方</span><strong id="score-left" data-testid="score-left">0</strong></div><span class="score-divider">:</span><div class="score-side coral"><strong id="score-right" data-testid="score-right">0</strong><span id="right-label">橙方</span></div></div><div class="match-format"><strong id="match-target">7 分制</strong><span id="best-rally">最长 0 拍</span></div></header>
     <div class="rally-bar"><span class="live-dot" aria-hidden="true"></span><span id="phase-label" role="status">准备发球</span><span class="rally-number" id="rally-number"></span></div>
-    <div class="court-stage"><div id="badminton-canvas" class="court-canvas" tabindex="0" role="application" aria-label="火柴人羽毛球球场" aria-describedby="control-help"></div><div class="connection-cover" id="connection-cover" hidden role="status">正在恢复连接…</div></div>
+    <div class="court-stage"><div id="badminton-canvas" class="court-canvas" tabindex="0" role="application" aria-label="火柴人羽毛球球场" aria-describedby="control-help"></div><label class="audio-toggle"><input id="audio-enabled" type="checkbox" checked>音效</label><div class="connection-cover" id="connection-cover" hidden role="status">正在恢复连接…</div></div>
     <div class="controls" role="group" aria-label="球场操作"><div class="movement-controls">
       <button type="button" data-control="left" aria-label="向左移动" aria-pressed="false"><span class="control-symbol">←</span><kbd>A</kbd></button><button type="button" data-control="right" aria-label="向右移动" aria-pressed="false"><span class="control-symbol">→</span><kbd>D</kbd></button><button class="jump-button" type="button" data-control="jump" aria-label="起跳" aria-pressed="false"><span>起跳</span><kbd>W</kbd></button>
-    </div><div class="shot-controls"><button type="button" data-control="clear" aria-label="高远球" aria-pressed="false"><span>高远球</span><kbd>J</kbd></button><button class="smash-button" type="button" data-control="smash" aria-label="扣杀" aria-pressed="false"><span>扣杀</span><kbd>K</kbd></button><button type="button" data-control="drop" aria-label="吊球" aria-pressed="false"><span>吊球</span><kbd>L</kbd></button></div></div>
-    <footer class="match-footer"><p id="control-help">跑到球下，按住挥拍。高点击球可跳跃扣杀。</p><span id="side-label"></span></footer>
+    </div><div class="shot-controls"><button type="button" data-control="serve" aria-label="发球" aria-pressed="false"><span>发球</span><kbd>S</kbd></button><button type="button" data-control="clear" aria-label="高远球" aria-pressed="false"><span>高远球</span><kbd>J</kbd></button><button class="smash-button" type="button" data-control="smash" aria-label="扣杀" aria-pressed="false"><span>扣杀</span><kbd>K</kbd></button><button type="button" data-control="drop" aria-label="吊球" aria-pressed="false"><span>吊球</span><kbd>L</kbd></button></div></div>
+    <footer class="match-footer"><span id="side-label"></span><span class="sr-only" id="control-help">A/D 移动，W 起跳，S 发球，J 高远球，K 扣杀，L 吊球。</span></footer>
     <p class="notice" id="surface-notice" role="status"></p><span class="sr-only" data-testid="badminton-outcome" id="badminton-outcome"></span>
   </section></main>`;
 }
 
 function bindControls(): void {
   const options = { signal: events.signal };
+  document.getElementById("audio-enabled")?.addEventListener(
+    "change",
+    (event) => {
+      audio.setEnabled((event.currentTarget as HTMLInputElement).checked);
+    },
+    options,
+  );
   surfaceRoot
     .querySelectorAll<HTMLButtonElement>("[data-control]")
     .forEach((button) => {
       const control = button.dataset.control as Control;
       const press = (source: string) => {
         if (!canControl()) return;
-        controls.press(source, control);
+        pressControl(source, control);
         button.setAttribute("aria-pressed", "true");
         sendControl();
       };
@@ -249,6 +271,7 @@ function bindControls(): void {
         (event) => {
           if (event.button !== 0 || !canControl()) return;
           event.preventDefault();
+          void audio.unlock();
           button.focus({ preventScroll: true });
           button.setPointerCapture(event.pointerId);
           press(`pointer-${event.pointerId}`);
@@ -271,6 +294,7 @@ function bindControls(): void {
           if (event.code !== "Enter" && event.code !== "Space") return;
           event.preventDefault();
           event.stopPropagation();
+          void audio.unlock();
           press(`button-${control}`);
         },
         options,
@@ -329,6 +353,14 @@ function ensureGame(): void {
           previous,
           receivedAt,
           reducedMotion: init?.reducedMotion ?? false,
+          epoch: renderEpoch,
+          active:
+            host?.connectionState === "connected" &&
+            !document.hidden &&
+            host.readOnly === false,
+          gameVersion: init?.gameVersion ?? "1.1.0",
+          audioReady: audio.ready,
+          playSound: (cue) => audio.play(cue),
         },
   );
   game = new Phaser.Game({
@@ -367,7 +399,7 @@ function renderPlay(): void {
   );
   setText("match-target", `${view.targetScore} 分制`);
   setText("best-rally", `最长 ${view.bestRally} 拍`);
-  setText("phase-label", phaseLabel(view));
+  setText("phase-label", phaseLabel(view, init?.gameVersion));
   setText("rally-number", `第 ${view.rally} 球`);
   setText("badminton-outcome", view.outcome?.reason ?? "");
   surfaceRoot.dataset.phase = view.phase;
@@ -378,7 +410,19 @@ function renderPlay(): void {
   surfaceRoot
     .querySelectorAll<HTMLButtonElement>("[data-control]")
     .forEach((button) => {
-      button.disabled = !canControl();
+      const serving =
+        view?.yourSide === view?.servingSide &&
+        ["SERVE", "SERVING"].includes(view?.phase ?? "");
+      button.hidden =
+        button.dataset.control === "serve" && init?.gameVersion === "1.0.0";
+      button.disabled =
+        !canControl() ||
+        (init?.gameVersion === "1.1.0" &&
+          (button.dataset.control === "serve"
+            ? !serving || view?.phase !== "SERVE"
+            : ["clear", "drop", "smash"].includes(
+                button.dataset.control ?? "",
+              ) && serving));
     });
 }
 
@@ -387,7 +431,7 @@ function handleHost(message: HostSurfaceMessage): void {
   if (message.type === "host.init") {
     if (
       message.gameId !== "badminton" ||
-      message.gameVersion !== "1.0.0" ||
+      !["1.0.0", "1.1.0"].includes(message.gameVersion) ||
       message.mode !== mode
     ) {
       fail("SURFACE_TARGET_MISMATCH", "游戏画面与房间版本不一致。");
@@ -418,13 +462,23 @@ function handleHost(message: HostSurfaceMessage): void {
         host = message;
         renderSetup();
       } else {
-        const next = playViewSchema.parse(message.payload);
+        const next = parsePlayView(message.payload, init.gameVersion);
+        if (
+          reconnecting ||
+          newRound ||
+          (view !== null &&
+            (next.tick < view.tick || next.tick - view.tick > 12))
+        )
+          renderEpoch++;
         previous = reconnecting || newRound ? null : view;
         view = next;
         host = message;
         receivedAt = performance.now();
+        const requestedServe = serveRequest.pending;
+        serveRequest.observe(next);
         if (!canControl() || reconnecting || newRound) resetControls(false);
         if (reconnecting || newRound) sendControl(true);
+        else if (requestedServe && !serveRequest.pending) sendControl();
         renderPlay();
         const summary = resultSummary(next);
         if (summary !== null)
@@ -482,8 +536,28 @@ function handleHost(message: HostSurfaceMessage): void {
 }
 
 const heartbeat = setInterval(() => {
-  if (controls.active && canControl()) sendControl(true);
+  if ((controls.active || serveRequest.pending) && canControl())
+    sendControl(true);
 }, 150);
+function pressControl(source: string, control: Control): void {
+  const held = controls.has(control);
+  controls.press(source, control);
+  if (
+    control === "serve" &&
+    !held &&
+    view !== null &&
+    init?.gameVersion === "1.1.0"
+  )
+    serveRequest.press(view);
+}
+
+function usesNativeKeyboard(target: EventTarget | null): boolean {
+  return (
+    target instanceof HTMLElement &&
+    (target.matches("input, select, textarea") || target.isContentEditable)
+  );
+}
+
 window.addEventListener(
   "keydown",
   (event) => {
@@ -491,13 +565,16 @@ window.addEventListener(
     if (
       control === undefined ||
       !canControl() ||
+      usesNativeKeyboard(event.target) ||
       event.altKey ||
       event.ctrlKey ||
       event.metaKey
     )
       return;
     event.preventDefault();
-    controls.press(`key-${event.code}`, control);
+    void audio.unlock();
+    if (event.repeat) return;
+    pressControl(`key-${event.code}`, control);
     sendControl();
   },
   { signal: events.signal },
@@ -506,9 +583,20 @@ window.addEventListener(
   "keyup",
   (event) => {
     if (KEY_CONTROLS[event.code] === undefined) return;
-    event.preventDefault();
+    if (!usesNativeKeyboard(event.target)) event.preventDefault();
     controls.release(`key-${event.code}`);
     sendControl();
+  },
+  { signal: events.signal },
+);
+document.addEventListener(
+  "focusin",
+  (event) => {
+    if (
+      usesNativeKeyboard(event.target) &&
+      (controls.active || serveRequest.pending)
+    )
+      resetControls();
   },
   { signal: events.signal },
 );
@@ -520,6 +608,8 @@ document.addEventListener(
   () => {
     if (document.hidden) {
       controls.reset();
+      serveRequest.reset();
+      renderEpoch++;
       if (
         host?.connectionState === "connected" &&
         host.readOnly === false &&

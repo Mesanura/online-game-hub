@@ -1,8 +1,4 @@
 import { z } from "zod";
-import {
-  playViewSchema as legacyPlayViewSchema,
-  playIntentSchema as legacyPlayIntentSchema,
-} from "./legacy-contracts";
 
 const integer = z.number().int();
 const slot = z.string().min(1).max(128);
@@ -36,19 +32,8 @@ const athlete = z
     x: integer.min(30_000).max(970_000),
     y: integer.min(250_000).max(500_000),
     moving: z.boolean(),
-    swingTicks: integer.min(0).max(18),
+    swingTicks: integer.min(0).max(10),
     swingShot: shot,
-    swingKind: z.enum(["OVERHEAD", "UNDERHAND", "SERVE"]).nullable(),
-    swingStartedTick: integer.nonnegative().nullable(),
-    lastContact: z
-      .object({
-        tick: integer.nonnegative(),
-        x: integer,
-        y: integer,
-        shot: z.enum(["CLEAR", "DROP", "SMASH"]),
-      })
-      .strict()
-      .nullable(),
   })
   .strict();
 const outcome = z.discriminatedUnion("reason", [
@@ -84,9 +69,6 @@ export const playViewSchema = z
         netTop: z.literal(340_000),
         netWidth: z.literal(6_000),
         shuttleRadius: z.literal(6_000),
-        leftServeLine: z.literal(360_000),
-        rightServeLine: z.literal(640_000),
-        frontFootOffset: z.literal(20_000),
       })
       .strict(),
     players: z.tuple([
@@ -99,8 +81,8 @@ export const playViewSchema = z
     targetScore,
     scoreCap: z.union([z.literal(11), z.literal(15), z.literal(30)]),
     tick: integer.nonnegative(),
-    phase: z.enum(["SERVE", "SERVING", "RALLY", "POINT", "FINISHED"]),
-    phaseTicks: integer.min(0).max(90),
+    phase: z.enum(["SERVE", "RALLY", "POINT", "FINISHED"]),
+    phaseTicks: integer.min(0).max(120),
     servingSide: side,
     yourSide: side.nullable(),
     rally: integer.positive(),
@@ -165,7 +147,6 @@ export const playIntentSchema = z.discriminatedUnion("type", [
       type: z.literal("CONTROL"),
       move: z.union([z.literal(-1), z.literal(0), z.literal(1)]),
       jump: z.boolean(),
-      serve: z.boolean(),
       shot,
     })
     .strict(),
@@ -177,42 +158,3 @@ export type SetupView = z.infer<typeof setupViewSchema>;
 export type SetupIntent = z.infer<typeof setupIntentSchema>;
 export type PlayIntent = z.infer<typeof playIntentSchema>;
 export type ControlIntent = Extract<PlayIntent, { type: "CONTROL" }>;
-
-export function parsePlayView(input: unknown, gameVersion: string): PlayView {
-  if (gameVersion === "1.1.0") return playViewSchema.parse(input);
-  if (gameVersion !== "1.0.0")
-    throw new Error("Unsupported badminton version.");
-  const legacy = legacyPlayViewSchema.parse(input);
-  return {
-    ...legacy,
-    court: {
-      ...legacy.court,
-      leftServeLine: 360_000,
-      rightServeLine: 640_000,
-      frontFootOffset: 20_000,
-    },
-    athletes: legacy.athletes.map((athlete) => ({
-      ...athlete,
-      swingKind: athlete.swingTicks > 0 ? "OVERHEAD" : null,
-      swingStartedTick:
-        athlete.swingTicks > 0 ? legacy.tick - (10 - athlete.swingTicks) : null,
-      lastContact: null,
-    })) as PlayView["athletes"],
-  };
-}
-
-export function encodePlayIntent(
-  input: PlayIntent,
-  gameVersion: string,
-): unknown {
-  if (gameVersion === "1.1.0") return playIntentSchema.parse(input);
-  if (gameVersion !== "1.0.0")
-    throw new Error("Unsupported badminton version.");
-  if (input.type === "RESIGN") return legacyPlayIntentSchema.parse(input);
-  return legacyPlayIntentSchema.parse({
-    type: input.type,
-    move: input.move,
-    jump: input.jump,
-    shot: input.shot,
-  });
-}

@@ -392,6 +392,7 @@ describe("explicit game registry", () => {
       ["pong", "1.1.0"],
       ["pong", "1.2.0"],
       ["badminton", "1.0.0"],
+      ["badminton", "1.1.0"],
       ["connect-four", "1.1.0"],
       ["gomoku", "1.1.0"],
       ["hex", "1.0.0"],
@@ -548,7 +549,7 @@ describe("explicit game registry", () => {
   });
 
   it("registers badminton as an independent V6 Surface with server-only replay", async () => {
-    expect(resolveGameManifest("badminton", "1.0.0")).toMatchObject({
+    expect(resolveGameManifest("badminton", "1.1.0")).toMatchObject({
       title: "火柴人羽毛球",
       runtime: "realtime",
       defaultConfig: { targetScore: 7 },
@@ -563,7 +564,7 @@ describe("explicit game registry", () => {
       expect(
         resolveGameSurfaceEntrypoint("badminton", "1.0.0", mode),
       ).toMatchObject({
-        url: `/game-surfaces/badminton/1.0.2/${mode}/index.html`,
+        url: `/game-surfaces/badminton/1.1.1/${mode}/index.html`,
         mode,
       });
     }
@@ -576,5 +577,13 @@ describe("explicit game registry", () => {
     await expect(
       loadRealtimeGameClientEntrypoint("badminton", "1.0.0"),
     ).resolves.toBeUndefined();
+    const current = resolveCurrentRealtimeGameDefinition("badminton");
+    const legacy = resolveRealtimeGameDefinition("badminton", "1.0.0");
+    expect(current?.manifest.gameVersion).toBe("1.1.0");
+    expect(current).not.toBe(legacy);
+    expect(current?.step).not.toBe(legacy?.step);
+    expect(
+      resolveGameSurfaceEntrypoint("badminton", "1.1.0", "play")?.url,
+    ).toBe("/game-surfaces/badminton/1.1.1/play/index.html");
   });
 });

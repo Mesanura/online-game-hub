@@ -6,16 +6,21 @@ import {
 } from "@online-game-hub/realtime-game-sdk";
 import { describe, expect, it } from "vitest";
 
-import { badmintonDefinitionV1_0_0 } from "../src/core/index.js";
+import {
+  badmintonDefinition,
+  badmintonDefinitionV1_0_0,
+} from "../src/core/index.js";
 
 const resolve = (gameId: string, gameVersion: string) =>
   gameId === "badminton" && gameVersion === "1.0.0"
     ? eraseRealtimeGameDefinition(badmintonDefinitionV1_0_0)
-    : undefined;
-const fixture = (name: string) =>
+    : gameId === "badminton" && gameVersion === "1.1.0"
+      ? eraseRealtimeGameDefinition(badmintonDefinition)
+      : undefined;
+const fixture = (name: string, version = "1.0.0") =>
   JSON.parse(
     readFileSync(
-      new URL(`./fixtures/badminton-1.0.0-${name}.json`, import.meta.url),
+      new URL(`./fixtures/badminton-${version}-${name}.json`, import.meta.url),
       "utf8",
     ),
   ) as RealtimeCanonicalReplay;
@@ -71,4 +76,26 @@ describe("badminton exact realtime golden records", () => {
     for (const record of altered)
       expect(verifyRealtimeReplay(record, resolve).ok).toBe(false);
   });
+  it.each(["score", "resignation", "rally"])(
+    "rebuilds the manually served 1.1.0 %s record",
+    (name) => {
+      const replay = fixture(name, "1.1.0");
+      const result = verifyRealtimeReplay(replay, resolve);
+      expect(result).toMatchObject({
+        ok: true,
+        result: {
+          finalTick: replay.finalTick,
+          outcome: replay.recordedOutcome,
+          rng: { cursor: 0 },
+        },
+      });
+      expect(verifyRealtimeReplay(replay, resolve)).toEqual(result);
+      expect(
+        verifyRealtimeReplay(
+          { ...replay, header: { ...replay.header, gameVersion: "1.0.0" } },
+          resolve,
+        ).ok,
+      ).toBe(false);
+    },
+  );
 });

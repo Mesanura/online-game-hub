@@ -1,12 +1,26 @@
 import Phaser from "phaser";
 import type { PlayView } from "./contracts";
 import { interpolationAlpha, lerp } from "./model";
+import {
+  playerPose,
+  projectPoint,
+  shuttlePosition,
+  ShuttleTrail,
+  SoundTimeline,
+  type Point,
+  type SoundCue,
+} from "./presentation";
 
 export interface RenderState {
   current: PlayView;
   previous: PlayView | null;
   receivedAt: number;
   reducedMotion: boolean;
+  epoch: number;
+  active: boolean;
+  gameVersion: string;
+  audioReady: boolean;
+  playSound: (cue: SoundCue) => void;
 }
 
 const INK = 0x243f49;
@@ -18,9 +32,9 @@ export class BadmintonScene extends Phaser.Scene {
   #graphics: Phaser.GameObjects.Graphics | null = null;
   #you: Phaser.GameObjects.Text | null = null;
   #banner: Phaser.GameObjects.Text | null = null;
-  #trail: { x: number; y: number }[] = [];
-  #lastTick = -1;
-  #lastRally = -1;
+  #trail = new ShuttleTrail();
+  #sounds = new SoundTimeline();
+  #court: Phaser.GameObjects.Graphics | null = null;
 
   constructor(getState: () => RenderState | null) {
     super({ key: "badminton" });
@@ -29,6 +43,7 @@ export class BadmintonScene extends Phaser.Scene {
 
   create(): void {
     this.drawBackground();
+    this.#court = this.add.graphics();
     this.#graphics = this.add.graphics();
     this.#you = this.add
       .text(240, 352, "你", {
@@ -88,42 +103,6 @@ export class BadmintonScene extends Phaser.Scene {
     g.lineBetween(0, 451, 1000, 451);
     g.fillStyle(0xe5deca);
     g.fillRect(0, 464, 1000, 136);
-    g.fillStyle(0x87b6a8);
-    g.fillPoints(
-      [
-        { x: 80, y: 500 },
-        { x: 920, y: 500 },
-        { x: 983, y: 582 },
-        { x: 17, y: 582 },
-      ],
-      true,
-    );
-    g.fillStyle(0x71a494);
-    g.fillPoints(
-      [
-        { x: 80, y: 500 },
-        { x: 500, y: 500 },
-        { x: 500, y: 582 },
-        { x: 17, y: 582 },
-      ],
-      true,
-    );
-    g.lineStyle(3, 0xf4f5df, 0.9);
-    g.strokePoints(
-      [
-        { x: 80, y: 500 },
-        { x: 920, y: 500 },
-        { x: 983, y: 582 },
-        { x: 17, y: 582 },
-      ],
-      true,
-    );
-    g.lineBetween(500, 500, 500, 582);
-    g.lineBetween(50, 539, 949, 539);
-    g.lineBetween(265, 500, 240, 582);
-    g.lineBetween(735, 500, 760, 582);
-    g.lineStyle(5, 0x3f786e);
-    g.lineBetween(79, 501, 921, 501);
     g.fillStyle(0x244d4d, 0.12);
     g.fillEllipse(500, 583, 840, 13);
     this.add
@@ -164,47 +143,53 @@ export class BadmintonScene extends Phaser.Scene {
       performance.now() - render.receivedAt,
       render.reducedMotion,
     );
-    const x = lerp(previous.shuttle.x, view.shuttle.x, alpha) / 1000;
-    const y = lerp(previous.shuttle.y, view.shuttle.y, alpha) / 1000;
-    if (
-      view.rally !== this.#lastRally ||
-      view.phase !== "RALLY" ||
-      render.reducedMotion
-    )
-      this.#trail = [];
-    if (view.tick !== this.#lastTick && view.phase === "RALLY") {
-      this.#trail.push({ x, y });
-      if (this.#trail.length > 5) this.#trail.shift();
-    }
-    this.#lastTick = view.tick;
-    this.#lastRally = view.rally;
+    const world = shuttlePosition(previous, view, alpha);
+    const { x, y } = projectPoint(world.x, world.y);
+    const renderTick = lerp(previous.tick, view.tick, alpha);
+    const identity = `${render.epoch}:${view.rally}`;
+    const fresh = performance.now() - render.receivedAt < 250;
+    for (const cue of this.#sounds.consume(
+      view,
+      renderTick,
+      identity,
+      render.active && render.audioReady && fresh,
+    ))
+      render.playSound(cue);
+    this.drawCourt(view);
     g.clear();
+    this.drawNet(g, view, false);
     g.fillStyle(0x284e4a, 0.12);
-    g.fillEllipse(x, 511, Math.max(10, 27 - (500 - y) / 25), 6);
+    g.fillEllipse(
+      x,
+      543,
+      Math.max(8, 23 - (view.court.ground - world.y) / 25000),
+      5,
+    );
     for (const side of [0, 1] as const) {
       const current = view.athletes[side];
       const older = previous.athletes[side];
-      const px = lerp(older.x, current.x, alpha) / 1000;
-      const py = lerp(older.y, current.y, alpha) / 1000;
-      const gait =
-        render.reducedMotion || !current.moving
-          ? 0
-          : Math.sin(performance.now() / 72) * 11;
-      this.drawPlayer(g, px, py, side, current, gait);
+      const px = lerp(older.x, current.x, alpha);
+      const py = lerp(older.y, current.y, alpha);
+      this.drawPlayer(g, view, px, py, side, renderTick, render.reducedMotion);
       if (view.yourSide === (side === 0 ? "LEFT" : "RIGHT")) {
         this.#you
-          ?.setPosition(px, py - 137)
+          ?.setPosition(projectPoint(px, py).x, projectPoint(px, py).y - 177)
           .setBackgroundColor(side === 0 ? "#467faa" : "#ca715a")
           .setVisible(true);
       }
     }
     if (view.yourSide === null) this.#you?.setVisible(false);
-    this.drawNet(g);
-    if (!render.reducedMotion)
-      this.#trail.forEach((point, index) => {
-        g.fillStyle(0xffffff, (index + 1) * 0.1);
-        g.fillCircle(point.x, point.y, 3 + index);
-      });
+    const now = performance.now();
+    for (const point of this.#trail.update(
+      { x, y },
+      now,
+      view.phase === "RALLY" && !render.reducedMotion && render.active && fresh,
+      identity,
+    )) {
+      const life = 1 - (now - point.born) / 300;
+      g.fillStyle(0xffffff, life * 0.7);
+      g.fillCircle(point.x, point.y, 1 + life * 1.4);
+    }
     const angle =
       view.phase !== "RALLY"
         ? 0.2
@@ -213,14 +198,19 @@ export class BadmintonScene extends Phaser.Scene {
             view.shuttle.x - previous.shuttle.x,
           );
     this.drawShuttle(g, x, y, angle);
+    this.drawNet(g, view, true);
     if (view.phase === "POINT" && view.lastPoint !== null) {
       const point = view.lastPoint;
       g.lineStyle(3, point.winner === 0 ? BLUE : CORAL, 0.65);
-      g.strokeEllipse(point.x / 1000, Math.min(500, point.y / 1000), 34, 13);
+      const projected = projectPoint(
+        point.x,
+        Math.min(view.court.ground, point.y),
+      );
+      g.strokeEllipse(projected.x, projected.y, 28, 10);
     }
     const banner =
       view.phase === "SERVE"
-        ? `${view.servingSide === view.yourSide ? "你的" : "对手的"}发球  ${Math.ceil(view.phaseTicks / 60)}`
+        ? `${view.servingSide === view.yourSide ? "你的" : "对手的"}发球${render.gameVersion === "1.0.0" ? `  ${Math.ceil(view.phaseTicks / 60)}` : ""}`
         : view.phase === "POINT"
           ? "+ 1"
           : "";
@@ -245,110 +235,159 @@ export class BadmintonScene extends Phaser.Scene {
 
   private drawPlayer(
     g: Phaser.GameObjects.Graphics,
+    view: PlayView,
     x: number,
     y: number,
     side: 0 | 1,
-    athlete: PlayView["athletes"][number],
-    gait: number,
+    tick: number,
+    reducedMotion: boolean,
   ): void {
-    const facing = side === 0 ? 1 : -1;
+    const pose = playerPose(view, side, x, y, tick, reducedMotion);
+    const { facing } = pose;
     const color = side === 0 ? BLUE : CORAL;
-    const jumping = y < 499;
-    const spread = jumping ? 17 : 13;
+    const line = (a: Point, b: Point, width = 6, ink = INK) =>
+      this.line(g, a.x, a.y, b.x, b.y, width, ink);
+    const center = projectPoint(x, y);
     g.fillStyle(0x254c46, 0.15);
-    g.fillEllipse(x, 505, 48 - (500 - y) / 9, 10);
-    this.line(g, x, y - 47, x - spread + gait, y - (jumping ? 18 : 5), 7, INK);
-    this.line(g, x, y - 47, x + spread - gait, y - (jumping ? 11 : 5), 7, INK);
-    this.line(
-      g,
-      x - spread + gait,
-      y - (jumping ? 18 : 5),
-      x - spread + gait + facing * 9,
-      y - (jumping ? 18 : 5),
-      7,
+    g.fillEllipse(
+      center.x,
+      543,
+      Math.max(18, 42 - (view.court.ground - y) / 12000),
+      8,
+    );
+    line(pose.hip, pose.frontKnee, 7);
+    line(pose.frontKnee, pose.frontHeel, 7);
+    line(pose.hip, pose.backKnee, 7);
+    line(pose.backKnee, pose.backHeel, 7);
+    line(pose.frontHeel, pose.front, 6, color);
+    line(pose.backHeel, pose.back, 6, color);
+    line(pose.hip, pose.shoulder, 8);
+    line(
+      { x: center.x, y: center.y - 95 },
+      { x: center.x, y: center.y - 76 },
+      12,
       color,
     );
-    this.line(
-      g,
-      x + spread - gait,
-      y - (jumping ? 11 : 5),
-      x + spread - gait + facing * 9,
-      y - (jumping ? 11 : 5),
-      7,
-      color,
-    );
-    this.line(g, x, y - 81, x, y - 45, 9, INK);
-    this.line(g, x, y - 80, x, y - 64, 14, color);
-    this.line(
-      g,
-      x - facing * 2,
-      y - 78,
-      x - facing * 22,
-      y - 57 - gait / 2,
-      6,
-      INK,
-    );
-    const swing = athlete.swingTicks > 0;
-    const angle = swing ? -1.8 + ((10 - athlete.swingTicks) / 10) * 2.8 : -0.6;
-    const handX = x + facing * (18 + Math.cos(angle) * 20);
-    const handY = y - 80 + Math.sin(angle) * 24;
-    this.line(g, x, y - 78, handX, handY, 6, INK);
-    const racketX = handX + facing * Math.cos(angle) * 29;
-    const racketY = handY + Math.sin(angle) * 29;
-    this.line(g, handX, handY, racketX, racketY, 4, color);
-    if (swing) {
-      g.lineStyle(3, color, 0.22);
-      g.beginPath();
-      g.arc(
-        x + facing * 18,
-        y - 80,
-        69,
-        facing === 1 ? -1.5 : 1.7,
-        facing === 1 ? 0.7 : 3.6,
+    line(pose.shoulder, pose.freeElbow);
+    line(pose.freeElbow, pose.freeHand);
+    line(pose.shoulder, pose.elbow);
+    line(pose.elbow, pose.hand);
+    if (pose.swing && !reducedMotion) {
+      const older = playerPose(view, side, x, y, Math.max(0, tick - 1.8), true);
+      g.lineStyle(2, color, 0.15);
+      g.lineBetween(
+        older.racket.x,
+        older.racket.y,
+        pose.racket.x,
+        pose.racket.y,
       );
-      g.strokePath();
     }
-    g.fillStyle(0xfffcf0, 0.65);
-    g.fillEllipse(racketX, racketY, 25, 36);
-    g.lineStyle(3, color);
-    g.strokeEllipse(racketX, racketY, 25, 36);
-    g.lineStyle(1, color, 0.4);
+    line(pose.hand, pose.racket, 3, color);
+    g.save();
+    g.translateCanvas(pose.racket.x, pose.racket.y);
+    g.rotateCanvas(pose.racketAngle);
+    g.fillStyle(0xfffcf0, 0.35);
+    g.fillEllipse(0, 0, 36, 22);
+    g.lineStyle(2.5, color);
+    g.strokeEllipse(0, 0, 36, 22);
+    g.lineStyle(0.8, color, 0.45);
     for (const offset of [-6, 0, 6]) {
-      g.lineBetween(
-        racketX + offset,
-        racketY - 13,
-        racketX + offset,
-        racketY + 13,
-      );
-      g.lineBetween(
-        racketX - 9,
-        racketY + offset,
-        racketX + 9,
-        racketY + offset,
-      );
+      g.lineBetween(-13, offset, 13, offset);
+      g.lineBetween(offset, -8, offset, 8);
     }
+    g.restore();
     g.fillStyle(INK);
-    g.fillCircle(x, y - 101, 18);
+    g.fillCircle(pose.head.x, pose.head.y, 18);
     g.fillStyle(0xfff8df);
-    g.fillCircle(x, y - 102, 13);
-    this.line(g, x - 13, y - 107, x + 13, y - 107, 6, color);
-    this.line(g, x - facing * 13, y - 107, x - facing * 25, y - 103, 4, color);
+    g.fillCircle(pose.head.x, pose.head.y - 1, 13);
+    this.line(
+      g,
+      pose.head.x - 13,
+      pose.head.y - 6,
+      pose.head.x + 13,
+      pose.head.y - 6,
+      5,
+      color,
+    );
+    this.line(
+      g,
+      pose.head.x - facing * 13,
+      pose.head.y - 6,
+      pose.head.x - facing * 23,
+      pose.head.y - 2,
+      3,
+      color,
+    );
     g.fillStyle(INK);
-    g.fillCircle(x + facing * 6, y - 100, 2.3);
+    g.fillCircle(pose.head.x + facing * 6, pose.head.y + 1, 2.3);
   }
 
-  private drawNet(g: Phaser.GameObjects.Graphics): void {
-    g.fillStyle(0x224d46, 0.12);
-    g.fillEllipse(510, 510, 45, 8);
-    g.fillStyle(0xf5f3df, 0.72);
-    g.fillRect(497, 340, 12, 160);
-    g.lineStyle(1, 0x527e77, 0.6);
-    for (let y = 350; y < 500; y += 9) g.lineBetween(497, y, 509, y);
-    g.lineBetween(503, 340, 503, 500);
-    this.line(g, 497, 339, 509, 339, 7, 0xfffbea);
-    this.line(g, 498, 342, 498, 504, 5, 0x456e65);
-    g.fillStyle(0xf5f2dd);
-    g.fillCircle(498, 339, 5);
+  private drawCourt(view: PlayView): void {
+    const g = this.#court;
+    if (g === null) return;
+    g.clear();
+    const { leftLine, rightLine, ground, netX, leftServeLine, rightServeLine } =
+      view.court;
+    const p = (x: number, d: number) => projectPoint(x, ground, d);
+    const corners = [
+      p(leftLine, 0),
+      p(rightLine, 0),
+      p(rightLine, 1),
+      p(leftLine, 1),
+    ];
+    g.fillStyle(0x87b6a8);
+    g.fillPoints(corners, true);
+    g.fillStyle(0x71a494);
+    g.fillPoints(
+      [p(leftLine, 0), p(netX, 0), p(netX, 1), p(leftLine, 1)],
+      true,
+    );
+    g.lineStyle(2.5, 0xf4f5df, 0.95);
+    g.strokePoints(corners, true);
+    const segment = (a: Point, b: Point) => g.lineBetween(a.x, a.y, b.x, b.y);
+    for (const x of [leftServeLine, netX, rightServeLine])
+      segment(p(x, 0), p(x, 1));
+    segment(p(leftLine, 0.5), p(rightLine, 0.5));
+    g.lineStyle(4, 0x3f786e);
+    segment(p(leftLine, 0), p(rightLine, 0));
+  }
+
+  private drawNet(
+    g: Phaser.GameObjects.Graphics,
+    view: PlayView,
+    front: boolean,
+  ): void {
+    const { netX, netTop, ground } = view.court;
+    const p = (y: number, d: number) => projectPoint(netX, y, d);
+    const d0 = front ? 0.5 : 0,
+      d1 = front ? 1 : 0.5;
+    const top0 = p(netTop, d0),
+      top1 = p(netTop, d1);
+    const bottom0 = p(netTop + 85_000, d0),
+      bottom1 = p(netTop + 85_000, d1);
+    g.fillStyle(0x325e58, 0.075);
+    g.fillPoints([top0, top1, bottom1, bottom0], true);
+    g.lineStyle(1, 0x456d63, 0.6);
+    for (let i = 0; i <= 5; i++) {
+      const d = lerp(d0, d1, i / 5);
+      const a = p(netTop, d),
+        b = p(netTop + 85_000, d);
+      g.lineBetween(a.x, a.y, b.x, b.y);
+    }
+    for (let y = netTop + 10_000; y < netTop + 85_000; y += 10_000) {
+      const a = p(y, d0),
+        b = p(y, d1);
+      g.lineBetween(a.x, a.y, b.x, b.y);
+    }
+    this.line(g, top0.x, top0.y, top1.x, top1.y, 5, 0xfffdf2);
+    this.line(g, bottom0.x, bottom0.y, bottom1.x, bottom1.y, 2, 0xecede2);
+    const d = front ? 1 : 0,
+      top = p(netTop, d),
+      foot = p(ground, d);
+    g.fillStyle(0x224d46, 0.14);
+    g.fillEllipse(foot.x + 3, foot.y + 2, 18, 6);
+    this.line(g, top.x, top.y - 4, foot.x, foot.y, front ? 5 : 4, 0x467982);
+    this.line(g, top.x - 1, top.y - 3, foot.x - 1, foot.y, 1.3, 0x9dbfc0);
   }
 
   private drawShuttle(

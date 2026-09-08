@@ -89,6 +89,7 @@ describe("badminton projected contracts", () => {
       type: "CONTROL",
       move: -1,
       jump: true,
+      serve: false,
       shot: "SMASH",
     });
     expect(
@@ -125,6 +126,7 @@ describe("multi-source controls and presentation", () => {
       type: "CONTROL",
       move: 0,
       jump: false,
+      serve: false,
       shot: "NONE",
     });
   });
@@ -162,8 +164,8 @@ describe("multi-source controls and presentation", () => {
   });
 
   it("describes serve and point outcomes solely from the projected view", () => {
-    expect(phaseLabel(fixture)).toBe("你发球 · 2");
-    expect(phaseLabel({ ...fixture, yourSide: "RIGHT" })).toBe("对手发球 · 2");
+    expect(phaseLabel(fixture)).toBe("你的发球");
+    expect(phaseLabel({ ...fixture, yourSide: "RIGHT" })).toBe("等待对手发球");
     expect(
       phaseLabel({
         ...fixture,

@@ -139,7 +139,7 @@ Realtime Round 复用 Platform 的 Match/账户授权边界，但存储 adapter 
 
 ## 10. M8 之后的羽毛球扩展
 
-`badminton@1.0.0` 使用既有 60 Hz `RealtimeGameDefinition`，所有位置、速度、重力、阻力、球拍/球网/地面碰撞与计分均属于游戏 Core。Config 为 `{ targetScore: 7 | 11 | 21 }`；strict Input 为 `CONTROL { move: -1 | 0 | 1, jump: boolean, shot: NONE | CLEAR | DROP | SMASH }` 或 `RESIGN`。完整规则以 [GAME_SPEC](../games/badminton/GAME_SPEC.md) 为准，不复制到 runtime。
+当前 `badminton@1.1.0` 使用既有 60 Hz `RealtimeGameDefinition`，所有位置、速度、重力、阻力、球拍/球网/地面碰撞与计分均属于游戏 Core。Config 为 `{ targetScore: 7 | 11 | 21 }`；strict Input 为 `CONTROL { move: -1 | 0 | 1, jump: boolean, serve: boolean, shot: NONE | CLEAR | DROP | SMASH }` 或 `RESIGN`。手动发球、发球范围和上下手阈值属于游戏规则；公开 View 额外提供动作/接触时间和场地几何，Surface 用于同步动画和音效，不修改 shared runtime/Bridge。历史 `1.0.0` schema、自动发球、物理和 golden records 独立冻结。完整规则以 [GAME_SPEC](../games/badminton/GAME_SPEC.md) 为准，不复制到 runtime。
 
 连续控制由游戏保存在 State 中，无新输入时最多保持 45 ticks。Surface 按住时每 150ms 刷新，松开、失焦、触控取消和断线清除；Core 的有效期保证浏览器意外消失后不会永久移动。客户端只采集 intent，服务器仍决定生效 tick 和本轮 actor。同一 tick 的同 slot 输入以最后一个 accepted change 生效；投降待确认期间 Surface 停止普通控制，避免覆盖投降。
 

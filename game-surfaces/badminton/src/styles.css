@@ -496,6 +496,27 @@ kbd {
   font-size: 13px;
   font-weight: 650;
 }
+.controls button[hidden] {
+  display: none;
+}
+.audio-toggle {
+  position: absolute;
+  top: 8px;
+  right: 16px;
+  z-index: 1;
+  font-size: 12px;
+  color: #31545a;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 44px;
+  cursor: pointer;
+}
+.audio-toggle input {
+  accent-color: #467faa;
+  width: 17px;
+  height: 17px;
+}
 .controls button[aria-pressed="true"] {
   background: #dfeccd;
   box-shadow: 0 2px 0 #aabd9a;

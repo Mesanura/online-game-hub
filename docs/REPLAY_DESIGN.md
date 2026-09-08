@@ -213,6 +213,7 @@ Bug fix 是否提升版本以“相同 replay 是否可能得到不同 State、R
 
 - `pong@1.0.0`：`pong-1.0.0-resignation.json`、`pong-1.0.0-score.json`；`pong@1.1.0`：`pong-1.1.0-score.json`；`pong@1.2.0`：`pong-1.2.0-score.json`。三代计分 fixture 的 final tick 分别为 326、956、677，新版覆盖短准备期与球拍加速后的确定性结果；这些记录仅用于服务器校验，不再提供玩家播放。
 - `badminton@1.0.0`：`badminton-1.0.0-score.json`、`badminton-1.0.0-resignation.json`、`badminton-1.0.0-rally.json`，分别覆盖自动发球至比分终局、投降和连续回球。header 保存目标比分与实际左右顺序，事件只含服务器规范化的 accepted `CONTROL | RESIGN`；Core 逐 tick 重建移动、跳跃、挥拍有效期、碰撞、分数和 Outcome，gameplay RNG cursor 始终为 0。随机首发的 Setup RNG 不进入 gameplay record。
+- 当前 `badminton@1.1.0`：对应的 `badminton-1.1.0-score.json`、`badminton-1.1.0-resignation.json`、`badminton-1.1.0-rally.json` 覆盖逐球手动发球、投降及连续回球，使用新增 `serve` intent、后场发球范围和横纵阻力。旧 `1.0.0` Core/schema/constants 与三份 fixture 保持冻结，两版均由 exact registry 重建；Realtime Replay Format V1 和零 gameplay RNG cursor 不变。
 
 羽毛球的 `record-only` 仅限制玩家读取，不改变 create/append/complete/verify。更改整数物理、输入持续时间、球拍判定、发球、比分或同时事件顺序时，必须评估新 `gameVersion`，不能改写现有 fixtures。
 

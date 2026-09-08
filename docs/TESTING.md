@@ -93,7 +93,7 @@ M7-B 私有历史与回放测试覆盖：UserId + matchId 数据库授权、双�
 
 中国跳棋至少覆盖 2/3/6 人初始化、73 位坐标和六子营地、唯一 assignment、相邻移动、连续跳跃、越界/占用/错回合、完成/投降/阻塞排名、自动跳过、State/View/Action/Outcome immutability、JSON serialization、projection 和零 RNG cursor determinism；golden replay 必须验证 header assignment 可重建。
 
-火柴人羽毛球至少覆盖 7/11/21 分 Config、strict CONTROL/RESIGN、左右半场限制、跳跃按下边沿、45-tick 输入有效期、挥拍持续/冷却/重复击球限制、高远球/吊球/高点扣杀与低位降级、球网/界外/落地计分、领先两分和封顶、自动发球、投降优先级、终局停止、immutability、JSON serialization、公开投影和逐 tick seeded determinism。Setup 覆盖房主比分/首发权限、RANDOM 与独立 RNG、上一局完整设置复用；score/resignation/rally 三个 golden records 必须保持 exact。
+火柴人羽毛球至少覆盖 7/11/21 分 Config、strict CONTROL/RESIGN、左右半场限制、跳跃/发球按下边沿、45-tick 输入有效期、挥拍持续/冷却/重复击球限制、高远球/吊球/高点扣杀与低位降级、球网/界外/落地计分、领先两分和封顶、投降优先级、终局停止、immutability、JSON serialization、公开投影和逐 tick seeded determinism。当前 `1.1.0` 另覆盖无限等待、非发球方拒绝、后场边界/前脚对齐、地面/空中发球、第六 tick 出球、长按跨球不连发、触球不重启动画与横纵阻力。Setup 覆盖房主比分/首发权限、RANDOM 与独立 RNG、上一局完整设置复用；`1.0.0` 的自动发球及原 score/resignation/rally golden records 保持 exact，新增 `1.1.0` 对应记录。
 
 ### 4.2 Property 与 Table-driven Tests
 
@@ -434,8 +434,9 @@ Pong `1.2.0` 回归需覆盖 120 tick 准备期、更快的双侧球拍、每次
 
 ### 13.1 额外实时游戏：羽毛球验收
 
-- `apps/game-server/tests/realtime-game-server.integration.test.ts` 的羽毛球 V6 suite 覆盖真实双客户端、非房主/非法/过期 Setup、accepted 设置清 ready、左右 slot 映射、伪造 actor/State/tick/位置/分数、重复 command、过期 input sequence、错轮、输入释放、同 session 接管、投降、完整设置重开、自动计分终局和两轮 exact replay。
+- `apps/game-server/tests/realtime-game-server.integration.test.ts` 的羽毛球 V6 suite 覆盖真实双客户端、非房主/非法/过期 Setup、accepted 设置清 ready、左右 slot 映射、伪造 actor/State/tick/位置/分数、重复 command、过期 input sequence、错轮、输入释放、同 session 接管、投降、完整设置重开、无限发球等待与非发球方无效 intent、真实客户端逐球发球计分终局和两轮 exact replay。
 - `tooling/e2e/tests/badminton-vertical-slice.spec.ts` 使用两个隔离账户、临时 PostgreSQL 和真实 Next/Colyseus/Chromium。验证独立 Setup/Play、键盘组合、真实 Chromium 多点触控及取消、失焦释放、刷新重连、完整计分、终局重开与取消/确认投降。跨新数据库连接重读记录并 verify，私有 history 保留战绩但 `replayAvailable: false`，玩家播放返回 409 `PLAYER_PLAYBACK_NOT_SUPPORTED`。
+- 当前 Surface 验证新旧 exact View/Input、快速发球 latch、左右上下手方向、持球手和触球位置对齐、统一透视线/前脚/网顶几何、限位不踏步、粒子间距/数量/清理、音效解锁/静音/去重及重连不补播。真实浏览器覆盖七个触控按钮、S 空中发球、脚线位置、音效开关和逐球手动计分；截图只用于人工验收，不创建像素基线。
 - 羽毛球 Surface 验证 1000×600 逻辑画布、5:3 比例、连续缩放后的最大可用尺寸、桌面/平板/手机横竖屏、44px 操作目标、非空 canvas、reduced motion 和安全终局摘要。手机横屏按钮分置球场两侧，不覆盖独立全屏控件。
 - Web replay capability tests 覆盖 `player-playback`、`record-only`、未知版本、现行/历史 definition、私有响应头和 401/404 授权顺序；既有游戏的 projected replay 保持可用。
 

@@ -1,7 +1,8 @@
 import type { SurfaceResultSummaryV2 } from "@online-game-hub/game-surface-bridge";
 import type { ControlIntent, PlayView } from "./contracts";
 
-export type Control = "left" | "right" | "jump" | "clear" | "drop" | "smash";
+export type Control =
+  "left" | "right" | "jump" | "clear" | "drop" | "smash" | "serve";
 export const KEY_CONTROLS: Readonly<Record<string, Control>> = Object.freeze({
   KeyA: "left",
   ArrowLeft: "left",
@@ -13,6 +14,7 @@ export const KEY_CONTROLS: Readonly<Record<string, Control>> = Object.freeze({
   KeyJ: "clear",
   KeyK: "smash",
   KeyL: "drop",
+  KeyS: "serve",
 });
 
 // Each key/pointer is independent, so lifting one finger never cancels another.
@@ -30,6 +32,9 @@ export class ControlState {
   get active(): boolean {
     return this.#sources.size > 0;
   }
+  has(control: Control): boolean {
+    return [...this.#sources.values()].includes(control);
+  }
   intent(): ControlIntent {
     const active = new Set(this.#sources.values());
     return {
@@ -41,6 +46,7 @@ export class ControlState {
             ? -1
             : 1,
       jump: active.has("jump"),
+      serve: active.has("serve"),
       shot: active.has("smash")
         ? "SMASH"
         : active.has("drop")
@@ -61,7 +67,7 @@ export function interpolationAlpha(
   if (
     reducedMotion ||
     previous === null ||
-    current.phase !== "RALLY" ||
+    !["RALLY", "SERVE", "SERVING"].includes(current.phase) ||
     previous.phase !== current.phase ||
     previous.rally !== current.rally ||
     current.tick <= previous.tick ||
@@ -76,6 +82,27 @@ export function interpolationAlpha(
 
 export function lerp(from: number, to: number, alpha: number): number {
   return from + (to - from) * alpha;
+}
+
+export class ServeRequest {
+  #rally: number | null = null;
+  get pending(): boolean {
+    return this.#rally !== null;
+  }
+  press(view: PlayView): void {
+    if (
+      view.phase === "SERVE" &&
+      view.yourSide === view.servingSide &&
+      view.outcome === null
+    )
+      this.#rally ??= view.rally;
+  }
+  observe(view: PlayView): void {
+    if (view.phase !== "SERVE" || view.rally !== this.#rally) this.reset();
+  }
+  reset(): void {
+    this.#rally = null;
+  }
 }
 
 export function resultSummary(
@@ -102,10 +129,16 @@ export function resultSummary(
   };
 }
 
-export function phaseLabel(view: PlayView): string {
+export function phaseLabel(view: PlayView, gameVersion = "1.1.0"): string {
   if (view.outcome !== null) return resultSummary(view)?.headline ?? "比赛结束";
   if (view.phase === "SERVE")
-    return `${view.servingSide === view.yourSide ? "你" : "对手"}发球 · ${Math.ceil(view.phaseTicks / 60)}`;
+    return gameVersion === "1.0.0"
+      ? `${view.servingSide === view.yourSide ? "你" : "对手"}发球 · ${Math.ceil(view.phaseTicks / 60)}`
+      : view.servingSide === view.yourSide
+        ? "你的发球"
+        : "等待对手发球";
+  if (view.phase === "SERVING")
+    return view.servingSide === view.yourSide ? "你正在发球" : "对手正在发球";
   if (view.phase === "POINT" && view.lastPoint !== null) {
     const side = view.lastPoint.winner === 0 ? "LEFT" : "RIGHT";
     const reason =

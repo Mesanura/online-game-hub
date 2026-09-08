@@ -362,6 +362,8 @@ Connect Four、Gomoku、Reversi、Hex、Chinese Checkers 的表现与 Setup 已�
 
 本扩展在 M8 实时运行时与 M9 独立 Surface 已具备复用能力后实施，仅增加 `badminton@1.0.0`，不改变历史里程碑的退出条件。
 
+后续维护升级至 `1.1.0`：手动及空中发球、后场三分之二与前脚对齐、横纵阻力、上下手动画和 Surface 视听改进；保留 `1.0.0` 冻结规则与记录。范围仍是单游戏内容改进，不增加平台功能。
+
 - `games/badminton` 拥有 strict Config/Input、60 Hz 整数物理、移动/跳跃/三种击球、触网/出界/落地计分、领先两分与封顶、投降、Setup、公开投影和 golden records。
 - `game-surfaces/badminton` 拥有原创 Phaser 球场、Setup/Play、键盘及多指触控、输入释放、reduced motion、响应式画布和 Bridge V2 终局摘要；没有 legacy Client Module 或 Replay 入口。
 - Registry 仅登记新的 manifest、exact Core/Setup 与 versioned Surface。平台 SDK、Protocol V6、Realtime Protocol V1、Replay Format V1、数据库 schema 和既有游戏版本不变。

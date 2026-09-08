@@ -45,7 +45,7 @@ function freeze<T>(value: T): T {
 }
 
 function neutral(): BadmintonControls {
-  return { move: 0, jump: false, shot: "NONE" };
+  return { move: 0, jump: false, serve: false, shot: "NONE" };
 }
 
 function other(side: BadmintonSide): BadmintonSide {
@@ -60,18 +60,23 @@ function freshAthlete(side: BadmintonSide): BadmintonState["athletes"][number] {
     controls: neutral(),
     inputAge: PHYSICS.inputLease,
     jumpHeld: false,
+    serveHeld: false,
+    moving: false,
     swingTicks: 0,
     cooldown: 0,
     swingShot: "NONE",
     hitThisSwing: false,
+    swingKind: null,
+    swingStartedTick: null,
+    lastContact: null,
   };
 }
 
 function attachShuttle(state: BadmintonState): void {
   const player = state.athletes[state.server];
   state.shuttle = {
-    x: player.x + (state.server === 0 ? 1 : -1) * PHYSICS.racketOffsetX,
-    y: player.y - PHYSICS.racketOffsetY,
+    x: player.x + (state.server === 0 ? 1 : -1) * PHYSICS.serveHandOffsetX,
+    y: player.y - PHYSICS.serveHandOffsetY,
     velocityX: 0,
     velocityY: 0,
     lastHit: null,
@@ -98,7 +103,7 @@ export function createInitialState(context: {
     targetScore: config.targetScore,
     tick: 0,
     phase: "SERVE",
-    phaseTicks: PHYSICS.serveDelay,
+    phaseTicks: 0,
     server: 0,
     athletes: [freshAthlete(0), freshAthlete(1)],
     shuttle: { x: 0, y: 0, velocityX: 0, velocityY: 0, lastHit: null },
@@ -156,7 +161,7 @@ export function getOutcome(
 function applyInputs(
   state: BadmintonState,
   inputs: readonly RealtimePlayerInput<BadmintonInput>[],
-): void {
+): [boolean, boolean] {
   let previousIndex = -1;
   for (const change of inputs) {
     const index = state.players.indexOf(change.slotId);
@@ -172,27 +177,50 @@ function applyInputs(
       player.controls = {
         move: input.move,
         jump: input.jump,
+        serve: input.serve,
         shot: input.shot,
       };
       player.inputAge = 0;
     }
   }
-  for (const player of state.athletes) {
+  const servePressed: [boolean, boolean] = [false, false];
+  for (const side of [0, 1] as const) {
+    const player = state.athletes[side];
     if (player.inputAge >= PHYSICS.inputLease) player.controls = neutral();
     player.inputAge = Math.min(PHYSICS.inputLease, player.inputAge + 1);
     if (!player.controls.jump) player.jumpHeld = false;
+    servePressed[side] = player.controls.serve && !player.serveHeld;
+    player.serveHeld = player.controls.serve;
   }
+  return servePressed;
 }
 
 function moveAthletes(state: BadmintonState): void {
   for (const side of [0, 1] as const) {
     const player = state.athletes[side];
-    const min = side === 0 ? 30_000 : COURT.netX + 35_000;
-    const max = side === 0 ? COURT.netX - 35_000 : COURT.width - 30_000;
+    const holding =
+      side === state.server &&
+      (state.phase === "SERVE" || state.phase === "SERVING");
+    const min = holding
+      ? side === 0
+        ? COURT.leftLine
+        : COURT.rightServeLine + COURT.frontFootOffset
+      : side === 0
+        ? 30_000
+        : COURT.netX + 35_000;
+    const max = holding
+      ? side === 0
+        ? COURT.leftServeLine - COURT.frontFootOffset
+        : COURT.rightLine
+      : side === 0
+        ? COURT.netX - 35_000
+        : COURT.width - 30_000;
+    const oldX = player.x;
     player.x = Math.max(
       min,
       Math.min(max, player.x + player.controls.move * PHYSICS.runSpeed),
     );
+    player.moving = player.x !== oldX;
     if (player.controls.jump && !player.jumpHeld) {
       player.jumpHeld = true;
       if (player.y === COURT.ground) player.velocityY = -PHYSICS.jumpSpeed;
@@ -204,11 +232,18 @@ function moveAthletes(state: BadmintonState): void {
     }
     player.swingTicks = Math.max(0, player.swingTicks - 1);
     player.cooldown = Math.max(0, player.cooldown - 1);
-    if (player.controls.shot !== "NONE" && player.cooldown === 0) {
+    if (!holding && player.controls.shot !== "NONE" && player.cooldown === 0) {
       player.swingTicks = PHYSICS.swingDuration;
       player.cooldown = PHYSICS.swingCooldown;
       player.swingShot = player.controls.shot;
       player.hitThisSwing = false;
+      player.swingStartedTick = state.tick;
+    }
+    if (player.swingTicks > 0 && !player.hitThisSwing && !holding) {
+      player.swingKind =
+        state.shuttle.y > player.y - PHYSICS.underhandHeight
+          ? "UNDERHAND"
+          : "OVERHEAD";
     }
   }
 }
@@ -233,19 +268,50 @@ function horizontalVelocity(distance: number, ticks: number): number {
   return distance < 0 ? -low : low;
 }
 
+function verticalVelocity(distance: number, ticks: number): number {
+  let low = -30_000;
+  let high: number = PHYSICS.maxFallSpeed;
+  while (low < high) {
+    const candidate = Math.floor((low + high) / 2);
+    let velocity = candidate;
+    let travel = 0;
+    for (let tick = 0; tick < ticks; tick += 1) {
+      velocity = Math.min(
+        PHYSICS.maxFallSpeed,
+        Math.trunc((velocity * PHYSICS.verticalDragNumerator) / 1000) +
+          PHYSICS.shuttleGravity,
+      );
+      travel += velocity;
+    }
+    if (travel < distance) low = candidate + 1;
+    else high = candidate;
+  }
+  return low;
+}
+
 function strike(
   state: BadmintonState,
   side: BadmintonSide,
   serving = false,
 ): void {
   const player = state.athletes[side];
+  if (!serving)
+    player.swingKind =
+      state.shuttle.y > player.y - PHYSICS.underhandHeight
+        ? "UNDERHAND"
+        : "OVERHEAD";
   const shot = serving
     ? "CLEAR"
     : player.swingShot === "SMASH" &&
-        (player.y > COURT.ground - 45_000 ||
+        (player.swingKind === "UNDERHAND" ||
+          player.y > COURT.ground - 45_000 ||
           state.shuttle.y > COURT.netTop - 30_000)
       ? "CLEAR"
-      : player.swingShot;
+      : player.swingShot === "DROP"
+        ? "DROP"
+        : player.swingShot === "SMASH"
+          ? "SMASH"
+          : "CLEAR";
   const flightTicks = shot === "SMASH" ? 26 : shot === "DROP" ? 68 : 86;
   const target =
     shot === "DROP" ? 620_000 : shot === "SMASH" ? 770_000 : 830_000;
@@ -254,17 +320,21 @@ function strike(
     targetX - state.shuttle.x,
     flightTicks,
   );
-  state.shuttle.velocityY = Math.trunc(
-    (COURT.ground - COURT.shuttleRadius - state.shuttle.y) / flightTicks -
-      (PHYSICS.shuttleGravity * (flightTicks + 1)) / 2,
+  state.shuttle.velocityY = verticalVelocity(
+    COURT.ground - COURT.shuttleRadius - state.shuttle.y,
+    flightTicks,
   );
   state.shuttle.lastHit = side;
   state.rallyHits += 1;
   state.bestRally = Math.max(state.bestRally, state.rallyHits);
   player.hitThisSwing = true;
   player.swingShot = shot;
-  player.swingTicks = PHYSICS.swingDuration;
-  player.cooldown = PHYSICS.swingCooldown;
+  player.lastContact = {
+    tick: state.tick,
+    x: state.shuttle.x,
+    y: state.shuttle.y,
+    shot,
+  };
 }
 
 function canHit(state: BadmintonState, side: BadmintonSide): boolean {
@@ -301,6 +371,7 @@ function awardPoint(
   state.lastPoint = { winner, reason, x: state.shuttle.x, y: state.shuttle.y };
   state.shuttle.velocityX = 0;
   state.shuttle.velocityY = 0;
+  for (const player of state.athletes) player.moving = false;
   state.phase = winningSide(state) === null ? "POINT" : "FINISHED";
   state.phaseTicks = state.phase === "POINT" ? PHYSICS.pointDelay : 0;
 }
@@ -325,7 +396,8 @@ function flyShuttle(state: BadmintonState): void {
   );
   shuttle.velocityY = Math.min(
     PHYSICS.maxFallSpeed,
-    shuttle.velocityY + PHYSICS.shuttleGravity,
+    Math.trunc((shuttle.velocityY * PHYSICS.verticalDragNumerator) / 1000) +
+      PHYSICS.shuttleGravity,
   );
   const startX = shuttle.x;
   const startY = shuttle.y;
@@ -379,7 +451,7 @@ export function step(context: {
     throw new Error("Badminton match is already finished.");
   if (context.tick !== state.tick)
     throw new Error("Badminton tick is not contiguous.");
-  applyInputs(state, context.inputs);
+  const servePressed = applyInputs(state, context.inputs);
   state.tick += 1;
   if (state.resignedSlotId !== null) {
     state.phase = "FINISHED";
@@ -388,7 +460,7 @@ export function step(context: {
     state.phaseTicks -= 1;
     if (state.phaseTicks <= 0) {
       state.phase = "SERVE";
-      state.phaseTicks = PHYSICS.serveDelay;
+      state.phaseTicks = 0;
       state.rally += 1;
       state.rallyHits = 0;
       state.athletes = state.athletes.map((player, side) => ({
@@ -396,6 +468,7 @@ export function step(context: {
         controls: player.controls,
         inputAge: player.inputAge,
         jumpHeld: player.jumpHeld,
+        serveHeld: player.serveHeld,
       })) as BadmintonState["athletes"];
       attachShuttle(state);
     }
@@ -403,14 +476,44 @@ export function step(context: {
     moveAthletes(state);
     if (state.phase === "SERVE") {
       attachShuttle(state);
-      state.phaseTicks -= 1;
-      if (state.phaseTicks <= 0) {
+      if (servePressed[state.server]) {
+        const player = state.athletes[state.server];
+        state.phase = "SERVING";
+        player.swingKind = "SERVE";
+        player.swingStartedTick = state.tick;
+        player.swingTicks = PHYSICS.serveSwingDuration;
+        player.cooldown = PHYSICS.swingCooldown;
+        player.swingShot = "CLEAR";
+        player.hitThisSwing = false;
+      }
+    }
+    if (state.phase === "SERVING") {
+      attachShuttle(state);
+      state.phaseTicks =
+        state.tick -
+        (state.athletes[state.server].swingStartedTick ?? state.tick) +
+        1;
+      if (state.phaseTicks >= PHYSICS.serveContactTick) {
         state.phase = "RALLY";
+        state.phaseTicks = 0;
         strike(state, state.server, true);
       }
-    } else flyShuttle(state);
+    } else if (state.phase === "RALLY") flyShuttle(state);
   }
   return { state: freeze(state), rng: { ...context.rng } };
+}
+
+function projectAthlete(player: BadmintonState["athletes"][number]) {
+  return {
+    x: player.x,
+    y: player.y,
+    moving: player.moving,
+    swingTicks: player.swingTicks,
+    swingShot: player.swingShot,
+    swingKind: player.swingKind,
+    swingStartedTick: player.swingStartedTick,
+    lastContact: player.lastContact === null ? null : { ...player.lastContact },
+  };
 }
 
 export function projectView(context: {
@@ -431,27 +534,9 @@ export function projectView(context: {
       { slotId: string; side: "LEFT" },
       { slotId: string; side: "RIGHT" },
     ],
-    athletes: state.athletes.map((player) => ({
-      x: player.x,
-      y: player.y,
-      moving: player.controls.move !== 0,
-      swingTicks: player.swingTicks,
-      swingShot: player.swingShot,
-    })) as [
-      {
-        x: number;
-        y: number;
-        moving: boolean;
-        swingTicks: number;
-        swingShot: BadmintonControls["shot"];
-      },
-      {
-        x: number;
-        y: number;
-        moving: boolean;
-        swingTicks: number;
-        swingShot: BadmintonControls["shot"];
-      },
+    athletes: state.athletes.map(projectAthlete) as [
+      ReturnType<typeof projectAthlete>,
+      ReturnType<typeof projectAthlete>,
     ],
     shuttle: { x: state.shuttle.x, y: state.shuttle.y },
     scores: [...state.scores] as [number, number],

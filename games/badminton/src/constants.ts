@@ -8,6 +8,9 @@ export const COURT = Object.freeze({
   netTop: 340_000,
   netWidth: 6_000,
   shuttleRadius: 6_000,
+  leftServeLine: 360_000,
+  rightServeLine: 640_000,
+  frontFootOffset: 20_000,
 });
 
 export const PHYSICS = Object.freeze({
@@ -16,7 +19,8 @@ export const PHYSICS = Object.freeze({
   jumpSpeed: 11_000,
   playerGravity: 500,
   shuttleGravity: 320,
-  dragNumerator: 992,
+  dragNumerator: 978,
+  verticalDragNumerator: 985,
   maxFallSpeed: 18_000,
   racketOffsetX: 40_000,
   racketOffsetY: 95_000,
@@ -25,7 +29,11 @@ export const PHYSICS = Object.freeze({
   swingDuration: 10,
   swingCooldown: 24,
   inputLease: 45,
-  serveDelay: 120,
+  serveSwingDuration: 18,
+  serveContactTick: 6,
+  serveHandOffsetX: 40_000,
+  serveHandOffsetY: 70_000,
+  underhandHeight: 80_000,
   pointDelay: 90,
 });
 

@@ -87,6 +87,33 @@ async function expectCourt(page: Page): Promise<void> {
   ).toBeVisible();
 }
 
+async function serve(page: Page): Promise<void> {
+  await surface(page).locator("#badminton-canvas").click();
+  await page.keyboard.press("KeyS");
+  await expect
+    .poll(async () => {
+      harness.advanceRealtimeTicks(1);
+      return surface(page).locator("#root").getAttribute("data-phase");
+    })
+    .toBe("SERVING");
+  await advance(page, 5);
+  await expect(surface(page).locator("#root")).toHaveAttribute(
+    "data-phase",
+    "RALLY",
+  );
+}
+
+async function serviceLinePixel(page: Page): Promise<number[]> {
+  return surface(page)
+    .locator("#badminton-canvas canvas")
+    .evaluate((element) => {
+      const context = (element as HTMLCanvasElement).getContext("2d");
+      if (context === null)
+        throw new Error("Missing badminton canvas context.");
+      return Array.from(context.getImageData(377, 541, 1, 1).data).slice(0, 3);
+    });
+}
+
 async function expectLayouts(page: Page, info: TestInfo): Promise<void> {
   for (const viewport of [
     { width: 2560, height: 1440 },
@@ -119,6 +146,9 @@ async function expectLayouts(page: Page, info: TestInfo): Promise<void> {
               (button) => button.boundingBox(),
             ),
           );
+          const audioToggle = await surface(page)
+            .locator(".audio-toggle")
+            .boundingBox();
           const fits = await page.evaluate(
             () =>
               document.documentElement.scrollWidth <=
@@ -148,7 +178,11 @@ async function expectLayouts(page: Page, info: TestInfo): Promise<void> {
                 Math.min(1400, stage.width - 16, ((stage.height - 16) * 5) / 3),
             ) < 2 &&
             Math.abs(canvas.width / canvas.height - 5 / 3) < 0.01 &&
-            buttons.length === 6 &&
+            buttons.length === 7 &&
+            audioToggle !== null &&
+            audioToggle.width >= 44 &&
+            audioToggle.height >= 44 &&
+            inside(audioToggle) &&
             buttons.every(
               (box) =>
                 box !== null &&
@@ -165,6 +199,8 @@ async function expectLayouts(page: Page, info: TestInfo): Promise<void> {
       .toBe(true);
     if (
       viewport.width === 1440 ||
+      viewport.width === 1024 ||
+      viewport.width === 768 ||
       viewport.width === 390 ||
       viewport.width === 844
     ) {
@@ -211,7 +247,7 @@ test("two accounts play badminton with keyboard and multitouch, reconnect, finis
     await expect(pageA.getByTestId("connection-state")).toHaveText("已连接");
     await expect(pageA.getByTestId("game-surface-iframe")).toHaveAttribute(
       "src",
-      "/game-surfaces/badminton/1.0.2/setup/index.html",
+      "/game-surfaces/badminton/1.1.1/setup/index.html",
     );
     const inviteUrl = await pageA
       .getByTestId("invite-link")
@@ -246,7 +282,7 @@ test("two accounts play badminton with keyboard and multitouch, reconnect, finis
       await expect(page.getByTestId("match-status")).toHaveText("对局进行中");
       await expect(page.getByTestId("game-surface-iframe")).toHaveAttribute(
         "src",
-        "/game-surfaces/badminton/1.0.2/play/index.html",
+        "/game-surfaces/badminton/1.1.1/play/index.html",
       );
       await expectCourt(page);
     }
@@ -274,6 +310,12 @@ test("two accounts play badminton with keyboard and multitouch, reconnect, finis
     const replayId = initialRoom?.currentRound?.replayId;
     if (replayId === undefined)
       throw new Error("Active badminton round was not persisted.");
+    await advance(pageA, 240);
+    expect(await score(pageA)).toEqual([0, 0]);
+    await expect(surface(pageA).locator("#root")).toHaveAttribute(
+      "data-phase",
+      "SERVE",
+    );
 
     await surface(pageA).locator("#badminton-canvas").click();
     await pageA.keyboard.down("KeyD");
@@ -287,7 +329,13 @@ test("two accounts play badminton with keyboard and multitouch, reconnect, finis
           .filter((event) => event.actorSlotId === slotA)
           .map((event) => event.input);
       })
-      .toContainEqual({ type: "CONTROL", move: 1, jump: true, shot: "SMASH" });
+      .toContainEqual({
+        type: "CONTROL",
+        move: 1,
+        jump: true,
+        serve: false,
+        shot: "SMASH",
+      });
     await pageA.keyboard.up("KeyD");
     await pageA.keyboard.up("KeyW");
     await pageA.keyboard.up("KeyK");
@@ -299,7 +347,13 @@ test("two accounts play badminton with keyboard and multitouch, reconnect, finis
           .filter((event) => event.actorSlotId === slotA)
           .at(-1)?.input;
       })
-      .toEqual({ type: "CONTROL", move: 0, jump: false, shot: "NONE" });
+      .toEqual({
+        type: "CONTROL",
+        move: 0,
+        jump: false,
+        serve: false,
+        shot: "NONE",
+      });
 
     // Real Chromium touch input exercises pointer capture and simultaneous
     // contacts; dispatching synthetic pointerdown alone would miss that path.
@@ -332,7 +386,13 @@ test("two accounts play badminton with keyboard and multitouch, reconnect, finis
           .filter((event) => event.actorSlotId === slotB)
           .map((event) => event.input);
       })
-      .toContainEqual({ type: "CONTROL", move: -1, jump: true, shot: "DROP" });
+      .toContainEqual({
+        type: "CONTROL",
+        move: -1,
+        jump: true,
+        serve: false,
+        shot: "DROP",
+      });
     await touch.send("Input.dispatchTouchEvent", {
       type: "touchCancel",
       touchPoints: [],
@@ -345,7 +405,13 @@ test("two accounts play badminton with keyboard and multitouch, reconnect, finis
           .filter((event) => event.actorSlotId === slotB)
           .at(-1)?.input;
       })
-      .toEqual({ type: "CONTROL", move: 0, jump: false, shot: "NONE" });
+      .toEqual({
+        type: "CONTROL",
+        move: 0,
+        jump: false,
+        serve: false,
+        shot: "NONE",
+      });
     await expect(surface(pageB).locator('[aria-pressed="true"]')).toHaveCount(
       0,
     );
@@ -362,7 +428,13 @@ test("two accounts play badminton with keyboard and multitouch, reconnect, finis
           .filter((event) => event.actorSlotId === slotA)
           .at(-1)?.input;
       })
-      .toEqual({ type: "CONTROL", move: -1, jump: false, shot: "NONE" });
+      .toEqual({
+        type: "CONTROL",
+        move: -1,
+        jump: false,
+        serve: false,
+        shot: "NONE",
+      });
     await openGameHud(pageA);
     await pageA.keyboard.up("KeyA");
     await expect
@@ -373,16 +445,68 @@ test("two accounts play badminton with keyboard and multitouch, reconnect, finis
           .filter((event) => event.actorSlotId === slotA)
           .at(-1)?.input;
       })
-      .toEqual({ type: "CONTROL", move: 0, jump: false, shot: "NONE" });
+      .toEqual({
+        type: "CONTROL",
+        move: 0,
+        jump: false,
+        serve: false,
+        shot: "NONE",
+      });
     await closeGameHud(pageA);
 
-    for (
-      let batch = 0;
-      batch < 8 && (await score(pageA))[0] + (await score(pageA))[1] === 0;
-      batch++
-    ) {
-      await advance(pageA, 50);
-    }
+    await surface(pageA).locator("#badminton-canvas").click();
+    await pageA.keyboard.down("KeyD");
+    await expect
+      .poll(async () => {
+        harness.advanceRealtimeTicks(1);
+        return (await replayStore.get(replayId))?.events
+          .filter((event) => event.actorSlotId === slotA)
+          .at(-1)?.input;
+      })
+      .toEqual({
+        type: "CONTROL",
+        move: 1,
+        jump: false,
+        serve: false,
+        shot: "NONE",
+      });
+    await advance(pageA, 40);
+    await expect.poll(() => serviceLinePixel(pageA)).toEqual([70, 127, 170]);
+    await advance(pageA, 3);
+    await expect.poll(() => serviceLinePixel(pageA)).toEqual([70, 127, 170]);
+    await pageA.keyboard.up("KeyD");
+    await advance(pageA, 1);
+    await pageA.screenshot({
+      path: info.outputPath("badminton-service-line.png"),
+    });
+    await pageA.keyboard.down("KeyW");
+    await advance(pageA, 3);
+    await serve(pageA);
+    await pageA.keyboard.up("KeyW");
+    await expect
+      .poll(() => serviceLinePixel(pageA))
+      .not.toEqual([70, 127, 170]);
+    await pageA.screenshot({
+      path: info.outputPath("badminton-airborne-serve.png"),
+    });
+    await expect(
+      surface(pageA).getByRole("checkbox", { name: "音效" }),
+    ).toBeChecked();
+    await surface(pageA).getByRole("checkbox", { name: "音效" }).focus();
+    await pageA.keyboard.press("Space");
+    await expect(
+      surface(pageA).getByRole("checkbox", { name: "音效" }),
+    ).not.toBeChecked();
+    await pageA.keyboard.press("Space");
+    await expect(
+      surface(pageA).getByRole("checkbox", { name: "音效" }),
+    ).toBeChecked();
+    await surface(pageA).getByRole("checkbox", { name: "音效" }).uncheck();
+    await expect(
+      surface(pageA).getByRole("checkbox", { name: "音效" }),
+    ).not.toBeChecked();
+    await surface(pageA).getByRole("checkbox", { name: "音效" }).check();
+    await advance(pageA, 100);
     const firstScore = await score(pageA);
     expect(firstScore[0] + firstScore[1]).toBeGreaterThan(0);
     await expect.poll(() => score(pageB)).toEqual(firstScore);
@@ -397,14 +521,18 @@ test("two accounts play badminton with keyboard and multitouch, reconnect, finis
     await expect.poll(() => score(resumed)).toEqual(firstScore);
     await expectCourt(resumed);
 
-    for (let batch = 0; batch < 35; batch++) {
+    for (let batch = 0; batch < 12; batch++) {
       if (
         (await resumed
           .getByTestId("match-status")
           .getAttribute("data-status")) === "completed"
       )
         break;
-      await advance(resumed, 100);
+      const phase = await surface(resumed)
+        .locator("#root")
+        .getAttribute("data-phase");
+      if (phase === "SERVE") await serve(resumed);
+      await advance(resumed, 176);
     }
     await expect(resumed.getByTestId("match-status")).toHaveText("对局已完成");
     await expect(pageB.getByTestId("match-status")).toHaveText("对局已完成");

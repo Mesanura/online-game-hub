@@ -31,7 +31,10 @@ import {
   pongDefinitionV1_1_0,
 } from "@online-game-hub/pong/core";
 import { pongSetupDefinition } from "@online-game-hub/pong/setup";
-import { badmintonDefinition } from "@online-game-hub/badminton/core";
+import {
+  badmintonDefinition,
+  badmintonDefinitionV1_0_0,
+} from "@online-game-hub/badminton/core";
 import { badmintonSetupDefinition } from "@online-game-hub/badminton/setup";
 // create-game:server-definition-import
 import { eraseGameDefinition } from "@online-game-hub/game-sdk";
@@ -89,6 +92,7 @@ const realtimeServerDefinitions = Object.freeze([
   eraseRealtimeGameDefinition(pongDefinitionV1_1_0),
   eraseRealtimeGameDefinition(pongDefinition),
   eraseRealtimeGameDefinition(badmintonDefinition),
+  eraseRealtimeGameDefinition(badmintonDefinitionV1_0_0),
 ]) as readonly UnknownRealtimeGameDefinition[];
 
 export function resolveRealtimeGameDefinition(
@@ -117,6 +121,11 @@ export type RealtimeGameDefinitionResolver =
   typeof resolveRealtimeGameDefinition;
 
 const roundSetupDefinitions = Object.freeze([
+  Object.freeze({
+    gameId: badmintonDefinitionV1_0_0.manifest.id,
+    gameVersion: badmintonDefinitionV1_0_0.manifest.gameVersion,
+    definition: eraseRoundSetupDefinition(badmintonSetupDefinition),
+  }),
   Object.freeze({
     gameId: badmintonDefinition.manifest.id,
     gameVersion: badmintonDefinition.manifest.gameVersion,

@@ -25,7 +25,7 @@ const players = [
   defineRealtimePlayerSlotId("right-slot"),
 ] as const;
 const rng = createRealtimeRng("badminton-unit-seed");
-const neutral = { move: 0, jump: false, shot: "NONE" } as const;
+const neutral = { move: 0, jump: false, serve: false, shot: "NONE" } as const;
 function initial(targetScore: 7 | 11 | 21 = 7) {
   return createInitialState({ config: { targetScore }, players, rng }).state;
 }
@@ -85,7 +85,7 @@ describe("badminton schemas and initialization", () => {
     expect(first.state).toMatchObject({
       phase: "SERVE",
       tick: 0,
-      phaseTicks: 120,
+      phaseTicks: 0,
       scores: [0, 0],
       server: 0,
     });
@@ -168,7 +168,7 @@ describe("movement and input safety", () => {
     "moves both sides in world direction %s",
     (move) => {
       for (const side of [0, 1] as const) {
-        const state = initial();
+        const state = rally();
         expect(advance(state, { move }, side).athletes[side].x).toBe(
           state.athletes[side].x + move * PHYSICS.runSpeed,
         );
@@ -179,7 +179,7 @@ describe("movement and input safety", () => {
   it("clamps both sides at the net and outer edges", () => {
     for (const side of [0, 1] as const) {
       for (const move of [-1, 1] as const) {
-        let state = initial();
+        let state = rally();
         for (let tick = 0; tick < 65; tick += 1)
           state = advance(state, { move }, side);
         const bounds = side === 0 ? [30_000, 465_000] : [535_000, 970_000];
@@ -201,7 +201,7 @@ describe("movement and input safety", () => {
   });
 
   it("continues held movement, accepts release and expires lost input", () => {
-    const moving = advance(initial(), { move: 1, shot: "CLEAR" });
+    const moving = advance(rally(), { move: 1, shot: "CLEAR" });
     expect(advance(moving).athletes[0].x).toBe(
       moving.athletes[0].x + PHYSICS.runSpeed,
     );
@@ -214,7 +214,7 @@ describe("movement and input safety", () => {
   });
 
   it("does not restart an active swing on each input heartbeat", () => {
-    const first = advance(initial(), { shot: "CLEAR" });
+    const first = advance(rally(), { shot: "CLEAR" });
     expect(first.athletes[0].swingTicks).toBe(10);
     const second = advance(first, { shot: "CLEAR" });
     expect(second.athletes[0].swingTicks).toBe(9);
@@ -223,16 +223,23 @@ describe("movement and input safety", () => {
 });
 
 describe("serving and racket contacts", () => {
-  it("counts down then serves automatically and never lets the receiver strike the held shuttle", () => {
+  it("waits indefinitely and only releases the server's held shuttle on the sixth serve tick", () => {
     let state = initial();
-    for (let tick = 0; tick < PHYSICS.serveDelay - 1; tick += 1)
-      state = advance(state, { shot: "SMASH" }, 1);
+    for (let tick = 0; tick < 2000; tick += 1)
+      state = advance(state, { shot: "SMASH", serve: true }, 1);
     expect(state).toMatchObject({
       phase: "SERVE",
-      phaseTicks: 1,
+      phaseTicks: 0,
       rallyHits: 0,
     });
-    state = advance(state);
+    state = advance(state, { serve: true });
+    expect(state.phase).toBe("SERVING");
+    for (let tick = 1; tick < PHYSICS.serveContactTick - 1; tick++) {
+      state = advance(state, { serve: true });
+      expect(state.phase).toBe("SERVING");
+      expect(state.shuttle.lastHit).toBeNull();
+    }
+    state = advance(state, { serve: true });
     expect(state).toMatchObject({
       phase: "RALLY",
       phaseTicks: 0,
@@ -241,6 +248,7 @@ describe("serving and racket contacts", () => {
     });
     expect(state.shuttle.velocityX).toBeGreaterThan(0);
     expect(state.shuttle.velocityY).toBeLessThan(0);
+    expect(state.athletes[0].swingTicks).toBe(13);
   });
 
   it.each(["CLEAR", "DROP"] as const)(
@@ -462,7 +470,7 @@ describe("collision and scoring rules", () => {
       state = advance(state);
     expect(state).toMatchObject({
       phase: "SERVE",
-      phaseTicks: 120,
+      phaseTicks: 0,
       server: 1,
       rally: 2,
       rallyHits: 0,
@@ -569,7 +577,7 @@ describe("purity, projection and complete deterministic matches", () => {
     }
   });
 
-  it("completes unattended matches by actual scoring without consuming RNG", () => {
+  it("completes manually served matches by actual scoring without consuming RNG", () => {
     const run = () => {
       let current = createInitialState({
         config: { targetScore: 7 },
@@ -577,7 +585,20 @@ describe("purity, projection and complete deterministic matches", () => {
         rng,
       });
       while (getOutcome(current.state) === null && current.state.tick < 4_000) {
-        current = step({ ...current, tick: current.state.tick, inputs: [] });
+        current = step({
+          ...current,
+          tick: current.state.tick,
+          inputs: [
+            {
+              slotId: players[current.state.server],
+              input: {
+                type: "CONTROL",
+                ...neutral,
+                serve: current.state.phase === "SERVE",
+              },
+            },
+          ],
+        });
         expect(badmintonStateSchema.safeParse(current.state).success).toBe(
           true,
         );
@@ -607,6 +628,7 @@ describe("purity, projection and complete deterministic matches", () => {
             type: "CONTROL",
             move: (((Math.floor(tick / 30) + index) % 3) - 1) as -1 | 0 | 1,
             jump: tick % 55 < 20,
+            serve: state.phase === "SERVE",
             shot:
               (["CLEAR", "DROP", "SMASH"] as const)[
                 Math.floor(tick / 45) % 3

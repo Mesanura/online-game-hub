@@ -255,26 +255,29 @@ const chineseCheckersSurface = (
     }),
   });
 
-const badmintonSurfaceV1: GameDeploymentRegistration = Object.freeze({
-  gameId: "badminton",
-  gameVersion: "1.0.0",
-  setupProtocol: 6,
-  platformControls: resignPlatformControls,
-  presentation: Object.freeze({
-    kind: "surface-v1",
-    publicBasePath: "/game-surfaces/badminton/1.0.2",
-    artifact: {
-      schemaVersion: 1,
-      gameId: "badminton",
-      supportedGameVersions: ["1.0.0"],
-      surfaceVersion: "1.0.2",
-      bridgeVersion: 2,
-      entrypoints: { setup: "setup/index.html", play: "play/index.html" },
-      capabilities: {},
-      contentDigest: "sha256-rzl6S09rSaECnYyU9m2eFaT5QqVJid0eunizseTIqHg=",
-    } satisfies SurfaceArtifactManifestV1,
-  }),
-});
+const badmintonSurface = (
+  gameVersion: "1.0.0" | "1.1.0",
+): GameDeploymentRegistration =>
+  Object.freeze({
+    gameId: "badminton",
+    gameVersion,
+    setupProtocol: 6,
+    platformControls: resignPlatformControls,
+    presentation: Object.freeze({
+      kind: "surface-v1",
+      publicBasePath: "/game-surfaces/badminton/1.1.1",
+      artifact: {
+        schemaVersion: 1,
+        gameId: "badminton",
+        supportedGameVersions: ["1.0.0", "1.1.0"],
+        surfaceVersion: "1.1.1",
+        bridgeVersion: 2,
+        entrypoints: { setup: "setup/index.html", play: "play/index.html" },
+        capabilities: {},
+        contentDigest: "sha256-iQJGxKz3Ay7Qt/kWSFAMO3Ch2tzjZcg6AKPsqAS7gog=",
+      } satisfies SurfaceArtifactManifestV1,
+    }),
+  });
 
 const gameDeployments = Object.freeze([
   ticTacToeSurface("1.0.0", 5),
@@ -291,7 +294,8 @@ const gameDeployments = Object.freeze([
   pongSurface("1.0.0"),
   pongSurface("1.1.0"),
   pongSurface("1.2.0"),
-  badmintonSurfaceV1,
+  badmintonSurface("1.0.0"),
+  badmintonSurface("1.1.0"),
 ]) satisfies readonly GameDeploymentRegistration[];
 
 export function resolveGameDeployment(

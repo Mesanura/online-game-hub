@@ -17,13 +17,22 @@ export const badmintonInputSchema = z.discriminatedUnion("type", [
       type: z.literal("CONTROL"),
       move: direction,
       jump: z.boolean(),
+      serve: z.boolean(),
       shot,
     })
     .strict(),
   z.object({ type: z.literal("RESIGN") }).strict(),
 ]);
 const controls = z
-  .object({ move: direction, jump: z.boolean(), shot })
+  .object({ move: direction, jump: z.boolean(), serve: z.boolean(), shot })
+  .strict();
+const contact = z
+  .object({
+    tick: integer.nonnegative(),
+    x: integer,
+    y: integer,
+    shot: z.enum(["CLEAR", "DROP", "SMASH"]),
+  })
   .strict();
 const athlete = z
   .object({
@@ -33,10 +42,15 @@ const athlete = z
     controls,
     inputAge: integer.min(0).max(PHYSICS.inputLease),
     jumpHeld: z.boolean(),
-    swingTicks: integer.min(0).max(PHYSICS.swingDuration),
+    serveHeld: z.boolean(),
+    moving: z.boolean(),
+    swingTicks: integer.min(0).max(PHYSICS.serveSwingDuration),
     cooldown: integer.min(0).max(PHYSICS.swingCooldown),
     swingShot: shot,
     hitThisSwing: z.boolean(),
+    swingKind: z.enum(["OVERHEAD", "UNDERHAND", "SERVE"]).nullable(),
+    swingStartedTick: integer.nonnegative().nullable(),
+    lastContact: contact.nullable(),
   })
   .strict();
 
@@ -74,8 +88,8 @@ export const badmintonStateSchema = z
     players: z.tuple([slot, slot]),
     targetScore,
     tick: integer.nonnegative(),
-    phase: z.enum(["SERVE", "RALLY", "POINT", "FINISHED"]),
-    phaseTicks: integer.min(0).max(PHYSICS.serveDelay),
+    phase: z.enum(["SERVE", "SERVING", "RALLY", "POINT", "FINISHED"]),
+    phaseTicks: integer.min(0).max(PHYSICS.pointDelay),
     server: side,
     athletes: z.tuple([athlete, athlete]),
     shuttle: z

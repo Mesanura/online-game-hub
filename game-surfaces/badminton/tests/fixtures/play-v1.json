@@ -8,10 +8,7 @@
     "netX": 500000,
     "netTop": 340000,
     "netWidth": 6000,
-    "shuttleRadius": 6000,
-    "leftServeLine": 360000,
-    "rightServeLine": 640000,
-    "frontFootOffset": 20000
+    "shuttleRadius": 6000
   },
   "players": [
     {
@@ -29,32 +26,26 @@
       "y": 500000,
       "moving": false,
       "swingTicks": 0,
-      "swingShot": "NONE",
-      "swingKind": null,
-      "swingStartedTick": null,
-      "lastContact": null
+      "swingShot": "NONE"
     },
     {
       "x": 760000,
       "y": 500000,
       "moving": false,
       "swingTicks": 0,
-      "swingShot": "NONE",
-      "swingKind": null,
-      "swingStartedTick": null,
-      "lastContact": null
+      "swingShot": "NONE"
     }
   ],
   "shuttle": {
     "x": 280000,
-    "y": 430000
+    "y": 405000
   },
   "scores": [0, 0],
   "targetScore": 7,
   "scoreCap": 11,
   "tick": 0,
   "phase": "SERVE",
-  "phaseTicks": 0,
+  "phaseTicks": 120,
   "servingSide": "LEFT",
   "yourSide": "LEFT",
   "rally": 1,

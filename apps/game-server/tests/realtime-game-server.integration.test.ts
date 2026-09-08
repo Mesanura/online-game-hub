@@ -931,7 +931,7 @@ describe.sequential("realtime badminton Protocol V6", () => {
     expect(await discovery.json()).toEqual({
       roomCode: "BDMN2345",
       gameId: "badminton",
-      gameVersion: "1.0.0",
+      gameVersion: "1.1.0",
       setupProtocol: SETUP_PROTOCOL_VERSION,
       runtime: "realtime",
     });
@@ -1034,6 +1034,7 @@ describe.sequential("realtime badminton Protocol V6", () => {
         type: "CONTROL",
         move: 1,
         jump: false,
+        serve: false,
         shot: "CLEAR",
         x: 900_000,
       }),
@@ -1041,6 +1042,7 @@ describe.sequential("realtime badminton Protocol V6", () => {
         type: "CONTROL",
         move: 2,
         jump: false,
+        serve: false,
         shot: "CLEAR",
       }),
       input("forged-outcome", 1, { type: "RESIGN", scores: [7, 0] }),
@@ -1058,6 +1060,7 @@ describe.sequential("realtime badminton Protocol V6", () => {
       type: "CONTROL",
       move: -1,
       jump: true,
+      serve: false,
       shot: "CLEAR",
     });
     roomA.send(REALTIME_INPUT_MESSAGE, movement);
@@ -1098,6 +1101,7 @@ describe.sequential("realtime badminton Protocol V6", () => {
         type: "CONTROL",
         move: 0,
         jump: false,
+        serve: false,
         shot: "NONE",
       }),
     );
@@ -1173,19 +1177,69 @@ describe.sequential("realtime badminton Protocol V6", () => {
       "badminton-slot-1",
     ]);
     expect(seedSequence).toBe(2);
-    // With no player input, automatic serves exercise real physics, points,
-    // score completion and the entire accepted-input-only replay path.
-    for (
-      let batch = 0;
-      batch < 50 && resumed.snapshots.at(-1)?.outcome === null;
-      batch++
-    ) {
+    for (let tick = 0; tick < 240; tick++) await schedulerTimer.tick();
+    await waitUntil(() => resumed.snapshots.at(-1)?.tick === 240);
+    expect(resumed.snapshots.at(-1)?.view).toMatchObject({
+      phase: "SERVE",
+      scores: [0, 0],
+    });
+    takeover.send(REALTIME_INPUT_MESSAGE, {
+      ...input("receiver-serve", 1, {
+        type: "CONTROL",
+        move: 0,
+        jump: false,
+        serve: true,
+        shot: "NONE",
+      }),
+      roundNumber: 2,
+    });
+    await deliveryBarrier(takeover, resumed);
+    await advance(resumed);
+    expect(resumed.snapshots.at(-1)?.view).toMatchObject({
+      phase: "SERVE",
+      scores: [0, 0],
+    });
+    let serveSequence = 0;
+    for (let point = 0; point < 7; point++) {
+      roomB.send(REALTIME_INPUT_MESSAGE, {
+        ...input(`manual-serve-${point}`, ++serveSequence, {
+          type: "CONTROL",
+          move: 0,
+          jump: false,
+          serve: true,
+          shot: "NONE",
+        }),
+        roundNumber: 2,
+      });
+      await deliveryBarrier(roomB, inboxB);
+      await advance(resumed);
+      expect(resumed.snapshots.at(-1)?.view).toMatchObject({
+        phase: "SERVING",
+        rallyHits: 0,
+      });
+      for (let tick = 0; tick < 5; tick++) await schedulerTimer.tick();
+      await waitUntil(
+        () =>
+          (resumed.snapshots.at(-1)?.view as { phase: string }).phase ===
+          "RALLY",
+      );
+      roomB.send(REALTIME_INPUT_MESSAGE, {
+        ...input(`serve-release-${point}`, ++serveSequence, {
+          type: "CONTROL",
+          move: 0,
+          jump: false,
+          serve: false,
+          shot: "NONE",
+        }),
+        roundNumber: 2,
+      });
+      await deliveryBarrier(roomB, inboxB);
       const initialTick = resumed.snapshots.at(-1)?.tick ?? 0;
-      for (let tick = 0; tick < 60; tick++) await schedulerTimer.tick();
+      for (let tick = 0; tick < 176; tick++) await schedulerTimer.tick();
       await waitUntil(
         () =>
           resumed.snapshots.at(-1)?.outcome !== null ||
-          (resumed.snapshots.at(-1)?.tick ?? 0) >= initialTick + 60,
+          (resumed.snapshots.at(-1)?.tick ?? 0) >= initialTick + 176,
       );
     }
     await waitUntil(
@@ -1198,7 +1252,13 @@ describe.sequential("realtime badminton Protocol V6", () => {
       winnerSlotId: "badminton-slot-2",
       scores: [7, 0],
     });
-    expect(scoredReplay?.events).toEqual([]);
+    expect(
+      scoredReplay?.events.filter(
+        (event) =>
+          (event.input as { serve?: boolean }).serve &&
+          event.actorSlotId === "badminton-slot-2",
+      ),
+    ).toHaveLength(7);
     expect(scoredReplay?.recordedRngCursor).toBe(0);
     expect(scoredReplay?.header.rng.seed).not.toBe(
       firstReplay?.header.rng.seed,
