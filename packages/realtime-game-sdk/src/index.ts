@@ -59,9 +59,11 @@ export interface RealtimeGameManifest {
   readonly title: string;
   readonly description: string;
   readonly defaultConfig: JsonValue;
-  readonly minPlayers: 2;
-  readonly maxPlayers: 2;
+  readonly minPlayers: number;
+  readonly maxPlayers: number;
   readonly tickRate: 60;
+  /** Default preserves legacy per-tick last-input semantics. Events retain every accepted intent. */
+  readonly inputDelivery?: "latest" | "events";
   readonly capabilities: {
     readonly hiddenInformation: false;
     readonly deterministicRandomness: true;
@@ -552,7 +554,8 @@ export function verifyRealtimeReplay(
     header.rng.seed.length === 0 ||
     header.rng.seed.length > 4096 ||
     !Array.isArray(header.players) ||
-    header.players.length !== 2 ||
+    header.players.length < 2 ||
+    header.players.length > 8 ||
     !Array.isArray(replay.events) ||
     !Number.isSafeInteger(replay.finalTick) ||
     (replay.finalTick as number) < 0 ||
@@ -607,12 +610,21 @@ export function verifyRealtimeReplay(
     definition.manifest.id !== header.gameId ||
     definition.manifest.gameVersion !== header.gameVersion ||
     definition.manifest.tickRate !== 60 ||
-    definition.manifest.minPlayers !== 2 ||
-    definition.manifest.maxPlayers !== 2
+    definition.manifest.minPlayers < 2 ||
+    definition.manifest.maxPlayers > 8
   ) {
     return fail(
       "UNKNOWN_GAME_VERSION",
       "No exact realtime definition is registered.",
+    );
+  }
+  if (
+    players.length < definition.manifest.minPlayers ||
+    players.length > definition.manifest.maxPlayers
+  ) {
+    return fail(
+      "INVALID_HEADER",
+      "Player count is outside the exact game's range.",
     );
   }
   const configResult = definition.configSchema.safeParse(header.initialConfig);
@@ -717,10 +729,12 @@ export function verifyRealtimeReplay(
   let eventIndex = 0;
   for (let tick = 0; tick < (replay.finalTick as number); tick += 1) {
     const changes = new Map<RealtimePlayerSlotId, JsonValue>();
+    const eventsForTick: RealtimePlayerInput[] = [];
     while (parsedEvents[eventIndex]?.tick === tick) {
       const event = parsedEvents[eventIndex];
       if (event === undefined) break;
       changes.set(event.slotId, event.input);
+      eventsForTick.push({ slotId: event.slotId, input: event.input });
       eventIndex += 1;
     }
     const inputs = players.flatMap((slot) => {
@@ -729,7 +743,15 @@ export function verifyRealtimeReplay(
       return input === undefined ? [] : [{ slotId, input }];
     });
     try {
-      const next = definition.step({ state, tick, inputs, rng });
+      const next = definition.step({
+        state,
+        tick,
+        inputs:
+          definition.manifest.inputDelivery === "events"
+            ? eventsForTick
+            : inputs,
+        rng,
+      });
       if (
         !isJsonValue(next.state) ||
         !validRng(next.rng, rng.seed, rng.cursor)
@@ -886,10 +908,15 @@ export function reconstructRealtimeReplayFrames(
   let eventIndex = 0;
   for (let tick = 0; tick < finalTick; tick += 1) {
     const changes = new Map<RealtimePlayerSlotId, JsonValue>();
+    const eventsForTick: RealtimePlayerInput[] = [];
     while (events[eventIndex]?.tick === tick) {
       const event = events[eventIndex];
       if (event === undefined) break;
       changes.set(defineRealtimePlayerSlotId(event.actorSlotId), event.input);
+      eventsForTick.push({
+        slotId: defineRealtimePlayerSlotId(event.actorSlotId),
+        input: event.input,
+      });
       eventIndex += 1;
     }
     const inputs = players.flatMap((slot) => {
@@ -898,7 +925,15 @@ export function reconstructRealtimeReplayFrames(
       return input === undefined ? [] : [{ slotId, input }];
     });
     try {
-      const next = definition.step({ state, tick, inputs, rng });
+      const next = definition.step({
+        state,
+        tick,
+        inputs:
+          definition.manifest.inputDelivery === "events"
+            ? eventsForTick
+            : inputs,
+        rng,
+      });
       if (
         !isJsonValue(next.state) ||
         !validRng(next.rng, rng.seed, rng.cursor)

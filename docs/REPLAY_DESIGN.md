@@ -1,5 +1,7 @@
 # Replay 设计
 
+实时多人扩展保持 Replay Format V1 envelope：players 支持 2–8 个互异席位，读取时还须符合 exact game manifest。manifest.inputDelivery 省略或 latest 时保持历史每 tick 每玩家最后输入；events 时按 journal 中稳定席位顺序逐条交付，同席位保留接收顺序。验证与投影帧重建同时遵守该策略。坦克迷战使用 events 和 record-only，地图小局属于同一 canonical record；所有历史版本解释保持不变。
+
 > 状态：Replay Format V1 与独立 Realtime Replay Format V1；exact game version 显式声明 replay 能力
 > 本文是 canonical replay 内容、确定性重建、版本兼容和存储端口的权威来源。Core 随机性规则见 [GAME_PLUGIN_SPEC.md](./GAME_PLUGIN_SPEC.md)。
 

@@ -113,6 +113,37 @@ async function setup() {
 }
 
 describe("fixed-tick realtime round", () => {
+  it("opts into event delivery without changing legacy coalescing and supports eight snapshots", async () => {
+    for (const inputDelivery of ["latest", "events"] as const) {
+      const store = new InMemoryRealtimeReplayStore();
+      const round = await RealtimeRound.create({
+        definition: {
+          ...definition,
+          manifest: { ...definition.manifest, maxPlayers: 8, inputDelivery },
+        },
+        config: null,
+        players: [
+          left,
+          right,
+          ...Array.from({ length: 6 }, (_, i) =>
+            defineRealtimePlayerSlotId("extra-" + i),
+          ),
+        ],
+        rng: createRealtimeRng("events"),
+        roundNumber: 1,
+        replayId: "events",
+        replayStore: store,
+      });
+      await round.receiveInput(left, command("a", 1, 1));
+      await round.receiveInput(left, command("b", 2, 1));
+      const snapshots = await round.advanceTick();
+      expect(snapshots).toHaveLength(8);
+      expect(snapshots[0]?.view.values[0]).toBe(
+        inputDelivery === "events" ? 2 : 1,
+      );
+      expect((await store.get("events"))?.events).toHaveLength(2);
+    }
+  });
   it("assigns the next effective tick and orders simultaneous input by slot", async () => {
     const { round, store } = await setup();
     await expect(

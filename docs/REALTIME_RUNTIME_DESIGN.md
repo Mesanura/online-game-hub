@@ -1,5 +1,11 @@
 # Realtime Runtime 设计基线
 
+## 当前扩展：2–8 人与事件输入
+
+坦克迷战使用 V6 Setup、独立 SVG Surface 和 record-only journal。实时 manifest 的 minPlayers/maxPlayers 允许 2–8，V6 lifecycle/readiness 上限扩至 8；runtime 根据 manifest 创建 stable slots，finalized setup 确定实际参与者。Pong、羽毛球及 V5 仍限定双人。数据库沿用现有 JSONB/关联表，房间、参与顺序、归档和 replay 读取校验同步支持多人，无 schema migration。
+
+manifest 可声明 inputDelivery: latest | events，省略为 latest，保留历史同 tick 每人最后一次输入语义。events 保留该 tick 全部 accepted 输入，先按稳定 playerOrder 排列，同玩家内保留接收顺序；服务端执行、canonical journal 和两个 replay runner 使用相同语义。此选项解决按次射击与持续移动同 tick 被合并的问题，不添加具体游戏分支。Realtime Protocol V1 和 Replay Format V1 字段未变，精确游戏版本决定输入语义，旧 golden 重建不变。详情见 [坦克迷战规格](../games/tank-maze/GAME_SPEC.md)。
+
 > 状态：M8 已实现（单实例双人 Pong）；M9 已接入 Setup V6 与独立 Phaser Surface；额外火柴人羽毛球复用相同运行时
 >
 > 本文是独立 realtime runtime 及其 Pong、羽毛球消费者的权威设计边界。M8 范围与退出条件保留为历史基线，额外游戏见第 10 节。现有回合制契约仍以 [GAME_PLUGIN_SPEC.md](./GAME_PLUGIN_SPEC.md)、[NETWORK_PROTOCOL.md](./NETWORK_PROTOCOL.md) 和 [REPLAY_DESIGN.md](./REPLAY_DESIGN.md) 为准。

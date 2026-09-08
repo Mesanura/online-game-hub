@@ -578,8 +578,8 @@ const readinessV6Schema = z
   .object({
     canReady: z.boolean(),
     selfReady: z.boolean(),
-    readySlotIds: z.array(z.string().min(1)).max(6),
-    requiredSlotIds: z.array(z.string().min(1)).min(1).max(6),
+    readySlotIds: z.array(z.string().min(1)).max(8),
+    requiredSlotIds: z.array(z.string().min(1)).min(1).max(8),
   })
   .strict()
   .superRefine((readiness, context) => {
@@ -629,7 +629,7 @@ export const roomLifecycleStateV6Schema = z
     nextRound: nextRoundLifecycleV6Schema.nullable(),
     closed: z.boolean(),
     closeReason: roomCloseReasonSchema.nullable(),
-    players: z.array(lifecyclePlayerV6Schema).min(1).max(6),
+    players: z.array(lifecyclePlayerV6Schema).min(1).max(8),
     causedByCommandId: commandIdSchema.optional(),
   })
   .strict()

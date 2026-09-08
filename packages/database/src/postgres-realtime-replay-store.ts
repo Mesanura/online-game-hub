@@ -120,7 +120,8 @@ function validHeader(value: unknown): value is RealtimeReplayHeader {
     value.rng.seed.length === 0 ||
     value.rng.seed.length > 4096 ||
     !Array.isArray(value.players) ||
-    value.players.length !== 2
+    value.players.length < 2 ||
+    value.players.length > 8
   ) {
     return false;
   }

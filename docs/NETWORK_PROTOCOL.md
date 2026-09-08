@@ -1,5 +1,7 @@
 # 网络协议
 
+当前 V6 扩展：room.lifecycle 的 players、readySlotIds 和 requiredSlotIds 支持最多 8 个稳定席位，供坦克迷战多人 realtime 使用；V5 原有上限不变。Realtime input/snapshot wire envelope 不变，具体参与人数仍由 exact manifest 与 Setup 校验。
+
 > 状态：Protocol V5/V6 双轨迁移；Realtime Input/Snapshot Protocol V1 保持独立且不变
 > 本文是 Web、Game Server 与浏览器之间身份、房间、消息、revision 和重连语义的权威来源。游戏规则 payload 见 [GAME_PLUGIN_SPEC.md](./GAME_PLUGIN_SPEC.md)。
 

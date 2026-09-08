@@ -182,7 +182,8 @@ function validRealtimeReplayHeader(
     value.rng.seed.length > 0 &&
     value.rng.seed.length <= 4096 &&
     isJsonValue(value.initialConfig) &&
-    players.length === 2 &&
+    players.length >= 2 &&
+    players.length <= 8 &&
     players.every(
       (player) =>
         isRecord(player) &&
@@ -192,7 +193,7 @@ function validRealtimeReplayHeader(
         player.slotId.length <= 128,
     ) &&
     new Set(players.map((player) => (player as { slotId: string }).slotId))
-      .size === 2
+      .size === players.length
   );
 }
 
@@ -377,7 +378,7 @@ export interface RealtimeRoundOptions<
     Outcome
   >;
   readonly config: Config;
-  readonly players: readonly [RealtimePlayerSlotId, RealtimePlayerSlotId];
+  readonly players: readonly RealtimePlayerSlotId[];
   readonly rng: RealtimeRngState;
   readonly roundNumber: number;
   readonly replayId: string;
@@ -406,7 +407,7 @@ export class RealtimeRound<
     View,
     Outcome
   >;
-  readonly #players: readonly [RealtimePlayerSlotId, RealtimePlayerSlotId];
+  readonly #players: readonly RealtimePlayerSlotId[];
   readonly #roundNumber: number;
   readonly #replayId: string;
   readonly #replayStore: RealtimeReplayStore;
@@ -459,6 +460,13 @@ export class RealtimeRound<
       throw new RangeError("Round number must be a positive integer.");
     }
     const config = options.definition.configSchema.parse(options.config);
+    if (
+      options.players.length < options.definition.manifest.minPlayers ||
+      options.players.length > options.definition.manifest.maxPlayers ||
+      new Set(options.players).size !== options.players.length
+    ) {
+      throw new RangeError("Invalid realtime participants.");
+    }
     const initialized = options.definition.createInitialState({
       config,
       players: options.players,
@@ -577,7 +585,10 @@ export class RealtimeRound<
     const next = this.#definition.step({
       state: this.#state,
       tick: this.#tick,
-      inputs,
+      inputs:
+        this.#definition.manifest.inputDelivery === "events"
+          ? applicable.map(({ slotId, input }) => ({ slotId, input }))
+          : inputs,
       rng: this.#rng,
     });
     this.#state = next.state;
@@ -1146,17 +1157,13 @@ export function createRealtimeGameRoomClass(
     #queue: Promise<void> = Promise.resolve();
     #scheduler: RealtimeTickScheduler | null = null;
     #terminalTimeout: { cancel(): void } | null = null;
-    #playerOrder: readonly [RealtimePlayerSlotId, RealtimePlayerSlotId] | null =
-      null;
+    #playerOrder: readonly RealtimePlayerSlotId[] | null = null;
     #pendingRound: {
       readonly roundNumber: number;
       readonly replayId: string;
       readonly config: JsonValue;
       readonly finalizedSetup: FinalizedRoundSetup | null;
-      readonly playerOrder: readonly [
-        RealtimePlayerSlotId,
-        RealtimePlayerSlotId,
-      ];
+      readonly playerOrder: readonly RealtimePlayerSlotId[];
       readonly round: RealtimeRound<
         JsonValue,
         JsonValue,
@@ -1261,13 +1268,16 @@ export function createRealtimeGameRoomClass(
       this.#setupProtocol = setupProtocol;
       this.#roomCode = await this.#createRoomCode();
       this.#creatorSessionId = verification.playerSessionId;
-      this.#slots = [0, 1].map((index) => ({
-        slotId: ids.createPlayerSlotId(index),
-        playerSessionId: index === 0 ? verification.playerSessionId : null,
-        userId: index === 0 ? verification.userId : null,
-        reservedUntilMilliseconds: null,
-        timeout: null,
-      }));
+      this.#slots = Array.from(
+        { length: definition.manifest.maxPlayers },
+        (_, index) => ({
+          slotId: ids.createPlayerSlotId(index),
+          playerSessionId: index === 0 ? verification.playerSessionId : null,
+          userId: index === 0 ? verification.userId : null,
+          reservedUntilMilliseconds: null,
+          timeout: null,
+        }),
+      );
       const setupDefinition =
         setupProtocol === SETUP_PROTOCOL_VERSION
           ? dependencies.resolveRoundSetupDefinition(
@@ -1305,7 +1315,7 @@ export function createRealtimeGameRoomClass(
       // Platform slots still cap the room at two players in onJoin; Colyseus
       // maxClients is a transport reservation limit, so it must account for
       // the old and replacement connections briefly coexisting.
-      this.maxClients = 4;
+      this.maxClients = definition.manifest.maxPlayers * 2;
       this.maxMessagesPerSecond = 120;
       await roomStore.create(this.#storedRoom());
       await this.setMetadata({
@@ -1927,7 +1937,7 @@ export function createRealtimeGameRoomClass(
           RealtimePlayerSlotId,
           RealtimePlayerSlotId,
         ];
-        let ordered: readonly [RealtimePlayerSlotId, RealtimePlayerSlotId];
+        let ordered: readonly RealtimePlayerSlotId[];
         let config: JsonValue;
         let finalizedSetup: FinalizedRoundSetup | null = null;
         if (setupProtocol === SETUP_PROTOCOL_VERSION) {
@@ -1935,15 +1945,13 @@ export function createRealtimeGameRoomClass(
           if (
             finalized === null ||
             finalized === undefined ||
-            finalized.playerOrder.length !== 2 ||
+            finalized.playerOrder.length < definition.manifest.minPlayers ||
+            finalized.playerOrder.length > definition.manifest.maxPlayers ||
             !isJsonValue(finalized.config)
           ) {
             throw new Error("Protocol V6 setup has not been finalized.");
           }
-          ordered = [
-            finalized.playerOrder[0] as RealtimePlayerSlotId,
-            finalized.playerOrder[1] as RealtimePlayerSlotId,
-          ];
+          ordered = finalized.playerOrder.map(defineRealtimePlayerSlotId);
           config = finalized.config as JsonValue;
           finalizedSetup = finalized;
         } else {
@@ -2635,10 +2643,7 @@ export function createRealtimeGameRoomClass(
       pending: {
         readonly roundNumber: number;
         readonly replayId: string;
-        readonly playerOrder: readonly [
-          RealtimePlayerSlotId,
-          RealtimePlayerSlotId,
-        ];
+        readonly playerOrder: readonly RealtimePlayerSlotId[];
         readonly round: RealtimeRound<
           JsonValue,
           JsonValue,

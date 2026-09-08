@@ -244,8 +244,10 @@ function validRoom(room: RealtimeStoredRoom): boolean {
     !isRealtimeGameVersion(room.gameVersion) ||
     !setupProtocolGenerationSchema.safeParse(room.setupProtocol).success ||
     !isJsonValue(room.initialConfig) ||
-    room.players.length !== 2 ||
-    new Set(room.players.map((player) => player.slotId)).size !== 2 ||
+    room.players.length < 2 ||
+    room.players.length > (room.setupProtocol === 5 ? 2 : 8) ||
+    new Set(room.players.map((player) => player.slotId)).size !==
+      room.players.length ||
     !validSetupPersistence(room)
   )
     return false;
@@ -267,8 +269,9 @@ function validRoom(room: RealtimeStoredRoom): boolean {
     Number.isSafeInteger(round.roundNumber) &&
     round.roundNumber > 0 &&
     round.replayId.length > 0 &&
-    round.playerOrder.length === 2 &&
-    new Set(round.playerOrder).size === 2 &&
+    round.playerOrder.length >= 2 &&
+    round.playerOrder.length <= room.players.length &&
+    new Set(round.playerOrder).size === round.playerOrder.length &&
     round.playerOrder.every((slot) =>
       room.players.some((player) => player.slotId === slot),
     ) &&
@@ -358,8 +361,10 @@ function roomFromRows(
         };
   if (currentRound !== null) {
     if (
-      currentRound.playerOrder.length !== 2 ||
-      new Set(currentRound.playerOrder).size !== 2 ||
+      currentRound.playerOrder.length < 2 ||
+      currentRound.playerOrder.length > (setupProtocol.data === 5 ? 2 : 8) ||
+      new Set(currentRound.playerOrder).size !==
+        currentRound.playerOrder.length ||
       currentRound.playerOrder.some(
         (slotId) => !players.some((player) => player.playerSlotId === slotId),
       )
@@ -506,7 +511,9 @@ function assignedPlayers(room: RealtimeStoredRoom) {
       player,
     ): player is RealtimeStoredPlayerSlot & {
       readonly playerSessionId: string;
-    } => player.playerSessionId !== null,
+    } =>
+      player.playerSessionId !== null &&
+      (room.currentRound?.playerOrder.includes(player.slotId) ?? false),
   );
 }
 
@@ -529,7 +536,7 @@ export class PostgresRealtimeMatchArchive implements RealtimeMatchArchive {
       round === null ||
       round.status !== "active" ||
       round.tick !== 0 ||
-      players.length !== 2
+      players.length !== round.playerOrder.length
     ) {
       throw new DatabaseError("DATABASE_OPERATION_ERROR");
     }
@@ -542,7 +549,9 @@ export class PostgresRealtimeMatchArchive implements RealtimeMatchArchive {
           );
           if (
             definition === undefined ||
-            definition.manifest.runtime !== "realtime"
+            definition.manifest.runtime !== "realtime" ||
+            players.length < definition.manifest.minPlayers ||
+            players.length > definition.manifest.maxPlayers
           )
             throw new DatabaseError("DATABASE_DATA_INVALID");
         }
@@ -593,35 +602,34 @@ export class PostgresRealtimeMatchArchive implements RealtimeMatchArchive {
           match.status !== "active"
         )
           throw new DatabaseError("DATABASE_OPERATION_ERROR");
-        for (const player of players) {
-          await transaction
-            .insert(realtimeMatchPlayers)
-            .values({
+        await transaction
+          .insert(realtimeMatchPlayers)
+          .values(
+            players.map((player) => ({
               matchId: match.id,
               playerSlotId: player.slotId,
               playerSessionId: player.playerSessionId,
               userId: player.userId,
-            })
-            .onConflictDoNothing();
-          const stored = await transaction
-            .select({
-              playerSessionId: realtimeMatchPlayers.playerSessionId,
-              userId: realtimeMatchPlayers.userId,
-            })
-            .from(realtimeMatchPlayers)
-            .where(
-              and(
-                eq(realtimeMatchPlayers.matchId, match.id),
-                eq(realtimeMatchPlayers.playerSlotId, player.slotId),
-              ),
-            )
-            .limit(1);
-          if (
-            stored[0]?.playerSessionId !== player.playerSessionId ||
-            stored[0]?.userId !== player.userId
+            })),
           )
-            throw new DatabaseError("DATABASE_OPERATION_ERROR");
-        }
+          .onConflictDoNothing();
+        const stored = await transaction
+          .select()
+          .from(realtimeMatchPlayers)
+          .where(eq(realtimeMatchPlayers.matchId, match.id));
+        if (
+          stored.length !== players.length ||
+          players.some(
+            (player) =>
+              !stored.some(
+                (row) =>
+                  row.playerSlotId === player.slotId &&
+                  row.playerSessionId === player.playerSessionId &&
+                  row.userId === player.userId,
+              ),
+          )
+        )
+          throw new DatabaseError("DATABASE_OPERATION_ERROR");
       });
     } catch (error) {
       rethrow(error);
@@ -631,7 +639,11 @@ export class PostgresRealtimeMatchArchive implements RealtimeMatchArchive {
   public async saveRound(room: RealtimeStoredRoom): Promise<void> {
     const round = room.currentRound;
     const players = assignedPlayers(room);
-    if (!validRoom(room) || round === null || players.length !== 2)
+    if (
+      !validRoom(room) ||
+      round === null ||
+      players.length !== round.playerOrder.length
+    )
       throw new DatabaseError("DATABASE_OPERATION_ERROR");
     try {
       await this.database.transaction(async (transaction) => {
@@ -722,36 +734,25 @@ export class PostgresRealtimeMatchArchive implements RealtimeMatchArchive {
             })
             .where(eq(realtimeMatches.id, match.id));
         }
-        for (const player of players) {
-          await transaction
-            .insert(realtimeMatchPlayers)
-            .values({
-              matchId: match.id,
-              playerSlotId: player.slotId,
-              playerSessionId: player.playerSessionId,
-              userId: player.userId,
-            })
-            .onConflictDoNothing();
-          const stored = await transaction
-            .select({
-              playerSessionId: realtimeMatchPlayers.playerSessionId,
-              userId: realtimeMatchPlayers.userId,
-            })
-            .from(realtimeMatchPlayers)
-            .where(
-              and(
-                eq(realtimeMatchPlayers.matchId, match.id),
-                eq(realtimeMatchPlayers.playerSlotId, player.slotId),
+        // Membership is immutable within a Match. Validate the entire set with
+        // one query, instead of 2N round trips on every simulation tick.
+        const stored = await transaction
+          .select()
+          .from(realtimeMatchPlayers)
+          .where(eq(realtimeMatchPlayers.matchId, match.id));
+        if (
+          stored.length !== players.length ||
+          players.some(
+            (player) =>
+              !stored.some(
+                (row) =>
+                  row.playerSlotId === player.slotId &&
+                  row.playerSessionId === player.playerSessionId &&
+                  row.userId === player.userId,
               ),
-            )
-            .limit(1);
-          if (
-            stored[0]?.playerSessionId !== player.playerSessionId ||
-            stored[0]?.userId !== player.userId
-          ) {
-            throw new DatabaseError("DATABASE_OPERATION_ERROR");
-          }
-        }
+          )
+        )
+          throw new DatabaseError("DATABASE_OPERATION_ERROR");
       });
     } catch (error) {
       rethrow(error);
