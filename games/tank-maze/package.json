@@ -30,9 +30,11 @@
   "dependencies": {
     "@online-game-hub/game-setup": "workspace:*",
     "@online-game-hub/realtime-game-sdk": "workspace:*",
+    "pathfinding": "0.4.18",
     "zod": "4.4.3"
   },
   "devDependencies": {
-    "@types/node": "24.13.3"
+    "@types/node": "24.13.3",
+    "@types/pathfinding": "0.1.0"
   }
 }

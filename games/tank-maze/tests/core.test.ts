@@ -3,7 +3,11 @@ import {
   createRealtimeRng,
   defineRealtimePlayerSlotId,
 } from "@online-game-hub/realtime-game-sdk";
-import { tankMazeDefinition as game, inputSchema } from "../src/core/index.js";
+import {
+  tankMazeDefinition as game,
+  tankMazeDefinitionV1_0_0,
+  inputSchema,
+} from "../src/core/index.js";
 import { generateArena } from "../src/core/map.js";
 import type { Input, Bullet } from "../src/core/schemas.js";
 const create = (count = 2) =>
@@ -25,6 +29,9 @@ function active(count = 2) {
   ];
   initial.state.arena.width = 800000;
   initial.state.arena.height = 600000;
+  initial.state.arena.cols = 8;
+  initial.state.arena.rows = 6;
+  initial.state.arena.cells = Array.from({ length: 48 }, (_, i) => i);
   initial.state.tanks.forEach((t, i) => {
     t.x = 100000 + i * 70000;
     t.y = 300000;
@@ -65,6 +72,45 @@ const bullet = (props: Partial<Bullet> = {}): Bullet => ({
   ...props,
 });
 describe("tank maze authoritative rules", () => {
+  it.each([-1, 1])(
+    "rotates a full circle in 75 ticks in direction %s",
+    (turn) => {
+      for (let offset = 0; offset < 5; offset++) {
+        let current = active();
+        current.state.tick = offset;
+        const start = required(current.state.tanks[0]).angle;
+        for (let tick = 1; tick <= 75; tick++) {
+          current = step(current, [
+            { slotId: "p0", input: { type: "MOVE", move: 0, turn } },
+          ]);
+          expect(Number.isInteger(required(current.state.tanks[0]).angle)).toBe(
+            true,
+          );
+          if (tick % 15 === 0)
+            expect(required(current.state.tanks[0]).angle).toBe(
+              (start + turn * tick * 9.6 + 720) % 720,
+            );
+        }
+        expect(required(current.state.tanks[0]).angle).toBe(start);
+      }
+    },
+  );
+  it("preserves the previous rotation rate for historical games", () => {
+    const current = active();
+    const result = tankMazeDefinitionV1_0_0.step({
+      ...current,
+      tick: current.state.tick,
+      inputs: [
+        {
+          slotId: defineRealtimePlayerSlotId("p0"),
+          input: { type: "MOVE", move: 0, turn: 1 },
+        },
+      ],
+    });
+    expect(result.state.tanks[0]?.angle).toBe(5);
+    expect(tankMazeDefinitionV1_0_0.manifest.gameVersion).toBe("1.0.0");
+    expect(game.manifest.gameVersion).toBe("1.1.0");
+  });
   it("refreshes the independent shield and replaces only the special weapon slot", () => {
     let c = active();
     const t = required(c.state.tanks[0]);
@@ -366,11 +412,18 @@ describe("tank maze authoritative rules", () => {
       expect(arena.cells.length).toBeGreaterThanOrEqual(
         Math.ceil(arena.cols * arena.rows * 0.85),
       );
-      expect(arena.cols).toBeGreaterThanOrEqual(8);
-      expect(arena.cols).toBeLessThanOrEqual(12);
+      expect(arena.cols).toBeGreaterThanOrEqual(6);
+      expect(arena.cols).toBeLessThanOrEqual(10);
+      expect(arena.rows).toBeGreaterThanOrEqual(6);
+      expect(arena.rows).toBeLessThanOrEqual(9);
+      expect(arena.width).toBe(arena.cols * 100000);
+      expect(generateArena(createRealtimeRng("map-" + i)).arena).toEqual(arena);
       sizes.add(arena.cols + "x" + arena.rows);
     }
     expect(sizes.size).toBeGreaterThan(10);
+    expect(
+      new Set([...sizes].map((size) => Number(size.split("x")[0]))),
+    ).toEqual(new Set([6, 7, 8, 9, 10]));
   });
 });
 

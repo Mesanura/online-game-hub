@@ -91,6 +91,50 @@ test("fixtures prove every M1 dependency boundary fails closed", async () => {
   );
 });
 
+test("Core permits the audited pathfinding entrypoint without admitting UI or deep imports", async () => {
+  const fixtureRoot = await mkdtemp(join(tmpdir(), "ogh-repository-check-"));
+  try {
+    const gameRoot = join(fixtureRoot, "games", "maze");
+    const coreRoot = join(gameRoot, "src", "core");
+    await mkdir(coreRoot, { recursive: true });
+    await writeFile(
+      join(gameRoot, "package.json"),
+      JSON.stringify({
+        name: "@fixture/maze",
+        private: true,
+        dependencies: { pathfinding: "0.4.18" },
+      }),
+    );
+    await writeFile(
+      join(coreRoot, "allowed.ts"),
+      'import PathFinding from "pathfinding";\nexport const grid = new PathFinding.Grid(3, 3);\n',
+    );
+    assert.deepEqual((await checkDependencies(fixtureRoot)).violations, []);
+    const forbidden = [
+      "pathfinding/src/PathFinding.js",
+      "phaser",
+      "react",
+      "node:fs",
+    ];
+    await writeFile(
+      join(coreRoot, "forbidden.ts"),
+      forbidden.map((name) => `import ${JSON.stringify(name)};`).join("\n"),
+    );
+    const result = await checkDependencies(fixtureRoot);
+    for (const name of forbidden) {
+      assert.ok(
+        result.violations.some(
+          (violation) =>
+            violation.code === "CORE_FORBIDDEN_IMPORT" &&
+            violation.message.includes(JSON.stringify(name)),
+        ),
+      );
+    }
+  } finally {
+    await rm(fixtureRoot, { recursive: true, force: true });
+  }
+});
+
 test("framework and browser-test generated directories are not source", async () => {
   const fixtureRoot = await mkdtemp(join(tmpdir(), "ogh-repository-check-"));
   try {

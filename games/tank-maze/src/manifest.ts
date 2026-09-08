@@ -3,7 +3,7 @@ import {
   defineRealtimeGameVersion,
   type RealtimeGameManifest,
 } from "@online-game-hub/realtime-game-sdk";
-export const tankMazeManifest = Object.freeze({
+export const tankMazeManifestV1_0_0 = Object.freeze({
   runtime: "realtime",
   id: defineRealtimeGameId("tank-maze"),
   gameVersion: defineRealtimeGameVersion("1.0.0"),
@@ -21,3 +21,8 @@ export const tankMazeManifest = Object.freeze({
     replay: "record-only",
   },
 } as const) satisfies RealtimeGameManifest;
+
+export const tankMazeManifest = Object.freeze({
+  ...tankMazeManifestV1_0_0,
+  gameVersion: defineRealtimeGameVersion("1.1.0"),
+}) satisfies RealtimeGameManifest;

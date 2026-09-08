@@ -131,7 +131,7 @@ M8 是已落地的例外：实时游戏不把 tick、持续输入、插值或预
 ## 7. 依赖方向
 
 ```text
-games/*/core ───────────────> game-sdk + zod
+games/*/core ───────────────> game-sdk or realtime-game-sdk + audited pure dependencies
 games/*/client ─────────────> own public types + game-client-sdk
 game-surfaces/* ─────────────> game-surface-bridge (+ self-owned UI/render stack)
 
@@ -160,6 +160,7 @@ Hard Rules：
 - 一个游戏不得依赖另一个游戏。
 - Game Surface 不得导入 Core、client host、Protocol、ticket 或数据库；它只实现 Bridge JSON 协议。Next 不编译 Surface 源码或其框架依赖。
 - 任一 Game Core（包括 realtime simulation）不得依赖 React、Next.js、DOM、Phaser、Colyseus、WebSocket、ORM、PostgreSQL 或 Redis。
+- Core 外部依赖维持显式白名单：Zod 负责 schema，`pathfinding` 主入口负责纯网格搜索；不因此开放其内部路径或其他外部库。当前 `pathfinding@0.4.18` 仅由坦克游戏持有，固定 A* 非对角/整数启发式，不使用环境 I/O、时钟或随机数；升级须评估 exact replay 兼容。平台 SDK/runtime 不引入寻路依赖。
 - `ui` 不得依赖房间、网络或游戏业务模块。
 - 只有 application/composition layer 可以同时看到具体实现和抽象端口。
 - 不通过深层相对路径跨 package；只使用声明的 public exports。

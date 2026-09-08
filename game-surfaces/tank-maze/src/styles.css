@@ -169,7 +169,7 @@ header strong {
   place-items: center;
   z-index: 3;
   pointer-events: none;
-  font-size: clamp(6rem, 22vw, 14rem);
+  font-size: 144px;
   font-weight: 900;
   color: #263a2d;
   text-shadow:
@@ -222,6 +222,8 @@ header strong {
   background: var(--tank);
 }
 .arena-wrap {
+  position: relative;
+  overflow: hidden;
   flex: 1;
   min-height: 0;
   display: flex;
@@ -322,18 +324,7 @@ footer {
     font-size: 8px;
   }
   #countdown {
-    position: absolute;
-    inset: 0;
-    display: grid;
-    place-items: center;
-    z-index: 3;
-    pointer-events: none;
-    font-size: clamp(6rem, 22vw, 14rem);
-    font-weight: 900;
-    color: #263a2d;
-    text-shadow:
-      0 6px 0 #fff,
-      0 0 24px #fff;
+    font-size: 96px;
   }
   #phase {
     font-size: 10px;

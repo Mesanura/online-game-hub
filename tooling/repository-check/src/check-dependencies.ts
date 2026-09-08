@@ -55,6 +55,7 @@ const UI_FORBIDDEN_PACKAGE_PATHS = new Set([
   "packages/protocol",
 ]);
 const CORE_ALLOWED_EXTERNAL_PACKAGES = new Set(["zod"]);
+const CORE_ALLOWED_EXTERNAL_ENTRYPOINTS = new Set(["pathfinding"]);
 const NODE_BUILTINS = new Set(
   builtinModules.flatMap((moduleName) => [
     moduleName,
@@ -315,7 +316,8 @@ function isForbiddenCoreImport(
   const importedPackageName = packageNameFromSpecifier(specifier);
   return (
     !allowedCoreSdkPackages.has(importedPackageName) &&
-    !CORE_ALLOWED_EXTERNAL_PACKAGES.has(importedPackageName)
+    !CORE_ALLOWED_EXTERNAL_PACKAGES.has(importedPackageName) &&
+    !CORE_ALLOWED_EXTERNAL_ENTRYPOINTS.has(specifier)
   );
 }
 
@@ -433,7 +435,7 @@ function inspectSourceFile(
         violations.push({
           code: "CORE_FORBIDDEN_IMPORT",
           file: displayPath,
-          message: `Game Core import ${JSON.stringify(specifier)} is outside the allowed game-sdk + zod boundary.`,
+          message: `Game Core import ${JSON.stringify(specifier)} is outside the allowed SDK + audited pure dependency boundary.`,
         });
       }
     }

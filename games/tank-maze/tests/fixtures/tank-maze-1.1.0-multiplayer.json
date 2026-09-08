@@ -1,0 +1,189 @@
+{
+  "header": {
+    "replayFormatVersion": 1,
+    "runtime": "realtime",
+    "gameId": "tank-maze",
+    "gameVersion": "1.1.0",
+    "tickRate": 60,
+    "rng": {
+      "algorithm": "fnv1a32-counter-v1",
+      "seed": "tank-golden-v1"
+    },
+    "initialConfig": {
+      "playerCount": 8,
+      "targetScore": 10,
+      "colors": []
+    },
+    "players": [
+      {
+        "slotId": "p0"
+      },
+      {
+        "slotId": "p1"
+      },
+      {
+        "slotId": "p2"
+      },
+      {
+        "slotId": "p3"
+      },
+      {
+        "slotId": "p4"
+      },
+      {
+        "slotId": "p5"
+      },
+      {
+        "slotId": "p6"
+      },
+      {
+        "slotId": "p7"
+      }
+    ]
+  },
+  "events": [
+    {
+      "sequence": 1,
+      "tick": 200,
+      "actorSlotId": "p0",
+      "input": {
+        "type": "FIRE"
+      }
+    },
+    {
+      "sequence": 2,
+      "tick": 200,
+      "actorSlotId": "p0",
+      "input": {
+        "type": "FIRE"
+      }
+    },
+    {
+      "sequence": 3,
+      "tick": 200,
+      "actorSlotId": "p0",
+      "input": {
+        "type": "MOVE",
+        "move": 0,
+        "turn": 1
+      }
+    },
+    {
+      "tick": 230,
+      "actorSlotId": "p0",
+      "input": {
+        "type": "MOVE",
+        "move": 0,
+        "turn": 1
+      },
+      "sequence": 4
+    },
+    {
+      "tick": 260,
+      "actorSlotId": "p0",
+      "input": {
+        "type": "MOVE",
+        "move": 0,
+        "turn": 1
+      },
+      "sequence": 5
+    },
+    {
+      "sequence": 6,
+      "tick": 8000,
+      "actorSlotId": "p0",
+      "input": {
+        "type": "RESIGN"
+      }
+    },
+    {
+      "sequence": 7,
+      "tick": 8000,
+      "actorSlotId": "p1",
+      "input": {
+        "type": "RESIGN"
+      }
+    },
+    {
+      "sequence": 8,
+      "tick": 8000,
+      "actorSlotId": "p2",
+      "input": {
+        "type": "RESIGN"
+      }
+    },
+    {
+      "sequence": 9,
+      "tick": 8000,
+      "actorSlotId": "p3",
+      "input": {
+        "type": "RESIGN"
+      }
+    },
+    {
+      "sequence": 10,
+      "tick": 8000,
+      "actorSlotId": "p4",
+      "input": {
+        "type": "RESIGN"
+      }
+    },
+    {
+      "sequence": 11,
+      "tick": 8000,
+      "actorSlotId": "p5",
+      "input": {
+        "type": "RESIGN"
+      }
+    },
+    {
+      "sequence": 12,
+      "tick": 8000,
+      "actorSlotId": "p6",
+      "input": {
+        "type": "RESIGN"
+      }
+    }
+  ],
+  "finalTick": 8001,
+  "recordedRngCursor": 315,
+  "recordedOutcome": {
+    "type": "WIN",
+    "winnerSlotId": "p7",
+    "reason": "RESIGNATION",
+    "scores": [
+      {
+        "slotId": "p0",
+        "score": 0
+      },
+      {
+        "slotId": "p1",
+        "score": 0
+      },
+      {
+        "slotId": "p2",
+        "score": 0
+      },
+      {
+        "slotId": "p3",
+        "score": 0
+      },
+      {
+        "slotId": "p4",
+        "score": 0
+      },
+      {
+        "slotId": "p5",
+        "score": 0
+      },
+      {
+        "slotId": "p6",
+        "score": 0
+      },
+      {
+        "slotId": "p7",
+        "score": 0
+      }
+    ]
+  }
+}

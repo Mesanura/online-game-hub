@@ -13,7 +13,7 @@ export function generateArena(source: RealtimeRngState): {
     rng = pick.next;
     return pick.value;
   };
-  const cols = 6 + random(5),
+  const cols = 8 + random(5),
     rows = 6 + random(4),
     count = cols * rows;
   const edges: {

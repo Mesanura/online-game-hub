@@ -2,6 +2,8 @@
 
 坦克迷战扩展最低验证：2/3/8 人 Core/Setup；按次 FIRE 同 tick 不丢失与旧 latest-input 兼容；地图至少 85% 主区域、出生分散、推挤与墙体；全部弹药的容量/寿命/反弹、自伤与盾内外边界；导弹延迟/切换/惯性；全灭、4 秒幸存、120 秒小局超时、目标分与投降；八人多小局 golden。真实 Colyseus 验证容量、输入权限/幂等、takeover、rematch；临时 PostgreSQL 验证八人 archive/replay/room 重读；八浏览器覆盖 SVG、键盘、多指触控、刷新重连及重新对局。新增 Surface contract-test 与全仓质量门禁，不跳过历史实时 golden。
 
+坦克迷战 `1.1.0` 维护回归另覆盖所有起始 tick 相位下的左右 75 tick 整周转向、6–10 格宽与 6–9 格高的 seeded 地图、导弹真实绕墙到达/封闭区域/目标切换/转向上限/不穿墙及 JSON 重建；`1.0.0`/`1.1.0` 的 exact golden 同时执行。独立 Surface Playwright 覆盖五种道具符号的 SVG 中心、桌面/手机视口、321 倒计时、轻震幅度/复位、HUD 不动、重复快照与 reduced-motion；真实八浏览器继续验证新版创建、归档、重连及重开。
+
 > 状态：Protocol V5/V6 双轨、Game Surface Bridge V1/V2、Setup Core 与 replay capability 测试策略
 > 本文是测试层级、职责、最低场景和质量门禁的权威来源。具体业务范围见 [PRODUCT.md](./PRODUCT.md)。
 
@@ -449,6 +451,7 @@ Pong `1.2.0` 回归需覆盖 120 tick 准备期、更快的双侧球拍、每次
 ```text
 pnpm --filter @online-game-hub/badminton test
 pnpm --filter @online-game-hub/badminton test:golden
+pnpm --filter @online-game-hub/tank-maze test:golden
 pnpm --filter @online-game-hub/badminton-surface contract-test
 pnpm test:integration
 pnpm --filter @online-game-hub/e2e test:e2e tests/badminton-vertical-slice.spec.ts

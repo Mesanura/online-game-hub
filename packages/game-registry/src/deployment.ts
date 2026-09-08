@@ -279,27 +279,31 @@ const badmintonSurface = (
     }),
   });
 
-const gameDeployments = Object.freeze([
-  {
+const tankMazeSurface = (gameVersion: "1.0.0" | "1.1.0") =>
+  ({
     gameId: "tank-maze",
-    gameVersion: "1.0.0",
+    gameVersion,
     setupProtocol: 6,
     platformControls: resignPlatformControls,
     presentation: {
       kind: "surface-v1",
-      publicBasePath: "/game-surfaces/tank-maze/1.0.4",
+      publicBasePath: "/game-surfaces/tank-maze/1.1.1",
       artifact: {
         schemaVersion: 1,
         gameId: "tank-maze",
-        supportedGameVersions: ["1.0.0"],
-        surfaceVersion: "1.0.4",
+        supportedGameVersions: ["1.0.0", "1.1.0"],
+        surfaceVersion: "1.1.1",
         bridgeVersion: 2,
         entrypoints: { setup: "setup/index.html", play: "play/index.html" },
         capabilities: {},
-        contentDigest: "sha256-jRAiWpN0D+PYmZKc7qlP9nX8tYVJCpOV5myf5xCNFfA=",
+        contentDigest: "sha256-zpBtnML1xVLg81QlpCn55K/APCTOsAXa1UIQKYARPOk=",
       },
     },
-  },
+  }) as const satisfies GameDeploymentRegistration;
+
+const gameDeployments = Object.freeze([
+  tankMazeSurface("1.0.0"),
+  tankMazeSurface("1.1.0"),
   ticTacToeSurface("1.0.0", 5),
   ticTacToeSurface("1.1.0", 6),
   connectFourSurface("1.0.0", 5),

@@ -22,5 +22,6 @@ it("provides independently built SVG setup/play artifacts with Bridge V2", () =>
       ),
     ).toContain('type="module"');
   expect(config.entrypoints.replay).toBeUndefined();
-  expect(config.surfaceVersion).toBe("1.0.4");
+  expect(config.surfaceVersion).toBe("1.1.1");
+  expect(config.supportedGameVersions).toEqual(["1.0.0", "1.1.0"]);
 });

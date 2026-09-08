@@ -3,11 +3,10 @@ import {
   type RealtimeGameDefinition,
   type RealtimeRngState,
 } from "@online-game-hub/realtime-game-sdk";
-import { tankMazeManifest } from "../manifest.js";
+import { tankMazeManifestV1_0_0 as tankMazeManifest } from "../manifest.js";
 import { DIRECTIONS } from "./directions.js";
 import { clear, RADIUS, sweepCircle, sweepWall } from "./geometry.js";
-import { generateArena } from "./map.js";
-import { createMissileNavigator } from "./navigation.js";
+import { generateArena } from "./map-v1.js";
 import {
   configSchema,
   inputSchema,
@@ -20,7 +19,6 @@ import {
   type PickupKind,
 } from "./schemas.js";
 export { configSchema, inputSchema } from "./schemas.js";
-export { tankMazeDefinitionV1_0_0 } from "./v1.js";
 export type { State, Config, Input, Outcome } from "./schemas.js";
 const unit = (angle: number) =>
   required(DIRECTIONS[((angle % 720) + 720) % 720]);
@@ -128,11 +126,7 @@ function moveTanks(s: State): void {
       t.move = 0;
       t.turn = 0;
     }
-    // Distribute 48 half-degree steps over five ticks: exactly one turn in 75 ticks.
-    const turnPhase = (s.tick - 1) % 5;
-    const rotation =
-      Math.floor(((turnPhase + 1) * 48) / 5) - Math.floor((turnPhase * 48) / 5);
-    t.angle = (t.angle + t.turn * rotation + 720) % 720;
+    t.angle = (t.angle + t.turn * 5 + 720) % 720;
     return vector(t.angle, t.move === 1 ? 2000 : t.move === -1 ? -1083 : 0);
   });
   // Resolve connected contact groups simultaneously; stationary tanks are pushed,
@@ -279,8 +273,7 @@ function fire(s: State, t: Tank): void {
     }
   }
 }
-type MissileNavigator = ReturnType<typeof createMissileNavigator>;
-function seek(s: State, b: Bullet, navigate: MissileNavigator): void {
+function seek(s: State, b: Bullet): void {
   if (b.kind !== "missile" || b.age < 180) return;
   const target = s.tanks
     .filter((t) => t.alive)
@@ -291,8 +284,6 @@ function seek(s: State, b: Bullet, navigate: MissileNavigator): void {
     )[0];
   b.target = target?.slotId ?? null;
   if (target === undefined) return;
-  const aim = navigate(b, target);
-  if (aim === null) return;
   let current = 0,
     best = -Infinity;
   for (let i = 0; i < 720; i++) {
@@ -308,7 +299,7 @@ function seek(s: State, b: Bullet, navigate: MissileNavigator): void {
   for (let delta = -3; delta <= 3; delta++) {
     const angle = (current + delta + 720) % 720,
       d = unit(angle),
-      dot = d[0] * (aim.x - b.x) + d[1] * (aim.y - b.y);
+      dot = d[0] * (target.x - b.x) + d[1] * (target.y - b.y);
     if (dot > bestAim) {
       bestAim = dot;
       next = angle;
@@ -321,9 +312,8 @@ function advanceBullet(
   b: Bullet,
   live: Tank[],
   hits: Set<string>,
-  navigate: MissileNavigator,
 ): boolean {
-  seek(s, b, navigate);
+  seek(s, b);
   let remaining = 1;
   for (let iteration = 0; iteration < 8 && remaining > 0.00001; iteration++) {
     const dx = b.vx * remaining,
@@ -489,7 +479,7 @@ function aims(state: Readonly<State>) {
       return { slotId: t.slotId, points };
     });
 }
-export const tankMazeDefinition = {
+export const tankMazeDefinitionV1_0_0 = {
   manifest: tankMazeManifest,
   configSchema,
   inputSchema,
@@ -577,10 +567,7 @@ export const tankMazeDefinition = {
     for (const t of shots) if (t.alive) fire(s, t);
     const live = s.tanks.filter((t) => t.alive),
       hits = new Set<string>();
-    const navigate = createMissileNavigator(s.arena);
-    s.bullets = s.bullets.filter((b) =>
-      advanceBullet(s, b, live, hits, navigate),
-    );
+    s.bullets = s.bullets.filter((b) => advanceBullet(s, b, live, hits));
     for (const t of live)
       if (hits.has(t.slotId)) {
         t.alive = false;

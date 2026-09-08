@@ -13,6 +13,8 @@ import {
   interpolate,
 } from "./model";
 import { TankAudio } from "./audio";
+import { hasNewHit, pickupSymbol } from "./presentation";
+import surfaceConfig from "../surface.config.json";
 import "./styles.css";
 const root = required(document.getElementById("root"));
 const mode = location.pathname.includes("/setup/") ? "setup" : "play";
@@ -41,6 +43,7 @@ let failed = false,
   lastEvent = 0;
 let pendingSetup: string | null = null;
 let arenaKey = "";
+let shakeAnimation: Animation | null = null;
 const trails = new Map<number, { x: number; y: number }[]>();
 const explosions = new Map<number, { x: number; y: number; until: number }>();
 const p = (n: number) => n / 1000;
@@ -298,15 +301,15 @@ function draw(now: number) {
     html += v.pickups
       .map(
         (q) =>
-          '<g transform="translate(' +
+          '<g data-pickup="' +
+          q.kind +
+          '" transform="translate(' +
           p(q.x) +
           " " +
           p(q.y) +
-          ')"><rect x="-13" y="-13" width="40" height="40" rx="5" fill="#faf8eb" stroke="#626960" stroke-width="2"/><text text-anchor="middle" y="5" font-size="28" fill="#3c4940">' +
-          { laser: "⌁", missile: "➤", machine: "⋮", shotgun: "⁙", shield: "◇" }[
-            q.kind
-          ] +
-          "</text></g>",
+          ')"><rect x="-20" y="-20" width="40" height="40" rx="5" fill="#faf8eb" stroke="#626960" stroke-width="2"/>' +
+          pickupSymbol(q.kind) +
+          "</g>",
       )
       .join("");
     for (const b of v.bullets) {
@@ -427,12 +430,30 @@ function reconcile(current: Element, next: Element) {
   for (let i = newNodes.length; i < oldNodes.length; i++)
     required(oldNodes[i]).remove();
 }
+function shakeArena() {
+  shakeAnimation?.cancel();
+  if (init?.reducedMotion) return;
+  shakeAnimation =
+    document
+      .getElementById("arena")
+      ?.animate(
+        [
+          { transform: "translate(0, 0)" },
+          { transform: "translate(-2px, 1px)" },
+          { transform: "translate(2px, -1px)" },
+          { transform: "translate(-1.5px, -1px)" },
+          { transform: "translate(1px, 0.5px)" },
+          { transform: "translate(0, 0)" },
+        ],
+        { duration: 220, easing: "ease-out" },
+      ) ?? null;
+}
 function handle(message: HostSurfaceMessage) {
   if (disposed || failed) return;
   if (message.type === "host.init") {
     if (
       message.gameId !== "tank-maze" ||
-      message.gameVersion !== "1.0.0" ||
+      !surfaceConfig.supportedGameVersions.includes(message.gameVersion) ||
       message.mode !== mode
     ) {
       fail("SURFACE_TARGET_MISMATCH", "游戏版本不匹配。");
@@ -459,6 +480,11 @@ function handle(message: HostSurfaceMessage) {
         renderSetup();
       } else {
         const next = viewSchema.parse(message.payload);
+        const wasHit =
+          oldHost?.roundNumber === message.roundNumber &&
+          oldHost.connectionState === "connected" &&
+          message.connectionState === "connected" &&
+          hasNewHit(view, next, lastEvent);
         const reset =
           oldHost?.roundNumber !== message.roundNumber ||
           oldHost.connectionState !== "connected" ||
@@ -467,6 +493,8 @@ function handle(message: HostSurfaceMessage) {
         if (reset) {
           previous = null;
           trails.clear();
+          explosions.clear();
+          shakeAnimation?.cancel();
           lastEvent = 0;
           controls.reset();
         } else if (next.tick !== view?.tick) previous = view;
@@ -485,10 +513,11 @@ function handle(message: HostSurfaceMessage) {
         for (const e of next.events)
           if (e.id > lastEvent) {
             audio.play(e.kind);
-            if (e.kind === "hit")
+            if (e.kind === "hit" && !reset)
               explosions.set(e.id, { x: e.x, y: e.y, until: next.tick + 24 });
             lastEvent = e.id;
           }
+        if (wasHit) shakeArena();
         renderHud();
         const headline = summary(next);
         if (headline !== null)
@@ -529,6 +558,7 @@ function handle(message: HostSurfaceMessage) {
   }
   if (message.type === "host.environment") return;
   disposed = true;
+  shakeAnimation?.cancel();
   controls.reset();
   audio.close();
   clearInterval(heartbeat);
@@ -664,6 +694,7 @@ window.addEventListener(
   () => {
     release();
     disposed = true;
+    shakeAnimation?.cancel();
     clearInterval(heartbeat);
     audio.close();
     bridge.dispose();

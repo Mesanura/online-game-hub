@@ -396,6 +396,7 @@ describe("explicit game registry", () => {
       ["badminton", "1.1.0"],
       ["badminton", "1.2.0"],
       ["tank-maze", "1.0.0"],
+      ["tank-maze", "1.1.0"],
       ["connect-four", "1.1.0"],
       ["gomoku", "1.1.0"],
       ["hex", "1.0.0"],
@@ -548,6 +549,39 @@ describe("explicit game registry", () => {
       await expect(
         loadGameClientModule(manifest.id, `${manifest.gameVersion}-unknown`),
       ).resolves.toBeUndefined();
+    }
+  });
+
+  it("resolves current and historical tank maze rules with compatible Surface entrypoints", () => {
+    const current = resolveCurrentRealtimeGameDefinition("tank-maze");
+    const previous = resolveRealtimeGameDefinition("tank-maze", "1.0.0");
+    expect(current?.manifest.gameVersion).toBe("1.1.0");
+    expect(previous?.manifest.gameVersion).toBe("1.0.0");
+    expect(previous?.step).not.toBe(current?.step);
+    for (const version of ["1.0.0", "1.1.0"]) {
+      expect(resolveRoundSetupDefinition("tank-maze", version)).toBeDefined();
+      expect(
+        resolveGameSurfaceEntrypoint("tank-maze", version, "play")?.url,
+      ).toBe("/game-surfaces/tank-maze/1.1.1/play/index.html");
+      expect(resolveGameDeployment("tank-maze", version)?.setupProtocol).toBe(
+        6,
+      );
+      expect(
+        resolveGameDeployment("tank-maze", version)?.presentation,
+      ).toMatchObject({
+        artifact: {
+          surfaceVersion: "1.1.1",
+          supportedGameVersions: ["1.0.0", "1.1.0"],
+          contentDigest: "sha256-zpBtnML1xVLg81QlpCn55K/APCTOsAXa1UIQKYARPOk=",
+        },
+      });
+      expect(
+        resolveRealtimeGameDefinition("tank-maze", version)?.manifest
+          .capabilities.replay,
+      ).toBe("record-only");
+      expect(
+        resolveGameSurfaceEntrypoint("tank-maze", version, "replay"),
+      ).toBeUndefined();
     }
   });
 
