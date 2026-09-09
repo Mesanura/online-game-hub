@@ -170,6 +170,89 @@ async function setup() {
 }
 
 describe("RealtimeGameClientHost", () => {
+  it.each(["create", "join"] as const)(
+    "starts %s with fresh room state after disconnecting a completed game",
+    async (operation) => {
+      const oldRoom = new FakeRoom();
+      const nextRoom = new FakeRoom();
+      let created = false;
+      const host = new RealtimeGameClientHost({
+        gameServerUrl: "http://127.0.0.1:2567",
+        setupProtocol: SETUP_PROTOCOL_VERSION,
+        ticketProvider: async () => "ticket",
+        transport: {
+          createClient: () => ({
+            async create() {
+              if (created) return nextRoom;
+              created = true;
+              return oldRoom;
+            },
+            async join() {
+              return nextRoom;
+            },
+          }),
+        },
+      });
+      await host.createRoom("pong", { targetScore: 3 });
+      oldRoom.emit(SERVER_PROTOCOL_MESSAGE, connectedV6());
+      oldRoom.emit(ROOM_CONTROL_MESSAGE, lifecycleV6(true));
+      oldRoom.emit(REALTIME_SERVER_MESSAGE, snapshot(10, 2));
+      oldRoom.emit(REALTIME_SERVER_MESSAGE, snapshot(11, 2));
+      oldRoom.emit(ROOM_CONTROL_MESSAGE, {
+        ...lifecycleV6(false),
+        currentRound: { roundNumber: 1, status: "completed" },
+        nextRound: { ...lifecycleV6(false).nextRound, roundNumber: 2 },
+      });
+      expect(host.getState().roomLifecycle?.currentRound?.status).toBe(
+        "completed",
+      );
+      await host.close();
+
+      const nextCode = "NEXT2345";
+      if (operation === "create") {
+        await host.createRoom("pong", { targetScore: 3 });
+      } else {
+        await host.joinRoom("pong", nextCode);
+      }
+      expect(host.getState()).toMatchObject({
+        connectionState: "connecting",
+        room: null,
+        roomLifecycle: null,
+        snapshot: null,
+        previousSnapshot: null,
+        error: null,
+      });
+
+      const newState = host.getState();
+      oldRoom.emit(REALTIME_SERVER_MESSAGE, snapshot(99, 50));
+      oldRoom.emit(REALTIME_SERVER_MESSAGE, { invalid: "old message" });
+      expect(host.getState()).toBe(newState);
+
+      nextRoom.emit(SERVER_PROTOCOL_MESSAGE, {
+        ...connectedV6(),
+        roomCode: nextCode,
+      });
+      nextRoom.emit(ROOM_CONTROL_MESSAGE, {
+        ...lifecycleV6(false),
+        isOwner: false,
+      });
+      expect(host.getState()).toMatchObject({
+        connectionState: "connected",
+        room: { roomCode: nextCode },
+        roomLifecycle: { isOwner: false, currentRound: null },
+        snapshot: null,
+        error: null,
+      });
+      nextRoom.emit(ROOM_CONTROL_MESSAGE, {
+        ...lifecycleV6(true),
+        isOwner: false,
+      });
+      nextRoom.emit(REALTIME_SERVER_MESSAGE, snapshot(1, 0));
+      expect(host.getState().snapshot).toMatchObject({ tick: 1 });
+      await host.leaveRoom();
+    },
+  );
+
   it("sends sequence-only intent and resolves from authoritative ack", async () => {
     const { host, room } = await setup();
     const pending = host.submitInput({ type: "DIRECTION", direction: -1 });

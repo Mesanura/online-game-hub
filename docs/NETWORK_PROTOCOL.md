@@ -480,6 +480,7 @@ V5/V6 `ProtocolErrorCode` 至少包括；Setup 专用代码只会出现在 V6：
 
 - `GameClientHostState` 明确暴露 `idle | loading | connecting | connected | reconnecting | closed`，以及独立的 room metadata、`roomLifecycle`、最新 snapshot、command rejection 和 ticket/room/protocol/closed error。
 - `createRoom(gameId, initialConfig)` 按 deployment default generation 获取新 ticket；`joinRoom(gameId, roomCode, setupProtocol)` 使用 discovery 固定的 V5/V6 generation，并在调用 Colyseus SDK 前执行 `trim().toUpperCase()`。连接目标保存 exact generation，自动重连继续请求同代 ticket；后续 create 恢复 deployment default，不继承上次加入房间的代际。
+- 开始新的 create/join 时清空上一房间的 metadata、lifecycle、snapshot 和 rejection；旧连接与已取消的加入请求不得更新新目标的状态。
 - Host 将每个 `protocol` transport payload 当作 `unknown`，通过固定代际的 `serverMessageSchema` 或 `serverMessageV6Schema`，并确认 game/room/version/viewer identity 与连接一致后才更新状态；非法消息关闭连接并报告 `INVALID_SERVER_MESSAGE`。
 - `submitAction(action)` 只在 current Round 为 active、snapshot 与 lifecycle 的 round/status 一致时可用；它使用安全 UUID command ID，并填充必填 `roundNumber` 和 `expectedRevision`。Host 不接收 actor/State/Outcome，也不计算下一个 revision；pending promise 只由同轮 matching rejection 或服务器 snapshot 结算。
 - Rejection 中若包含 snapshot，host 先应用完整 snapshot 再暴露 rejection。duplicate、stale 和 reconnect 都通过 server snapshot 收敛，不在客户端 replay Action 或推导 authoritative State。

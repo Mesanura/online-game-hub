@@ -431,7 +431,16 @@ export class RealtimeGameClientHost<View = unknown, Outcome = unknown> {
     const generation = this.#generation;
     this.#setupProtocol = setupProtocol;
     this.#rejectPending("The previous realtime connection was replaced.");
-    this.#replace({ ...this.#state, connectionState: "loading", error: null });
+    this.#replace({
+      connectionState: "loading",
+      room: null,
+      roomLifecycle: null,
+      previousSnapshot: null,
+      snapshot: null,
+      rejection: null,
+      controlRejection: null,
+      error: null,
+    });
     let ticket: string;
     try {
       ticket = gameServerTicketSchema.parse(
@@ -467,6 +476,7 @@ export class RealtimeGameClientHost<View = unknown, Outcome = unknown> {
       if (generation === this.#generation) this.#handleLifecycle(payload);
     });
     room.onMessage<unknown>(REALTIME_SERVER_MESSAGE, (payload) => {
+      if (generation !== this.#generation) return;
       const snapshot = realtimeSnapshotSchema.safeParse(payload);
       if (snapshot.success) {
         this.#applySnapshot(snapshot.data as RealtimeSnapshot<View, Outcome>);

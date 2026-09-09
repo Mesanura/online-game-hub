@@ -200,7 +200,6 @@ export class RuntimeAwareHost {
   readonly #turnBased: TurnBasedHost | null;
   readonly #realtime: RealtimeHost | null;
   readonly #listeners = new Set<() => void>();
-  readonly #unsubscribe: () => void;
   #state: WebRoomHostState;
 
   public constructor(options: {
@@ -220,7 +219,7 @@ export class RuntimeAwareHost {
       });
       this.#realtime = realtime;
       this.#state = this.#mapRealtimeState(realtime.getState());
-      this.#unsubscribe = realtime.subscribe(() => {
+      realtime.subscribe(() => {
         this.#state = this.#mapRealtimeState(realtime.getState());
         this.#notify();
       });
@@ -235,7 +234,7 @@ export class RuntimeAwareHost {
       });
       this.#turnBased = turnBased;
       this.#state = this.#mapTurnBasedState(turnBased.getState());
-      this.#unsubscribe = turnBased.subscribe(() => {
+      turnBased.subscribe(() => {
         this.#state = this.#mapTurnBasedState(turnBased.getState());
         this.#notify();
       });
@@ -356,7 +355,8 @@ export class RuntimeAwareHost {
   }
 
   public close(): Promise<void> {
-    this.#unsubscribe();
+    // React can reuse this adapter after effect cleanup. State forwarding has
+    // the same lifetime as the adapter, rather than a single transport.
     const realtime = this.#realtime;
     return realtime === null
       ? this.#requireTurnBased().close()
@@ -570,11 +570,59 @@ export function GameRoomHostProvider({
   const autoJoinKey = useRef<string | null>(null);
   const handledCloseReason = useRef<string | null>(null);
   const allowCompletedSetup = useRef(false);
+  const connectionAttempt = useRef(0);
+  const previousPathname = useRef(pathname);
+  // Entry is also the starting point of a new connection. Only a navigation
+  // from a room back to entry should discard the existing connection.
+  const returningToEntry =
+    pathname === `/games/${encodeURIComponent(gameId)}` &&
+    routeRoomCode(previousPathname.current, gameId) !== null;
 
-  useEffect(() => () => void host.close(), [host]);
+  useEffect(
+    () => () => {
+      connectionAttempt.current += 1;
+      autoJoinKey.current = null;
+      void host.close();
+    },
+    [host],
+  );
 
   useEffect(() => {
-    if (state.room !== null || busy) return;
+    const previousPath = previousPathname.current;
+    previousPathname.current = pathname;
+    if (!returningToEntry) return;
+    const previousState = host.getState();
+    if (
+      previousState.roomLifecycle?.currentRound?.status === "active" &&
+      previousState.roomLifecycle.closed === false &&
+      !window.confirm("离开会立即终止当前对局，确定继续吗？")
+    ) {
+      router.push(previousPath, { scroll: false });
+      return;
+    }
+    const attempt = ++connectionAttempt.current;
+    autoJoinKey.current = null;
+    allowCompletedSetup.current = false;
+    setBusy(true);
+    setRoomCode("");
+    setInviteUrl(null);
+    setInviteCopyState("idle");
+    setLocalError(null);
+    setPlayerCountNotice(null);
+    if (previousState.room !== null) setLocalNotice("已离开房间。");
+    void host.leaveRoom().finally(() => {
+      if (connectionAttempt.current === attempt) setBusy(false);
+    });
+  }, [gameId, host, pathname, returningToEntry, router]);
+
+  useEffect(() => {
+    if (
+      busy ||
+      state.roomLifecycle?.closed === true ||
+      (state.room !== null && state.connectionState !== "closed")
+    ) {
+      return;
+    }
     const queryCode =
       typeof window === "undefined"
         ? null
@@ -583,20 +631,36 @@ export function GameRoomHostProvider({
     if (targetCode === null || targetCode.length === 0) return;
     const key = `${gameId}:${targetCode}`;
     if (autoJoinKey.current === key) return;
+    const attempt = ++connectionAttempt.current;
     autoJoinKey.current = key;
     setRoomCode(targetCode);
     setBusy(true);
     setLocalError(null);
     void discoverRoom(gameId, targetCode)
       .then((discovery) => {
+        if (connectionAttempt.current !== attempt) return;
         if (discovery.runtime !== runtime) {
           throw new Error("ROOM_RUNTIME_MISMATCH");
         }
         return host.joinRoom(gameId, targetCode, discovery.setupProtocol);
       })
-      .catch(() => setLocalError("房间码无效或房间已关闭，请重试。"))
-      .finally(() => setBusy(false));
-  }, [busy, gameId, host, pathname, runtime, state.room]);
+      .catch(() => {
+        if (connectionAttempt.current === attempt)
+          setLocalError("房间码无效或房间已关闭，请重试。");
+      })
+      .finally(() => {
+        if (connectionAttempt.current === attempt) setBusy(false);
+      });
+  }, [
+    busy,
+    gameId,
+    host,
+    pathname,
+    runtime,
+    state.connectionState,
+    state.room,
+    state.roomLifecycle?.closed,
+  ]);
 
   useEffect(() => {
     const room = state.room;
@@ -617,6 +681,7 @@ export function GameRoomHostProvider({
 
   useEffect(() => {
     if (
+      returningToEntry ||
       connectedGameId === undefined ||
       connectedRoomCode === undefined ||
       roomClosed !== false
@@ -633,7 +698,12 @@ export function GameRoomHostProvider({
     const canonical = shouldPlay ? `${roomPath}/play` : roomPath;
     const currentCode = routeRoomCode(pathname, gameId);
     const currentIsPlay = routeIsPlay(pathname, gameId);
-    if (currentCode !== connectedRoomCode || currentIsPlay !== shouldPlay) {
+    if (currentCode === null) {
+      router.push(canonical, { scroll: false });
+    } else if (
+      currentCode !== connectedRoomCode ||
+      currentIsPlay !== shouldPlay
+    ) {
       router.replace(canonical, { scroll: false });
     }
     // V6 lifecycle normalization creates an object for every realtime snapshot.
@@ -643,6 +713,7 @@ export function GameRoomHostProvider({
     connectedRoomCode,
     gameId,
     pathname,
+    returningToEntry,
     roomClosed,
     roundStatus,
     router,
@@ -713,33 +784,40 @@ export function GameRoomHostProvider({
   }, [state.roomLifecycle?.currentRound?.status]);
 
   const createRoom = useCallback(async (): Promise<void> => {
+    const attempt = ++connectionAttempt.current;
     setBusy(true);
     setLocalError(null);
     setLocalNotice(null);
     handledCloseReason.current = null;
+    allowCompletedSetup.current = false;
     try {
       await host.createRoom(gameId, initialConfig);
     } catch {
-      setLocalError("无法创建房间，请稍后重试。");
+      if (connectionAttempt.current === attempt)
+        setLocalError("无法创建房间，请稍后重试。");
     } finally {
-      setBusy(false);
+      if (connectionAttempt.current === attempt) setBusy(false);
     }
   }, [gameId, host, initialConfig]);
 
   const joinRoom = useCallback(async (): Promise<void> => {
+    const attempt = ++connectionAttempt.current;
     setBusy(true);
     setLocalError(null);
     setLocalNotice(null);
     handledCloseReason.current = null;
+    allowCompletedSetup.current = false;
     try {
       const discovery = await discoverRoom(gameId, roomCode);
+      if (connectionAttempt.current !== attempt) return;
       if (discovery.runtime !== runtime)
         throw new Error("ROOM_RUNTIME_MISMATCH");
       await host.joinRoom(gameId, roomCode, discovery.setupProtocol);
     } catch {
-      setLocalError("房间码无效或房间已关闭，请重试。");
+      if (connectionAttempt.current === attempt)
+        setLocalError("房间码无效或房间已关闭，请重试。");
     } finally {
-      setBusy(false);
+      if (connectionAttempt.current === attempt) setBusy(false);
     }
   }, [gameId, host, roomCode, runtime]);
 
