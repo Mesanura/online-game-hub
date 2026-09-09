@@ -1,0 +1,2 @@
+ALTER TABLE "users" DROP CONSTRAINT "users_display_name_length_valid";--> statement-breakpoint
+ALTER TABLE "users" ADD CONSTRAINT "users_display_name_length_valid" CHECK (length(trim("users"."display_name")) between 1 and 512);

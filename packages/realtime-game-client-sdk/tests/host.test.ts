@@ -6,6 +6,7 @@ import {
   REALTIME_INPUT_MESSAGE,
   REALTIME_SERVER_MESSAGE,
   ROOM_CONTROL_MESSAGE,
+  ROOM_PROFILE_MESSAGE,
   SERVER_PROTOCOL_MESSAGE,
   SETUP_PROTOCOL_VERSION,
 } from "@online-game-hub/protocol";
@@ -170,6 +171,125 @@ async function setup() {
 }
 
 describe("RealtimeGameClientHost", () => {
+  it.each([5, 6] as const)(
+    "refreshes V%i public profiles through an acknowledged signed ticket",
+    async (setupProtocol) => {
+      const room = new FakeRoom();
+      const host = new RealtimeGameClientHost({
+        gameServerUrl: "http://127.0.0.1:1234",
+        setupProtocol,
+        ticketProvider: async () => "fresh-ticket",
+        transport: {
+          createClient: () => ({
+            create: async () => room,
+            join: async () => room,
+          }),
+        },
+        commandIds: { createCommandId: () => "refresh-profile" },
+      });
+      await host.createRoom("pong", { targetScore: 3 });
+      room.emit(
+        SERVER_PROTOCOL_MESSAGE,
+        setupProtocol === 5 ? connected() : connectedV6(),
+      );
+      const initial =
+        setupProtocol === 5
+          ? lifecycle()
+          : lifecycleV6(false, { setupRevision: 1 });
+      room.emit(ROOM_CONTROL_MESSAGE, initial);
+      await expect(host.refreshProfile()).rejects.toThrow("not available");
+      const players = [
+        {
+          slotId: "slot-left",
+          displayName: "旧名字",
+          occupied: true,
+          online: true,
+          ready: false,
+          ...(setupProtocol === 5 ? { assignment: null } : {}),
+        },
+        {
+          slotId: "slot-right",
+          displayName: "对手",
+          occupied: true,
+          online: true,
+          ready: false,
+          ...(setupProtocol === 5 ? { assignment: null } : {}),
+        },
+      ];
+      room.emit(ROOM_CONTROL_MESSAGE, { ...initial, players });
+      const update = host.refreshProfile();
+      await Promise.resolve();
+      expect(room.sent.at(-1)).toEqual({
+        type: ROOM_PROFILE_MESSAGE,
+        payload: {
+          type: ROOM_PROFILE_MESSAGE,
+          protocolVersion: setupProtocol,
+          commandId: "refresh-profile",
+          ticket: "fresh-ticket",
+        },
+      });
+      room.emit(ROOM_CONTROL_MESSAGE, {
+        ...initial,
+        players: players.map((player) => ({
+          ...player,
+          displayName:
+            player.slotId === "slot-left" ? "新名字" : player.displayName,
+        })),
+        causedByCommandId: "refresh-profile",
+      });
+      await update;
+      expect(host.getState().roomLifecycle?.players?.[0]?.displayName).toBe(
+        "新名字",
+      );
+      expect(host.getState().roomLifecycle?.nextRound).toEqual(
+        initial.nextRound,
+      );
+      expect(host.getState().connectionState).toBe("connected");
+      await host.close();
+    },
+  );
+
+  it("does not send a delayed profile ticket after leaving the room", async () => {
+    const room = new FakeRoom();
+    let releaseTicket: (ticket: string) => void = () => undefined;
+    let initialTicket = true;
+    const host = new RealtimeGameClientHost({
+      gameServerUrl: "http://127.0.0.1:1234",
+      setupProtocol: 6,
+      ticketProvider: async () => {
+        if (initialTicket) {
+          initialTicket = false;
+          return "initial-ticket";
+        }
+        return new Promise<string>((resolve) => {
+          releaseTicket = resolve;
+        });
+      },
+      transport: {
+        createClient: () => ({
+          create: async () => room,
+          join: async () => room,
+        }),
+      },
+    });
+    await host.createRoom("pong", { targetScore: 3 });
+    room.emit(SERVER_PROTOCOL_MESSAGE, connectedV6());
+    const initial = lifecycleV6(false);
+    room.emit(ROOM_CONTROL_MESSAGE, {
+      ...initial,
+      players: initial.players.map((player) => ({
+        ...player,
+        displayName: "玩家",
+      })),
+    });
+    const updating = host.refreshProfile();
+    const rejected = expect(updating).rejects.toThrow("connection changed");
+    await host.leaveRoom();
+    releaseTicket("late-ticket");
+    await rejected;
+    expect(room.sent).toEqual([]);
+  });
+
   it.each(["create", "join"] as const)(
     "starts %s with fresh room state after disconnecting a completed game",
     async (operation) => {

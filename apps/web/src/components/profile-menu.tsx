@@ -17,6 +17,7 @@ import {
   DEFAULT_DISPLAY_NAME,
   GUEST_PROFILE_STORAGE_KEY,
   MAX_DISPLAY_NAME_INPUT_LENGTH,
+  PROFILE_UPDATED_EVENT,
   getAvatarLabel,
   normalizeDisplayName,
   readStoredGuestDisplayName,
@@ -156,6 +157,7 @@ export function ProfileMenu({ confirmIdentityChange }: ProfileMenuProps) {
         setGuestDisplayName(nextDisplayName);
         setDraftDisplayName(nextDisplayName);
         setMessage({ tone: "success", text: "显示名已保存。" });
+        window.dispatchEvent(new Event(PROFILE_UPDATED_EVENT));
       } catch {
         setMessage({ tone: "error", text: "当前浏览器无法保存显示名。" });
       } finally {
@@ -178,6 +180,7 @@ export function ProfileMenu({ confirmIdentityChange }: ProfileMenuProps) {
         setAccount(payload.account);
         setDraftDisplayName(payload.account.displayName);
         setMessage({ tone: "success", text: "显示名已保存。" });
+        window.dispatchEvent(new Event(PROFILE_UPDATED_EVENT));
       })
       .catch(() => {
         setMessage({ tone: "error", text: "保存失败，请稍后重试。" });

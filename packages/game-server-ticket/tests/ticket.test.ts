@@ -22,6 +22,47 @@ function encodeUnsafeClaims(claims: unknown): string {
 }
 
 describe("HMAC Game Server ticket authority", () => {
+  it.each([5, 6] as const)(
+    "signs optional V%i public names without accepting tampering",
+    (protocolVersion) => {
+      const authority = createHmacGameServerTicketAuthority({
+        issuer: "web-test",
+        secret: SECRET,
+      });
+      const ticket = authority.issue(
+        "session-a",
+        undefined,
+        protocolVersion,
+        "👩‍💻玩家",
+      );
+      expect(authority.verify(ticket)).toMatchObject({
+        status: "verified",
+        claims: { displayName: "👩‍💻玩家" },
+      });
+      const [payload, signature] = ticket.split(".");
+      if (payload === undefined || signature === undefined)
+        throw new Error("Ticket segments are missing.");
+      const claims = JSON.parse(
+        Buffer.from(payload, "base64url").toString("utf8"),
+      ) as Record<string, unknown>;
+      const altered = Buffer.from(
+        JSON.stringify({ ...claims, displayName: "冒名" }),
+      ).toString("base64url");
+      expect(authority.verify(`${altered}.${signature}`)).toEqual({
+        status: "rejected",
+        code: "INVALID_TICKET",
+      });
+      expect(() =>
+        authority.issue("session-a", undefined, protocolVersion, "bad\nname"),
+      ).toThrow();
+      expect(
+        authority.verify(
+          encodeUnsafeClaims({ ...claims, displayName: "bad\nname" }),
+        ),
+      ).toEqual({ status: "rejected", code: "INVALID_TICKET" });
+    },
+  );
+
   it("issues short-lived Protocol V5 guest and account claims controlled by the server", () => {
     const authority = createHmacGameServerTicketAuthority({
       issuer: "web-test",

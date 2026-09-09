@@ -1,5 +1,14 @@
 import { z } from "zod";
 
+import { playerDisplayNameSchema } from "./player-profile.js";
+export {
+  DEFAULT_PLAYER_DISPLAY_NAME,
+  MAX_PLAYER_DISPLAY_NAME_GRAPHEMES,
+  MAX_PLAYER_DISPLAY_NAME_INPUT_LENGTH,
+  normalizePlayerDisplayName,
+  playerDisplayNameSchema,
+} from "./player-profile.js";
+
 export const PROTOCOL_VERSION = 5 as const;
 /** Game-defined round setup protocol. V5 remains available during migration. */
 export const SETUP_PROTOCOL_VERSION = 6 as const;
@@ -10,6 +19,7 @@ export const REALTIME_GAME_ROOM_NAME = "realtime-game" as const;
 export const GAME_ACTION_MESSAGE = "game.action" as const;
 export const GAME_SETUP_MESSAGE = "game.setup" as const;
 export const ROOM_CONTROL_MESSAGE = "room.control" as const;
+export const ROOM_PROFILE_MESSAGE = "room.profile" as const;
 export const SERVER_PROTOCOL_MESSAGE = "protocol" as const;
 export const GAME_SERVER_TICKET_AUDIENCE = "game-server" as const;
 export const REALTIME_PROTOCOL_VERSION = 1 as const;
@@ -165,6 +175,16 @@ export const roomDiscoverySchema = z
   .strict();
 export type RoomDiscovery = z.infer<typeof roomDiscoverySchema>;
 export const gameServerTicketSchema = z.string().min(1).max(4096);
+
+export const roomProfileCommandSchema = z
+  .object({
+    type: z.literal(ROOM_PROFILE_MESSAGE),
+    protocolVersion: setupProtocolGenerationSchema,
+    commandId: commandIdSchema,
+    ticket: gameServerTicketSchema,
+  })
+  .strict();
+export type RoomProfileCommand = z.infer<typeof roomProfileCommandSchema>;
 export const jsonValueSchema = z.custom<unknown>(isJsonValue, {
   error: "Expected a JSON-serializable value.",
 });
@@ -278,6 +298,7 @@ const nextRoundLifecycleSchema = z
 const lifecyclePlayerSchema = z
   .object({
     slotId: z.string().min(1),
+    displayName: playerDisplayNameSchema.nullable().optional(),
     occupied: z.boolean(),
     online: z.boolean(),
     ready: z.boolean(),
@@ -387,6 +408,7 @@ const gameServerTicketClaimsShape = {
   audience: z.literal(GAME_SERVER_TICKET_AUDIENCE),
   playerSessionId: z.string().min(1).max(128),
   userId: z.uuid().optional(),
+  displayName: playerDisplayNameSchema.optional(),
   issuedAt: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
   expiresAt: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
   ticketId: z.string().min(1).max(128),
@@ -568,6 +590,7 @@ export type RoomControlCommandV6 = z.infer<typeof roomControlCommandV6Schema>;
 const lifecyclePlayerV6Schema = z
   .object({
     slotId: z.string().min(1),
+    displayName: playerDisplayNameSchema.nullable().optional(),
     occupied: z.boolean(),
     online: z.boolean(),
     ready: z.boolean(),

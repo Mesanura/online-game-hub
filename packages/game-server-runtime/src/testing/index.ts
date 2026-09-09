@@ -103,6 +103,7 @@ interface UnsafelyIssuableClaims {
   readonly audience: string;
   readonly playerSessionId: string;
   readonly userId?: string;
+  readonly displayName?: string;
   readonly issuedAt: number;
   readonly expiresAt: number;
   readonly ticketId: string;
@@ -124,6 +125,7 @@ export interface TestTicketOverrides {
   readonly ticketId?: string;
   readonly protocolVersion?: number;
   readonly userId?: string;
+  readonly displayName?: string;
 }
 
 export class TestTicketAuthority implements TicketVerifier {
@@ -156,6 +158,9 @@ export class TestTicketAuthority implements TicketVerifier {
       audience: overrides.audience ?? GAME_SERVER_TICKET_AUDIENCE,
       playerSessionId,
       ...(overrides.userId === undefined ? {} : { userId: overrides.userId }),
+      ...(overrides.displayName === undefined
+        ? {}
+        : { displayName: overrides.displayName }),
       issuedAt: overrides.issuedAt ?? nowSeconds,
       expiresAt: overrides.expiresAt ?? nowSeconds + this.#lifetimeSeconds,
       ticketId: overrides.ticketId ?? `test-ticket-${this.#ticketSequence}`,

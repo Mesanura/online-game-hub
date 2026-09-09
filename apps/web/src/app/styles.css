@@ -1006,15 +1006,23 @@ summary:focus-visible {
 }
 .player-avatar {
   align-items: center;
-  background: var(--peach);
-  border-radius: 1rem;
+  border-radius: 50%;
   box-shadow: var(--shadow-lift-soft), var(--shadow-convex);
-  color: var(--teal-deep);
   display: flex;
   flex: 0 0 auto;
+  font-size: 1.5rem;
   height: 3.6rem;
   justify-content: center;
   width: 3.6rem;
+}
+.player-avatar-empty {
+  background: var(--peach);
+  color: var(--teal-deep);
+}
+.player-self-badge {
+  color: var(--teal-deep);
+  font-size: 0.75rem;
+  font-weight: 800;
 }
 .player-pod-copy {
   display: grid;
@@ -1030,6 +1038,8 @@ summary:focus-visible {
 .player-name-row h3 {
   font-size: 1rem;
   margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .owner-badge {
   align-items: center;
@@ -1777,7 +1787,9 @@ summary:focus-visible {
     padding: 0.65rem 0.75rem;
   }
   .player-avatar {
-    display: none;
+    height: 2.75rem;
+    width: 2.75rem;
+    font-size: 1.2rem;
   }
   .player-pod-copy {
     grid-template-columns: minmax(0, 1fr) auto;

@@ -141,7 +141,9 @@ slot 私有保存 `{ playerSessionId, userId }`，Round 启动时写入参与者
 
 `GET /api/matches` 只按有效 `ogh_account` session 的 UserId 查询，返回最近 50 条安全 metadata，采用 `createdAt DESC, matchId DESC` 稳定排序；请求级数据库 client 必须关闭。replayAvailable 与播放授权使用 exact 历史 definition，不用 current catalog 替代。
 
-账户显示名归 Web/profile 与数据库所有，不进入游戏协议。`PATCH /api/auth/profile` 只接受严格 `{ displayName }`，执行同源 JSON 与账户授权校验；游客资料独立存在浏览器。迁移对旧 users 从凭证回填用户名，无凭证者回填“游客”，随后约束非空。资料规则由 [产品文档](./PRODUCT.md) 定义。
+账户显示名归 Web/profile 与数据库所有，游客资料独立存在浏览器。`PATCH /api/auth/profile` 只接受严格 `{ displayName }`，执行同源 JSON 与账户授权校验。Web 将经过校验的公开显示名签入可选 ticket claims，两类 runtime 只在内存席位中保存，并向支持资料扩展的客户端投递 lifecycle；不把账户标识交给其他玩家，也不把显示资料写入 Core、Setup、Surface 或 replay。同步与兼容契约见 [网络协议](./NETWORK_PROTOCOL.md#43-http-ticket-api)，资料规则见 [产品文档](./PRODUCT.md)。迁移对旧 users 从凭证回填用户名，无凭证者回填“游客”，随后约束非空。
+
+显示名的存储长度上限为 512，避免旧的 96 长度限制拒绝合法组合 emoji；512 个 UTF-16 code unit 与 24 个 grapheme 的输入边界由公开资料校验控制，PostgreSQL CHECK 保留非空和粗粒度长度保护。部署先应用 checked-in migrations，再升级服务。
 
 ### 存储职责
 

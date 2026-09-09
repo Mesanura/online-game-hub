@@ -37,7 +37,7 @@ export const users = pgTable(
   (table) => [
     check(
       "users_display_name_length_valid",
-      sql`length(trim(${table.displayName})) between 1 and 96`,
+      sql`length(trim(${table.displayName})) between 1 and 512`,
     ),
     check("users_created_at_valid", sql`${table.createdAt} <= now()`),
   ],

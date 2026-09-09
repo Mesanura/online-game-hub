@@ -3,6 +3,7 @@ import {
   GAME_SETUP_MESSAGE,
   PROTOCOL_VERSION,
   ROOM_CONTROL_MESSAGE,
+  ROOM_PROFILE_MESSAGE,
   SERVER_PROTOCOL_MESSAGE,
   SETUP_PROTOCOL_VERSION,
 } from "@online-game-hub/protocol";
@@ -235,6 +236,122 @@ function lifecycleV6(
 }
 
 describe("GameClientHost", () => {
+  it.each([5, 6] as const)(
+    "refreshes V%i public profiles through an acknowledged signed ticket",
+    async (setupProtocol) => {
+      const room = new FakeRoom();
+      const host = new GameClientHost({
+        gameServerUrl: "http://127.0.0.1:1234",
+        setupProtocol,
+        ticketProvider: async () => "fresh-ticket",
+        transport: new FakeTransport([room]),
+        commandIds: { createCommandId: () => "refresh-profile" },
+      });
+      await host.createRoom("tic-tac-toe", null);
+      room.emit(setupProtocol === 5 ? connected : connectedV6);
+      const initial =
+        setupProtocol === 5
+          ? lifecycle(null, {
+              starter: "OWNER",
+              selfReady: true,
+              readyPlayerCount: 1,
+            })
+          : lifecycleV6(null, {
+              setupRevision: 1,
+              canReady: true,
+              selfReady: true,
+              readySlotIds: ["slot-1"],
+            });
+      room.emitLifecycle(initial);
+      await expect(host.refreshProfile()).rejects.toThrow("not available");
+      const players = [
+        {
+          slotId: "slot-1",
+          displayName: "旧名字",
+          occupied: true,
+          online: true,
+          ready: true,
+          ...(setupProtocol === 5 ? { assignment: null } : {}),
+        },
+        {
+          slotId: "slot-2",
+          displayName: "对手",
+          occupied: true,
+          online: true,
+          ready: false,
+          ...(setupProtocol === 5 ? { assignment: null } : {}),
+        },
+      ];
+      room.emitLifecycle({ ...initial, players });
+      const update = host.refreshProfile();
+      await Promise.resolve();
+      expect(room.sent.at(-1)).toEqual({
+        type: ROOM_PROFILE_MESSAGE,
+        payload: {
+          type: ROOM_PROFILE_MESSAGE,
+          protocolVersion: setupProtocol,
+          commandId: "refresh-profile",
+          ticket: "fresh-ticket",
+        },
+      });
+      room.emitLifecycle({
+        ...initial,
+        players: players.map((player) => ({
+          ...player,
+          displayName:
+            player.slotId === "slot-1" ? "新名字" : player.displayName,
+        })),
+        causedByCommandId: "refresh-profile",
+      });
+      await update;
+      expect(host.getState().roomLifecycle?.players?.[0]).toMatchObject({
+        displayName: "新名字",
+        ready: true,
+      });
+      expect(host.getState().roomLifecycle?.nextRound).toEqual(
+        initial.nextRound,
+      );
+      expect(room.left).toBe(false);
+      await host.close();
+    },
+  );
+
+  it("does not send a delayed profile ticket after leaving the room", async () => {
+    const room = new FakeRoom();
+    let releaseTicket: (ticket: string) => void = () => undefined;
+    let initialTicket = true;
+    const host = new GameClientHost({
+      gameServerUrl: "http://127.0.0.1:1234",
+      setupProtocol: 6,
+      ticketProvider: async () => {
+        if (initialTicket) {
+          initialTicket = false;
+          return "initial-ticket";
+        }
+        return new Promise<string>((resolve) => {
+          releaseTicket = resolve;
+        });
+      },
+      transport: new FakeTransport([room]),
+    });
+    await host.createRoom("tic-tac-toe", null);
+    room.emit(connectedV6);
+    const initial = lifecycleV6(null);
+    room.emitLifecycle({
+      ...initial,
+      players: initial.players.map((player) => ({
+        ...player,
+        displayName: "玩家",
+      })),
+    });
+    const updating = host.refreshProfile();
+    const rejected = expect(updating).rejects.toThrow("connection changed");
+    await host.leaveRoom();
+    releaseTicket("late-ticket");
+    await rejected;
+    expect(room.sent).toEqual([]);
+  });
+
   it("starts idle before any room intent", () => {
     const host = new GameClientHost({
       gameServerUrl: "http://127.0.0.1:1234",

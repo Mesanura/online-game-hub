@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { and, eq, gt, ne, sql } from "drizzle-orm";
+import { MAX_PLAYER_DISPLAY_NAME_INPUT_LENGTH } from "@online-game-hub/protocol";
 
 import type { OnlineGameHubDatabase } from "./client.js";
 import { DatabaseError } from "./errors.js";
@@ -87,7 +88,9 @@ function assertCredentialInput(username: string, passwordHash: string): void {
 
 function validDisplayName(value: string): boolean {
   return (
-    value.trim().length > 0 && value.length <= 96 && !/\p{Cc}/u.test(value)
+    value.trim().length > 0 &&
+    value.length <= MAX_PLAYER_DISPLAY_NAME_INPUT_LENGTH &&
+    !/\p{Cc}/u.test(value)
   );
 }
 

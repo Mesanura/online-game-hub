@@ -3,6 +3,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { CloseCode, Room, ServerError } from "@colyseus/core";
 import type { Client } from "@colyseus/core";
 import {
+  DEFAULT_PLAYER_DISPLAY_NAME,
   GAME_SETUP_MESSAGE,
   PROTOCOL_VERSION,
   REALTIME_GAME_ROOM_NAME,
@@ -10,6 +11,7 @@ import {
   REALTIME_PROTOCOL_VERSION,
   REALTIME_SERVER_MESSAGE,
   ROOM_CONTROL_MESSAGE,
+  ROOM_PROFILE_MESSAGE,
   SERVER_PROTOCOL_MESSAGE,
   SETUP_PROTOCOL_VERSION,
   createGameRoomRequestSchema,
@@ -20,6 +22,7 @@ import {
   realtimeInputCommandSchema,
   roomControlCommandSchema,
   roomControlCommandV6Schema,
+  roomProfileCommandSchema,
   setupProtocolGenerationSchema,
 } from "@online-game-hub/protocol";
 import type {
@@ -743,6 +746,7 @@ export interface RealtimeTicketVerification {
   readonly userId: string | null;
   readonly claims: {
     readonly protocolVersion: SetupProtocolGeneration;
+    readonly displayName?: string | undefined;
   };
 }
 
@@ -1129,9 +1133,11 @@ export function createRealtimeGameRoomClass(
       readonly slotId: RealtimePlayerSlotId;
       playerSessionId: string | null;
       userId: string | null;
+      displayName: string | null;
       reservedUntilMilliseconds: number | null;
       timeout: { cancel(): void } | null;
     }> = [];
+    readonly #profileCommands = new Set<string>();
     #round: RealtimeRound<
       JsonValue,
       JsonValue,
@@ -1188,6 +1194,7 @@ export function createRealtimeGameRoomClass(
     ): Promise<{
       readonly playerSessionId: string;
       readonly userId: string | null;
+      readonly displayName?: string;
     }> {
       const request = parseRealtimeGameRoomRequest(options);
       if (request === null) {
@@ -1211,6 +1218,9 @@ export function createRealtimeGameRoomClass(
       return {
         playerSessionId: verification.playerSessionId,
         userId: verification.userId,
+        ...(verification.claims.displayName === undefined
+          ? {}
+          : { displayName: verification.claims.displayName }),
       };
     }
 
@@ -1274,6 +1284,10 @@ export function createRealtimeGameRoomClass(
           slotId: ids.createPlayerSlotId(index),
           playerSessionId: index === 0 ? verification.playerSessionId : null,
           userId: index === 0 ? verification.userId : null,
+          displayName:
+            index === 0
+              ? (verification.claims.displayName ?? DEFAULT_PLAYER_DISPLAY_NAME)
+              : null,
           reservedUntilMilliseconds: null,
           timeout: null,
         }),
@@ -1329,6 +1343,9 @@ export function createRealtimeGameRoomClass(
       );
       this.onMessage(ROOM_CONTROL_MESSAGE, (client, message: unknown) =>
         this.#enqueue(() => this.#handleControl(client, message)),
+      );
+      this.onMessage(ROOM_PROFILE_MESSAGE, (client, message: unknown) =>
+        this.#enqueue(() => this.#handleProfile(client, message)),
       );
       if (setupProtocol === SETUP_PROTOCOL_VERSION) {
         this.onMessage(GAME_SETUP_MESSAGE, (client, message: unknown) =>
@@ -1391,6 +1408,11 @@ export function createRealtimeGameRoomClass(
           slot.playerSessionId = session;
           slot.userId = userId;
         }
+        const profile = client.auth as { displayName?: string };
+        slot.displayName =
+          profile.displayName ??
+          slot.displayName ??
+          DEFAULT_PLAYER_DISPLAY_NAME;
         slot.timeout?.cancel();
         slot.timeout = null;
         slot.reservedUntilMilliseconds = null;
@@ -1457,6 +1479,102 @@ export function createRealtimeGameRoomClass(
       this.#terminalTimeout?.cancel();
       this.#terminalTimeout = null;
       for (const slot of this.#slots) slot.timeout?.cancel();
+    }
+
+    async #handleProfile(client: Client, raw: unknown): Promise<void> {
+      const parsed = roomProfileCommandSchema.safeParse(raw);
+      if (!parsed.success) {
+        this.#sendProtocolRejection(client, "INVALID_ACTION_PAYLOAD");
+        return;
+      }
+      const command = parsed.data;
+      if (command.protocolVersion !== this.#requireSetupProtocol()) {
+        this.#sendProtocolRejection(
+          client,
+          "PROTOCOL_VERSION_UNSUPPORTED",
+          command.commandId,
+        );
+        return;
+      }
+      const data = client.userData as
+        { session?: string; slotId?: RealtimePlayerSlotId } | undefined;
+      const slot = this.#slots.find(
+        (candidate) => candidate.slotId === data?.slotId,
+      );
+      if (
+        data?.session === undefined ||
+        slot === undefined ||
+        this.#activeBySession.get(data.session) !== client ||
+        slot.playerSessionId !== data.session
+      ) {
+        this.#sendProtocolRejection(client, "NOT_A_PLAYER", command.commandId);
+        return;
+      }
+      if (this.#closedReason !== null) {
+        this.#sendProtocolRejection(
+          client,
+          "MATCH_NOT_ACTIVE",
+          command.commandId,
+        );
+        return;
+      }
+      const key = `${data.session}\u0000${command.commandId}`;
+      if (this.#profileCommands.has(key)) {
+        client.send(
+          ROOM_CONTROL_MESSAGE,
+          this.#lifecycle(client, command.commandId),
+        );
+        return;
+      }
+      try {
+        const verified = await dependencies.ticketVerifier.verify(
+          command.ticket,
+        );
+        if (verified.status === "rejected") {
+          this.#sendProtocolRejection(
+            client,
+            verified.protocolCode,
+            command.commandId,
+          );
+          return;
+        }
+        if (verified.claims.protocolVersion !== this.#requireSetupProtocol()) {
+          this.#sendProtocolRejection(
+            client,
+            "PROTOCOL_VERSION_UNSUPPORTED",
+            command.commandId,
+          );
+          return;
+        }
+        if (
+          verified.playerSessionId !== data.session ||
+          verified.userId !== slot.userId
+        ) {
+          this.#sendProtocolRejection(
+            client,
+            "NOT_A_PLAYER",
+            command.commandId,
+          );
+          return;
+        }
+        if (verified.claims.displayName === undefined) {
+          this.#sendProtocolRejection(
+            client,
+            "INVALID_ACTION_PAYLOAD",
+            command.commandId,
+          );
+          return;
+        }
+        slot.displayName = verified.claims.displayName;
+        this.#profileCommands.add(key);
+        this.#broadcastLifecycle(client, command.commandId);
+      } catch {
+        this.#sendProtocolRejection(
+          client,
+          "INTERNAL_ERROR",
+          command.commandId,
+        );
+      }
     }
 
     #enqueue(work: () => void | Promise<void>): Promise<void> {
@@ -2259,6 +2377,8 @@ export function createRealtimeGameRoomClass(
     ): RoomLifecycleState | RoomLifecycleStateV6 {
       const data = client.userData as
         { session?: string; slotId?: RealtimePlayerSlotId } | undefined;
+      const includeProfiles =
+        (client.auth as { displayName?: string }).displayName !== undefined;
       const currentRound =
         this.#roundStatus === null || this.#roundNumber === 0
           ? null
@@ -2321,6 +2441,7 @@ export function createRealtimeGameRoomClass(
           nextRound,
           players: this.#slots.map((slot) => ({
             slotId: slot.slotId,
+            ...(includeProfiles ? { displayName: slot.displayName } : {}),
             occupied: slot.playerSessionId !== null,
             online:
               slot.playerSessionId !== null &&
@@ -2349,6 +2470,7 @@ export function createRealtimeGameRoomClass(
           : null,
         players: this.#slots.map((slot) => ({
           slotId: slot.slotId,
+          ...(includeProfiles ? { displayName: slot.displayName } : {}),
           occupied: slot.playerSessionId !== null,
           online:
             slot.playerSessionId !== null &&

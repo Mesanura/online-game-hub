@@ -64,6 +64,7 @@ export interface GameServerTicketAuthority {
     playerSessionId: string,
     userId?: string,
     protocolVersion?: SetupProtocolGeneration,
+    displayName?: string,
   ): string;
   verify(ticket: unknown): GameServerTicketVerificationResult;
 }
@@ -114,7 +115,12 @@ export function createHmacGameServerTicketAuthority(
   ): GameServerTicketVerificationResult => ({ status: "rejected", code });
 
   return {
-    issue(playerSessionId, userId, protocolVersion = PROTOCOL_VERSION) {
+    issue(
+      playerSessionId,
+      userId,
+      protocolVersion = PROTOCOL_VERSION,
+      displayName,
+    ) {
       if (playerSessionId.length === 0 || playerSessionId.length > 128) {
         throw new TypeError(
           "Player session id must contain between 1 and 128 characters.",
@@ -135,6 +141,7 @@ export function createHmacGameServerTicketAuthority(
         audience: GAME_SERVER_TICKET_AUDIENCE,
         playerSessionId,
         ...(userId === undefined ? {} : { userId }),
+        ...(displayName === undefined ? {} : { displayName }),
         issuedAt,
         expiresAt: issuedAt + lifetimeSeconds,
         ticketId: ids.createTicketId(),

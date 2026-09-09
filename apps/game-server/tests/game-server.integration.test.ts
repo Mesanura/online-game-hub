@@ -31,6 +31,8 @@ import {
 } from "@online-game-hub/game-registry/server";
 import {
   PROTOCOL_VERSION,
+  REALTIME_GAME_ROOM_NAME,
+  ROOM_PROFILE_MESSAGE,
   SETUP_PROTOCOL_VERSION,
   roomLifecycleStateSchema,
   roomLifecycleStateV6Schema,
@@ -3642,6 +3644,298 @@ describe.sequential("authoritative Colyseus Game Server", () => {
     ]);
   });
 });
+
+describe.sequential(
+  "public room profiles across runtimes and generations",
+  () => {
+    it.each([
+      ["tic-tac-toe", 5],
+      ["tic-tac-toe", 6],
+      ["pong", 5],
+      ["pong", 6],
+    ] as const)(
+      "syncs %s V%i profiles without changing identity or readiness",
+      async (gameId, protocolVersion) => {
+        const clock = new FakeRuntimeClock(4_000_000);
+        const authority = new TestTicketAuthority({
+          issuer: "profile-tests",
+          secret: "profile-tests-secret-at-least-32-characters",
+          clock,
+        });
+        const roomStore = new InMemoryRoomStore();
+        const realtimeRoomStore = new InMemoryRealtimeRoomStore();
+        const app = createGameServer({
+          ticketVerifier: authority,
+          roomStore,
+          realtimeRoomStore,
+          clock,
+          realtimeClock: clock,
+          resolveSetupProtocol: () => protocolVersion,
+        });
+        const address = await app.start({ port: 0 });
+        const rooms: ClientRoom[] = [];
+        const roomName =
+          gameId === "pong" ? REALTIME_GAME_ROOM_NAME : GAME_ROOM_NAME;
+        const ownerId = "11111111-1111-4111-8111-111111111111";
+        const ticket = (
+          session: string,
+          displayName?: string,
+          userId?: string,
+        ) =>
+          authority.issue(session, {
+            protocolVersion,
+            ...(displayName === undefined ? {} : { displayName }),
+            ...(userId === undefined ? {} : { userId }),
+          });
+        const inboxes = (room: ClientRoom) => ({
+          messages:
+            protocolVersion === 5
+              ? new MessageInbox(room)
+              : new V6MessageInbox(room),
+          lifecycle:
+            protocolVersion === 5
+              ? new LifecycleInbox(room)
+              : new V6LifecycleInbox(room),
+        });
+        try {
+          const owner = await new ColyseusClient(address.httpUrl).create(
+            roomName,
+            {
+              type: "room.create",
+              protocolVersion,
+              ticket: ticket("profile-owner", "👩‍💻房主", ownerId),
+              gameId,
+              initialConfig: gameId === "pong" ? { targetScore: 3 } : null,
+            },
+          );
+          rooms.push(owner);
+          const ownerInbox = inboxes(owner);
+          const connected = await ownerInbox.messages.next(
+            (message) => message.type === "room.connected",
+          );
+          if (connected.type !== "room.connected")
+            throw new Error("Room connection is missing.");
+          const ownerSlot = connected.playerSlotId;
+          const initial = await ownerInbox.lifecycle.next(() => true);
+          expect(
+            initial.players?.find((player) => player.slotId === ownerSlot),
+          ).toMatchObject({ displayName: "👩‍💻房主", occupied: true });
+          expect(
+            initial.players?.find((player) => !player.occupied)?.displayName,
+          ).toBeNull();
+
+          // An older client still receives the exact original lifecycle shape.
+          const guest = await new ColyseusClient(address.httpUrl).join(
+            roomName,
+            {
+              type: "room.join",
+              protocolVersion,
+              ticket: ticket("profile-guest"),
+              roomCode: connected.roomCode,
+            },
+          );
+          rooms.push(guest);
+          const guestInbox = inboxes(guest);
+          const guestConnected = await guestInbox.messages.next(
+            (message) => message.type === "room.connected",
+          );
+          if (guestConnected.type !== "room.connected")
+            throw new Error("Guest connection is missing.");
+          const guestSlot = guestConnected.playerSlotId;
+          const legacy = await guestInbox.lifecycle.next(() => true);
+          for (const player of legacy.players ?? [])
+            expect(player).not.toHaveProperty("displayName");
+          const joined = await ownerInbox.lifecycle.next(
+            (message) =>
+              message.players?.every((player) => player.occupied) === true,
+          );
+          expect(
+            joined.players?.find((player) => player.slotId === guestSlot)
+              ?.displayName,
+          ).toBe("游客");
+          expect(JSON.stringify(joined)).not.toMatch(
+            /playerSessionId|userId|ticket|username/u,
+          );
+
+          owner.send(
+            protocolVersion === 6 ? GAME_SETUP_MESSAGE : ROOM_CONTROL_MESSAGE,
+            protocolVersion === 6
+              ? {
+                  type: "game.setup",
+                  protocolVersion,
+                  commandId: "profile-starter",
+                  roundNumber: 1,
+                  expectedSetupRevision: 0,
+                  action: { type: "SELECT_STARTER", starter: "OWNER" },
+                }
+              : {
+                  type: "room.control",
+                  protocolVersion,
+                  commandId: "profile-starter",
+                  operation: "SELECT_STARTER",
+                  starter: "OWNER",
+                },
+          );
+          await ownerInbox.lifecycle.next(
+            (message) => message.causedByCommandId === "profile-starter",
+          );
+          owner.send(ROOM_CONTROL_MESSAGE, {
+            type: "room.control",
+            protocolVersion,
+            commandId: "profile-ready",
+            operation: "READY_FOR_ROUND",
+          });
+          const ready = await ownerInbox.lifecycle.next(
+            (message) => message.causedByCommandId === "profile-ready",
+          );
+          const store = gameId === "pong" ? realtimeRoomStore : roomStore;
+          const storedBefore = await store.getByRoomCode(connected.roomCode);
+          const update = {
+            type: ROOM_PROFILE_MESSAGE,
+            protocolVersion,
+            commandId: "profile-update",
+            ticket: ticket("profile-owner", "新名字", ownerId),
+          };
+          owner.send(ROOM_PROFILE_MESSAGE, update);
+          const renamed = await ownerInbox.lifecycle.next(
+            (message) => message.causedByCommandId === update.commandId,
+          );
+          expect(
+            renamed.players?.find((player) => player.slotId === ownerSlot),
+          ).toMatchObject({ displayName: "新名字", ready: true });
+          expect(renamed.nextRound).toEqual(ready.nextRound);
+          expect(await store.getByRoomCode(connected.roomCode)).toEqual(
+            storedBefore,
+          );
+          expect(JSON.stringify(storedBefore)).not.toContain("displayName");
+
+          for (const [commandId, forgedTicket, code] of [
+            [
+              "profile-other-session",
+              ticket("somebody-else", "冒名", ownerId),
+              "NOT_A_PLAYER",
+            ],
+            [
+              "profile-downgrade",
+              ticket("profile-owner", "冒名"),
+              "NOT_A_PLAYER",
+            ],
+            ["profile-invalid", "invalid-ticket", "UNAUTHENTICATED"],
+            [
+              "profile-no-name",
+              ticket("profile-owner", undefined, ownerId),
+              "INVALID_ACTION_PAYLOAD",
+            ],
+            [
+              "profile-wrong-generation",
+              authority.issue("profile-owner", {
+                protocolVersion: protocolVersion === 5 ? 6 : 5,
+                displayName: "冒名",
+                userId: ownerId,
+              }),
+              "PROTOCOL_VERSION_UNSUPPORTED",
+            ],
+            [
+              "profile-expired",
+              authority.issue("profile-owner", {
+                protocolVersion,
+                displayName: "冒名",
+                userId: ownerId,
+                issuedAt: 3900,
+                expiresAt: 3950,
+              }),
+              "UNAUTHENTICATED",
+            ],
+          ] as const) {
+            owner.send(ROOM_PROFILE_MESSAGE, {
+              ...update,
+              commandId,
+              ticket: forgedTicket,
+            });
+            const rejected = await ownerInbox.messages.next(
+              (message) =>
+                message.type === "command.rejected" &&
+                message.commandId === commandId,
+            );
+            expect(rejected).toMatchObject({ code });
+          }
+          owner.send(ROOM_PROFILE_MESSAGE, {
+            ...update,
+            commandId: "profile-forged-slot",
+            slotId: guestSlot,
+          });
+          expect(
+            await ownerInbox.messages.next(
+              (message) =>
+                message.type === "command.rejected" &&
+                message.code === "INVALID_ACTION_PAYLOAD",
+            ),
+          ).toMatchObject({ code: "INVALID_ACTION_PAYLOAD" });
+          owner.send(ROOM_PROFILE_MESSAGE, {
+            ...update,
+            commandId: "profile-second",
+            ticket: ticket("profile-owner", "最终名字", ownerId),
+          });
+          await ownerInbox.lifecycle.next(
+            (message) => message.causedByCommandId === "profile-second",
+          );
+          owner.send(ROOM_PROFILE_MESSAGE, update);
+          const duplicate = await ownerInbox.lifecycle.next(
+            (message) => message.causedByCommandId === update.commandId,
+          );
+          expect(
+            duplicate.players?.find((player) => player.slotId === ownerSlot),
+          ).toMatchObject({ displayName: "最终名字", ready: true });
+
+          await guest.leave(false);
+          const offline = await ownerInbox.lifecycle.next(
+            (message) =>
+              message.players?.find((player) => player.slotId === guestSlot)
+                ?.online === false,
+          );
+          expect(
+            offline.players?.find((player) => player.slotId === guestSlot),
+          ).toMatchObject({ displayName: "游客", occupied: true });
+          const reconnected = await new ColyseusClient(address.httpUrl).join(
+            roomName,
+            {
+              type: "room.join",
+              protocolVersion,
+              ticket: ticket("profile-guest", "🐷朋友"),
+              roomCode: connected.roomCode,
+            },
+          );
+          rooms.push(reconnected);
+          const reconnectedInbox = inboxes(reconnected);
+          expect(
+            await reconnectedInbox.messages.next(
+              (message) => message.type === "room.connected",
+            ),
+          ).toMatchObject({ playerSlotId: guestSlot });
+          const resumed = await ownerInbox.lifecycle.next(
+            (message) =>
+              message.players?.some(
+                (player) => player.displayName === "🐷朋友",
+              ) === true,
+          );
+          expect(
+            resumed.players?.find((player) => player.slotId === ownerSlot),
+          ).toMatchObject({ displayName: "最终名字", ready: true });
+          expect(
+            resumed.players?.find((player) => player.slotId === guestSlot),
+          ).toMatchObject({ displayName: "🐷朋友", online: true });
+        } finally {
+          await Promise.allSettled(
+            rooms
+              .filter((room) => room.connection.isOpen)
+              .map((room) => room.leave(true)),
+          );
+          await app.stop();
+        }
+      },
+    );
+  },
+);
 
 describe.sequential("turn-based Protocol V6 setup runtime", () => {
   const clock = new FakeRuntimeClock(2_000_000);

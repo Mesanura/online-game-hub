@@ -1,9 +1,17 @@
-export const DEFAULT_DISPLAY_NAME = "游客";
-export const GUEST_PROFILE_STORAGE_KEY = "ogh_guest_profile_v1";
-export const MAX_DISPLAY_NAME_GRAPHEMES = 24;
-export const MAX_DISPLAY_NAME_INPUT_LENGTH = 512;
+import {
+  DEFAULT_PLAYER_DISPLAY_NAME,
+  normalizePlayerDisplayName,
+} from "@online-game-hub/protocol";
 
-const CONTROL_CHARACTER_PATTERN = /\p{Cc}/u;
+export {
+  MAX_PLAYER_DISPLAY_NAME_GRAPHEMES as MAX_DISPLAY_NAME_GRAPHEMES,
+  MAX_PLAYER_DISPLAY_NAME_INPUT_LENGTH as MAX_DISPLAY_NAME_INPUT_LENGTH,
+} from "@online-game-hub/protocol";
+
+export const DEFAULT_DISPLAY_NAME = DEFAULT_PLAYER_DISPLAY_NAME;
+export const GUEST_PROFILE_STORAGE_KEY = "ogh_guest_profile_v1";
+export const PROFILE_UPDATED_EVENT = "ogh:profile-updated";
+
 const ASCII_LETTER_OR_DIGIT_PATTERN = /^[A-Za-z0-9]$/u;
 const ASCII_DIGIT_PATTERN = /^[0-9]$/u;
 const graphemeSegmenter = new Intl.Segmenter("en", {
@@ -15,14 +23,7 @@ export function splitGraphemes(value: string): readonly string[] {
 }
 
 export function normalizeDisplayName(input: unknown): string | null {
-  if (typeof input !== "string") return null;
-  const value = input.normalize("NFC").trim();
-  if (value.length === 0 || CONTROL_CHARACTER_PATTERN.test(value)) return null;
-  const graphemes = splitGraphemes(value);
-  if (graphemes.length === 0 || graphemes.length > MAX_DISPLAY_NAME_GRAPHEMES) {
-    return null;
-  }
-  return value;
+  return normalizePlayerDisplayName(input);
 }
 
 export function getAvatarLabel(displayName: string): string {

@@ -13,10 +13,7 @@ import {
 } from "react";
 import { usePathname, useRouter } from "next/navigation";
 
-import {
-  GameClientHost,
-  createHttpTicketProvider,
-} from "@online-game-hub/game-client-sdk";
+import { GameClientHost } from "@online-game-hub/game-client-sdk";
 import type {
   GameClientHostState,
   GameSetupProtocol,
@@ -34,13 +31,12 @@ import type {
   StarterChoice as ProtocolStarterChoice,
 } from "@online-game-hub/protocol";
 import { roomDiscoverySchema } from "@online-game-hub/protocol";
-import {
-  RealtimeGameClientHost,
-  createRealtimeHttpTicketProvider,
-} from "@online-game-hub/realtime-game-client-sdk";
+import { RealtimeGameClientHost } from "@online-game-hub/realtime-game-client-sdk";
 import type { RealtimeGameClientHostState } from "@online-game-hub/realtime-game-client-sdk";
 import { gameCatalog } from "@online-game-hub/game-registry/catalog";
 import { resolveCurrentGameDeployment } from "@online-game-hub/game-registry/deployment";
+import { requestGameTicket } from "../lib/game-ticket";
+import { PROFILE_UPDATED_EVENT } from "../lib/profile";
 
 type StarterChoice = ProtocolStarterChoice;
 type WebRoomConnected = RoomConnected | RoomConnectedV6;
@@ -48,6 +44,7 @@ type WebCommandRejected = CommandRejected | CommandRejectedV6;
 
 export interface WebLifecyclePlayer {
   readonly slotId: string;
+  readonly displayName?: string | null | undefined;
   readonly occupied: boolean;
   readonly online: boolean;
   readonly ready: boolean;
@@ -212,7 +209,7 @@ export class RuntimeAwareHost {
       this.#turnBased = null;
       const realtime = new RealtimeGameClientHost({
         gameServerUrl: options.gameServerUrl,
-        ticketProvider: createRealtimeHttpTicketProvider(),
+        ticketProvider: requestGameTicket,
         ...(options.setupProtocol === undefined
           ? {}
           : { setupProtocol: options.setupProtocol }),
@@ -227,7 +224,7 @@ export class RuntimeAwareHost {
       this.#realtime = null;
       const turnBased = new GameClientHost({
         gameServerUrl: options.gameServerUrl,
-        ticketProvider: createHttpTicketProvider(),
+        ticketProvider: requestGameTicket,
         ...(options.setupProtocol === undefined
           ? {}
           : { setupProtocol: options.setupProtocol }),
@@ -345,6 +342,13 @@ export class RuntimeAwareHost {
     return realtime === null
       ? this.#requireTurnBased().closeRoom()
       : realtime.closeRoom();
+  }
+
+  public refreshProfile(): Promise<void> {
+    const realtime = this.#realtime;
+    return realtime === null
+      ? this.#requireTurnBased().refreshProfile()
+      : realtime.refreshProfile();
   }
 
   public leaveRoom(): Promise<void> {
@@ -586,6 +590,28 @@ export function GameRoomHostProvider({
     },
     [host],
   );
+
+  useEffect(() => {
+    let active = true;
+    const refreshProfile = (): void => {
+      const current = host.getState();
+      if (
+        current.connectionState !== "connected" ||
+        current.roomLifecycle?.closed !== false
+      )
+        return;
+      void host.refreshProfile().catch(() => {
+        if (active && host.getState().room === current.room) {
+          setLocalError("显示名已保存，但房间资料暂未同步，请稍后重试。");
+        }
+      });
+    };
+    window.addEventListener(PROFILE_UPDATED_EVENT, refreshProfile);
+    return () => {
+      active = false;
+      window.removeEventListener(PROFILE_UPDATED_EVENT, refreshProfile);
+    };
+  }, [host]);
 
   useEffect(() => {
     const previousPath = previousPathname.current;

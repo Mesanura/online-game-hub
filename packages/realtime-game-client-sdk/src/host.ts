@@ -7,6 +7,7 @@ import {
   REALTIME_PROTOCOL_VERSION,
   REALTIME_SERVER_MESSAGE,
   ROOM_CONTROL_MESSAGE,
+  ROOM_PROFILE_MESSAGE,
   SERVER_PROTOCOL_MESSAGE,
   SETUP_PROTOCOL_VERSION,
   commandRejectedSchema,
@@ -25,6 +26,7 @@ import {
   roomConnectedV6Schema,
   roomControlCommandSchema,
   roomControlCommandV6Schema,
+  roomProfileCommandSchema,
   roomLifecycleStateSchema,
   roomLifecycleStateV6Schema,
 } from "@online-game-hub/protocol";
@@ -171,6 +173,7 @@ export class RealtimeGameClientHost<View = unknown, Outcome = unknown> {
     readonly setupProtocol: RealtimeSetupProtocol;
   } | null = null;
   #generation = 0;
+  #profileGeneration = 0;
   readonly #defaultSetupProtocol: RealtimeSetupProtocol;
   #setupProtocol: RealtimeSetupProtocol;
 
@@ -380,6 +383,51 @@ export class RealtimeGameClientHost<View = unknown, Outcome = unknown> {
       } catch {
         this.#pendingControls.delete(commandId);
         reject(new Error("Realtime round setup could not be sent."));
+      }
+    });
+  }
+
+  /** Refresh public room metadata without leaving the seat or clearing readiness. */
+  public async refreshProfile(): Promise<void> {
+    const room = this.#transportRoom;
+    const player = this.#state.roomLifecycle?.players?.find(
+      (candidate) => candidate.slotId === this.#state.room?.playerSlotId,
+    );
+    if (
+      room === null ||
+      this.#state.connectionState !== "connected" ||
+      player?.displayName === undefined
+    ) {
+      throw new Error("Room profiles are not available.");
+    }
+    const generation = this.#generation;
+    const profileGeneration = ++this.#profileGeneration;
+    const ticket = await this.#options.ticketProvider(this.#setupProtocol);
+    if (profileGeneration !== this.#profileGeneration) return;
+    if (
+      generation !== this.#generation ||
+      room !== this.#transportRoom ||
+      this.#state.connectionState !== "connected"
+    ) {
+      throw new Error("The game room connection changed.");
+    }
+    const commandId = this.#options.commandIds.createCommandId();
+    if (this.#usedCommandIds.has(commandId))
+      throw new Error("Duplicate command id.");
+    const command = roomProfileCommandSchema.parse({
+      type: ROOM_PROFILE_MESSAGE,
+      protocolVersion: this.#setupProtocol,
+      commandId,
+      ticket,
+    });
+    this.#usedCommandIds.add(commandId);
+    return new Promise<void>((resolve, reject) => {
+      this.#pendingControls.set(commandId, { resolve, reject });
+      try {
+        room.send(ROOM_PROFILE_MESSAGE, command);
+      } catch {
+        this.#pendingControls.delete(commandId);
+        reject(new Error("The room profile could not be updated."));
       }
     });
   }

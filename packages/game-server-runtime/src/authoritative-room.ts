@@ -30,10 +30,12 @@ import type {
   UnknownRoundSetupDefinition,
 } from "@online-game-hub/game-setup";
 import {
+  DEFAULT_PLAYER_DISPLAY_NAME,
   GAME_ACTION_MESSAGE,
   GAME_SETUP_MESSAGE,
   PROTOCOL_VERSION,
   ROOM_CONTROL_MESSAGE,
+  ROOM_PROFILE_MESSAGE,
   SERVER_PROTOCOL_MESSAGE,
   SETUP_PROTOCOL_VERSION,
   createGameRoomRequestSchema,
@@ -45,6 +47,7 @@ import {
   gameSetupCommandSchema,
   roomControlCommandSchema,
   roomControlCommandV6Schema,
+  roomProfileCommandSchema,
 } from "@online-game-hub/protocol";
 import type {
   CommandRejected,
@@ -151,6 +154,7 @@ interface RuntimeSlot {
   readonly slotId: PlayerSlotId;
   playerSessionId: string | null;
   userId: string | null;
+  displayName: string | null;
   reservedUntilMilliseconds: number | null;
   assignment: string | null;
   timeout: CancelTimer | null;
@@ -306,6 +310,7 @@ export function createAuthoritativeGameRoomClass(
     readonly #activeClientBySession = new Map<string, Client>();
     readonly #commandOutcomes = new Map<string, RuntimeCommandOutcome>();
     readonly #readySessions = new Set<string>();
+    readonly #profileCommands = new Set<string>();
     #terminalTimeout: CancelTimer | null = null;
     #closedReason: RoomCloseReason | null = null;
     #starterChoice: StarterChoice | null = null;
@@ -320,6 +325,7 @@ export function createAuthoritativeGameRoomClass(
     ): Promise<{
       readonly playerSessionId: string;
       readonly userId: string | null;
+      readonly displayName?: string;
     }> {
       const request = parseGameRoomRequest(options);
       if (request === null) {
@@ -345,6 +351,9 @@ export function createAuthoritativeGameRoomClass(
       return {
         playerSessionId: verification.playerSessionId,
         userId: verification.userId,
+        ...(verification.claims.displayName === undefined
+          ? {}
+          : { displayName: verification.claims.displayName }),
       };
     }
 
@@ -408,6 +417,10 @@ export function createAuthoritativeGameRoomClass(
         slotId: ids.createPlayerSlotId(index),
         playerSessionId: index === 0 ? verification.playerSessionId : null,
         userId: index === 0 ? verification.userId : null,
+        displayName:
+          index === 0
+            ? (verification.claims.displayName ?? DEFAULT_PLAYER_DISPLAY_NAME)
+            : null,
         reservedUntilMilliseconds: null,
         assignment: null,
         timeout: null,
@@ -486,6 +499,9 @@ export function createAuthoritativeGameRoomClass(
       );
       this.onMessage(ROOM_CONTROL_MESSAGE, (client, message: unknown) =>
         this.#enqueue(() => this.#handleControl(client, message)),
+      );
+      this.onMessage(ROOM_PROFILE_MESSAGE, (client, message: unknown) =>
+        this.#enqueue(() => this.#handleProfile(client, message)),
       );
       if (setupProtocol === SETUP_PROTOCOL_VERSION) {
         this.onMessage(GAME_SETUP_MESSAGE, (client, message: unknown) =>
@@ -569,6 +585,11 @@ export function createAuthoritativeGameRoomClass(
         }
 
         const wasReconnect = slot.reservedUntilMilliseconds !== null;
+        const profile = client.auth as { displayName?: string };
+        slot.displayName =
+          profile.displayName ??
+          slot.displayName ??
+          DEFAULT_PLAYER_DISPLAY_NAME;
         if (wasReconnect) {
           metrics.increment("reconnect_attempt_total", this.#labels());
           metrics.increment("reconnect_success_total", this.#labels());
@@ -677,6 +698,7 @@ export function createAuthoritativeGameRoomClass(
           await matchArchive.saveRound(storedRoom);
         }
         await dependencies.roomStore.save(storedRoom);
+        this.#broadcastLifecycle();
         logger.write({
           event: "connection.left",
           roomId: this.roomId,
@@ -2010,6 +2032,86 @@ export function createAuthoritativeGameRoomClass(
       return { playerAssignments: values as readonly string[] };
     }
 
+    async #handleProfile(client: Client, raw: unknown): Promise<void> {
+      const parsed = roomProfileCommandSchema.safeParse(raw);
+      if (!parsed.success) {
+        this.#sendRejection(client, "INVALID_ACTION_PAYLOAD");
+        return;
+      }
+      const command = parsed.data;
+      const aggregate = this.#requireAggregate();
+      if (command.protocolVersion !== aggregate.setupProtocol) {
+        this.#sendRejection(
+          client,
+          "PROTOCOL_VERSION_UNSUPPORTED",
+          command.commandId,
+        );
+        return;
+      }
+      const data = client.userData as RuntimeClientData | undefined;
+      const slot = aggregate.slots.find(
+        (candidate) => candidate.slotId === data?.slotId,
+      );
+      if (
+        data === undefined ||
+        slot === undefined ||
+        this.#activeClientBySession.get(data.playerSessionId) !== client ||
+        slot.playerSessionId !== data.playerSessionId
+      ) {
+        this.#sendRejection(client, "NOT_A_PLAYER", command.commandId);
+        return;
+      }
+      if (this.#closedReason !== null) {
+        this.#sendRejection(client, "MATCH_NOT_ACTIVE", command.commandId);
+        return;
+      }
+      const key = `${data.playerSessionId}\u0000${command.commandId}`;
+      if (this.#profileCommands.has(key)) {
+        client.send(
+          ROOM_CONTROL_MESSAGE,
+          this.#lifecycleFor(client, command.commandId),
+        );
+        return;
+      }
+      try {
+        const verified = await dependencies.ticketVerifier.verify(
+          command.ticket,
+        );
+        if (verified.status === "rejected") {
+          this.#sendRejection(client, verified.protocolCode, command.commandId);
+          return;
+        }
+        if (verified.claims.protocolVersion !== aggregate.setupProtocol) {
+          this.#sendRejection(
+            client,
+            "PROTOCOL_VERSION_UNSUPPORTED",
+            command.commandId,
+          );
+          return;
+        }
+        if (
+          verified.playerSessionId !== data.playerSessionId ||
+          verified.userId !== slot.userId
+        ) {
+          this.#sendRejection(client, "NOT_A_PLAYER", command.commandId);
+          return;
+        }
+        if (verified.claims.displayName === undefined) {
+          this.#sendRejection(
+            client,
+            "INVALID_ACTION_PAYLOAD",
+            command.commandId,
+          );
+          return;
+        }
+        slot.displayName = verified.claims.displayName;
+        this.#profileCommands.add(key);
+        this.#broadcastLifecycle(client, command.commandId);
+      } catch {
+        this.#sendRejection(client, "INTERNAL_ERROR", command.commandId);
+      }
+    }
+
     #enqueue(work: () => void | Promise<void>): Promise<void> {
       const result = this.#queue.then(work, work);
       this.#queue = result.catch(() => undefined);
@@ -2278,6 +2380,9 @@ export function createAuthoritativeGameRoomClass(
       if (clientData === undefined) {
         throw protocolServerError("NOT_A_PLAYER");
       }
+      // A signed display name opts this connection into the profile extension.
+      const includeProfiles =
+        (client.auth as { displayName?: string }).displayName !== undefined;
       const currentRound = aggregate.currentRound;
       const available =
         this.#closedReason === null &&
@@ -2336,6 +2441,7 @@ export function createAuthoritativeGameRoomClass(
           nextRound,
           players: aggregate.slots.map((slot) => ({
             slotId: slot.slotId,
+            ...(includeProfiles ? { displayName: slot.displayName } : {}),
             occupied: slot.playerSessionId !== null,
             online:
               slot.playerSessionId !== null &&
@@ -2378,6 +2484,7 @@ export function createAuthoritativeGameRoomClass(
           : null,
         players: aggregate.slots.map((slot) => ({
           slotId: slot.slotId,
+          ...(includeProfiles ? { displayName: slot.displayName } : {}),
           occupied: slot.playerSessionId !== null,
           online:
             slot.playerSessionId !== null &&

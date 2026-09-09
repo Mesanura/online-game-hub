@@ -529,6 +529,39 @@ describe.sequential("PostgreSQL + Drizzle persistence", () => {
     );
   });
 
+  it("stores maximum-length emoji profiles and rereads them across connections", async () => {
+    const tokenHash = "0123456789abcdef".repeat(4);
+    const registered = await accountRepository.registerPasswordAccount(
+      "unicode_profile",
+      "$argon2id$v=19$m=19456,t=2,p=1$unicode-profile-hash",
+      { tokenHash, expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) },
+    );
+    const displayName = "👨‍👩‍👧‍👦".repeat(24);
+    await accountRepository.updateDisplayName(registered.userId, displayName);
+    const reader = createPostgresDatabaseClient({
+      url: isolated.url,
+      applicationName: "database-integration-unicode-profile",
+      maxConnections: 2,
+    });
+    try {
+      const repository = new PostgresAccountRepository(reader.database);
+      await expect(
+        repository.resolveAccountSession(tokenHash, new Date()),
+      ).resolves.toMatchObject({ displayName });
+      await expect(
+        repository.findPasswordAccountByUsername("unicode_profile"),
+      ).resolves.toMatchObject({ displayName });
+      await expect(
+        repository.updateDisplayName(
+          registered.userId,
+          "a" + "\u0301".repeat(512),
+        ),
+      ).rejects.toThrow();
+    } finally {
+      await reader.close();
+    }
+  });
+
   it("persists unique password accounts and hashed revocable sessions", async () => {
     const token = "raw-session-token-that-must-never-be-stored";
     const tokenHash = "a".repeat(64);

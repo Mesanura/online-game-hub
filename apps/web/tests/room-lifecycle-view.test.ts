@@ -53,12 +53,14 @@ describe("normalizeRoomLifecycle", () => {
       players: [
         {
           slotId: "slot-owner",
+          displayName: "👩‍💻房主",
           occupied: true,
           online: true,
           ready: true,
         },
         {
           slotId: "slot-guest",
+          displayName: "玩家乙",
           occupied: true,
           online: true,
           ready: false,
@@ -82,8 +84,8 @@ describe("normalizeRoomLifecycle", () => {
         },
       },
       players: [
-        { slotId: "slot-owner", assignment: null },
-        { slotId: "slot-guest", assignment: null },
+        { slotId: "slot-owner", displayName: "👩‍💻房主", assignment: null },
+        { slotId: "slot-guest", displayName: "玩家乙", assignment: null },
       ],
     });
   });

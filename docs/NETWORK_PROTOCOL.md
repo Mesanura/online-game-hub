@@ -58,6 +58,7 @@ interface GameServerTicketClaims {
   audience: "game-server";
   playerSessionId: string;
   userId?: string;
+  displayName?: string;
   issuedAt: number;
   expiresAt: number;
   ticketId: string;
@@ -76,19 +77,27 @@ Ticket 是签名 bearer token，不是加密载荷，持有者可以解码 claim
 
 ### 4.3 HTTP Ticket API
 
-`POST /api/game-ticket` 使用 same-origin guest cookie，请求体只允许声明 ticket generation：
+`POST /api/game-ticket` 使用 same-origin guest cookie，请求体允许声明 ticket generation，以及可选的游客显示名：
 
 ```json
-{ "protocolVersion": 6 }
+{ "protocolVersion": 6, "displayName": "游客" }
 ```
 
-值只能是 `5 | 6`；无请求体仅作为 legacy V5 兼容。成功响应为：
+generation 只能是 `5 | 6`；无请求体仅作为 legacy V5 兼容。body 上限为 4096 UTF-8 bytes。提供 `displayName` 表示客户端支持房间资料扩展，值按 [产品资料规则](./PRODUCT.md#显示名与头像菜单) 校验和规范化；账户登录有效时，签入数据库中的账户显示名，不能用请求值覆盖账户资料。省略该字段时保持原始 claims 形状。成功响应为：
 
 ```json
 { "ticket": "<short-lived bearer ticket>" }
 ```
 
 成功响应为 `200`，非法 generation/body 返回 `400 { "code": "INVALID_TICKET_REQUEST" }`，配置或签发失败只返回 `503 { "code": "TICKET_UNAVAILABLE" }`；所有响应都设置 `Cache-Control: no-store, private`。route 只从 HttpOnly cookie 解析 session，不接受浏览器提交的 `PlayerSessionId` 或 `UserId`，且不在响应或错误中返回 cookie/secret。
+
+#### 房间显示资料扩展
+
+V5/V6 ticket claims 均支持可选的规范化 `displayName`。创建、加入和重连时，runtime 从已验证 ticket 更新内存席位资料；旧 ticket 对应的玩家默认显示“游客”。只有当前连接的 ticket 包含该字段时，lifecycle 的 `players[]` 才带上 `displayName: string | null`：已占用席位为显示名，空席位为 null，断线时保留。头像由 Web 按显示名生成，不传输图片、头像 URL 或账户标识。
+
+资料保存后，两类 Client Host 的 `refreshProfile()` 获取新 ticket，并通过独立 `room.profile` channel 提交严格 `{ type: "room.profile", protocolVersion: 5 | 6, commandId, ticket }`。服务器在房间队列中验证当前连接、相同 session/账户身份、房间代际与 ticket 有效期；不接受客户端指定 slot 或直接提交待广播的名字。成功后通过 lifecycle 的 `causedByCommandId` 确认并广播，重复 command 只确认当前资料，不能回滚后续改名。旧连接、退出房间后的异步 ticket 和被后续请求取代的资料刷新不能修改新连接。
+
+资料变化不清空 ready，不推进 Setup/gameplay revision，不消费 RNG，不进入 RoomStore、Match archive 或 canonical replay。扩展仅涉及平台资料，游戏、Bridge、Surface 和 replay 版本均不变。V5/V6 代际保持不变：新 reader 接受字段缺省，未声明支持的旧客户端继续收到原有 lifecycle；启用新 Web 前须先升级 ticket verifier 和两类 runtime。
 
 ### 4.4 Private Match History API
 

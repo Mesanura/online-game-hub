@@ -64,6 +64,13 @@
       "when": 1788552896081,
       "tag": "0008_ambiguous_starjammers",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1788947919925,
+      "tag": "0009_display_name_capacity",
+      "breakpoints": true
     }
   ]
 }

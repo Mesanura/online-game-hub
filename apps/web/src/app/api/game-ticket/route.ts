@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { z } from "zod";
 
 import { createHmacGameServerTicketAuthority } from "@online-game-hub/game-server-ticket";
 import {
   PROTOCOL_VERSION,
+  normalizePlayerDisplayName,
   setupProtocolGenerationSchema,
 } from "@online-game-hub/protocol";
 import type { SetupProtocolGeneration } from "@online-game-hub/protocol";
@@ -21,36 +23,40 @@ import { getWebServerConfig } from "../../../server/runtime-config";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-async function requestedProtocolGeneration(
-  request: NextRequest,
-): Promise<SetupProtocolGeneration | null> {
+const ticketRequestSchema = z
+  .object({
+    protocolVersion: setupProtocolGenerationSchema,
+    displayName: z.string().optional(),
+  })
+  .strict();
+
+async function requestedTicket(request: NextRequest): Promise<{
+  protocolVersion: SetupProtocolGeneration;
+  displayName?: string;
+} | null> {
   const text = await request.text();
-  if (text.trim().length === 0) return PROTOCOL_VERSION;
+  if (Buffer.byteLength(text, "utf8") > 4096) return null;
+  if (text.trim().length === 0) return { protocolVersion: PROTOCOL_VERSION };
   let value: unknown;
   try {
     value = JSON.parse(text) as unknown;
   } catch {
     return null;
   }
-  if (
-    value === null ||
-    typeof value !== "object" ||
-    Array.isArray(value) ||
-    Object.keys(value).length !== 1 ||
-    !("protocolVersion" in value)
-  ) {
-    return null;
-  }
-  const parsed = setupProtocolGenerationSchema.safeParse(
-    (value as { readonly protocolVersion?: unknown }).protocolVersion,
-  );
-  return parsed.success ? parsed.data : null;
+  const parsed = ticketRequestSchema.safeParse(value);
+  if (!parsed.success) return null;
+  const { protocolVersion, displayName } = parsed.data;
+  if (displayName === undefined) return { protocolVersion };
+  const normalized = normalizePlayerDisplayName(displayName);
+  return normalized === null
+    ? null
+    : { protocolVersion, displayName: normalized };
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const protocolVersion = await requestedProtocolGeneration(request);
-    if (protocolVersion === null) {
+    const requested = await requestedTicket(request);
+    if (requested === null) {
       return NextResponse.json(
         { code: "INVALID_TICKET_REQUEST" },
         {
@@ -86,7 +92,10 @@ export async function POST(request: NextRequest) {
         ticket: ticketAuthority.issue(
           playerSessionId,
           account?.userId,
-          protocolVersion,
+          requested.protocolVersion,
+          requested.displayName === undefined
+            ? undefined
+            : (account?.displayName ?? requested.displayName),
         ),
       },
       { headers: { "cache-control": "no-store, private" } },

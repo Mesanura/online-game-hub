@@ -123,6 +123,7 @@ Protocol contract 至少验证：
 
 - V5/V6 exact 互拒、V1–V4 拒绝、缺字段/extra fields/非法 discriminator、大小限制和序列化 round trip。
 - Ticket 的账户/游客 claims、伪造 UserId、过期、issuer/audience 和代际一致性；payload 不含未授权身份或秘密。
+- 房间显示资料扩展覆盖规范化显示名、可选字段与旧客户端形状；资料更新只接受同一席位身份的新签名 ticket，拒绝伪造 slot、账户切换和过期 ticket，不改变准备或游戏状态。
 - roundNumber、revision、inputSequence、readiness 集合与 current/next Round 不变量。
 - V5 冻结的 starter/人数/assignment/rematch 与 V6 opaque Setup 分别解析；Realtime V1 不与平台 envelope 混用。
 - Discovery 只允许 roomCode/gameId/gameVersion/setupProtocol/runtime，规范化 code，拒绝敏感 extra fields，并验证 404/503/private cache 行为。
@@ -240,7 +241,7 @@ try {
 - Replay create/append/complete/get 可跨 adapter/connection 读取并 exact verify；gap、冲突、并发和幂等均正确，拒绝命令不增加 events。
 - Round 启动才创建 Match/players；完成关联 completed replay，abandoned 不伪造 Outcome；多轮唯一、连续、参与者集合固定且 playerOrder 正确。
 - 用户归属只在开局快照，旧游客永久不回填；私有历史最多 50 条，不泄漏其他参与者、identity、seed 或记录。
-- 密码/session/显示名迁移与更新可跨连接读取，旧资料回填正确，错误与 shutdown 无 credential 或连接泄漏。
+- 密码/session/显示名迁移与更新可跨连接读取，旧资料回填正确，最长组合 emoji 显示名可存储和重读，错误与 shutdown 无 credential 或连接泄漏。
 - V5/V6 room generation 创建后不可变；旧 realtime 行默认 V5，非法整数/损坏记录 fail closed。
 - 多人 room/archive/replay 校验覆盖 2–8 人与 exact manifest；坦克迷战包含八人归档、重开和重读。
 
@@ -265,6 +266,8 @@ try {
 公共旅程覆盖目录/邀请、独立 Setup、逐人 ready、独立 Play、合法对局、终局、取消/确认投降、调整设置、完整设置重开、刷新/reconnect、第三方拒绝、关闭/离开、timeout 与跨数据库连接的 replay/history。私有回放验证 exact Replay Surface、逐帧/播放/暂停/slider、只读和无游戏 WebSocket；record-only 验证无播放入口、授权 API 409 和服务器记录仍可验证。
 
 认证旅程先完成游客局，再注册完成账户局，验证不认领旧比赛、账户隔离、退出失效和跨设备历史。资料菜单覆盖 NFC/grapheme/头像边界、游客 localStorage 与账户隔离、同源 strict PATCH、Escape/外部关闭和 live room 身份变更确认。
+
+等待页在回合制和实时房间验证账户/游客显示名与头像、空席位、断线与重连、保存后的双客户端同步，以及改名保留 ready。桌面、平板和手机均显示头像，最长显示名换行后不溢出卡片。
 
 路由回归使用生产实时 scheduler，确保连续快照期间仍能从准备页导航到 active `/play`，邀请重连、终局调整设置后再次全员 ready 也正常；不能仅用暂停 tick 的 scheduler 验证。
 

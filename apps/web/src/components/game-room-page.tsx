@@ -18,7 +18,6 @@ import {
   Trophy,
   ArrowsClockwise,
   Shuffle,
-  UserCircle,
   UserPlus,
   UsersThree,
   WarningCircle,
@@ -31,6 +30,7 @@ import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from "react";
 
 import { resolveGameSurfaceEntrypoint } from "@online-game-hub/game-registry/deployment";
 import type { SurfaceResultSummaryV2 } from "@online-game-hub/game-surface-bridge";
+import { DEFAULT_DISPLAY_NAME, getAvatarLabel } from "../lib/profile";
 
 import {
   connectionLabels,
@@ -359,7 +359,8 @@ function EntryView({
 }
 
 function PlayerPod({
-  index,
+  displayName,
+  occupied,
   owner,
   self,
   ready,
@@ -367,23 +368,39 @@ function PlayerPod({
   slotLabel,
   assignment,
 }: {
-  readonly index: number;
+  readonly displayName?: string | null | undefined;
+  readonly occupied: boolean;
   readonly owner: boolean;
   readonly self: boolean;
   readonly ready: boolean;
   readonly online: boolean;
   readonly slotLabel: string;
-  readonly assignment?: string | null;
+  readonly assignment?: string | null | undefined;
 }) {
+  const name = occupied
+    ? (displayName ?? DEFAULT_DISPLAY_NAME)
+    : "等待玩家加入";
   return (
-    <article className={`player-pod ${self ? "player-pod-self" : ""}`}>
-      <div className="player-avatar" aria-hidden="true">
-        <UserCircle size={42} weight="duotone" />
+    <article
+      className={`player-pod ${self ? "player-pod-self" : ""}`}
+      data-testid="room-player"
+      data-slot-id={slotLabel}
+    >
+      <div
+        className={`player-avatar ${occupied ? "profile-avatar" : "player-avatar-empty"}`}
+        aria-hidden="true"
+      >
+        {occupied ? (
+          getAvatarLabel(name)
+        ) : (
+          <UserPlus size={30} weight="duotone" />
+        )}
       </div>
       <div className="player-pod-copy">
         <div className="player-name-row">
-          <h3>玩家 {index}</h3>
-          {owner ? (
+          <h3 dir="auto">{name}</h3>
+          {self ? <span className="player-self-badge">你</span> : null}
+          {owner && occupied ? (
             <span className="owner-badge">
               <Crown size={14} weight="fill" aria-hidden="true" /> 房主
             </span>
@@ -391,19 +408,20 @@ function PlayerPod({
         </div>
         <span className={`player-status ${online ? "is-online" : "is-away"}`}>
           <span className="status-dot" aria-hidden="true" />
-          {online ? "在线" : "等待加入"}
+          {online ? "在线" : occupied ? "暂时离线" : "空席位"}
         </span>
-        <span
-          className={`player-status ${ready ? "is-ready" : "is-not-ready"}`}
-        >
-          {ready ? (
-            <CheckCircle size={16} weight="fill" aria-hidden="true" />
-          ) : (
-            <span className="status-ring" aria-hidden="true" />
-          )}
-          {ready ? "已准备" : "未准备"}
-        </span>
-        <span className="player-slot-label">稳定席位：{slotLabel}</span>
+        {occupied ? (
+          <span
+            className={`player-status ${ready ? "is-ready" : "is-not-ready"}`}
+          >
+            {ready ? (
+              <CheckCircle size={16} weight="fill" aria-hidden="true" />
+            ) : (
+              <span className="status-ring" aria-hidden="true" />
+            )}
+            {ready ? "已准备" : "未准备"}
+          </span>
+        ) : null}
         {assignment === undefined ? null : (
           <span className="player-slot-label">
             营地：{assignment ?? "未选择"}
@@ -506,7 +524,7 @@ function RoomView({ title }: Pick<GameRoomPageProps, "title">) {
         <section aria-labelledby="players-heading" className="player-bays">
           <div className="section-heading">
             <div>
-              <p className="eyebrow">固定席位</p>
+              <p className="eyebrow">房间成员</p>
               <h2 id="players-heading">玩家准备</h2>
             </div>
             <ConnectionBadge state={state} />
@@ -514,8 +532,13 @@ function RoomView({ title }: Pick<GameRoomPageProps, "title">) {
           <div className="player-pod-grid">
             {lifecyclePlayers.map((player, index) => (
               <PlayerPod
-                assignment={player.assignment}
-                index={index + 1}
+                assignment={
+                  nextRound?.assignmentOptions === undefined
+                    ? undefined
+                    : player.assignment
+                }
+                displayName={player.displayName}
+                occupied={player.occupied}
                 key={player.slotId}
                 owner={index === 0}
                 ready={player.ready}
