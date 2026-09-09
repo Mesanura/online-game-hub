@@ -21,7 +21,9 @@ game-surfaces/<game-id>/
   dist/                     # 构建输出，不提交
 ```
 
-发布型 workspace 声明 `onlineGameHub.surfaceArtifact: true`；Workbench 等工具显式声明 `false`。缺失标记不能被当成非发布包静默跳过。每个 Surface 提供独立 `dev`、`build`、`test`、`typecheck` 与 `contract-test`。
+发布型 workspace 声明 `onlineGameHub.surfaceArtifact: true`；Workbench 与未发布草稿显式声明 `false`。缺失标记不能被当成非发布包静默跳过。正式 Surface 提供独立 `dev`、`build`、`test`、`typecheck` 与 `contract-test`。
+
+[create-game](../tools/README.md) 的草稿只提供 `dev/build/typecheck` 与未实现的 Setup/Play 占位页；普通构建不生成 artifact manifest 或锁，发布工具跳过它。实现规则与画面后再补齐真实测试、版本、replay 能力与制品配置，切换发布标记并生成摘要锁。
 
 ## Artifact 与精确解析
 

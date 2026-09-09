@@ -4,7 +4,7 @@
 
 ## `tools/create-game`
 
-`@online-game-hub/create-game` 生成 package 与显式登记骨架。当前模板仍基于早期回合制 Client Module，尚未支持 V6 Setup、独立 Surface 或 realtime；它不代表现行新游戏接入已经完成。
+`@online-game-hub/create-game` 同时生成回合制游戏与独立 Surface 的开发草稿，使用纯 TypeScript Core、V6 Setup、Bridge V2 与 Vite。草稿能通过仓库检查，但不进入游戏目录或发布制品；首版不生成 realtime 骨架。
 
 从 workspace root 使用 [package.json](../package.json) 固定的 pnpm 非交互运行：
 
@@ -21,27 +21,29 @@ pnpm create-game --help
 - 退出码 `1`：文件写入或固定 pnpm 的 lockfile-only 更新失败；CLI 会先尝试完整回滚，并打印只检查本轮目标路径的恢复提示。
 - 退出码 `2`：参数、gameId、workspace 或冲突 preflight 失败；不会写入文件。
 
-CLI 拒绝绝对路径、路径分隔符、`.`/`..`、空段、大小写不稳定形式、Windows 设备名，以及 `api`、`games`、`node_modules`、`src`、`tests` 等仓库保留名称。它还会检查 `@online-game-hub/<game-id>` workspace package、manifest gameId 和由 gameId 确定推导的 lower-camel export symbols 是否碰撞。例如 `sample-game` 固定推导为 `sampleGameManifest`、`sampleGameDefinition`、`sampleGameClientModule` 和 `loadSampleGameEntrypoint`；`a-1` 与 `a1` 因符号相同而冲突。
+CLI 拒绝绝对路径、路径分隔符、`.`/`..`、空段、大小写不稳定形式、Windows 设备名，以及 `api`、`games`、`node_modules`、`src`、`tests` 等仓库保留名称。它检查整个 workspace（包括 `game-surfaces`）中的两个包名、manifest gameId 与推导符号冲突。`sample-game` 推导为 `sampleGameManifest`、`sampleGameDefinition`、`sampleGameSetupDefinition`；`a-1` 与 `a1` 因符号相同而冲突。已有 `@online-game-hub/sample-game-surface` 也会阻止同名 Surface 草稿生成。
 
-### 自动生成与登记
+### 生成内容与写入边界
 
 成功创建时仅生成：
 
-- `games/<game-id>/package.json`，包含 `/manifest`、`/core`、`/client` public export map；
-- `tsconfig.json`、`tsconfig.build.json`、`tests/tsconfig.json`；
-- `src/core`、`src/client`、`tests/fixtures` 等必要目录；
-- 明确标记“尚未达到 Definition of Done”的最小 `README.md`；
-- `packages/game-registry/package.json` dependency；
-- catalog manifest、lazy client loader、exact/current server definition 使用的显式 import/array entry；
-- `apps/web/next.config.ts#transpilePackages`；
-- 由 workspace root 固定 pnpm 以 `--lockfile-only --offline --ignore-scripts` 生成的 `pnpm-lock.yaml` importer。
+- `games/<game-id>`：`/manifest`、`/core`、`/setup` 对应的可编译空模块，TypeScript 配置、规则草案、开发约束与正式接入清单；
+- `game-surfaces/<game-id>`：只依赖 Bridge 的 TypeScript/Vite 包，独立配置与明确标记未实现的 Setup/Play 静态页；
+- 两个包的测试说明文件：保留未来测试与 golden 的位置，不生成虚假测试或空通过的测试命令；
+- workspace 固定 pnpm 以 `--lockfile-only --offline --ignore-scripts --no-frozen-lockfile` 更新的两个 `pnpm-lock.yaml` importer。
 
-所有登记继续是可见、可审查的静态条目，不扫描 `games/`，也不按目录约定在运行时发现插件。所有源文件和目标内容先完成全量 preflight，再开始写入。同一完整输入重复运行返回成功且零写入；已有文件内容冲突、只完成部分登记、重复登记或 symbol 碰撞都会 fail closed，生成器不会覆盖用户文件。pnpm 失败时会恢复本轮登记文件与原 lockfile，并且只删除本轮已确认由 CLI 创建的目标游戏目录。
+游戏包提供 `build/typecheck`，Surface 另提供 `dev`。生成后运行 `pnpm install --frozen-lockfile` 链接新增依赖，再用 `pnpm --filter @online-game-hub/<game-id>-surface dev` 访问 `/setup/` 或 `/play/`。占位页没有房间连接与可提交的操作。
 
-### 不生成的内容
+Surface 显式声明 `onlineGameHub.surfaceArtifact: false`，普通 build 只运行 Vite，不生成制品 manifest 或摘要锁；发布工具跳过该草稿。仓库检查通过只说明草稿结构有效，不代表满足正式接入条件。
 
-生成器不接受也不猜测 title、description、Config、人数或 replay capabilities；这些语义由游戏负责人定义。它不生成可玩的 Core、Setup、Surface、规则测试、golden 或纵切对局，也不登记 deployment artifact。
+写入仅限两个目标目录与 lockfile。生成器不修改 catalog、server/deployment registry、registry dependencies、Next 配置或 Dockerfile。所有目标先完成预检；两个目录、模板文件与两个 importer 完整一致时，重复运行成功且零写入。残缺目标、用户修改、目标或其模板路径中的链接、已有登记或命名冲突均拒绝写入。失败只删除本次创建的目录，并恢复本轮 lockfile 写入；预检后发现的其他写入会保留并报告。
 
-CLI 成功输出仍包含旧 Client Module/CSS 清单，不能作为当前实现方向。用于新游戏时，须调整生成的 legacy client 依赖与登记，补充 `/setup`、独立 Surface、exact deployment、显式 replay 模式和相应 tests；不要为满足旧清单把游戏 CSS 或 React 组件重新接入 Web。
+程序接口 `CreateGameResult` 保留 `status`、`gameId`、`packageName`、`gameDirectory`、`changedFiles`，并增加 `surfacePackageName`、`surfaceDirectory`。`deriveGameSymbols` 提供 manifest/Core/Setup 命名，不再提供 Client 命名。格式化依赖由 create-game 持有，复用仓库固定的 Prettier 版本，保证生成文件符合根格式规则。
 
-现行完成条件以 [Game Plugin](../docs/GAME_PLUGIN_SPEC.md)、[Game Surface](../docs/GAME_SURFACE_SPEC.md) 和 [测试策略](../docs/TESTING.md) 为准。生成器本身的升级属于独立代码任务。
+### 正式接入
+
+生成器不猜测 title、description、Config、人数、规则版本或 replay capabilities。完成游戏自己的规则、Core、Setup、Surface 与真实测试后，按生成 README 的清单定义 Surface 版本、入口和制品配置，将发布标记切换为 `true`，补齐 finalize build、artifact lock 与 contract 脚本并生成锁。
+
+随后显式添加 registry dependencies、catalog、exact Core/Setup resolver 与 deployment Surface 映射，按实际导入需要调整 Next `transpilePackages`。Dockerfile 的依赖安装阶段也需添加两个新包的 `package.json` COPY。没有自动注册或发布命令。
+
+正式接入必须满足 [Game Plugin](../docs/GAME_PLUGIN_SPEC.md)、[Game Surface](../docs/GAME_SURFACE_SPEC.md) 与 [测试矩阵](../docs/TESTING.md)，包括 unit、golden、contract、权威 integration、临时 PostgreSQL 和浏览器验证。

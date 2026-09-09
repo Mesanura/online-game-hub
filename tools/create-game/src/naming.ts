@@ -34,8 +34,7 @@ export interface GameSymbols {
   readonly pascal: string;
   readonly manifest: string;
   readonly definition: string;
-  readonly clientModule: string;
-  readonly clientLoader: string;
+  readonly setupDefinition: string;
 }
 
 export function validateGameId(gameId: string): void {
@@ -101,7 +100,6 @@ export function deriveGameSymbols(gameId: string): GameSymbols {
     pascal,
     manifest: `${base}Manifest`,
     definition: `${base}Definition`,
-    clientModule: `${base}ClientModule`,
-    clientLoader: `load${pascal}Entrypoint`,
+    setupDefinition: `${base}SetupDefinition`,
   });
 }

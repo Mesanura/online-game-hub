@@ -74,7 +74,7 @@ Web 不验证游戏规则、不持有权威 State、不生成 Outcome。页面�
 
 创建新房间先从 catalog 确定 current 版本，再走 exact resolver，不依赖数组顺序。加入和 replay 都使用房间或记录中的 exact 版本。manifest 的 `defaultConfig` 必须是 `configSchema` 接受且无需再规范化的 JSON 数据，服务器仍重新校验。
 
-注册必须显式、类型化且可审查，不扫描目录或在运行时发现插件。现有 [create-game 工具](../tools/README.md) 只生成旧式机械骨架，未覆盖完整 V6/Surface 注册。
+注册必须显式、类型化且可审查，不扫描目录或在运行时发现插件。[create-game 工具](../tools/README.md) 生成可构建的 V6/Bridge V2 开发草稿，仅写两个包目录与 lockfile；catalog、exact resolver 和 deployment 仍需在正式接入时显式登记。
 
 ## 依赖规则
 

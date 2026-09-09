@@ -873,7 +873,11 @@ importers:
         specifier: workspace:*
         version: link:../../packages/game-surface-bridge
 
-  tools/create-game: {}
+  tools/create-game:
+    dependencies:
+      prettier:
+        specifier: 3.9.6
+        version: 3.9.6
 
 packages:
 

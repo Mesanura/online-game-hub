@@ -83,7 +83,7 @@ Web 与 Game Server 分别加载自己的 `.env.local`。workspace 依赖通常�
 
 ## 开发与验证入口
 
-- 新游戏先确定 runtime、规则和 replay 能力，再按 [Game Plugin 规范](./GAME_PLUGIN_SPEC.md) 接入。现有 [create-game 工具](../tools/README.md) 仍使用旧 Client 模板，尚未生成 V6 Setup 或独立 Surface。
+- 新游戏先确定 runtime、规则和 replay 能力，再按 [Game Plugin 规范](./GAME_PLUGIN_SPEC.md) 接入。[create-game 工具](../tools/README.md) 可生成回合制 V6 Setup 与 Bridge V2 Surface 草稿；草稿可独立构建，正式登记与发布按生成的清单完成。
 - 独立画面可在 [Surface Workbench](./GAME_SURFACE_SPEC.md#独立开发与-workbench) 中调试，无需启动 Web、Game Server 或数据库。
 - 静态、Core、integration、数据库与浏览器检查按 [TESTING.md](./TESTING.md) 选择；首次 E2E 前安装 Chromium。
 

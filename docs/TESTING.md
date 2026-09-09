@@ -6,27 +6,27 @@
 
 优先在纯 Core/Setup 中覆盖规则组合，在 integration 中覆盖跨 package 与 transport，在 E2E 中验证关键用户旅程。修改同时影响多行时取检查并集，不能只运行改动文件的 happy path。
 
-| 改动                       | 最低检查                                                                 |
-| -------------------------- | ------------------------------------------------------------------------ |
-| 仅文档                     | format:check + docs:check；核对涉及的命令、类型、状态与源码              |
-| 单游戏 Core                | 该游戏 unit、determinism、所有支持版本 golden、typecheck                 |
-| Manifest / legacy client   | registry contract、相关组件和 E2E                                        |
-| `game-sdk`                 | 全部游戏 Core/replay、public API type tests、依赖检查                    |
-| `realtime-game-sdk`        | 全部实时 simulation/replay、两种输入交付、public API/type 与依赖检查     |
-| `protocol`                 | exact schema contract、server integration、multiplayer/E2E smoke         |
-| `game-setup`               | contract/unit、两类 runtime integration、replay header 不变量            |
-| `game-surface-bridge`      | schema/handshake/security、Host 与各 Surface conformance                 |
-| Surface artifact           | 独立 test/typecheck/build/contract、digest/publish、viewport E2E         |
-| 回合制 server runtime      | server integration、multiplayer、replay/store tests                      |
-| 实时 server/client runtime | simulation/replay、输入排序/ack、scheduler、真实 integration、受影响 E2E |
-| Database/schema            | migration/db:check、真实 PostgreSQL、跨连接重读与 shutdown               |
-| Match/history/identity     | PostgreSQL、API authorization/privacy、相关 E2E                          |
-| Session/ticket             | auth contract、join/reconnect、关键安全负例                              |
-| Replay format/version      | reader compatibility、所有支持版本 golden、相关持久化检查                |
-| Replay capability          | exact registry、history/API 权限矩阵、对应播放或拒绝 E2E                 |
-| Web 路由/交互              | 相关组件、Host 与真实浏览器流程；涉及历史/身份时包含 PostgreSQL          |
-| Build/dependency config    | 全仓 typecheck/lint/unit、受影响 build graph                             |
-| `tools/create-game`        | 生成器 test/typecheck/build、registry contract、根质量门禁               |
+| 改动                       | 最低检查                                                                   |
+| -------------------------- | -------------------------------------------------------------------------- |
+| 仅文档                     | format:check + docs:check；核对涉及的命令、类型、状态与源码                |
+| 单游戏 Core                | 该游戏 unit、determinism、所有支持版本 golden、typecheck                   |
+| Manifest / legacy client   | registry contract、相关组件和 E2E                                          |
+| `game-sdk`                 | 全部游戏 Core/replay、public API type tests、依赖检查                      |
+| `realtime-game-sdk`        | 全部实时 simulation/replay、两种输入交付、public API/type 与依赖检查       |
+| `protocol`                 | exact schema contract、server integration、multiplayer/E2E smoke           |
+| `game-setup`               | contract/unit、两类 runtime integration、replay header 不变量              |
+| `game-surface-bridge`      | schema/handshake/security、Host 与各 Surface conformance                   |
+| Surface artifact           | 独立 test/typecheck/build/contract、digest/publish、viewport E2E           |
+| 回合制 server runtime      | server integration、multiplayer、replay/store tests                        |
+| 实时 server/client runtime | simulation/replay、输入排序/ack、scheduler、真实 integration、受影响 E2E   |
+| Database/schema            | migration/db:check、真实 PostgreSQL、跨连接重读与 shutdown                 |
+| Match/history/identity     | PostgreSQL、API authorization/privacy、相关 E2E                            |
+| Session/ticket             | auth contract、join/reconnect、关键安全负例                                |
+| Replay format/version      | reader compatibility、所有支持版本 golden、相关持久化检查                  |
+| Replay capability          | exact registry、history/API 权限矩阵、对应播放或拒绝 E2E                   |
+| Web 路由/交互              | 相关组件、Host 与真实浏览器流程；涉及历史/身份时包含 PostgreSQL            |
+| Build/dependency config    | 全仓 typecheck/lint/unit、受影响 build graph                               |
+| `tools/create-game`        | 生成器 test/typecheck/build、隔离 workspace 实际生成/安装/构建、根质量门禁 |
 
 新增游戏必须完成 Plugin Definition of Done，覆盖 Core、Setup、Surface、registry、真实 integration、PostgreSQL 和浏览器链路。公共契约、数据库与 replay 变更不得只验证单个消费者。
 
@@ -72,7 +72,9 @@ CI 使用 [workflow](../.github/workflows/ci.yml) 中固定的 PostgreSQL servic
 
 静态检查覆盖 strict TypeScript、ESLint、public exports、依赖/cycle、Core 禁止 API、格式和 Markdown 本地路径；lockfile 通过 frozen install 校验。文档中的 anchor、命令示例和当前状态需要额外核对，不能只凭 docs:check 通过断言内容正确。
 
-create-game tests 使用系统临时目录中的隔离 workspace 和本地 lockfile runner，不写真实 games 目录、访问网络或启动服务。最低覆盖合法输出、完全幂等、非法 ID/路径/保留名/symbol 冲突、部分/重复登记、预检零写入、lockfile 失败回滚、退出码与稳定输出。生成器 suite 只验证实际模板，不代替新游戏验收。
+create-game unit tests 使用系统临时目录中的隔离 workspace 和本地 lockfile runner，不写真实游戏目录、访问网络或启动服务。最低覆盖双目录/双包输出、两个 importer、幂等零写入、非法 ID/路径/保留名、包名与 symbol 冲突、残缺目标、用户修改、链接拒绝、写入和 lockfile 失败后的完整回滚，以及业务登记文件不变、退出码和稳定输出。
+
+模板变更还须在隔离的真实 workspace 中使用固定 pnpm 生成、安装并构建草稿，运行静态检查和既有测试，确认草稿不进入 catalog，也不出现在 Surface 发布结果中。草稿不提供虚假 test 命令；该验收不代替新游戏正式接入所需的 unit/golden/contract/浏览器验证。
 
 ## Core、Setup 与确定性
 
