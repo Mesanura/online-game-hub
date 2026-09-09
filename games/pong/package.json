@@ -19,10 +19,6 @@
     "./core": {
       "types": "./dist/core/index.d.ts",
       "import": "./dist/core/index.js"
-    },
-    "./client": {
-      "types": "./dist/client/index.d.ts",
-      "import": "./dist/client/index.js"
     }
   },
   "scripts": {
@@ -33,19 +29,10 @@
   },
   "dependencies": {
     "@online-game-hub/game-setup": "workspace:*",
-    "@online-game-hub/realtime-game-client-sdk": "workspace:*",
     "@online-game-hub/realtime-game-sdk": "workspace:*",
-    "phaser": "3.90.0",
     "zod": "4.4.3"
   },
   "devDependencies": {
-    "@types/node": "24.13.3",
-    "@types/react": "19.2.18",
-    "@types/react-dom": "19.2.5",
-    "react": "19.2.8",
-    "react-dom": "19.2.8"
-  },
-  "peerDependencies": {
-    "react": "19.2.8"
+    "@types/node": "24.13.3"
   }
 }

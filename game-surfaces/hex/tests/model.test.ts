@@ -26,6 +26,78 @@ const players = [
 ] as const;
 
 describe("Hex Surface model", () => {
+  it("rejects malformed projections, private fields and invalid slot references", () => {
+    const view = {
+      players,
+      board: Array<string | null>(121).fill(null),
+      nextTurnSlotId: "slot-blue",
+      outcome: null,
+      yourColor: "BLUE",
+    };
+    expect(hexPlayViewSchema.parse(view)).toEqual(view);
+    for (const invalid of [
+      { ...view, board: [null] },
+      { ...view, nextPlayerIndex: 0 },
+      { ...view, resignedSlotId: null },
+      { ...view, board: [...view.board.slice(0, 120), "unknown-slot"] },
+      { ...view, nextTurnSlotId: "unknown-slot" },
+      {
+        ...view,
+        nextTurnSlotId: null,
+        outcome: {
+          type: "WIN",
+          reason: "RESIGNATION",
+          winnerSlotId: "slot-blue",
+          resignedSlotId: "slot-blue",
+        },
+      },
+    ])
+      expect(hexPlayViewSchema.safeParse(invalid).success).toBe(false);
+  });
+
+  it("makes exactly the six rule neighbors share a visual side across the entire board", () => {
+    const offsets = [
+      [-1, 0],
+      [-1, 1],
+      [0, -1],
+      [0, 1],
+      [1, -1],
+      [1, 0],
+    ] as const;
+    const vertices = Array.from({ length: 121 }, (_, cell) => {
+      const { x, y } = layoutForCell(cell);
+      return new Set(
+        [
+          [-0.25, -0.5],
+          [0.25, -0.5],
+          [0.5, 0],
+          [0.25, 0.5],
+          [-0.25, 0.5],
+          [-0.5, 0],
+        ].map(([dx = 0, dy = 0]) => `${x + dx}:${y + dy}`),
+      );
+    });
+    for (const [cell, polygon] of vertices.entries()) {
+      const row = Math.floor(cell / 11),
+        column = cell % 11;
+      const expected = new Set(
+        offsets.flatMap(([dr, dc]) => {
+          const r = row + dr,
+            c = column + dc;
+          return r >= 0 && r < 11 && c >= 0 && c < 11 ? [r * 11 + c] : [];
+        }),
+      );
+      const actual = new Set(
+        vertices.flatMap((candidate, index) =>
+          [...candidate].filter((vertex) => polygon.has(vertex)).length === 2
+            ? [index]
+            : [],
+        ),
+      );
+      expect(actual).toEqual(expected);
+    }
+  });
+
   it("accepts strict setup projection and minimal starter intent", () => {
     const setup = hexSetupViewSchema.parse({
       starter: "UNSELECTED",

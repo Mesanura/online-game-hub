@@ -42,7 +42,6 @@ import {
   tankMazeDefinitionV1_0_0,
 } from "@online-game-hub/tank-maze/core";
 import { tankMazeSetupDefinition } from "@online-game-hub/tank-maze/setup";
-// create-game:server-definition-import
 import { eraseGameDefinition } from "@online-game-hub/game-sdk";
 import type { UnknownGameDefinition } from "@online-game-hub/game-sdk";
 import {
@@ -66,7 +65,6 @@ const serverDefinitions = Object.freeze([
   eraseGameDefinition(reversiDefinition),
   eraseGameDefinition(chineseCheckersDefinition),
   eraseGameDefinition(chineseCheckersDefinitionV1_0_0),
-  // create-game:server-definition
 ]) as readonly UnknownGameDefinition[];
 
 export function resolveGameDefinition(

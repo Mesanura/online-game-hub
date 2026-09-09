@@ -11,4 +11,6 @@
 
 棋盘使用暖木 Clay 风格和容器自适应尺寸，可落子位显示当前棋色的 hover/focus 预览。Play 只发送 `PLACE_STONE` 或支持版本的 `RESIGN`，Setup 发送 `SELECT_STARTER`。历史 View 与投降能力按 exact 版本区分。
 
+Play/Replay 严格校验 15×15 与 19×19 公开棋盘，以及棋盘、轮次和结果中的玩家引用。
+
 共享开发、Workbench 与 artifact 更新步骤见 [Game Surface 规范](../../docs/GAME_SURFACE_SPEC.md)。

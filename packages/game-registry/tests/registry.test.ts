@@ -2,12 +2,6 @@ import { describe, expect, it } from "vitest";
 
 import { gameCatalog, resolveGameManifest } from "../src/catalog.js";
 import {
-  loadGameClientEntrypoint,
-  loadGameClientModule,
-  loadRealtimeGameClientEntrypoint,
-  loadRealtimeGameClientModule,
-} from "../src/client.js";
-import {
   resolveCurrentGameDeployment,
   resolveGameDeployment,
   resolveGameSurfaceEntrypoint,
@@ -22,17 +16,6 @@ import {
   resolveRealtimeGameDefinition,
   resolveRoundSetupDefinition,
 } from "../src/server.js";
-
-function clientModuleSymbol(gameId: string): string {
-  const [firstSegment, ...remainingSegments] = gameId.split("-");
-  if (firstSegment === undefined) {
-    throw new Error("A registered game id must contain a symbol segment.");
-  }
-
-  return `${firstSegment}${remainingSegments
-    .map((segment) => `${segment[0]?.toUpperCase()}${segment.slice(1)}`)
-    .join("")}ClientModule`;
-}
 
 describe("explicit game registry", () => {
   it("uses each game's single manifest source in the catalog and server", () => {
@@ -74,31 +57,12 @@ describe("explicit game registry", () => {
       );
       expect(
         resolveGameDeployment(manifest.id, manifest.gameVersion),
-      ).toMatchObject(
-        [
-          "tic-tac-toe",
-          "pong",
-          "badminton",
-          "tank-maze",
-          "connect-four",
-          "gomoku",
-          "hex",
-          "reversi",
-          "chinese-checkers",
-        ].includes(manifest.id)
-          ? {
-              gameId: manifest.id,
-              gameVersion: manifest.gameVersion,
-              setupProtocol: 6,
-              presentation: { kind: "surface-v1" },
-            }
-          : {
-              gameId: manifest.id,
-              gameVersion: manifest.gameVersion,
-              setupProtocol: 5,
-              presentation: { kind: "legacy-react" },
-            },
-      );
+      ).toMatchObject({
+        gameId: manifest.id,
+        gameVersion: manifest.gameVersion,
+        setupProtocol: 6,
+        presentation: { kind: "surface-v1" },
+      });
       const currentDeployment = resolveCurrentGameDeployment(manifest.id);
       expect(currentDeployment).toEqual(
         resolveGameDeployment(manifest.id, manifest.gameVersion),
@@ -110,6 +74,9 @@ describe("explicit game registry", () => {
   it("resolves only exact gameId + gameVersion", () => {
     expect(resolveGameDefinition("unknown", "1.0.0")).toBeUndefined();
     expect(resolveGameManifest("unknown", "1.0.0")).toBeUndefined();
+    expect(
+      resolveGameSurfaceEntrypoint("unknown", "1.0.0", "play"),
+    ).toBeUndefined();
 
     for (const manifest of gameCatalog) {
       expect(
@@ -125,6 +92,13 @@ describe("explicit game registry", () => {
       ).toBeUndefined();
       expect(
         resolveGameManifest(manifest.id, `${manifest.gameVersion}-unknown`),
+      ).toBeUndefined();
+      expect(
+        resolveGameSurfaceEntrypoint(
+          manifest.id,
+          `${manifest.gameVersion}-unknown`,
+          "replay",
+        ),
       ).toBeUndefined();
     }
   });
@@ -233,12 +207,12 @@ describe("explicit game registry", () => {
         setupProtocol: gameVersion === "1.1.0" ? 6 : 5,
         presentation: {
           kind: "surface-v1",
-          publicBasePath: "/game-surfaces/connect-four/1.0.3",
+          publicBasePath: "/game-surfaces/connect-four/1.0.4",
           artifact: {
             supportedGameVersions: ["1.0.0", "1.1.0"],
-            surfaceVersion: "1.0.3",
+            surfaceVersion: "1.0.4",
             contentDigest:
-              "sha256-B7C4RiHWEnQYVrhDEZmj9wV6SYnC7n7mtsl44jvz2LA=",
+              "sha256-JCQswgU+KZfH9Db91JBSAJjZPiBs09i8GuC5xa5HhRI=",
           },
         },
         platformControls: gameVersion === "1.1.0" ? ["RESIGN"] : [],
@@ -249,10 +223,10 @@ describe("explicit game registry", () => {
         ).toMatchObject({
           gameId: "connect-four",
           gameVersion,
-          surfaceVersion: "1.0.3",
+          surfaceVersion: "1.0.4",
           mode,
           platformControls: gameVersion === "1.1.0" ? ["RESIGN"] : [],
-          url: `/game-surfaces/connect-four/1.0.3/${mode}/index.html`,
+          url: `/game-surfaces/connect-four/1.0.4/${mode}/index.html`,
         });
       }
     }
@@ -291,12 +265,12 @@ describe("explicit game registry", () => {
         setupProtocol: gameVersion === "1.1.0" ? 6 : 5,
         presentation: {
           kind: "surface-v1",
-          publicBasePath: "/game-surfaces/gomoku/1.0.2",
+          publicBasePath: "/game-surfaces/gomoku/1.0.3",
           artifact: {
             supportedGameVersions: ["1.0.0", "1.1.0"],
-            surfaceVersion: "1.0.2",
+            surfaceVersion: "1.0.3",
             contentDigest:
-              "sha256-zo8AUksRNPcKKyumDjKf2uhxA9AMP9eyG/hDSjJvEZ0=",
+              "sha256-qfKagp6wbInfeCpwMnl8Iv8rpUiUt0r8hKXThxfX0ow=",
           },
         },
         platformControls: gameVersion === "1.1.0" ? ["RESIGN"] : [],
@@ -307,10 +281,10 @@ describe("explicit game registry", () => {
         ).toMatchObject({
           gameId: "gomoku",
           gameVersion,
-          surfaceVersion: "1.0.2",
+          surfaceVersion: "1.0.3",
           mode,
           platformControls: gameVersion === "1.1.0" ? ["RESIGN"] : [],
-          url: `/game-surfaces/gomoku/1.0.2/${mode}/index.html`,
+          url: `/game-surfaces/gomoku/1.0.3/${mode}/index.html`,
         });
       }
     }
@@ -450,7 +424,7 @@ describe("explicit game registry", () => {
     ).toBeDefined();
   });
 
-  it("retains both historical Pong simulations for audit and disables player playback for every version", async () => {
+  it("retains both historical Pong simulations for audit and disables player playback for every version", () => {
     const current = resolveCurrentRealtimeGameDefinition("pong");
     const legacy = resolveRealtimeGameDefinition("pong", "1.0.0");
     const previous = resolveRealtimeGameDefinition("pong", "1.1.0");
@@ -463,92 +437,6 @@ describe("explicit game registry", () => {
     expect(Object.isFrozen(previous)).toBe(true);
     for (const definition of [legacy, previous, current]) {
       expect(definition?.manifest.capabilities.replay).toBe("record-only");
-    }
-    await expect(
-      loadRealtimeGameClientModule("pong", "1.1.0"),
-    ).resolves.toBeUndefined();
-    await expect(
-      loadRealtimeGameClientEntrypoint("pong", "1.1.0"),
-    ).resolves.toBeUndefined();
-  });
-
-  it("resolves every supported exact historical client module independently", async () => {
-    const historicalVersions = [
-      ["tic-tac-toe", "1.0.0"],
-      ["connect-four", "1.0.0"],
-      ["gomoku", "1.0.0"],
-      ["hex", "1.0.0"],
-      ["reversi", "1.0.0"],
-      ["chinese-checkers", "1.0.0"],
-    ] as const;
-    for (const [gameId, gameVersion] of historicalVersions) {
-      const historical = await loadGameClientModule(gameId, gameVersion);
-      const current = await loadGameClientModule(
-        gameId,
-        gameCatalog.find((manifest) => manifest.id === gameId)?.gameVersion ??
-          "",
-      );
-      expect(historical).toBeDefined();
-      expect(current).toBeDefined();
-      if (gameId !== "hex") expect(historical).not.toBe(current);
-      expect(historical).toMatchObject({ gameId, gameVersion });
-      expect(historical?.parseView).toEqual(expect.any(Function));
-    }
-  });
-
-  it("keeps the retained legacy client entries lazy, isolated, and free of UI business", async () => {
-    for (const manifest of gameCatalog.filter(
-      (game) => !["badminton", "tank-maze"].includes(game.id),
-    )) {
-      if (manifest.runtime === "realtime") {
-        const gameVersion = "1.0.0";
-        const entrypoint = await loadRealtimeGameClientEntrypoint(
-          manifest.id,
-          gameVersion,
-        );
-        expect(entrypoint).toHaveProperty(clientModuleSymbol(manifest.id));
-        expect(entrypoint).not.toHaveProperty("step");
-        expect(entrypoint).not.toHaveProperty("createInitialState");
-        const clientModule = await loadRealtimeGameClientModule(
-          manifest.id,
-          gameVersion,
-        );
-        expect(clientModule).toMatchObject({
-          gameId: manifest.id,
-          gameVersion,
-        });
-        expect(clientModule?.parseView).toEqual(expect.any(Function));
-        expect(clientModule?.createResignInput).toEqual(expect.any(Function));
-        await expect(
-          loadRealtimeGameClientModule(
-            manifest.id,
-            `${manifest.gameVersion}-unknown`,
-          ),
-        ).resolves.toBeUndefined();
-        continue;
-      }
-      const entrypoint = await loadGameClientEntrypoint(
-        manifest.id,
-        manifest.gameVersion,
-      );
-      expect(entrypoint).toBeDefined();
-      expect(entrypoint).toHaveProperty(clientModuleSymbol(manifest.id));
-      expect(entrypoint).not.toHaveProperty("transition");
-      expect(entrypoint).not.toHaveProperty("createInitialState");
-
-      const clientModule = await loadGameClientModule(
-        manifest.id,
-        manifest.gameVersion,
-      );
-      expect(clientModule).toMatchObject({
-        gameId: manifest.id,
-        gameVersion: manifest.gameVersion,
-      });
-      expect(clientModule?.parseView).toEqual(expect.any(Function));
-      expect(clientModule?.createResignAction).toEqual(expect.any(Function));
-      await expect(
-        loadGameClientModule(manifest.id, `${manifest.gameVersion}-unknown`),
-      ).resolves.toBeUndefined();
     }
   });
 
@@ -585,7 +473,7 @@ describe("explicit game registry", () => {
     }
   });
 
-  it("registers badminton as an independent V6 Surface with server-only replay", async () => {
+  it("registers badminton as an independent V6 Surface with server-only replay", () => {
     expect(resolveGameManifest("badminton", "1.2.0")).toMatchObject({
       title: "火柴人羽毛球",
       runtime: "realtime",
@@ -608,12 +496,6 @@ describe("explicit game registry", () => {
     expect(
       resolveGameSurfaceEntrypoint("badminton", "1.0.0", "replay"),
     ).toBeUndefined();
-    await expect(
-      loadRealtimeGameClientModule("badminton", "1.0.0"),
-    ).resolves.toBeUndefined();
-    await expect(
-      loadRealtimeGameClientEntrypoint("badminton", "1.0.0"),
-    ).resolves.toBeUndefined();
     const current = resolveCurrentRealtimeGameDefinition("badminton");
     const legacy = resolveRealtimeGameDefinition("badminton", "1.0.0");
     expect(current?.manifest.gameVersion).toBe("1.2.0");

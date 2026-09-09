@@ -47,7 +47,7 @@ Web 不验证游戏规则、不持有权威 State、不生成 Outcome。页面�
 | ------------------------------ | ------------------------------------------------------------------------------------------------ |
 | `game-sdk`                     | 回合制纯类型、JSON/slot/viewer/outcome 契约与确定性 RNG                                          |
 | `game-server-runtime`          | 回合制 room、Action pipeline、lifecycle/reconnect、store/clock/observability ports 与离散 replay |
-| `game-client-sdk`              | 回合制 ticket/join、命令、snapshot、lifecycle/reconnect Host；保留 Client Module 兼容契约        |
+| `game-client-sdk`              | 回合制 ticket/join、命令、snapshot、连接状态、lifecycle/reconnect 与房间资料同步 Host            |
 | `realtime-game-sdk`            | 固定 tick simulation、实时类型/RNG、canonical replay 与纯重建器                                  |
 | `realtime-game-server-runtime` | 实时输入队列、单 writer scheduler、快照、reconnect 与 realtime replay port                       |
 | `realtime-game-client-sdk`     | 实时连接 Host、input sequence/ack、快照顺序与显示插值时钟                                        |
@@ -55,7 +55,7 @@ Web 不验证游戏规则、不持有权威 State、不生成 Outcome。页面�
 | `game-server-ticket`           | Web issuer 与 Game Server verifier 共用的 HMAC-SHA256 ticket authority                           |
 | `game-setup`                   | 两类 runtime 共用的纯 Setup definition、coordinator、projection/finalize 与最终设置校验          |
 | `game-surface-bridge`          | Artifact 与 Bridge V1/V2 JSON schemas、消息和可选 Host/Surface helpers                           |
-| `game-registry`                | 显式 catalog、exact Core/Setup resolver、deployment 与 legacy client loader                      |
+| `game-registry`                | 显式 catalog、exact Core/Setup resolver 与 Surface deployment                                    |
 | `database`                     | PostgreSQL/Drizzle、migration、账户、room metadata、Match archive、replay 与 history adapters    |
 | `ui`                           | 无网络、房间或游戏规则的视觉组件与 tokens                                                        |
 
@@ -63,14 +63,13 @@ Web 不验证游戏规则、不持有权威 State、不生成 Outcome。页面�
 
 ## 游戏与注册
 
-`games/<game-id>` 拥有无副作用的 `/manifest`、纯 `/core`、`/setup`、规则文档和测试。部分旧游戏保留 `/client` 兼容 exports；新游戏只通过独立 `game-surfaces/<game-id>` 提供画面。规则版本、Surface 版本与平台协议版本独立。
+`games/<game-id>` 拥有无副作用的 `/manifest`、纯 `/core`、`/setup`、规则文档和测试。所有画面由独立 `game-surfaces/<game-id>` 提供；旧 Client 源码与 `/client` exports 已移除。规则版本、Surface 版本与平台协议版本独立。
 
 `game-registry` 是组合所有具体游戏的专用 package：
 
 - `/catalog` 公开 manifest 与 current 目录选择。
 - `/server` 按 exact `gameId + gameVersion` 解析对应 runtime 的 Core 与 Setup。
 - `/deployment` 固定 Setup generation、平台控制能力，并把 exact game/version/mode 映射到 immutable Surface。
-- `/client` 仅保留 legacy loader API，当前 Web 不消费。
 
 创建新房间先从 catalog 确定 current 版本，再走 exact resolver，不依赖数组顺序。加入和 replay 都使用房间或记录中的 exact 版本。manifest 的 `defaultConfig` 必须是 `configSchema` 接受且无需再规范化的 JSON 数据，服务器仍重新校验。
 
@@ -93,10 +92,11 @@ apps ──────────────────────> 各自�
 ```
 
 - SDK、Protocol、通用 runtime 不依赖具体游戏；游戏之间不得互相依赖。
-- Realtime SDK/server/client 不导入回合制 `GameDefinition`、`GameClientModule` 或 `game-server-runtime` 实现。共享身份/lifecycle 能力须通过明确的最小契约表达，不能反向耦合两类管线。
+- Realtime SDK/server/client 不导入回合制 `GameDefinition`、Host 或 `game-server-runtime` 实现。共享身份/lifecycle 能力须通过明确的最小契约表达，不能反向耦合两类管线。
 - Core 和 Setup 不依赖 React、Next、DOM、Phaser、Colyseus、WebSocket、ORM、PostgreSQL 或 Redis，不读取时钟、网络或环境。
 - Core 外部依赖采用显式白名单：Zod 用于 schema，`pathfinding` 主入口仅由坦克迷战持有，用于固定版本的纯网格搜索；不开放内部 deep import。库升级与搜索顺序变化须评估 replay 兼容。
 - Surface 只依赖 Bridge，不导入 Core、client host、Protocol、ticket 或数据库；Next 不编译 Surface 源码和框架依赖。
+- 两类连接 SDK 不定义 React 组件契约，也不依赖 React/Phaser。Web 与 Surface 各自持有渲染依赖；Next 仍保留用于 manifest/Core 静态导入的游戏 transpile 条目。
 - `ui` 不依赖网络或业务。跨 package 只使用声明的 public exports，不引入循环依赖。
 
 依赖检查由 `pnpm deps:check` 自动执行。具体规则接口见 [Game Plugin](./GAME_PLUGIN_SPEC.md) 和 [Realtime Runtime](./REALTIME_RUNTIME_DESIGN.md)。

@@ -21,7 +21,7 @@ describe("Gomoku Surface artifact contract", () => {
       schemaVersion: 1,
       gameId: "gomoku",
       supportedGameVersions: ["1.0.0", "1.1.0"],
-      surfaceVersion: "1.0.2",
+      surfaceVersion: "1.0.3",
       bridgeVersion: 2,
       entrypoints: {
         setup: "setup/index.html",

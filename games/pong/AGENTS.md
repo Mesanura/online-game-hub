@@ -4,4 +4,4 @@
 - Pong 所有受支持版本均为 `record-only`，保留比赛记录、账户战绩与内部 verifier，不提供玩家 Replay Surface 或播放 API；回放产品等待后续重新设计。
 - Core 只处理已由服务器映射到 stable slot 的输入。客户端不得提交位置、速度、分数、碰撞、Outcome 或 tick。
 - 同 tick 输入按 manifest 对应的 `players` 顺序应用。上下边界先于球拍碰撞，球拍碰撞先于出界得分。
-- Phaser 只存在于 legacy `src/client` 或独立 `game-surfaces/pong`，不得进入 manifest、Core、server runtime 或 replay verifier。
+- Phaser 只存在于独立 `game-surfaces/pong`，不得进入 manifest、Core、server runtime 或 replay verifier。

@@ -399,9 +399,6 @@ importers:
 
   games/chinese-checkers:
     dependencies:
-      '@online-game-hub/game-client-sdk':
-        specifier: workspace:*
-        version: link:../../packages/game-client-sdk
       '@online-game-hub/game-sdk':
         specifier: workspace:*
         version: link:../../packages/game-sdk
@@ -415,24 +412,9 @@ importers:
       '@online-game-hub/game-server-runtime':
         specifier: workspace:*
         version: link:../../packages/game-server-runtime
-      '@types/react':
-        specifier: 19.2.18
-        version: 19.2.18
-      '@types/react-dom':
-        specifier: 19.2.5
-        version: 19.2.5(@types/react@19.2.18)
-      react:
-        specifier: 19.2.8
-        version: 19.2.8
-      react-dom:
-        specifier: 19.2.8
-        version: 19.2.8(react@19.2.8)
 
   games/connect-four:
     dependencies:
-      '@online-game-hub/game-client-sdk':
-        specifier: workspace:*
-        version: link:../../packages/game-client-sdk
       '@online-game-hub/game-sdk':
         specifier: workspace:*
         version: link:../../packages/game-sdk
@@ -446,24 +428,9 @@ importers:
       '@online-game-hub/game-server-runtime':
         specifier: workspace:*
         version: link:../../packages/game-server-runtime
-      '@types/react':
-        specifier: 19.2.18
-        version: 19.2.18
-      '@types/react-dom':
-        specifier: 19.2.5
-        version: 19.2.5(@types/react@19.2.18)
-      react:
-        specifier: 19.2.8
-        version: 19.2.8
-      react-dom:
-        specifier: 19.2.8
-        version: 19.2.8(react@19.2.8)
 
   games/gomoku:
     dependencies:
-      '@online-game-hub/game-client-sdk':
-        specifier: workspace:*
-        version: link:../../packages/game-client-sdk
       '@online-game-hub/game-sdk':
         specifier: workspace:*
         version: link:../../packages/game-sdk
@@ -477,24 +444,9 @@ importers:
       '@online-game-hub/game-server-runtime':
         specifier: workspace:*
         version: link:../../packages/game-server-runtime
-      '@types/react':
-        specifier: 19.2.18
-        version: 19.2.18
-      '@types/react-dom':
-        specifier: 19.2.5
-        version: 19.2.5(@types/react@19.2.18)
-      react:
-        specifier: 19.2.8
-        version: 19.2.8
-      react-dom:
-        specifier: 19.2.8
-        version: 19.2.8(react@19.2.8)
 
   games/hex:
     dependencies:
-      '@online-game-hub/game-client-sdk':
-        specifier: workspace:*
-        version: link:../../packages/game-client-sdk
       '@online-game-hub/game-sdk':
         specifier: workspace:*
         version: link:../../packages/game-sdk
@@ -508,33 +460,15 @@ importers:
       '@online-game-hub/game-server-runtime':
         specifier: workspace:*
         version: link:../../packages/game-server-runtime
-      '@types/react':
-        specifier: 19.2.18
-        version: 19.2.18
-      '@types/react-dom':
-        specifier: 19.2.5
-        version: 19.2.5(@types/react@19.2.18)
-      react:
-        specifier: 19.2.8
-        version: 19.2.8
-      react-dom:
-        specifier: 19.2.8
-        version: 19.2.8(react@19.2.8)
 
   games/pong:
     dependencies:
       '@online-game-hub/game-setup':
         specifier: workspace:*
         version: link:../../packages/game-setup
-      '@online-game-hub/realtime-game-client-sdk':
-        specifier: workspace:*
-        version: link:../../packages/realtime-game-client-sdk
       '@online-game-hub/realtime-game-sdk':
         specifier: workspace:*
         version: link:../../packages/realtime-game-sdk
-      phaser:
-        specifier: 3.90.0
-        version: 3.90.0
       zod:
         specifier: 4.4.3
         version: 4.4.3
@@ -542,24 +476,9 @@ importers:
       '@types/node':
         specifier: 24.13.3
         version: 24.13.3
-      '@types/react':
-        specifier: 19.2.18
-        version: 19.2.18
-      '@types/react-dom':
-        specifier: 19.2.5
-        version: 19.2.5(@types/react@19.2.18)
-      react:
-        specifier: 19.2.8
-        version: 19.2.8
-      react-dom:
-        specifier: 19.2.8
-        version: 19.2.8(react@19.2.8)
 
   games/reversi:
     dependencies:
-      '@online-game-hub/game-client-sdk':
-        specifier: workspace:*
-        version: link:../../packages/game-client-sdk
       '@online-game-hub/game-sdk':
         specifier: workspace:*
         version: link:../../packages/game-sdk
@@ -573,18 +492,6 @@ importers:
       '@online-game-hub/game-server-runtime':
         specifier: workspace:*
         version: link:../../packages/game-server-runtime
-      '@types/react':
-        specifier: 19.2.18
-        version: 19.2.18
-      '@types/react-dom':
-        specifier: 19.2.5
-        version: 19.2.5(@types/react@19.2.18)
-      react:
-        specifier: 19.2.8
-        version: 19.2.8
-      react-dom:
-        specifier: 19.2.8
-        version: 19.2.8(react@19.2.8)
 
   games/tank-maze:
     dependencies:
@@ -610,9 +517,6 @@ importers:
 
   games/tic-tac-toe:
     dependencies:
-      '@online-game-hub/game-client-sdk':
-        specifier: workspace:*
-        version: link:../../packages/game-client-sdk
       '@online-game-hub/game-sdk':
         specifier: workspace:*
         version: link:../../packages/game-sdk
@@ -626,18 +530,6 @@ importers:
       '@online-game-hub/game-server-runtime':
         specifier: workspace:*
         version: link:../../packages/game-server-runtime
-      '@types/react':
-        specifier: 19.2.18
-        version: 19.2.18
-      '@types/react-dom':
-        specifier: 19.2.5
-        version: 19.2.5(@types/react@19.2.18)
-      react:
-        specifier: 19.2.8
-        version: 19.2.8
-      react-dom:
-        specifier: 19.2.8
-        version: 19.2.8(react@19.2.8)
 
   packages/database:
     dependencies:
@@ -681,13 +573,6 @@ importers:
       '@online-game-hub/protocol':
         specifier: workspace:*
         version: link:../protocol
-    devDependencies:
-      '@types/react':
-        specifier: 19.2.18
-        version: 19.2.18
-      react:
-        specifier: 19.2.8
-        version: 19.2.8
 
   packages/game-registry:
     dependencies:
@@ -700,9 +585,6 @@ importers:
       '@online-game-hub/connect-four':
         specifier: workspace:*
         version: link:../../games/connect-four
-      '@online-game-hub/game-client-sdk':
-        specifier: workspace:*
-        version: link:../game-client-sdk
       '@online-game-hub/game-sdk':
         specifier: workspace:*
         version: link:../game-sdk
@@ -721,9 +603,6 @@ importers:
       '@online-game-hub/pong':
         specifier: workspace:*
         version: link:../../games/pong
-      '@online-game-hub/realtime-game-client-sdk':
-        specifier: workspace:*
-        version: link:../realtime-game-client-sdk
       '@online-game-hub/realtime-game-sdk':
         specifier: workspace:*
         version: link:../realtime-game-sdk
@@ -798,13 +677,6 @@ importers:
       '@online-game-hub/protocol':
         specifier: workspace:*
         version: link:../protocol
-    devDependencies:
-      '@types/react':
-        specifier: 19.2.18
-        version: 19.2.18
-      react:
-        specifier: 19.2.8
-        version: 19.2.8
 
   packages/realtime-game-sdk:
     dependencies:

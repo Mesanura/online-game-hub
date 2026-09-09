@@ -8,13 +8,11 @@ import { gameCatalog } from "./catalog.js";
 
 export type SetupProtocolGeneration = 5 | 6;
 
-export type GamePresentationRegistration =
-  | { readonly kind: "legacy-react" }
-  | {
-      readonly kind: "surface-v1";
-      readonly publicBasePath: string;
-      readonly artifact: SurfaceArtifactManifestV1;
-    };
+export interface GamePresentationRegistration {
+  readonly kind: "surface-v1";
+  readonly publicBasePath: string;
+  readonly artifact: SurfaceArtifactManifestV1;
+}
 
 export interface GameDeploymentRegistration {
   readonly gameId: string;
@@ -106,7 +104,7 @@ const connectFourSurfaceArtifactV1 = {
   schemaVersion: 1,
   gameId: "connect-four",
   supportedGameVersions: ["1.0.0", "1.1.0"],
-  surfaceVersion: "1.0.3",
+  surfaceVersion: "1.0.4",
   bridgeVersion: 2,
   entrypoints: {
     setup: "setup/index.html",
@@ -114,7 +112,7 @@ const connectFourSurfaceArtifactV1 = {
     replay: "replay/index.html",
   },
   capabilities: {},
-  contentDigest: "sha256-B7C4RiHWEnQYVrhDEZmj9wV6SYnC7n7mtsl44jvz2LA=",
+  contentDigest: "sha256-JCQswgU+KZfH9Db91JBSAJjZPiBs09i8GuC5xa5HhRI=",
 } satisfies SurfaceArtifactManifestV1;
 
 const connectFourSurface = (
@@ -129,7 +127,7 @@ const connectFourSurface = (
       gameVersion === "1.1.0" ? resignPlatformControls : noPlatformControls,
     presentation: Object.freeze({
       kind: "surface-v1",
-      publicBasePath: "/game-surfaces/connect-four/1.0.3",
+      publicBasePath: "/game-surfaces/connect-four/1.0.4",
       artifact: connectFourSurfaceArtifactV1,
     }),
   });
@@ -138,7 +136,7 @@ const gomokuSurfaceArtifactV1 = {
   schemaVersion: 1,
   gameId: "gomoku",
   supportedGameVersions: ["1.0.0", "1.1.0"],
-  surfaceVersion: "1.0.2",
+  surfaceVersion: "1.0.3",
   bridgeVersion: 2,
   entrypoints: {
     setup: "setup/index.html",
@@ -146,7 +144,7 @@ const gomokuSurfaceArtifactV1 = {
     replay: "replay/index.html",
   },
   capabilities: {},
-  contentDigest: "sha256-zo8AUksRNPcKKyumDjKf2uhxA9AMP9eyG/hDSjJvEZ0=",
+  contentDigest: "sha256-qfKagp6wbInfeCpwMnl8Iv8rpUiUt0r8hKXThxfX0ow=",
 } satisfies SurfaceArtifactManifestV1;
 
 const gomokuSurface = (
@@ -161,7 +159,7 @@ const gomokuSurface = (
       gameVersion === "1.1.0" ? resignPlatformControls : noPlatformControls,
     presentation: Object.freeze({
       kind: "surface-v1",
-      publicBasePath: "/game-surfaces/gomoku/1.0.2",
+      publicBasePath: "/game-surfaces/gomoku/1.0.3",
       artifact: gomokuSurfaceArtifactV1,
     }),
   });
@@ -347,7 +345,6 @@ export function resolveSurfaceEntrypoint(
   registration: GameDeploymentRegistration,
   mode: SurfaceMode,
 ): ResolvedSurfaceEntrypoint | undefined {
-  if (registration.presentation.kind !== "surface-v1") return undefined;
   const { artifact, publicBasePath } = registration.presentation;
   if (!artifact.supportedGameVersions.includes(registration.gameVersion)) {
     return undefined;

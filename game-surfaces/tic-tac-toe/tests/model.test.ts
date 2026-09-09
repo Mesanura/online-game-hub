@@ -32,6 +32,26 @@ const playView = ticTacToePlayViewSchema.parse({
 });
 
 describe("Tic-Tac-Toe Surface model", () => {
+  it("rejects incomplete projections, Core fields and invalid marks", () => {
+    for (const invalid of [
+      { ...playView, nextPlayerIndex: 0 },
+      { ...playView, board: [null] },
+      { ...playView, yourMark: "Z" },
+    ]) {
+      expect(ticTacToePlayViewSchema.safeParse(invalid).success).toBe(false);
+      expect(ticTacToeHistoricalPlayViewSchema.safeParse(invalid).success).toBe(
+        false,
+      );
+    }
+    const draw = ticTacToePlayViewSchema.parse({
+      ...playView,
+      nextTurnSlotId: null,
+      outcome: { type: "DRAW" },
+    });
+    expect(playStatusLabel(draw)).toBe("本局平局");
+    expect(resultSummary(draw)).toEqual({ tone: "draw", headline: "平局" });
+  });
+
   it("accepts only strict projected Setup views and minimal Setup intents", () => {
     const setup = ticTacToeSetupViewSchema.parse({
       starter: "UNSELECTED",

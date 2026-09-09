@@ -6,7 +6,7 @@
 
 回合制 Game Plugin 面向“客户端提交离散 Action、服务器产生下一个 State”的游戏。当前以棋牌实现验证；卡牌和骰子可以使用同类接口，但不表示相关产品能力已经开放。
 
-固定 tick 的实时游戏使用独立 [Realtime Runtime](./REALTIME_RUNTIME_DESIGN.md)，不把 realtime input、tick 或 snapshot 字段加入 `GameDefinition`、`GameClientModule` 或回合制 Action envelope。Setup、显式注册与版本原则适用于两类游戏。
+固定 tick 的实时游戏使用独立 [Realtime Runtime](./REALTIME_RUNTIME_DESIGN.md)，不把 realtime input、tick 或 snapshot 字段加入 `GameDefinition`、回合制 Host 或 Action envelope。Setup、显式注册与版本原则适用于两类游戏。
 
 ## 2. 设计原则
 
@@ -217,35 +217,15 @@ type Action = {
 - 骰子 Action 表达 `ROLL`，不携带客户端生成的点数。
 - schema 应拒绝未知或越界字段，并将合法输入规范化后再写入 replay。
 
-## 8. Legacy Client Module
+## 8. 客户端边界
 
-游戏 Client Module 是保留的兼容 API 与组件测试路径，可以依赖 React 和 `game-client-sdk`，但不得导入服务端 State 或自行实现 authoritative 规则。当前 Web 的 live room 与 replay 均不再加载 Client Module；新游戏使用 [独立 Surface](./GAME_SURFACE_SPEC.md)，不再新增 Client Module。
+游戏表现使用 [独立 Surface](./GAME_SURFACE_SPEC.md)，严格解析公开 View 并通过 Bridge 提交最小 intent。旧 Client Module、React 组件契约、类型擦除 helper 与 registry loader 已移除，游戏包不再公开 `/client`。
 
-概念契约：
+两类连接 SDK 继续提供 Host、连接状态、ticket、重连、房间资料同步与实时插值。Web Host 添加 commandId、revision 或 input sequence 等 transport 元数据；Surface 不导入这些 SDK，不提交 actor、State 或 Outcome。SDK 不要求 React peer dependency。
 
-```ts
-interface GameClientProps<View, Action> {
-  view: Readonly<View>;
-  revision: number;
-  connectionState:
-    "idle" | "loading" | "connecting" | "connected" | "reconnecting" | "closed";
-  submitAction(action: Action): Promise<void>;
-}
+客户端的合法操作提示不构成权威判断；服务器 Core 始终重新验证 Action/Input。投降支持由 exact deployment 的 `platformControls` 与 Surface schema 决定，不能让旧 Core 接受新 Action。
 
-interface GameClientModule<View, Action> {
-  gameId: GameId;
-  gameVersion: GameVersion;
-  parseView(input: unknown): View;
-  createResignAction?: () => Action;
-  Component: React.ComponentType<GameClientProps<View, Action>>;
-}
-```
-
-该兼容 contract 中，通用 host 负责添加 `commandId` 和 `expectedRevision`、管理连接和处理重连；具体游戏组件只渲染 View、采集意图并调用 `submitAction`。可选 `createResignAction` 必须返回 exact gameVersion 的最小投降 Action，但现在只用于 API/组件兼容测试，平台 HUD 不再读取该 factory。
-
-客户端可以重复实现提示性逻辑以改善 UX，但提示不是权威；服务器 Core 始终重新验证 Action。
-
-任何 client factory 都不属于 replay 或 wire envelope，不能让旧 Core 接受新 Action。保留的历史 module 必须符合对应版本；Surface 是否支持平台投降只由 exact deployment 的 `platformControls` 与 Surface schema 决定。
+删除旧渲染路径不等于退役 Protocol V5。仍登记 V5 的历史版本继续使用原有 envelope、房间生命周期和重连契约，历史 Core、golden 与 exact replay 读取继续保留。
 
 ## 9. Round Setup Definition
 
@@ -277,7 +257,7 @@ Artifact schema、摘要锁、Bridge V1/V2、平台投降、终局摘要、安�
 }
 ```
 
-实际 export map 使用各包构建后的 dist 路径；历史 `/client` 只按兼容承诺保留。Web 不得通过 registry server entry 导入 Core，Game Server 不得导入 `/client`，Surface 不导入任何游戏 package。
+实际 export map 使用各包构建后的 dist 路径，只公开仍被消费的 manifest/Core/Setup 入口。Web 页面不得通过 registry server entry 导入 Core，Surface 不导入任何游戏 package。
 
 ## 12. Versioning
 

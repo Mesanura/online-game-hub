@@ -78,6 +78,32 @@ describe("Reversi Surface model", () => {
       yourDisc: "BLACK",
     });
     expect(view.legalMoves).toEqual([19, 26, 37, 44]);
+    // The projection chooses legal moves; the Surface must not rescan captures.
+    expect(
+      reversiPlayViewSchema.parse({ ...view, legalMoves: [19] }).legalMoves,
+    ).toEqual([19]);
+    for (const invalid of [
+      { ...view, board: [null] },
+      { ...view, nextPlayerIndex: 0 },
+      { ...view, board: [...view.board.slice(0, 63), "unknown-slot"] },
+      { ...view, nextTurnSlotId: "unknown-slot" },
+      { ...view, legalMoves: [19, 19] },
+      { ...view, legalMoves: [27] },
+      { ...view, discCounts: { BLACK: 3, WHITE: 2 } },
+      { ...view, nextTurnSlotId: null },
+      { ...view, legalMoves: [] },
+      {
+        ...view,
+        nextTurnSlotId: null,
+        legalMoves: [],
+        outcome: {
+          type: "WIN",
+          winnerSlotId: "slot-white",
+          discCounts: { BLACK: 2, WHITE: 2 },
+        },
+      },
+    ])
+      expect(reversiPlayViewSchema.safeParse(invalid).success).toBe(false);
     const terminal = reversiPlayViewSchema.parse({
       ...view,
       board: Array.from({ length: 64 }, (_, cell) =>

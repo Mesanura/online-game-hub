@@ -250,7 +250,7 @@ async function startActiveRound(
   await pageA.getByTestId("create-room").click();
   await expect(pageA.getByTestId("game-surface-iframe")).toHaveAttribute(
     "src",
-    "/game-surfaces/connect-four/1.0.3/setup/index.html",
+    "/game-surfaces/connect-four/1.0.4/setup/index.html",
   );
   await connectFourSurface(pageA)
     .getByRole("button", { name: "房主先手" })
@@ -268,7 +268,7 @@ async function startActiveRound(
       await expect(page.getByTestId("match-status")).toHaveText("对局进行中");
       await expect(page.getByTestId("game-surface-iframe")).toHaveAttribute(
         "src",
-        "/game-surfaces/connect-four/1.0.3/play/index.html",
+        "/game-surfaces/connect-four/1.0.4/play/index.html",
       );
     }),
   );
@@ -315,7 +315,7 @@ test("two accounts play two authoritative Connect Four rounds with independent r
   );
   await expect(pageA.getByTestId("game-surface-iframe")).toHaveAttribute(
     "src",
-    "/game-surfaces/connect-four/1.0.3/setup/index.html",
+    "/game-surfaces/connect-four/1.0.4/setup/index.html",
   );
   await connectFourSurface(pageA)
     .getByRole("button", { name: "房主先手" })
@@ -354,7 +354,7 @@ test("two accounts play two authoritative Connect Four rounds with independent r
       await expect(page.getByTestId("room-code")).toHaveText(roomCode);
       await expect(page.getByTestId("game-surface-iframe")).toHaveAttribute(
         "src",
-        "/game-surfaces/connect-four/1.0.3/play/index.html",
+        "/game-surfaces/connect-four/1.0.4/play/index.html",
       );
       await expect(
         connectFourSurface(page).locator("[data-column]"),
@@ -537,13 +537,54 @@ test("two accounts play two authoritative Connect Four rounds with independent r
   await expect(pageA.getByTestId("replay-page")).toBeVisible();
   await expect(pageA.getByTestId("game-surface-iframe")).toHaveAttribute(
     "src",
-    "/game-surfaces/connect-four/1.0.3/replay/index.html",
+    "/game-surfaces/connect-four/1.0.4/replay/index.html",
   );
   await expect(
     connectFourSurface(pageA).locator("[data-cell-index]"),
   ).toHaveCount(42);
   expect(browserErrors).toEqual([]);
   await Promise.all([contextA.close(), contextB.close()]);
+});
+
+test("a full Connect Four column stays disabled while other columns remain playable", async ({
+  browser,
+}) => {
+  const contextA = await browser.newContext();
+  const contextB = await browser.newContext();
+  try {
+    const pageA = await contextA.newPage();
+    const pageB = await contextB.newPage();
+    await startActiveRound(pageA, pageB);
+    for (let move = 0; move < 6; move += 1) {
+      const actor = move % 2 === 0 ? pageA : pageB;
+      await playAcceptedDrop(actor, [pageA, pageB], 0, move + 1);
+      for (const viewer of [pageA, pageB]) {
+        await expect(
+          connectFourSurface(viewer).locator(
+            `[data-cell-index="${(5 - move) * 7}"]`,
+          ),
+        ).toHaveAttribute("data-disc", move % 2 === 0 ? "RED" : "YELLOW");
+      }
+    }
+    for (const page of [pageA, pageB]) {
+      await expect(page.getByTestId("match-status")).toHaveText("对局进行中");
+      await expect(
+        connectFourSurface(page).locator('[data-column="0"]'),
+      ).toBeDisabled();
+    }
+    await expect(
+      connectFourSurface(pageA).locator("[data-column]:enabled"),
+    ).toHaveCount(6);
+    await expect(
+      connectFourSurface(pageB).locator("[data-column]:enabled"),
+    ).toHaveCount(0);
+    await playAcceptedDrop(pageA, [pageA, pageB], 1, 7);
+    await expect(
+      connectFourSurface(pageB).locator("[data-column]:enabled"),
+    ).toHaveCount(6);
+  } finally {
+    await Promise.all([contextA.close(), contextB.close()]);
+  }
 });
 
 test("the shared HUD cancels and confirms a Connect Four resignation once", async ({

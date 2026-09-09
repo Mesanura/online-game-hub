@@ -4,7 +4,7 @@
 
 ## 范围与职责
 
-实时管线与回合制 Action 管线并列，复用平台的目录、身份、ticket、room code、stable slots、准备、重连、Round/Match 和账户授权；不复用 `GameDefinition`、`GameClientModule`、`game.action`、`match.snapshot` 或 `expectedRevision`。
+实时管线与回合制 Action 管线并列，复用平台的目录、身份、ticket、room code、stable slots、准备、重连、Round/Match 和账户授权；不复用 `GameDefinition`、回合制 Host、`game.action`、`match.snapshot` 或 `expectedRevision`。
 
 | Owner                   | 职责                                                                                            |
 | ----------------------- | ----------------------------------------------------------------------------------------------- |
@@ -20,8 +20,8 @@ wall clock 只决定 scheduler 何时执行 tick；系统时间、网络到达�
 
 - `realtime-game-sdk`：manifest、simulation、纯 RNG、实时 canonical 类型和 replay runner；不依赖 DOM、Phaser、transport、数据库或回合制 definition。
 - `realtime-game-server-runtime`：输入队列、scheduler、room adapter、snapshot/rejection 和存储 ports；不依赖具体游戏或 `game-server-runtime` 实现。
-- `realtime-game-client-sdk`：与 Phaser 无关的 Host、input sender 和显示插值时钟；不依赖回合制 Host、具体游戏或数据库。
-- `games/<id>`：各自的整数 simulation、manifest、Setup 与 golden tests。Pong 保留 legacy client API，其余实时游戏不新增 Client Module。
+- `realtime-game-client-sdk`：与 React/Phaser 无关的 Host、input sender、连接状态、资料同步和显示插值时钟；不依赖回合制 Host、具体游戏或数据库。
+- `games/<id>`：各自的整数 simulation、manifest、Setup 与 golden tests；Pong 的旧 Client 已移除，所有实时表现均在独立 Surface 中实现。
 - `game-surfaces/<id>`：独立画面；Pong/羽毛球使用 Phaser，坦克迷战使用 SVG，均只依赖 Bridge 和自身渲染栈。
 
 只有 composition layer 同时看到 registry、两个 runtime 和平台 adapters。共享代码先证明实际复用，再提取职责明确的纯契约；不建立泛化 shared 包。完整依赖约束见 [系统架构](./ARCHITECTURE.md)。

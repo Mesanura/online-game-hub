@@ -36,7 +36,7 @@ o o o o o o o o o o
 - Core 统一拥有轴坐标 `(q,r)` 与营地映射，中心满足 `max(|q|,|r|,|q+r|) <= 3`；六个营地均为填满的边长 3 正三角形。
 - 平面投影为 `x = q + r/2`、`y = sqrt(3)*r/2`。六个邻接方向等距，共 180 条无向连线，每个营地与中心有 6 条连接。
 - `projectView` 输出与 `board[cell]` 同序的只读 `geometry[cell] = { q, r, camp }`。Surface 仅从这份公开投影生成棋位、连线与区域底色，不维护另一套新版棋盘生成器。
-- 旧 `1.0.0` 的编号、营地及 162 条连线拓扑与本版不同；相同起终点会产生不同移动结果，因此提升 `gameVersion`，而非仅修改 CSS。独立 frozen Core、类型、几何和兼容 Client 保留旧行为，旧 replay fixture 不改写。
+- 旧 `1.0.0` 的编号、营地及 162 条连线拓扑与本版不同；相同起终点会产生不同移动结果，因此提升 `gameVersion`，而非仅修改 CSS。独立 frozen Core、类型、几何与 Surface 的 exact 版本解析保留旧行为，旧 replay fixture 不改写。
 - 新房间选择 `1.1.0`，已有房间与历史回放仍按 exact version 解析。Action、Setup V6、Bridge V2、Protocol envelope 与 Replay Format V1 不变；不把旧 replay 重新标为新版本。
 
 ## Round Setup

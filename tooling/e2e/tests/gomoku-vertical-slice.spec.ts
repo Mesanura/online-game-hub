@@ -1,12 +1,22 @@
+import { randomUUID } from "node:crypto";
+import { readFile } from "node:fs/promises";
+
 import { expect, test } from "@playwright/test";
 import type { FrameLocator, Page } from "@playwright/test";
 
 import {
+  PostgresAccountRepository,
+  PostgresMatchArchive,
+  PostgresMatchRepository,
   PostgresReplayStore,
   createPostgresDatabaseClient,
 } from "@online-game-hub/database";
 import { resolveGameDefinition } from "@online-game-hub/game-registry/server";
 import { verifyReplay } from "@online-game-hub/game-server-runtime";
+import type {
+  CanonicalReplay,
+  StoredGameRoom,
+} from "@online-game-hub/game-server-runtime";
 
 import { openGameHud } from "../src/game-hud.js";
 import { startE2eHarness } from "../src/harness.js";
@@ -134,7 +144,7 @@ async function startActiveRound(
   await pageA.getByTestId("create-room").click();
   await expect(pageA.getByTestId("game-surface-iframe")).toHaveAttribute(
     "src",
-    "/game-surfaces/gomoku/1.0.2/setup/index.html",
+    "/game-surfaces/gomoku/1.0.3/setup/index.html",
   );
   await gomokuSurface(pageA).getByRole("button", { name: "房主先手" }).click();
   const inviteUrl = await pageA.getByTestId("invite-link").getAttribute("href");
@@ -150,7 +160,7 @@ async function startActiveRound(
       await expect(page.getByTestId("match-status")).toHaveText("对局进行中");
       await expect(page.getByTestId("game-surface-iframe")).toHaveAttribute(
         "src",
-        "/game-surfaces/gomoku/1.0.2/play/index.html",
+        "/game-surfaces/gomoku/1.0.3/play/index.html",
       );
     }),
   );
@@ -199,7 +209,7 @@ test("two accounts create, join, synchronize, and complete authoritative Gomoku"
   );
   await expect(pageA.getByTestId("game-surface-iframe")).toHaveAttribute(
     "src",
-    "/game-surfaces/gomoku/1.0.2/setup/index.html",
+    "/game-surfaces/gomoku/1.0.3/setup/index.html",
   );
   await gomokuSurface(pageA).getByRole("button", { name: "房主先手" }).click();
 
@@ -231,7 +241,7 @@ test("two accounts create, join, synchronize, and complete authoritative Gomoku"
       await expect(page.getByTestId("room-code")).toHaveText(roomCode);
       await expect(page.getByTestId("game-surface-iframe")).toHaveAttribute(
         "src",
-        "/game-surfaces/gomoku/1.0.2/play/index.html",
+        "/game-surfaces/gomoku/1.0.3/play/index.html",
       );
       await expect(
         gomokuSurface(page).getByRole("grid", { name: "五子棋棋盘" }),
@@ -400,13 +410,185 @@ test("two accounts create, join, synchronize, and complete authoritative Gomoku"
   await expect(pageA.getByTestId("replay-page")).toBeVisible();
   await expect(pageA.getByTestId("game-surface-iframe")).toHaveAttribute(
     "src",
-    "/game-surfaces/gomoku/1.0.2/replay/index.html",
+    "/game-surfaces/gomoku/1.0.3/replay/index.html",
   );
   await expect(gomokuSurface(pageA).locator("[data-cell-index]")).toHaveCount(
     225,
   );
   expect(browserErrors).toEqual([]);
   await Promise.all([contextA.close(), contextB.close()]);
+});
+
+test("historical Gomoku replays preserve the 19 by 19 board and private read-only playback", async ({
+  browser,
+}) => {
+  const ownerContext = await browser.newContext();
+  const outsiderContext = await browser.newContext();
+  const databaseClient = createPostgresDatabaseClient({
+    url: harness.databaseUrl,
+    applicationName: "gomoku-historical-replay-e2e",
+    maxConnections: 2,
+  });
+  try {
+    await Promise.all([
+      registerE2eAccount(
+        ownerContext.request,
+        harness.webUrl,
+        "gomoku_history",
+      ),
+      registerE2eAccount(
+        outsiderContext.request,
+        harness.webUrl,
+        "gomoku_history_outsider",
+      ),
+    ]);
+    const account = await new PostgresAccountRepository(
+      databaseClient.database,
+    ).findPasswordAccountByUsername("gomoku_history");
+    if (account === null) throw new Error("The replay owner was not stored.");
+    const golden = JSON.parse(
+      await readFile(
+        new URL(
+          "../../../games/gomoku/tests/fixtures/gomoku-1.0.0-win.json",
+          import.meta.url,
+        ),
+        "utf8",
+      ),
+    ) as CanonicalReplay;
+    const replay: CanonicalReplay = {
+      ...golden,
+      header: {
+        ...golden.header,
+        initialConfig: { boardSize: 19, winLength: 5 },
+      },
+    };
+    const initial = verifyReplay(
+      { ...replay, actions: [], recordedOutcome: null },
+      resolveGameDefinition,
+    );
+    const completed = verifyReplay(replay, resolveGameDefinition);
+    if (
+      initial.status !== "verified" ||
+      completed.status !== "verified" ||
+      completed.outcome === null
+    ) {
+      throw new Error("The historical 19 by 19 replay did not verify.");
+    }
+    const replayId = randomUUID();
+    const round = {
+      roundNumber: 1,
+      replayId,
+      playerOrder: replay.header.players.map((player) => player.slotId),
+      state: initial.state,
+      rng: initial.rng,
+      revision: 0,
+      status: "active" as const,
+      outcome: null,
+    };
+    const room: StoredGameRoom = {
+      roomId: randomUUID(),
+      roomCode: "HSTR2345",
+      gameId: "gomoku",
+      gameVersion: "1.0.0",
+      setupProtocol: 5,
+      initialConfig: replay.header.initialConfig,
+      players: replay.header.players.map((player, index) => ({
+        slotId: player.slotId,
+        playerSessionId: `historical-${player.slotId}`,
+        userId: index === 0 ? account.userId : null,
+        reservedUntilMilliseconds: null,
+      })),
+      currentRound: round,
+      closeReason: null,
+    };
+    const replayStore = new PostgresReplayStore(databaseClient.database);
+    const repository = new PostgresMatchRepository(databaseClient.database);
+    const archive = new PostgresMatchArchive(repository);
+    await replayStore.create(replayId, replay.header);
+    await archive.createRound(room);
+    for (const action of replay.actions) {
+      await replayStore.append(replayId, action.sequence - 1, action);
+    }
+    await replayStore.complete(
+      replayId,
+      replay.actions.length,
+      completed.rng.cursor,
+      completed.outcome,
+    );
+    await archive.saveRound({
+      ...room,
+      currentRound: {
+        ...round,
+        state: completed.state,
+        rng: completed.rng,
+        revision: replay.actions.length,
+        status: "completed",
+        outcome: completed.outcome,
+      },
+    });
+    const [match] = await repository.listForUser(account.userId);
+    if (match === undefined) throw new Error("Historical match is missing.");
+    expect(match).toMatchObject({
+      gameVersion: "1.0.0",
+      finalRevision: 9,
+      replayAvailable: true,
+    });
+
+    const page = await ownerContext.newPage();
+    let websocketCount = 0;
+    page.on("websocket", () => {
+      websocketCount += 1;
+    });
+    const browserErrors: string[] = [];
+    capturePageErrors(page, browserErrors);
+    await page.goto(
+      `${harness.webUrl}/account/matches/${match.matchId}/replay`,
+    );
+    await expect(page.getByTestId("game-surface-iframe")).toHaveAttribute(
+      "src",
+      "/game-surfaces/gomoku/1.0.3/replay/index.html",
+    );
+    const board = gomokuSurface(page).getByRole("grid", { name: "五子棋棋盘" });
+    await expect(board.getByRole("gridcell")).toHaveCount(361);
+    await expect(
+      board.getByRole("gridcell", {
+        name: "第 19 行第 19 列空位",
+        exact: true,
+      }),
+    ).toBeVisible();
+    expect(
+      await board.evaluate((element) => ({
+        columns:
+          getComputedStyle(element).gridTemplateColumns.split(" ").length,
+        rows: getComputedStyle(element).gridTemplateRows.split(" ").length,
+      })),
+    ).toEqual({ columns: 19, rows: 19 });
+    await expect(board.locator("button:enabled")).toHaveCount(0);
+    await expect(board.locator('[data-stone="BLACK"]')).toHaveCount(0);
+    await page.getByTestId("replay-last").click();
+    await expect(board.locator('[data-stone="BLACK"]')).toHaveCount(5);
+    await expect(board.locator('[data-stone="WHITE"]')).toHaveCount(4);
+    await expect(board.locator('[data-winning="true"]')).toHaveCount(5);
+    await expect(board.locator("button:enabled")).toHaveCount(0);
+    await expect(
+      board.locator(
+        '[data-preview-stone="BLACK"], [data-preview-stone="WHITE"]',
+      ),
+    ).toHaveCount(0);
+    await expect(page.getByTestId("resign-game")).toHaveCount(0);
+    const unauthorized = await outsiderContext.request.get(
+      `${harness.webUrl}/api/matches/${match.matchId}/replay`,
+    );
+    expect(unauthorized.status()).toBe(404);
+    expect(websocketCount).toBe(0);
+    expect(browserErrors).toEqual([]);
+  } finally {
+    await Promise.all([
+      ownerContext.close(),
+      outsiderContext.close(),
+      databaseClient.close(),
+    ]);
+  }
 });
 
 test("the shared HUD cancels and confirms a Gomoku resignation once", async ({

@@ -10,7 +10,7 @@
 | -------------------------- | -------------------------------------------------------------------------- |
 | 仅文档                     | format:check + docs:check；核对涉及的命令、类型、状态与源码                |
 | 单游戏 Core                | 该游戏 unit、determinism、所有支持版本 golden、typecheck                   |
-| Manifest / legacy client   | registry contract、相关组件和 E2E                                          |
+| Manifest / deployment      | registry contract、exact Surface 映射与相关 E2E                            |
 | `game-sdk`                 | 全部游戏 Core/replay、public API type tests、依赖检查                      |
 | `realtime-game-sdk`        | 全部实时 simulation/replay、两种输入交付、public API/type 与依赖检查       |
 | `protocol`                 | exact schema contract、server integration、multiplayer/E2E smoke           |

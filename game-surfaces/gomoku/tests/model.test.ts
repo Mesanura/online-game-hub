@@ -21,6 +21,58 @@ import {
 const emptyBoard: (string | null)[] = Array.from({ length: 225 }, () => null);
 
 describe("Gomoku Surface model", () => {
+  it.each([15, 19] as const)(
+    "validates the complete square projected board of size %i",
+    (boardSize) => {
+      const view = {
+        boardSize,
+        winLength: 5,
+        players: [
+          { slotId: "slot-a", stone: "BLACK" },
+          { slotId: "slot-b", stone: "WHITE" },
+        ],
+        board: Array<string | null>(boardSize * boardSize).fill(null),
+        nextTurnSlotId: "slot-a",
+        outcome: null,
+        yourStone: "BLACK",
+      };
+      expect(gomokuPlayViewSchema.parse(view)).toEqual(view);
+      for (const invalid of [
+        { ...view, nextPlayerIndex: 0 },
+        { ...view, board: [null] },
+        { ...view, winLength: 6 },
+        { ...view, board: [...view.board.slice(0, -1), "unknown-slot"] },
+        { ...view, nextTurnSlotId: "unknown-slot" },
+        {
+          ...view,
+          players: [
+            { slotId: "slot-a", stone: "BLACK" },
+            { slotId: "slot-a", stone: "WHITE" },
+          ],
+        },
+        {
+          ...view,
+          nextTurnSlotId: null,
+          outcome: {
+            type: "WIN",
+            winnerSlotId: "slot-a",
+            winningCells: [0, 1, 2, 3, boardSize * boardSize],
+          },
+        },
+      ])
+        expect(gomokuPlayViewSchema.safeParse(invalid).success).toBe(false);
+      expect(
+        outcomeLabel(
+          gomokuPlayViewSchema.parse({
+            ...view,
+            nextTurnSlotId: null,
+            outcome: { type: "DRAW" },
+          }),
+        ),
+      ).toBe("本局平局");
+    },
+  );
+
   it("accepts strict setup projection and minimal starter intent", () => {
     const setup = gomokuSetupViewSchema.parse({
       config: { boardSize: 15, winLength: 5 },
@@ -84,5 +136,27 @@ describe("Gomoku Surface model", () => {
     expect(
       gomokuPlayViewSchema.safeParse({ ...view, rawState: {} }).success,
     ).toBe(false);
+    for (const outcome of [
+      {
+        type: "WIN",
+        winnerSlotId: "unknown-slot",
+        winningCells: [105, 106, 107, 108, 109],
+      },
+      {
+        type: "WIN",
+        reason: "RESIGNATION",
+        winnerSlotId: "slot-a",
+        resignedSlotId: "unknown-slot",
+      },
+      {
+        type: "WIN",
+        reason: "RESIGNATION",
+        winnerSlotId: "slot-a",
+        resignedSlotId: "slot-a",
+      },
+    ])
+      expect(gomokuPlayViewSchema.safeParse({ ...view, outcome }).success).toBe(
+        false,
+      );
   });
 });

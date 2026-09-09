@@ -45,6 +45,9 @@ describe("Connect Four Surface model", () => {
       column: 3,
     });
     expect(landingCell(emptyBoard, 3)).toBe(38);
+    const partial = [...emptyBoard];
+    partial[38] = "slot-a";
+    expect(landingCell(partial, 3)).toBe(31);
     const filled = [...emptyBoard];
     for (const cell of [3, 10, 17, 24, 31, 38]) filled[cell] = "slot-a";
     expect(landingCell(filled, 3)).toBeNull();
@@ -85,5 +88,45 @@ describe("Connect Four Surface model", () => {
       connectFourPlayViewSchema.safeParse({ ...view, rngSeed: "secret" })
         .success,
     ).toBe(false);
+    for (const invalid of [
+      { ...view, nextPlayerIndex: 0 },
+      { ...view, board: [null] },
+      { ...view, yourDisc: "BLUE" },
+      { ...view, board: [...view.board.slice(0, -1), "unknown-slot"] },
+      { ...view, nextTurnSlotId: "unknown-slot" },
+      {
+        ...view,
+        players: [
+          { slotId: "slot-a", disc: "RED" },
+          { slotId: "slot-a", disc: "YELLOW" },
+        ],
+      },
+      { ...view, outcome: { ...view.outcome, winnerSlotId: "unknown-slot" } },
+      {
+        ...view,
+        outcome: {
+          type: "WIN",
+          reason: "RESIGNATION",
+          winnerSlotId: "slot-a",
+          resignedSlotId: "unknown-slot",
+        },
+      },
+      {
+        ...view,
+        outcome: {
+          type: "WIN",
+          reason: "RESIGNATION",
+          winnerSlotId: "slot-a",
+          resignedSlotId: "slot-a",
+        },
+      },
+    ]) {
+      expect(connectFourPlayViewSchema.safeParse(invalid).success).toBe(false);
+    }
+    const draw = connectFourPlayViewSchema.parse({
+      ...view,
+      outcome: { type: "DRAW" },
+    });
+    expect(outcomeLabel(draw)).toBe("本局平局");
   });
 });

@@ -41,7 +41,6 @@ const nextConfig: NextConfig = {
     "@online-game-hub/reversi",
     "@online-game-hub/pong",
     "@online-game-hub/tic-tac-toe",
-    // create-game:transpile-package
   ],
 };
 

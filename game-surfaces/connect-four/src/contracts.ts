@@ -73,7 +73,53 @@ export const connectFourPlayViewSchema = z
     outcome: connectFourOutcomeSchema.nullable(),
     yourDisc: z.enum(["RED", "YELLOW"]).nullable(),
   })
-  .strict();
+  .strict()
+  .superRefine((view, context) => {
+    const slots = view.players.map((player) => player.slotId);
+    if (slots[0] === slots[1]) {
+      context.addIssue({
+        code: "custom",
+        message: "Players must be unique.",
+        path: ["players"],
+      });
+    }
+    for (const [cell, owner] of view.board.entries()) {
+      if (owner !== null && !slots.includes(owner)) {
+        context.addIssue({
+          code: "custom",
+          message: "Board references an unknown player.",
+          path: ["board", cell],
+        });
+      }
+    }
+    if (view.nextTurnSlotId !== null && !slots.includes(view.nextTurnSlotId)) {
+      context.addIssue({
+        code: "custom",
+        message: "Turn slot is invalid.",
+        path: ["nextTurnSlotId"],
+      });
+    }
+    if (view.outcome?.type === "WIN") {
+      if (!slots.includes(view.outcome.winnerSlotId)) {
+        context.addIssue({
+          code: "custom",
+          message: "Winner is invalid.",
+          path: ["outcome", "winnerSlotId"],
+        });
+      }
+      if (
+        "reason" in view.outcome &&
+        (!slots.includes(view.outcome.resignedSlotId) ||
+          view.outcome.resignedSlotId === view.outcome.winnerSlotId)
+      ) {
+        context.addIssue({
+          code: "custom",
+          message: "Resigned slot is invalid.",
+          path: ["outcome", "resignedSlotId"],
+        });
+      }
+    }
+  });
 export type ConnectFourPlayView = z.infer<typeof connectFourPlayViewSchema>;
 
 export const connectFourSetupIntentSchema = z
