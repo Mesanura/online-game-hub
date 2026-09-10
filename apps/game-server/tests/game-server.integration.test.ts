@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import { Client as ColyseusClient } from "@colyseus/sdk";
 import type { Room as ClientRoom } from "@colyseus/sdk";
 import {
@@ -13,6 +14,7 @@ import {
 } from "@online-game-hub/game-server-runtime";
 import { InMemoryRealtimeRoomStore } from "@online-game-hub/realtime-game-server-runtime";
 import type {
+  CanonicalReplay,
   MatchArchive,
   ReplayAction,
   ReplayHeader,
@@ -4413,6 +4415,253 @@ describe.sequential("turn-based Protocol V6 setup runtime", () => {
     await ownerRoom.leave(true);
     await guestRoom.leave(true);
   });
+});
+
+describe.sequential("historical rules with V6 setup", () => {
+  it.each([
+    ["tic-tac-toe", null, "OWNER"],
+    ["connect-four", null, "NON_OWNER"],
+    ["gomoku", { boardSize: 15, winLength: 5 }, "RANDOM"],
+    ["gomoku", { boardSize: 19, winLength: 5 }, "NON_OWNER"],
+    ["reversi", null, "RANDOM"],
+  ] as const)(
+    "plays two exact %s@1.0.0 rounds with config %j and %s starter",
+    async (gameId, initialConfig, starter) => {
+      const fixture = JSON.parse(
+        await readFile(
+          new URL(
+            `../../../games/${gameId}/tests/fixtures/${gameId}-1.0.0-win.json`,
+            import.meta.url,
+          ),
+          "utf8",
+        ),
+      ) as CanonicalReplay;
+      expect(
+        verifyReplay(
+          { ...fixture, header: { ...fixture.header, initialConfig } },
+          resolveGameDefinition,
+        ),
+      ).toMatchObject({ status: "verified" });
+      const clock = new FakeRuntimeClock(5_000_000);
+      const authority = new TestTicketAuthority({
+        issuer: "historical-setup-tests",
+        secret: "historical-setup-secret-at-least-32-characters",
+        clock,
+      });
+      const app = createGameServer({
+        ticketVerifier: authority,
+        clock,
+        ids: createDeterministicRuntimeIdSource(["HVSET234"]),
+        logger: { write: () => undefined },
+        // Only the test composition selects a historical version. Public
+        // matchmaking still chooses the current catalog version on the server.
+        resolveCurrentDefinition: (id) => resolveGameDefinition(id, "1.0.0"),
+      });
+      const address = await app.start({ port: 0 });
+      const rooms: ClientRoom[] = [];
+      const leftRooms = new Set<ClientRoom>();
+      const ticket = (session: string) =>
+        authority.issue(session, { protocolVersion: SETUP_PROTOCOL_VERSION });
+      try {
+        const owner = await new ColyseusClient(address.httpUrl).create(
+          GAME_ROOM_NAME,
+          {
+            type: "room.create",
+            protocolVersion: SETUP_PROTOCOL_VERSION,
+            ticket: ticket("historical-owner"),
+            gameId,
+            initialConfig,
+          },
+        );
+        rooms.push(owner);
+        owner.onLeave(() => leftRooms.add(owner));
+        const ownerMessages = new V6MessageInbox(owner);
+        const ownerLifecycle = new V6LifecycleInbox(owner);
+        const connected = await ownerMessages.next(
+          (message) => message.type === "room.connected",
+        );
+        if (connected.type !== "room.connected")
+          throw new Error("Historical room connection is missing.");
+        expect(connected).toMatchObject({
+          gameVersion: "1.0.0",
+          protocolVersion: 6,
+        });
+        const guest = await new ColyseusClient(address.httpUrl).join(
+          GAME_ROOM_NAME,
+          {
+            type: "room.join",
+            protocolVersion: SETUP_PROTOCOL_VERSION,
+            ticket: ticket("historical-guest"),
+            roomCode: connected.roomCode,
+          },
+        );
+        rooms.push(guest);
+        guest.onLeave(() => leftRooms.add(guest));
+        const guestMessages = new V6MessageInbox(guest);
+        const guestLifecycle = new V6LifecycleInbox(guest);
+        const guestConnected = await guestMessages.next(
+          (message) => message.type === "room.connected",
+        );
+        if (guestConnected.type !== "room.connected")
+          throw new Error("Historical guest connection is missing.");
+        const players = new Map([
+          [connected.playerSlotId, owner],
+          [guestConnected.playerSlotId, guest],
+        ]);
+        await ownerLifecycle.next((state) =>
+          state.players.every((player) => player.occupied),
+        );
+        owner.send(
+          GAME_SETUP_MESSAGE,
+          v6SetupCommand("historical-setup", 0, {
+            type: "SELECT_STARTER",
+            starter,
+          }),
+        );
+        await ownerLifecycle.next(
+          (state) => state.causedByCommandId === "historical-setup",
+        );
+        let previousRound: StoredGameRoom["currentRound"] = null;
+        let previousReplay: CanonicalReplay | null = null;
+        for (const roundNumber of [1, 2]) {
+          const readyId = `historical-owner-ready-${roundNumber}`;
+          owner.send(
+            ROOM_CONTROL_MESSAGE,
+            v6ControlCommand(readyId, "READY_FOR_ROUND"),
+          );
+          const ready = await ownerLifecycle.next(
+            (state) => state.causedByCommandId === readyId,
+          );
+          expect(ready.nextRound?.readiness).toMatchObject({ selfReady: true });
+          expect(ready.currentRound?.status).not.toBe("active");
+          guest.send(
+            ROOM_CONTROL_MESSAGE,
+            v6ControlCommand(
+              `historical-guest-ready-${roundNumber}`,
+              "READY_FOR_ROUND",
+            ),
+          );
+          await Promise.all(
+            [ownerMessages, guestMessages].map((inbox) =>
+              inbox.next(
+                (message) =>
+                  isV6Snapshot(message) &&
+                  message.roundNumber === roundNumber &&
+                  message.revision === 0,
+              ),
+            ),
+          );
+          const started = await app.roomStore.getByRoomCode(connected.roomCode);
+          const round = started?.currentRound;
+          if (round === undefined || round === null)
+            throw new Error("Historical round did not start.");
+          expect(started?.previousFinalizedSetup?.config).toEqual(
+            initialConfig,
+          );
+          if (previousRound !== null) {
+            expect(round.playerOrder).toEqual(previousRound.playerOrder);
+            expect(round.replayId).not.toBe(previousRound.replayId);
+          }
+          owner.send(
+            GAME_ACTION_MESSAGE,
+            v6ActionCommand(
+              `historical-resign-${roundNumber}`,
+              0,
+              { type: "RESIGN" },
+              roundNumber,
+            ),
+          );
+          await ownerMessages.next(
+            (message) =>
+              message.type === "command.rejected" &&
+              message.commandId === `historical-resign-${roundNumber}`,
+          );
+          for (const event of fixture.actions) {
+            // Colyseus limits transport input to 30 messages per second using
+            // real time. Pace the full-board fixture below that ingress limit.
+            if (fixture.actions.length >= 30) {
+              await new Promise((resolve) =>
+                setTimeout(resolve, Math.ceil(1000 / 30)),
+              );
+            }
+            const actorIndex = fixture.header.players.findIndex(
+              (player) => player.slotId === event.actorSlotId,
+            );
+            const actor = players.get(round.playerOrder[actorIndex] ?? "");
+            if (actor === undefined)
+              throw new Error("Historical actor is missing.");
+            actor.send(
+              GAME_ACTION_MESSAGE,
+              v6ActionCommand(
+                `historical-${roundNumber}-${event.sequence}`,
+                event.sequence - 1,
+                event.action,
+                roundNumber,
+              ),
+            );
+            const snapshots = await Promise.all(
+              [ownerMessages, guestMessages].map((inbox) =>
+                inbox.next(
+                  (message) =>
+                    message.type === "command.rejected" ||
+                    (isV6Snapshot(message) &&
+                      message.roundNumber === roundNumber &&
+                      message.revision === event.sequence),
+                ),
+              ),
+            );
+            for (const snapshot of snapshots) {
+              expect(
+                snapshot,
+                `Round ${roundNumber}, action ${event.sequence}`,
+              ).toMatchObject({
+                type: "match.snapshot",
+                revision: event.sequence,
+              });
+            }
+          }
+          await Promise.all(
+            [ownerLifecycle, guestLifecycle].map((inbox) =>
+              inbox.next(
+                (state) =>
+                  state.currentRound?.roundNumber === roundNumber &&
+                  state.currentRound.status === "completed" &&
+                  state.nextRound !== null,
+              ),
+            ),
+          );
+          const replay = await app.replayStore.get(round.replayId);
+          if (replay === null) throw new Error("Historical replay is missing.");
+          expect(replay.header).toMatchObject({
+            gameId,
+            gameVersion: "1.0.0",
+            initialConfig,
+          });
+          expect(replay.actions.map((event) => event.action)).toEqual(
+            fixture.actions.map((event) => event.action),
+          );
+          expect(verifyReplay(replay, resolveGameDefinition)).toMatchObject({
+            status: "verified",
+            rng: { cursor: 0 },
+          });
+          if (previousReplay !== null)
+            expect(replay.header.rng.seed).not.toBe(
+              previousReplay.header.rng.seed,
+            );
+          previousRound = round;
+          previousReplay = replay;
+        }
+      } finally {
+        await Promise.allSettled(
+          rooms
+            .filter((room) => !leftRooms.has(room))
+            .map((room) => room.leave(false)),
+        );
+        await app.stop();
+      }
+    },
+    15_000,
+  );
 });
 
 describe.sequential("room discovery failure boundary", () => {

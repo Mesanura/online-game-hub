@@ -1,6 +1,6 @@
 # 网络协议
 
-本文定义身份、房间、平台消息、revision 和重连语义。当前游戏使用 V6 Setup，V5 继续支持历史兼容路径；Realtime Input/Snapshot Protocol V1 独立。完整类型见 [protocol](../packages/protocol/src/index.ts)，游戏 payload 见 [Game Plugin](./GAME_PLUGIN_SPEC.md)。
+本文定义身份、房间、平台消息、revision 和重连语义。所有受支持规则版本已登记 V6 Setup，V5 继续支持存量房间；Realtime Input/Snapshot Protocol V1 独立。完整类型见 [protocol](../packages/protocol/src/index.ts)，游戏 payload 见 [Game Plugin](./GAME_PLUGIN_SPEC.md)。
 
 ## 1. 协议目标
 

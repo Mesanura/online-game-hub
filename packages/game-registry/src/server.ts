@@ -154,6 +154,11 @@ const roundSetupDefinitions = Object.freeze([
     definition: eraseRoundSetupDefinition(badmintonSetupDefinition),
   }),
   Object.freeze({
+    gameId: ticTacToeDefinitionV1_0_0.manifest.id,
+    gameVersion: ticTacToeDefinitionV1_0_0.manifest.gameVersion,
+    definition: eraseRoundSetupDefinition(ticTacToeSetupDefinition),
+  }),
+  Object.freeze({
     gameId: ticTacToeDefinition.manifest.id,
     gameVersion: ticTacToeDefinition.manifest.gameVersion,
     definition: eraseRoundSetupDefinition(ticTacToeSetupDefinition),
@@ -174,9 +179,19 @@ const roundSetupDefinitions = Object.freeze([
     definition: eraseRoundSetupDefinition(pongSetupDefinition),
   }),
   Object.freeze({
+    gameId: connectFourDefinitionV1_0_0.manifest.id,
+    gameVersion: connectFourDefinitionV1_0_0.manifest.gameVersion,
+    definition: eraseRoundSetupDefinition(connectFourSetupDefinition),
+  }),
+  Object.freeze({
     gameId: connectFourDefinition.manifest.id,
     gameVersion: connectFourDefinition.manifest.gameVersion,
     definition: eraseRoundSetupDefinition(connectFourSetupDefinition),
+  }),
+  Object.freeze({
+    gameId: gomokuDefinitionV1_0_0.manifest.id,
+    gameVersion: gomokuDefinitionV1_0_0.manifest.gameVersion,
+    definition: eraseRoundSetupDefinition(gomokuSetupDefinition),
   }),
   Object.freeze({
     gameId: gomokuDefinition.manifest.id,
@@ -187,6 +202,11 @@ const roundSetupDefinitions = Object.freeze([
     gameId: hexDefinition.manifest.id,
     gameVersion: hexDefinition.manifest.gameVersion,
     definition: eraseRoundSetupDefinition(hexSetupDefinition),
+  }),
+  Object.freeze({
+    gameId: reversiDefinitionV1_0_0.manifest.id,
+    gameVersion: reversiDefinitionV1_0_0.manifest.gameVersion,
+    definition: eraseRoundSetupDefinition(reversiSetupDefinition),
   }),
   Object.freeze({
     gameId: reversiDefinition.manifest.id,

@@ -8,7 +8,7 @@ M1–M8 已完成。M9 的契约、外壳、Surface 工具链、V6 Setup 与游�
 
 - 九款当前游戏都注册为 V6 Setup 与独立 Bridge V2 Surface。
 - 所有受支持历史规则版本都有精确 Surface 映射；七款旧 Client 源码、渲染契约与 registry loader 已移除。
-- 部分历史规则版本仍登记 V5，V5 schema/runtime、两类连接 SDK、历史 Core、golden 与 replay 读取继续保留。
+- 所有受支持规则版本已登记 V6 Setup；存量 V5 房间仍按创建时代际连接，V5 schema/runtime、两类连接 SDK、历史 Core、golden 与 replay 读取继续保留。
 - create-game 已支持可通过全仓检查的 V6/Bridge V2 双目录草稿；草稿不自动进入 catalog 或生产制品。
 - Pong、羽毛球、坦克迷战的全部支持版本为 `record-only`；服务端记录与验证继续保留。
 
@@ -52,7 +52,7 @@ M1–M8 已完成。M9 的契约、外壳、Surface 工具链、V6 Setup 与游�
 
 ### M9-F 剩余工作
 
-1. 明确仍需 V5 的历史版本与房间范围；兼容注册和已有房间不能在运行中切代。
+1. 历史版本的 V6 Setup 替代路径已补齐；已有 V5 房间仍不能在运行中切代。
 2. 在存量 V5 房间排空、全部需保留的版本已有替代路径后，再删除旧 Setup schema/runtime 分支。
 3. 退役后按 [测试矩阵](./TESTING.md) 验证两类 runtime、历史 golden、账户回放和完整浏览器流程。部分 Next transpile 条目仍服务 manifest/Core 静态导入，按实际依赖保留。
 

@@ -145,7 +145,7 @@ describe("explicit game registry", () => {
     ).toBeUndefined();
     for (const gameVersion of ["1.0.0", "1.1.0"] as const) {
       expect(resolveGameDeployment("tic-tac-toe", gameVersion)).toMatchObject({
-        setupProtocol: gameVersion === "1.1.0" ? 6 : 5,
+        setupProtocol: 6,
         presentation: {
           kind: "surface-v1",
           publicBasePath: "/game-surfaces/tic-tac-toe/1.0.3",
@@ -204,7 +204,7 @@ describe("explicit game registry", () => {
     }
     for (const gameVersion of ["1.0.0", "1.1.0"] as const) {
       expect(resolveGameDeployment("connect-four", gameVersion)).toMatchObject({
-        setupProtocol: gameVersion === "1.1.0" ? 6 : 5,
+        setupProtocol: 6,
         presentation: {
           kind: "surface-v1",
           publicBasePath: "/game-surfaces/connect-four/1.0.4",
@@ -262,7 +262,7 @@ describe("explicit game registry", () => {
     }
     for (const gameVersion of ["1.0.0", "1.1.0"] as const) {
       expect(resolveGameDeployment("gomoku", gameVersion)).toMatchObject({
-        setupProtocol: gameVersion === "1.1.0" ? 6 : 5,
+        setupProtocol: 6,
         presentation: {
           kind: "surface-v1",
           publicBasePath: "/game-surfaces/gomoku/1.0.3",
@@ -313,7 +313,7 @@ describe("explicit game registry", () => {
     }
     for (const gameVersion of ["1.0.0", "1.1.0"] as const) {
       expect(resolveGameDeployment("reversi", gameVersion)).toMatchObject({
-        setupProtocol: gameVersion === "1.1.0" ? 6 : 5,
+        setupProtocol: 6,
         presentation: {
           kind: "surface-v1",
           publicBasePath: "/game-surfaces/reversi/1.0.4",
@@ -362,6 +362,7 @@ describe("explicit game registry", () => {
 
   it("resolves game-owned Setup definitions only by exact registered version", () => {
     for (const [gameId, gameVersion] of [
+      ["tic-tac-toe", "1.0.0"],
       ["tic-tac-toe", "1.1.0"],
       ["pong", "1.0.0"],
       ["pong", "1.1.0"],
@@ -371,10 +372,14 @@ describe("explicit game registry", () => {
       ["badminton", "1.2.0"],
       ["tank-maze", "1.0.0"],
       ["tank-maze", "1.1.0"],
+      ["connect-four", "1.0.0"],
       ["connect-four", "1.1.0"],
+      ["gomoku", "1.0.0"],
       ["gomoku", "1.1.0"],
       ["hex", "1.0.0"],
+      ["reversi", "1.0.0"],
       ["reversi", "1.1.0"],
+      ["chinese-checkers", "1.0.0"],
       ["chinese-checkers", "1.1.0"],
     ] as const) {
       const definition = resolveRoundSetupDefinition(gameId, gameVersion);
@@ -384,12 +389,6 @@ describe("explicit game registry", () => {
         resolveRoundSetupDefinition(gameId, `${gameVersion}-unknown`),
       ).toBeUndefined();
     }
-    expect(resolveRoundSetupDefinition("tic-tac-toe", "1.0.0")).toBeUndefined();
-    expect(
-      resolveRoundSetupDefinition("connect-four", "1.0.0"),
-    ).toBeUndefined();
-    expect(resolveRoundSetupDefinition("gomoku", "1.0.0")).toBeUndefined();
-    expect(resolveRoundSetupDefinition("reversi", "1.0.0")).toBeUndefined();
     expect(resolveCurrentRoundSetupDefinition("unknown")).toBeUndefined();
   });
 
