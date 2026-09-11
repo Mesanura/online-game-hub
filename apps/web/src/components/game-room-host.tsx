@@ -581,7 +581,11 @@ export function GameRoomHostProvider({
     setRoomCode("");
     setInviteUrl(null);
     setInviteCopyState("idle");
-    setLocalError(null);
+    // leaveRoom clears SDK errors. Keep the failed join's local message until
+    // the player starts another create/join attempt from entry.
+    if (previousState.room !== null || previousState.error === null) {
+      setLocalError(null);
+    }
     setPlayerCountNotice(null);
     if (previousState.room !== null) setLocalNotice("已离开房间。");
     void host.leaveRoom().finally(() => {

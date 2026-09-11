@@ -606,10 +606,17 @@ test("two isolated accounts complete win/draw, converge on reconnect, and cannot
   const terminalOutsiderPage = await terminalOutsiderContext.newPage();
   capturePageErrors(terminalOutsiderPage, browserErrors);
   await terminalOutsiderPage.goto(winningRoom.inviteUrl);
-  await expect(terminalOutsiderPage.getByTestId("connection-error")).toHaveText(
-    "The game room could not be opened.",
+  await expect(terminalOutsiderPage).toHaveURL(
+    `${harness.webUrl}/games/tic-tac-toe`,
   );
+  await expect(terminalOutsiderPage.getByTestId("create-room")).toBeEnabled();
+  await expect(
+    terminalOutsiderPage.locator(".page-alerts").getByRole("alert"),
+  ).toHaveText("无法进入房间。房间可能已关闭，或房间码不正确。");
   await expect(terminalOutsiderPage.getByTestId("player-slot")).toHaveCount(0);
+  await expect(
+    terminalOutsiderPage.getByTestId("game-surface-iframe"),
+  ).toHaveCount(0);
   await terminalOutsiderContext.close();
 
   await openGameHud(pageA);

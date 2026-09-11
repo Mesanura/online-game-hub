@@ -14,11 +14,12 @@ test.afterAll(async () => {
 });
 
 for (const gameId of ["tic-tac-toe", "pong"] as const) {
-  test(`${gameId} can create a fresh room after navigating back from a completed game`, async ({
+  test(`${gameId} preserves rejected-join feedback and can create fresh rooms after returning to entry`, async ({
     browser,
   }) => {
     const ownerContext = await browser.newContext();
     const guestContext = await browser.newContext();
+    const outsiderContext = await browser.newContext();
     const owner = await ownerContext.newPage();
     const guest = await guestContext.newPage();
     const entryUrl = `${harness.webUrl}/games/${gameId}`;
@@ -71,6 +72,27 @@ for (const gameId of ["tic-tac-toe", "pong"] as const) {
         );
       }
 
+      const outsider = await outsiderContext.newPage();
+      await outsider.goto(`${entryUrl}/rooms/${roomCode}`);
+      await expect(outsider).toHaveURL(entryUrl);
+      await expect(outsider.getByTestId("create-room")).toBeEnabled();
+      await expect(
+        outsider.locator(".page-alerts").getByRole("alert"),
+      ).toHaveText("无法进入房间。房间可能已关闭，或房间码不正确。");
+      await expect(outsider.getByTestId("player-slot")).toHaveCount(0);
+      await expect(outsider.getByTestId("game-surface-iframe")).toHaveCount(0);
+      await expect(outsider.getByLabel("房间码")).toHaveValue("");
+      await outsider.getByTestId("create-room").click();
+      await expect(outsider.getByTestId("connection-state")).toHaveText(
+        "已连接",
+      );
+      await expect(outsider.getByTestId("room-code")).not.toHaveText(roomCode);
+      await expect(
+        outsider.locator(".page-alerts").getByRole("alert"),
+      ).toHaveCount(0);
+      await outsider.getByTestId("close-room").click();
+      await expect(outsider).toHaveURL(entryUrl);
+
       for (const page of [guest, owner]) {
         await page.goBack();
         await expect(page).toHaveURL(entryUrl);
@@ -87,7 +109,11 @@ for (const gameId of ["tic-tac-toe", "pong"] as const) {
         await expect(page.getByLabel("房间码")).toHaveValue("");
       }
     } finally {
-      await Promise.all([ownerContext.close(), guestContext.close()]);
+      await Promise.all([
+        ownerContext.close(),
+        guestContext.close(),
+        outsiderContext.close(),
+      ]);
     }
   });
 }
