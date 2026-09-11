@@ -30,6 +30,7 @@ import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from "react";
 import { resolveGameSurfaceEntrypoint } from "@online-game-hub/game-registry/deployment";
 import type { SurfaceResultSummaryV2 } from "@online-game-hub/game-surface-bridge";
 import { DEFAULT_DISPLAY_NAME, getAvatarLabel } from "../lib/profile";
+import { submitSetupIntent } from "../lib/setup-intent";
 
 import {
   connectionLabels,
@@ -556,14 +557,9 @@ function RoomView({ title }: Pick<GameRoomPageProps, "title">) {
                 connectionState={state.connectionState}
                 entrypoint={setupSurfaceEntrypoint}
                 locale={locale}
-                onIntent={async (intent) => {
-                  try {
-                    await host.submitSetup(intent);
-                    return { status: "accepted" };
-                  } catch {
-                    return { status: "rejected", code: "HOST_REJECTED" };
-                  }
-                }}
+                onIntent={(intent) =>
+                  submitSetupIntent(() => host.submitSetup(intent))
+                }
                 payload={nextRound.setupView}
                 readOnly={false}
                 reducedMotion={reducedMotion}

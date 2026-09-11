@@ -120,6 +120,14 @@ export class RealtimeCommandRejectedError extends Error {
   }
 }
 
+/** A V6 Setup or room-control rejection, correlated to its command promise. */
+export class RealtimeControlRejectedError extends Error {
+  public constructor(public readonly rejection: CommandRejectedV6) {
+    super(`Realtime room control was rejected with ${rejection.code}.`);
+    this.name = "RealtimeControlRejectedError";
+  }
+}
+
 function isUnsupportedProtocolError(error: unknown): boolean {
   return (
     error instanceof Error && error.message === "PROTOCOL_VERSION_UNSUPPORTED"
@@ -726,9 +734,7 @@ export class RealtimeGameClientHost<View = unknown, Outcome = unknown> {
       const pending = this.#pendingControls.get(value.commandId);
       if (pending !== undefined) {
         this.#pendingControls.delete(value.commandId);
-        pending.reject(
-          new Error(`Realtime room control was rejected with ${value.code}.`),
-        );
+        pending.reject(new RealtimeControlRejectedError(value));
       }
     }
   }

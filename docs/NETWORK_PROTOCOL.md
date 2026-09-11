@@ -436,6 +436,7 @@ interface CommandRejectedV6 {
 - `submitAction(action)` 只在 current Round 为 active、snapshot 与 lifecycle 的 round/status 一致时可用；它使用安全 UUID command ID，并填充必填 `roundNumber` 和 `expectedRevision`。Host 不接收 actor/State/Outcome，也不计算下一个 revision；pending promise 只由同轮 matching rejection 或服务器 snapshot 结算。
 - Rejection 中若包含 snapshot，host 先应用完整 snapshot 再暴露 rejection。duplicate、stale 和 reconnect 都通过 server snapshot 收敛，不在客户端 replay Action 或推导 authoritative State。
 - `submitSetup(action)` 发送 opaque Setup intent，`readyForRound()`、`cancelRoundReady()` 和 `closeRoom()` 发送平台 control。Host 支持首局已连接但无 snapshot。`leaveRoom()` 使用 consented leave、清空本地 room 并进入 `idle`；`close()` 用于刷新/卸载，以 non-consented leave 保留重连宽限，不能代替主动离开。
+- Setup promise 只在对应 command 获得权威确认后 resolve；回合制通过 `CommandRejectedError`、实时平台命令通过加法导出的 `RealtimeControlRejectedError` 携带 `CommandRejectedV6`。后者由 realtime client SDK 持有，供三款实时游戏与 Web 区分过期、规则和平台拒绝，仍兼容 `Error` 与原 `Promise<void>` 调用；不改变 realtime Input 的错误类型或 wire。Web 向 Surface 仅转发安全状态与错误码，规则解释由游戏拥有，见 [Bridge 契约](./GAME_SURFACE_SPEC.md#bridge-与安全边界)。
 - 非主动 leave 后，host 在默认 60 秒窗口内从 100 ms 到 2 s 指数退避；每次尝试使用新 ticket 和新 join reservation。窗口耗尽进入 `closed`；收到 closed lifecycle 后进入 `idle` 且不重连。
 
 ## 12. 安全与隐私不变量

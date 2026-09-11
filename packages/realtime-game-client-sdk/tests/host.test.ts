@@ -10,7 +10,10 @@ import {
   SERVER_PROTOCOL_MESSAGE,
 } from "@online-game-hub/protocol";
 
-import { RealtimeGameClientHost } from "../src/index.js";
+import {
+  RealtimeControlRejectedError,
+  RealtimeGameClientHost,
+} from "../src/index.js";
 import type {
   RealtimeTransportClient,
   RealtimeTransportRoom,
@@ -138,7 +141,7 @@ function snapshot(tick: number, acknowledgedInputSequence: number) {
   } as const;
 }
 
-async function setup() {
+async function setup(active = true) {
   const room = new FakeRoom();
   const client: RealtimeTransportClient = {
     async create() {
@@ -157,11 +160,100 @@ async function setup() {
   });
   await host.createRoom("pong", { targetScore: 3 });
   room.emit(SERVER_PROTOCOL_MESSAGE, connected());
-  room.emit(ROOM_CONTROL_MESSAGE, lifecycle());
+  room.emit(ROOM_CONTROL_MESSAGE, lifecycleV6(active));
   return { host, room };
 }
 
 describe("RealtimeGameClientHost", () => {
+  it.each([
+    ["STALE_SETUP_REVISION", undefined],
+    ["SETUP_RULE_REJECTED", "COLOR_TAKEN"],
+  ] as const)(
+    "preserves the correlated V6 rejection %s / %s",
+    async (code, gameRuleCode) => {
+      const { host, room } = await setup(false);
+      let settled = false;
+      const command = host
+        .submitSetup({ type: "SELECT_STARTER", starter: "OWNER" })
+        .catch((error: unknown) => {
+          settled = true;
+          return error;
+        });
+      const rejection = {
+        type: "command.rejected",
+        protocolVersion: 6,
+        commandId: "command-1",
+        setupRevision: 0,
+        code,
+        retryable: false,
+        ...(gameRuleCode === undefined ? {} : { gameRuleCode }),
+      } as const;
+      room.emit(SERVER_PROTOCOL_MESSAGE, {
+        ...rejection,
+        commandId: "unrelated-command",
+      });
+      await Promise.resolve();
+      expect(settled).toBe(false);
+      room.emit(SERVER_PROTOCOL_MESSAGE, rejection);
+      const error = await command;
+      expect(error).toBeInstanceOf(RealtimeControlRejectedError);
+      expect(error).toBeInstanceOf(Error);
+      expect((error as RealtimeControlRejectedError).rejection).toEqual(
+        rejection,
+      );
+
+      const retry = host.submitSetup({
+        type: "SELECT_STARTER",
+        starter: "OWNER",
+      });
+      room.emit(
+        ROOM_CONTROL_MESSAGE,
+        lifecycleV6(false, {
+          setupRevision: 1,
+          causedByCommandId: "command-2",
+        }),
+      );
+      await expect(retry).resolves.toBeUndefined();
+      await host.close();
+    },
+  );
+
+  it("clears pending Setup on leaving and ignores its late rejection after rejoining", async () => {
+    const { host, room } = await setup(false);
+    const oldCommand = host
+      .submitSetup({ type: "SELECT_STARTER", starter: "OWNER" })
+      .catch((error: unknown) => error);
+    await host.leaveRoom();
+    expect(await oldCommand).toBeInstanceOf(Error);
+    await host.createRoom("pong", { targetScore: 3 });
+    room.emit(SERVER_PROTOCOL_MESSAGE, connectedV6());
+    room.emit(ROOM_CONTROL_MESSAGE, lifecycleV6(false));
+    let settled = false;
+    const current = host
+      .submitSetup({ type: "SELECT_STARTER", starter: "OWNER" })
+      .then(() => {
+        settled = true;
+      });
+    room.emit(SERVER_PROTOCOL_MESSAGE, {
+      type: "command.rejected",
+      protocolVersion: 6,
+      commandId: "command-1",
+      code: "STALE_SETUP_REVISION",
+      retryable: false,
+    });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    room.emit(
+      ROOM_CONTROL_MESSAGE,
+      lifecycleV6(false, {
+        setupRevision: 1,
+        causedByCommandId: "command-2",
+      }),
+    );
+    await expect(current).resolves.toBeUndefined();
+    await host.close();
+  });
+
   it.each([6] as const)(
     "refreshes V%i public profiles through an acknowledged signed ticket",
     async (setupProtocol) => {

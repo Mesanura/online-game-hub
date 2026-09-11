@@ -55,6 +55,8 @@ JavaScript helper 为：
 
 票据、session、账户身份、actor、raw State、RNG seed、canonical replay 和 WebSocket 不进入 Surface。平台侧 Client Host 才能补充 command ID、round、expected revision、input sequence 和 transport envelope；Bridge helper 自身不补写这些字段。
 
+Setup 的 `host.intent-result` 只在对应命令确认后返回 accepted；`STALE_SETUP_REVISION` 映射为 stale，规则拒绝的 code 使用 opaque `gameRuleCode`（缺省时保留平台 code），其他拒绝保留平台 code，未知传输失败为 `HOST_REJECTED`。不转发完整 rejection、snapshot 或诊断 message。游戏负责中文说明；过期操作等待最新投影后由玩家重新选择，不自动重放旧 intent。此约定使用现有 Bridge V2 消息形状。
+
 ### 平台投降命令
 
 只有 exact deployment 的 `platformControls` 显式包含 `RESIGN`，Host 才能发送 `host.command { control: "RESIGN", clientIntentId }`。命令不含 Action/Input payload、actor、round 或 revision。Surface 按 exact 规则版本生成自己的投降 intent，并沿用该 `clientIntentId`，走普通提交与结果闭环。
