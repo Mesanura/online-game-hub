@@ -2,14 +2,12 @@ import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 
 import {
   GAME_SERVER_TICKET_AUDIENCE,
-  PROTOCOL_VERSION,
-  anyGameServerTicketClaimsSchema,
-  gameServerTicketClaimsSchema,
+  SETUP_PROTOCOL_VERSION,
   gameServerTicketClaimsV6Schema,
   setupProtocolGenerationSchema,
 } from "@online-game-hub/protocol";
 import type {
-  AnyGameServerTicketClaims,
+  GameServerTicketClaimsV6,
   SetupProtocolGeneration,
 } from "@online-game-hub/protocol";
 
@@ -52,7 +50,7 @@ export type GameServerTicketVerificationFailureCode =
 export type GameServerTicketVerificationResult =
   | {
       readonly status: "verified";
-      readonly claims: AnyGameServerTicketClaims;
+      readonly claims: GameServerTicketClaimsV6;
     }
   | {
       readonly status: "rejected";
@@ -118,7 +116,7 @@ export function createHmacGameServerTicketAuthority(
     issue(
       playerSessionId,
       userId,
-      protocolVersion = PROTOCOL_VERSION,
+      protocolVersion = SETUP_PROTOCOL_VERSION,
       displayName,
     ) {
       if (playerSessionId.length === 0 || playerSessionId.length > 128) {
@@ -132,11 +130,7 @@ export function createHmacGameServerTicketAuthority(
           "Ticket time source returned an invalid timestamp.",
         );
       }
-      const claimsSchema =
-        protocolVersion === PROTOCOL_VERSION
-          ? gameServerTicketClaimsSchema
-          : gameServerTicketClaimsV6Schema;
-      const claims = claimsSchema.parse({
+      const claims = gameServerTicketClaimsV6Schema.parse({
         issuer: options.issuer,
         audience: GAME_SERVER_TICKET_AUDIENCE,
         playerSessionId,
@@ -205,7 +199,7 @@ export function createHmacGameServerTicketAuthority(
       if (candidate.issuer !== options.issuer) {
         return reject("WRONG_ISSUER");
       }
-      const parsed = anyGameServerTicketClaimsSchema.safeParse(candidate);
+      const parsed = gameServerTicketClaimsV6Schema.safeParse(candidate);
       if (!parsed.success) {
         return reject("INVALID_TICKET");
       }

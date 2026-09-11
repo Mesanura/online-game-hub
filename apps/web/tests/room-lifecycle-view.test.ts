@@ -1,15 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  roomLifecycleStateSchema,
-  roomLifecycleStateV6Schema,
-} from "@online-game-hub/protocol";
+import { roomLifecycleStateV6Schema } from "@online-game-hub/protocol";
 
 import { normalizeRoomLifecycle } from "../src/components/game-room-host";
 
 describe("normalizeRoomLifecycle", () => {
-  it("preserves the legacy V5 lifecycle shape", () => {
-    const lifecycle = roomLifecycleStateSchema.parse({
+  it("rejects the retired V5 lifecycle shape", () => {
+    const lifecycle = roomLifecycleStateV6Schema.safeParse({
       type: "room.lifecycle",
       protocolVersion: 5,
       isOwner: true,
@@ -25,7 +22,8 @@ describe("normalizeRoomLifecycle", () => {
       closeReason: null,
     });
 
-    expect(normalizeRoomLifecycle(lifecycle)).toBe(lifecycle);
+    expect(lifecycle.success).toBe(false);
+    expect(normalizeRoomLifecycle(null)).toBeNull();
   });
 
   it("maps V6 readiness and setup projection to the stable Web view", () => {
@@ -72,7 +70,6 @@ describe("normalizeRoomLifecycle", () => {
       protocolVersion: 6,
       nextRound: {
         roundNumber: 1,
-        starter: "RANDOM",
         selfReady: true,
         readyPlayerCount: 1,
         requiredPlayerCount: 2,
@@ -84,13 +81,13 @@ describe("normalizeRoomLifecycle", () => {
         },
       },
       players: [
-        { slotId: "slot-owner", displayName: "👩‍💻房主", assignment: null },
-        { slotId: "slot-guest", displayName: "玩家乙", assignment: null },
+        { slotId: "slot-owner", displayName: "👩‍💻房主" },
+        { slotId: "slot-guest", displayName: "玩家乙" },
       ],
     });
   });
 
-  it("does not expose FIXED as a legacy starter selection", () => {
+  it("keeps game-specific setup fields opaque to the platform", () => {
     const lifecycle = roomLifecycleStateV6Schema.parse({
       type: "room.lifecycle",
       protocolVersion: 6,
@@ -128,6 +125,12 @@ describe("normalizeRoomLifecycle", () => {
       ],
     });
 
-    expect(normalizeRoomLifecycle(lifecycle)?.nextRound?.starter).toBeNull();
+    const normalized = normalizeRoomLifecycle(lifecycle);
+    expect(normalized?.nextRound?.setupView).toEqual({
+      starter: "FIXED",
+      fixedStarterSlotId: "slot-owner",
+    });
+    expect(normalized?.nextRound).not.toHaveProperty("starter");
+    expect(normalized?.players[0]).not.toHaveProperty("assignment");
   });
 });

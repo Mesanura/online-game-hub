@@ -1,5 +1,5 @@
 import type {
-  AnyGameServerTicketClaims,
+  GameServerTicketClaimsV6,
   ProtocolErrorCode,
 } from "@online-game-hub/protocol";
 
@@ -29,7 +29,7 @@ export type TicketVerificationResult =
       readonly status: "verified";
       readonly playerSessionId: PlayerSessionId;
       readonly userId: string | null;
-      readonly claims: AnyGameServerTicketClaims;
+      readonly claims: GameServerTicketClaimsV6;
     }
   | {
       readonly status: "rejected";

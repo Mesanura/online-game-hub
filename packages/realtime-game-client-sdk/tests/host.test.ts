@@ -2,13 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import {
   GAME_SETUP_MESSAGE,
-  PROTOCOL_VERSION,
+  SETUP_PROTOCOL_VERSION,
   REALTIME_INPUT_MESSAGE,
   REALTIME_SERVER_MESSAGE,
   ROOM_CONTROL_MESSAGE,
   ROOM_PROFILE_MESSAGE,
   SERVER_PROTOCOL_MESSAGE,
-  SETUP_PROTOCOL_VERSION,
 } from "@online-game-hub/protocol";
 
 import { RealtimeGameClientHost } from "../src/index.js";
@@ -60,21 +59,13 @@ class FakeRoom implements RealtimeTransportRoom {
 }
 
 function lifecycle() {
-  return {
-    type: "room.lifecycle",
-    protocolVersion: PROTOCOL_VERSION,
-    isOwner: true,
-    currentRound: { roundNumber: 1, status: "active" },
-    nextRound: null,
-    closed: false,
-    closeReason: null,
-  } as const;
+  return lifecycleV6(true);
 }
 
 function connected() {
   return {
     type: "room.connected",
-    protocolVersion: PROTOCOL_VERSION,
+    protocolVersion: SETUP_PROTOCOL_VERSION,
     roomCode: "ABCD2345",
     gameId: "pong",
     gameVersion: "1.0.0",
@@ -171,7 +162,7 @@ async function setup() {
 }
 
 describe("RealtimeGameClientHost", () => {
-  it.each([5, 6] as const)(
+  it.each([6] as const)(
     "refreshes V%i public profiles through an acknowledged signed ticket",
     async (setupProtocol) => {
       const room = new FakeRoom();
@@ -188,14 +179,8 @@ describe("RealtimeGameClientHost", () => {
         commandIds: { createCommandId: () => "refresh-profile" },
       });
       await host.createRoom("pong", { targetScore: 3 });
-      room.emit(
-        SERVER_PROTOCOL_MESSAGE,
-        setupProtocol === 5 ? connected() : connectedV6(),
-      );
-      const initial =
-        setupProtocol === 5
-          ? lifecycle()
-          : lifecycleV6(false, { setupRevision: 1 });
+      room.emit(SERVER_PROTOCOL_MESSAGE, connectedV6());
+      const initial = lifecycleV6(false, { setupRevision: 1 });
       room.emit(ROOM_CONTROL_MESSAGE, initial);
       await expect(host.refreshProfile()).rejects.toThrow("not available");
       const players = [
@@ -205,7 +190,6 @@ describe("RealtimeGameClientHost", () => {
           occupied: true,
           online: true,
           ready: false,
-          ...(setupProtocol === 5 ? { assignment: null } : {}),
         },
         {
           slotId: "slot-right",
@@ -213,7 +197,6 @@ describe("RealtimeGameClientHost", () => {
           occupied: true,
           online: true,
           ready: false,
-          ...(setupProtocol === 5 ? { assignment: null } : {}),
         },
       ];
       room.emit(ROOM_CONTROL_MESSAGE, { ...initial, players });
@@ -424,7 +407,10 @@ describe("RealtimeGameClientHost", () => {
     room.emit(SERVER_PROTOCOL_MESSAGE, connectedV6());
     room.emit(ROOM_CONTROL_MESSAGE, lifecycleV6(false));
 
-    const setupCommand = host.selectStarter("OWNER");
+    const setupCommand = host.submitSetup({
+      type: "SELECT_STARTER",
+      starter: "OWNER",
+    });
     expect(room.sent.at(-1)).toMatchObject({
       type: GAME_SETUP_MESSAGE,
       payload: {
@@ -573,7 +559,34 @@ describe("RealtimeGameClientHost", () => {
     });
   });
 
-  it("fails closed when a V5 lifecycle expands beyond two stable player slots", async () => {
+  it.each([SERVER_PROTOCOL_MESSAGE, ROOM_CONTROL_MESSAGE])(
+    "closes with an update error for V5 on %s",
+    async (channel) => {
+      const room = new FakeRoom();
+      const client: RealtimeTransportClient = {
+        create: async () => room,
+        join: async () => room,
+      };
+      const host = new RealtimeGameClientHost({
+        gameServerUrl: "http://127.0.0.1:2567",
+        ticketProvider: async () => "ticket",
+        transport: { createClient: () => client },
+      });
+      await host.createRoom("pong", { targetScore: 3 });
+      room.emit(SERVER_PROTOCOL_MESSAGE, connected());
+      room.emit(channel, {
+        ...(channel === SERVER_PROTOCOL_MESSAGE ? connected() : lifecycle()),
+        protocolVersion: 5,
+      });
+      expect(host.getState()).toMatchObject({
+        connectionState: "closed",
+        snapshot: null,
+        error: "PROTOCOL_VERSION_UNSUPPORTED",
+      });
+    },
+  );
+
+  it("fails closed when a lifecycle duplicates stable player slots", async () => {
     const room = new FakeRoom();
     const client: RealtimeTransportClient = {
       async create() {
@@ -598,21 +611,18 @@ describe("RealtimeGameClientHost", () => {
           occupied: true,
           online: true,
           ready: false,
-          assignment: null,
         },
         {
           slotId: "slot-right",
           occupied: true,
           online: true,
           ready: false,
-          assignment: null,
         },
         {
-          slotId: "slot-extra",
+          slotId: "slot-right",
           occupied: true,
           online: true,
           ready: false,
-          assignment: null,
         },
       ],
     });
@@ -623,7 +633,7 @@ describe("RealtimeGameClientHost", () => {
     });
   });
 
-  it("fails closed when a V5 lifecycle changes the required player count", async () => {
+  it("fails closed when readiness refers to a missing player slot", async () => {
     const room = new FakeRoom();
     const client: RealtimeTransportClient = {
       async create() {
@@ -642,15 +652,19 @@ describe("RealtimeGameClientHost", () => {
     room.emit(SERVER_PROTOCOL_MESSAGE, connected());
     room.emit(ROOM_CONTROL_MESSAGE, {
       type: "room.lifecycle",
-      protocolVersion: PROTOCOL_VERSION,
+      protocolVersion: SETUP_PROTOCOL_VERSION,
       isOwner: true,
       currentRound: null,
       nextRound: {
         roundNumber: 1,
-        starter: "OWNER",
-        selfReady: false,
-        readyPlayerCount: 0,
-        requiredPlayerCount: 3,
+        setupRevision: 0,
+        setupView: {},
+        readiness: {
+          canReady: true,
+          selfReady: false,
+          readySlotIds: [],
+          requiredSlotIds: ["slot-left", "slot-right", "missing-slot"],
+        },
       },
       closed: false,
       closeReason: null,
@@ -660,14 +674,12 @@ describe("RealtimeGameClientHost", () => {
           occupied: true,
           online: true,
           ready: false,
-          assignment: null,
         },
         {
           slotId: "slot-right",
           occupied: true,
           online: true,
           ready: false,
-          assignment: null,
         },
       ],
     });
@@ -678,7 +690,7 @@ describe("RealtimeGameClientHost", () => {
     });
   });
 
-  it("pins a discovered V6 generation through reconnect and resets create to its default", async () => {
+  it("pins a discovered V6 generation through reconnect and uses V6 for subsequent creation", async () => {
     const firstRoom = new FakeRoom();
     const reconnectedRoom = new FakeRoom();
     const createdRoom = new FakeRoom();
@@ -748,11 +760,11 @@ describe("RealtimeGameClientHost", () => {
     expect(ticketGenerations).toEqual([
       SETUP_PROTOCOL_VERSION,
       SETUP_PROTOCOL_VERSION,
-      PROTOCOL_VERSION,
+      SETUP_PROTOCOL_VERSION,
     ]);
     expect(requests[2]).toMatchObject({
       method: "create",
-      options: { protocolVersion: PROTOCOL_VERSION, ticket: "ticket-3" },
+      options: { protocolVersion: SETUP_PROTOCOL_VERSION, ticket: "ticket-3" },
     });
   });
 

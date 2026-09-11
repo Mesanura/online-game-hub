@@ -6,7 +6,16 @@ import { GUEST_PROFILE_STORAGE_KEY } from "../src/lib/profile";
 afterEach(() => vi.unstubAllGlobals());
 
 describe("Web profile ticket provider", () => {
-  it("reads the latest guest name for each ticket and keeps the selected generation", async () => {
+  it("reports an unsupported protocol as a page update error", async () => {
+    vi.stubGlobal("fetch", async () =>
+      Response.json({ code: "PROTOCOL_VERSION_UNSUPPORTED" }, { status: 400 }),
+    );
+    await expect(requestGameTicket()).rejects.toThrow(
+      /^PROTOCOL_VERSION_UNSUPPORTED$/u,
+    );
+  });
+
+  it("reads the latest guest name for each V6 ticket", async () => {
     let displayName = "👩‍💻玩家";
     const getItem = vi.fn(() => JSON.stringify({ displayName }));
     vi.stubGlobal("window", { localStorage: { getItem } });
@@ -25,11 +34,11 @@ describe("Web profile ticket provider", () => {
       }),
     );
     displayName = "新名字";
-    await requestGameTicket(5);
+    await requestGameTicket(6);
     expect(fetcher).toHaveBeenLastCalledWith(
       "/api/game-ticket",
       expect.objectContaining({
-        body: JSON.stringify({ protocolVersion: 5, displayName }),
+        body: JSON.stringify({ protocolVersion: 6, displayName }),
       }),
     );
   });

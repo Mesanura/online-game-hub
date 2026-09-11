@@ -21,6 +21,7 @@ import type {
   RealtimeRoomStore,
   RealtimeStoredPlayerSlot,
   RealtimeStoredRoom,
+  RealtimeStoredRoomRecord,
 } from "@online-game-hub/realtime-game-server-runtime";
 import {
   matchStatusSchema,
@@ -204,7 +205,13 @@ function validRoundSetup(
   );
 }
 
-function validSetupPersistence(room: RealtimeStoredRoom): boolean {
+// This reader contract is intentionally separate from the online V6 schema.
+// Existing V5 metadata remains readable and is never relabelled or resumed.
+function storedSetupProtocol(value: unknown): 5 | 6 | undefined {
+  return value === 5 || value === 6 ? value : undefined;
+}
+
+function validSetupPersistence(room: RealtimeStoredRoomRecord): boolean {
   if (room.setupProtocol === 5) {
     return (
       room.nextRoundSetup === undefined &&
@@ -235,14 +242,14 @@ function validSetupPersistence(room: RealtimeStoredRoom): boolean {
     : room.nextRoundSetup === undefined;
 }
 
-function validRoom(room: RealtimeStoredRoom): boolean {
+function validRoom(room: RealtimeStoredRoomRecord): boolean {
   if (
     room.roomId.length === 0 ||
     room.roomCode.length !== 8 ||
     !/^[A-HJ-NP-Z2-9]{8}$/u.test(room.roomCode) ||
     !isRealtimeGameId(room.gameId) ||
     !isRealtimeGameVersion(room.gameVersion) ||
-    !setupProtocolGenerationSchema.safeParse(room.setupProtocol).success ||
+    storedSetupProtocol(room.setupProtocol) === undefined ||
     !isJsonValue(room.initialConfig) ||
     room.players.length < 2 ||
     room.players.length > (room.setupProtocol === 5 ? 2 : 8) ||
@@ -288,6 +295,13 @@ function validRoom(room: RealtimeStoredRoom): boolean {
   );
 }
 
+function validOnlineRoom(room: RealtimeStoredRoom): boolean {
+  return (
+    setupProtocolGenerationSchema.safeParse(room.setupProtocol).success &&
+    validRoom(room)
+  );
+}
+
 function rethrow(error: unknown): never {
   if (error instanceof DatabaseError) throw error;
   throw new DatabaseError("DATABASE_OPERATION_ERROR");
@@ -317,12 +331,10 @@ function roomRoundColumns(room: RealtimeStoredRoom) {
 function roomFromRows(
   room: typeof realtimeRooms.$inferSelect,
   players: readonly (typeof realtimeRoomPlayers.$inferSelect)[],
-): RealtimeStoredRoom {
-  const setupProtocol = setupProtocolGenerationSchema.safeParse(
-    room.setupProtocol,
-  );
+): RealtimeStoredRoomRecord {
+  const setupProtocol = storedSetupProtocol(room.setupProtocol);
   if (
-    !setupProtocol.success ||
+    setupProtocol === undefined ||
     !isJsonValue(room.initialConfig) ||
     !Number.isSafeInteger(room.currentTick) ||
     room.currentTick < 0 ||
@@ -362,7 +374,7 @@ function roomFromRows(
   if (currentRound !== null) {
     if (
       currentRound.playerOrder.length < 2 ||
-      currentRound.playerOrder.length > (setupProtocol.data === 5 ? 2 : 8) ||
+      currentRound.playerOrder.length > (setupProtocol === 5 ? 2 : 8) ||
       new Set(currentRound.playerOrder).size !==
         currentRound.playerOrder.length ||
       currentRound.playerOrder.some(
@@ -372,12 +384,12 @@ function roomFromRows(
       throw new DatabaseError("DATABASE_DATA_INVALID");
     }
   }
-  const result: RealtimeStoredRoom = {
+  const result: RealtimeStoredRoomRecord = {
     roomId: room.roomId,
     roomCode: room.roomCode,
     gameId: room.gameId,
     gameVersion: room.gameVersion,
-    setupProtocol: setupProtocol.data,
+    setupProtocol,
     initialConfig: room.initialConfig as JsonValue,
     players: players.map((player) => ({
       slotId: player.playerSlotId,
@@ -408,7 +420,8 @@ export class PostgresRealtimeRoomStore implements RealtimeRoomStore {
   public constructor(private readonly database: OnlineGameHubDatabase) {}
 
   public async create(room: RealtimeStoredRoom): Promise<void> {
-    if (!validRoom(room)) throw new DatabaseError("DATABASE_OPERATION_ERROR");
+    if (!validOnlineRoom(room))
+      throw new DatabaseError("DATABASE_OPERATION_ERROR");
     try {
       await this.database.transaction(async (transaction) => {
         await transaction.insert(realtimeRooms).values({
@@ -438,7 +451,8 @@ export class PostgresRealtimeRoomStore implements RealtimeRoomStore {
   }
 
   public async save(room: RealtimeStoredRoom): Promise<void> {
-    if (!validRoom(room)) throw new DatabaseError("DATABASE_OPERATION_ERROR");
+    if (!validOnlineRoom(room))
+      throw new DatabaseError("DATABASE_OPERATION_ERROR");
     try {
       await this.database.transaction(async (transaction) => {
         const updated = await transaction
@@ -482,7 +496,7 @@ export class PostgresRealtimeRoomStore implements RealtimeRoomStore {
 
   public async getByRoomCode(
     roomCode: string,
-  ): Promise<RealtimeStoredRoom | null> {
+  ): Promise<RealtimeStoredRoomRecord | null> {
     const normalized = roomCode.trim().toUpperCase();
     if (!/^[A-HJ-NP-Z2-9]{8}$/u.test(normalized)) return null;
     try {
@@ -532,7 +546,7 @@ export class PostgresRealtimeMatchArchive implements RealtimeMatchArchive {
     const round = room.currentRound;
     const players = assignedPlayers(room);
     if (
-      !validRoom(room) ||
+      !validOnlineRoom(room) ||
       round === null ||
       round.status !== "active" ||
       round.tick !== 0 ||
@@ -640,7 +654,7 @@ export class PostgresRealtimeMatchArchive implements RealtimeMatchArchive {
     const round = room.currentRound;
     const players = assignedPlayers(room);
     if (
-      !validRoom(room) ||
+      !validOnlineRoom(room) ||
       round === null ||
       players.length !== round.playerOrder.length
     )

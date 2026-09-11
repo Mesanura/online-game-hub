@@ -16,6 +16,6 @@
 
 回放能力适用于表中各游戏的全部支持版本。支持播放的比赛也只向登录态参赛者开放；`record-only` 仍保存并验证 canonical record，但没有玩家播放入口。旧 Core 与 golden fixtures 必须按 exact 版本重建，不能用当前定义替代。
 
-所有当前游戏均使用 V6 Setup 和 Bridge V2 Surface。历史版本的 Setup 代际、Surface 版本和 mode 映射集中在 [deployment registry](../packages/game-registry/src/deployment.ts)，不在此重复维护。旧 Client 源码与 `/client` exports 已移除；V5 兼容、历史 Core 与 golden replay 继续保留。
+所有受支持游戏版本均使用 V6 Setup 和 Bridge V2 Surface。历史版本的 Setup、Surface 版本和 mode 映射集中在 [deployment registry](../packages/game-registry/src/deployment.ts)，不在此重复维护。旧 Client 源码与 `/client` exports、V5 在线协议已移除；历史 Core、golden 和 exact replay 读取继续保留。
 
 开发游戏先阅读自己的 `GAME_SPEC.md` 和 `AGENTS.md`，再按任务参考 [Game Plugin](../docs/GAME_PLUGIN_SPEC.md)、[Realtime Runtime](../docs/REALTIME_RUNTIME_DESIGN.md)、[Game Surface](../docs/GAME_SURFACE_SPEC.md) 与 [测试策略](../docs/TESTING.md)。[create-game](../tools/README.md) 生成回合制 V6/Bridge V2 双目录草稿；完成规则、验证和制品配置后，仍须显式登记接入。

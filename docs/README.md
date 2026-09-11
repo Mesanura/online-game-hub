@@ -13,7 +13,7 @@
 | 实现回合制 Core 或 Setup | [GAME_PLUGIN_SPEC.md](./GAME_PLUGIN_SPEC.md)：纯逻辑契约、RNG、注册与版本策略                         |
 | 实现实时游戏或 runtime   | [REALTIME_RUNTIME_DESIGN.md](./REALTIME_RUNTIME_DESIGN.md)：固定 tick、输入交付、实时协议与客户端边界 |
 | 开发游戏画面             | [GAME_SURFACE_SPEC.md](./GAME_SURFACE_SPEC.md)：artifact、Bridge、iframe Host、Workbench 与发布流程   |
-| 修改身份、房间或通信     | [NETWORK_PROTOCOL.md](./NETWORK_PROTOCOL.md)：V5/V6、票据、Setup、消息和重连                          |
+| 修改身份、房间或通信     | [NETWORK_PROTOCOL.md](./NETWORK_PROTOCOL.md)：V6、票据、Setup、消息、重连与历史兼容                   |
 | 修改记录或回放           | [REPLAY_DESIGN.md](./REPLAY_DESIGN.md)：两类 canonical record、写入顺序、重建和访问控制               |
 | 决定验证范围或运行测试   | [TESTING.md](./TESTING.md)：改动矩阵、最低场景、命令与临时 PostgreSQL                                 |
 | 部署、更新或备份         | [DEPLOYMENT_DOCKER_COMPOSE.md](./DEPLOYMENT_DOCKER_COMPOSE.md)：单机 Compose 运维                     |

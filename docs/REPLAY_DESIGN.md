@@ -110,12 +110,12 @@ interface RealtimeCanonicalReplay {
 
 同一 room 的 join、leave、timeout、control 与 gameplay 操作通过唯一 writer 串行处理。创建房间不初始化 Core，也不创建 Match/replay。满足开局条件后：
 
-1. 从已固化的 `FinalizedRoundSetup` 构造 pending candidate，固定 roundNumber、playerOrder、replay ID 与 gameplay seed；V5 使用原 starter/assignment 结果。
+1. 从已固化的 `FinalizedRoundSetup` 构造 pending candidate，固定 roundNumber、playerOrder、replay ID 与 gameplay seed。
 2. 使用相同 Config、顺序和 seed 初始化 Core 并创建 replay header。
 3. 通过 MatchArchive 幂等创建 active Match，再保存候选 RoomStore record。
 4. 所有外部写入成功后才提交内存 aggregate。
 
-失败保留 candidate，重试不重新生成 replay ID、seed 或 playerOrder。V6 Setup 持久化失败允许同 command 重试；legacy 启动失败按其原命令语义处理。下一轮默认复用完整设置，但生成新的游戏状态、seed、Match 与 replay，并要求重新 ready。
+失败保留 candidate，重试不重新生成 replay ID、seed 或 playerOrder。Setup 持久化失败允许同 command 重试。下一轮默认复用完整设置，但生成新的游戏状态、seed、Match 与 replay，并要求重新 ready。在线 V5 退役不改写已有 replay header、规则版本、RNG 或 Outcome，全部历史 golden 与 exact reader 继续验证。
 
 ### 回合制 Action 提交
 

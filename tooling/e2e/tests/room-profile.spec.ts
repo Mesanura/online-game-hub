@@ -167,6 +167,29 @@ for (const gameId of ["tic-tac-toe", "pong"] as const) {
         );
         expect(invalid.status()).toBe(400);
       }
+      for (const protocolVersion of [1, 2, 3, 4, 5]) {
+        const retired = await ownerContext.request.post(
+          `${harness.webUrl}/api/game-ticket`,
+          {
+            data: { protocolVersion },
+          },
+        );
+        expect(retired.status()).toBe(400);
+        expect(retired.headers()["cache-control"]).toBe("no-store, private");
+        expect(await retired.json()).toEqual({
+          code: "PROTOCOL_VERSION_UNSUPPORTED",
+        });
+      }
+      for (const data of [undefined, {}]) {
+        const missing = await ownerContext.request.post(
+          `${harness.webUrl}/api/game-ticket`,
+          { data },
+        );
+        expect(missing.status()).toBe(400);
+        expect(await missing.json()).toEqual({
+          code: "INVALID_TICKET_REQUEST",
+        });
+      }
       await owner.getByTestId("close-room").click();
       await expect(owner.getByTestId("create-room")).toBeVisible();
     } finally {

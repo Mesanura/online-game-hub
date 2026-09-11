@@ -19,18 +19,17 @@ import type {
   GameSetupProtocol,
 } from "@online-game-hub/game-client-sdk";
 import type {
-  CommandRejected,
   CommandRejectedV6,
   MatchStatus,
   RealtimeRejected,
-  RoomConnected,
   RoomConnectedV6,
   RoomDiscovery,
-  RoomLifecycleState,
   RoomLifecycleStateV6,
-  StarterChoice as ProtocolStarterChoice,
 } from "@online-game-hub/protocol";
-import { roomDiscoverySchema } from "@online-game-hub/protocol";
+import {
+  SETUP_PROTOCOL_VERSION,
+  roomDiscoverySchema,
+} from "@online-game-hub/protocol";
 import { RealtimeGameClientHost } from "@online-game-hub/realtime-game-client-sdk";
 import type { RealtimeGameClientHostState } from "@online-game-hub/realtime-game-client-sdk";
 import { gameCatalog } from "@online-game-hub/game-registry/catalog";
@@ -38,9 +37,7 @@ import { resolveCurrentGameDeployment } from "@online-game-hub/game-registry/dep
 import { requestGameTicket } from "../lib/game-ticket";
 import { PROFILE_UPDATED_EVENT } from "../lib/profile";
 
-type StarterChoice = ProtocolStarterChoice;
-type WebRoomConnected = RoomConnected | RoomConnectedV6;
-type WebCommandRejected = CommandRejected | CommandRejectedV6;
+export const PROTOCOL_UPDATE_MESSAGE = "页面版本已过期，请刷新后重新连接。";
 
 export interface WebLifecyclePlayer {
   readonly slotId: string;
@@ -48,30 +45,27 @@ export interface WebLifecyclePlayer {
   readonly occupied: boolean;
   readonly online: boolean;
   readonly ready: boolean;
-  readonly assignment: string | null;
 }
 
 export interface WebNextRoundLifecycle {
   readonly roundNumber: number;
-  readonly starter: StarterChoice | null;
   readonly selfReady: boolean;
   readonly readyPlayerCount: number;
   readonly requiredPlayerCount: number;
-  readonly assignmentOptions?: readonly string[] | undefined;
-  readonly setupRevision?: number;
-  readonly setupView?: unknown;
-  readonly canReady?: boolean;
+  readonly setupRevision: number;
+  readonly setupView: unknown;
+  readonly canReady: boolean;
 }
 
 export interface WebRoomLifecycle {
   readonly type: "room.lifecycle";
-  readonly protocolVersion: 5 | 6;
+  readonly protocolVersion: 6;
   readonly isOwner: boolean;
-  readonly currentRound: RoomLifecycleState["currentRound"];
+  readonly currentRound: RoomLifecycleStateV6["currentRound"];
   readonly nextRound: WebNextRoundLifecycle | null;
   readonly closed: boolean;
-  readonly closeReason: RoomLifecycleState["closeReason"];
-  readonly players?: readonly WebLifecyclePlayer[] | undefined;
+  readonly closeReason: RoomLifecycleStateV6["closeReason"];
+  readonly players: readonly WebLifecyclePlayer[];
   readonly causedByCommandId?: string | undefined;
 }
 
@@ -91,11 +85,11 @@ export interface WebRoomSnapshot {
 
 export interface WebRoomHostState {
   readonly connectionState: GameClientHostState["connectionState"];
-  readonly room: WebRoomConnected | null;
+  readonly room: RoomConnectedV6 | null;
   readonly roomLifecycle: WebRoomLifecycle | null;
   readonly previousSnapshot: WebRoomSnapshot | null;
   readonly snapshot: WebRoomSnapshot | null;
-  readonly rejection: WebCommandRejected | RealtimeRejected | null;
+  readonly rejection: CommandRejectedV6 | RealtimeRejected | null;
   readonly error: { readonly code: string; readonly message: string } | null;
 }
 
@@ -105,6 +99,7 @@ type RealtimeHost = RealtimeGameClientHost<unknown, unknown>;
 
 function realtimeErrorMessage(code: string): string {
   const labels: Record<string, string> = {
+    PROTOCOL_VERSION_UNSUPPORTED: PROTOCOL_UPDATE_MESSAGE,
     TICKET_ERROR: "无法取得连接票据。",
     ROOM_ERROR: "无法连接实时房间。",
     INVALID_SERVER_MESSAGE: "服务器返回了无效的实时消息。",
@@ -113,24 +108,10 @@ function realtimeErrorMessage(code: string): string {
   return labels[code] ?? "实时连接发生错误。";
 }
 
-function setupViewStarter(setupView: unknown): StarterChoice | null {
-  if (
-    setupView === null ||
-    typeof setupView !== "object" ||
-    !("starter" in setupView)
-  ) {
-    return null;
-  }
-  const starter = setupView.starter;
-  return starter === "OWNER" || starter === "NON_OWNER" || starter === "RANDOM"
-    ? starter
-    : null;
-}
-
 export function normalizeRoomLifecycle(
-  lifecycle: RoomLifecycleState | RoomLifecycleStateV6 | null,
+  lifecycle: RoomLifecycleStateV6 | null,
 ): WebRoomLifecycle | null {
-  if (lifecycle === null || lifecycle.protocolVersion === 5) return lifecycle;
+  if (lifecycle === null) return null;
   const nextRound = lifecycle.nextRound;
   return {
     type: lifecycle.type,
@@ -142,7 +123,6 @@ export function normalizeRoomLifecycle(
         ? null
         : {
             roundNumber: nextRound.roundNumber,
-            starter: setupViewStarter(nextRound.setupView),
             selfReady: nextRound.readiness.selfReady,
             readyPlayerCount: nextRound.readiness.readySlotIds.length,
             requiredPlayerCount: nextRound.readiness.requiredSlotIds.length,
@@ -152,10 +132,7 @@ export function normalizeRoomLifecycle(
           },
     closed: lifecycle.closed,
     closeReason: lifecycle.closeReason,
-    players: lifecycle.players.map((player) => ({
-      ...player,
-      assignment: null,
-    })),
+    players: lifecycle.players,
     ...(lifecycle.causedByCommandId === undefined
       ? {}
       : { causedByCommandId: lifecycle.causedByCommandId }),
@@ -288,34 +265,6 @@ export class RuntimeAwareHost {
       : realtime.submitSetup(action);
   }
 
-  public selectStarter(starter: StarterChoice): Promise<void> {
-    const realtime = this.#realtime;
-    return realtime === null
-      ? this.#requireTurnBased().selectStarter(starter)
-      : realtime.selectStarter(starter);
-  }
-
-  public selectPlayerCount(playerCount: number): Promise<void> {
-    const turnBased = this.#turnBased;
-    return turnBased === null
-      ? Promise.reject(new Error("Realtime rooms have two fixed players."))
-      : turnBased.selectPlayerCount(playerCount);
-  }
-
-  public selectPlayerAssignment(assignment: string): Promise<void> {
-    const turnBased = this.#turnBased;
-    return turnBased === null
-      ? Promise.reject(new Error("Realtime rooms do not use assignments."))
-      : turnBased.selectPlayerAssignment(assignment);
-  }
-
-  public clearPlayerAssignment(): Promise<void> {
-    const turnBased = this.#turnBased;
-    return turnBased === null
-      ? Promise.reject(new Error("Realtime rooms do not use assignments."))
-      : turnBased.clearPlayerAssignment();
-  }
-
   public readyForRound(): Promise<void> {
     const realtime = this.#realtime;
     return realtime === null
@@ -328,13 +277,6 @@ export class RuntimeAwareHost {
     return realtime === null
       ? this.#requireTurnBased().cancelRoundReady()
       : realtime.cancelRoundReady();
-  }
-
-  public startRematch(): Promise<void> {
-    const realtime = this.#realtime;
-    return realtime === null
-      ? this.#requireTurnBased().startRematch()
-      : realtime.startRematch();
   }
 
   public closeRoom(): Promise<void> {
@@ -398,7 +340,10 @@ export class RuntimeAwareHost {
                 : { causedByCommandId: state.snapshot.causedByCommandId }),
             },
       rejection: state.rejection,
-      error: state.error,
+      error:
+        state.error?.code === "PROTOCOL_VERSION_UNSUPPORTED"
+          ? { ...state.error, message: PROTOCOL_UPDATE_MESSAGE }
+          : state.error,
     };
   }
 
@@ -460,12 +405,7 @@ interface GameRoomHostContextValue {
   readonly setRoomCode: (value: string) => void;
   readonly createRoom: () => Promise<void>;
   readonly joinRoom: () => Promise<void>;
-  readonly selectStarter: (starter: StarterChoice) => Promise<void>;
-  readonly selectPlayerCount: (playerCount: number) => Promise<void>;
-  readonly selectPlayerAssignment: (assignment: string) => Promise<void>;
-  readonly clearPlayerAssignment: () => Promise<void>;
   readonly toggleRoundReady: () => Promise<void>;
-  readonly startRematch: () => Promise<void>;
   readonly copyInviteLink: () => Promise<void>;
   readonly selectInviteFallback: () => void;
   readonly closeRoom: () => Promise<void>;
@@ -515,10 +455,17 @@ async function discoverRoom(
     cache: "no-store",
     headers: { accept: "application/json" },
   });
+  const payload: unknown = await response.json();
+  if (
+    payload !== null &&
+    typeof payload === "object" &&
+    (("code" in payload && payload.code === "PROTOCOL_VERSION_UNSUPPORTED") ||
+      ("setupProtocol" in payload && payload.setupProtocol === 5))
+  ) {
+    throw new Error("PROTOCOL_VERSION_UNSUPPORTED");
+  }
   if (!response.ok) throw new Error("ROOM_DISCOVERY_FAILED");
-  const parsed = roomDiscoverySchema.safeParse(
-    (await response.json()) as unknown,
-  );
+  const parsed = roomDiscoverySchema.safeParse(payload);
   if (
     !parsed.success ||
     parsed.data.gameId !== gameId ||
@@ -546,7 +493,8 @@ export function GameRoomHostProvider({
     gameCatalog.find((candidate) => candidate.id === gameId)?.runtime ??
     "turn-based";
   const setupProtocol =
-    resolveCurrentGameDeployment(gameId)?.setupProtocol ?? 5;
+    resolveCurrentGameDeployment(gameId)?.setupProtocol ??
+    SETUP_PROTOCOL_VERSION;
   const host = useMemo(
     () =>
       new RuntimeAwareHost({
@@ -670,9 +618,14 @@ export function GameRoomHostProvider({
         }
         return host.joinRoom(gameId, targetCode, discovery.setupProtocol);
       })
-      .catch(() => {
+      .catch((error: unknown) => {
         if (connectionAttempt.current === attempt)
-          setLocalError("房间码无效或房间已关闭，请重试。");
+          setLocalError(
+            error instanceof Error &&
+              error.message === "PROTOCOL_VERSION_UNSUPPORTED"
+              ? PROTOCOL_UPDATE_MESSAGE
+              : "房间码无效或房间已关闭，请重试。",
+          );
       })
       .finally(() => {
         if (connectionAttempt.current === attempt) setBusy(false);
@@ -770,7 +723,11 @@ export function GameRoomHostProvider({
     ) {
       return;
     }
-    setLocalError("无法进入房间。房间可能已关闭，或房间码不正确。");
+    setLocalError(
+      state.error.code === "PROTOCOL_VERSION_UNSUPPORTED"
+        ? PROTOCOL_UPDATE_MESSAGE
+        : "无法进入房间。房间可能已关闭，或房间码不正确。",
+    );
     router.replace(`/games/${encodeURIComponent(gameId)}`, { scroll: false });
   }, [gameId, pathname, router, state.error, state.room]);
 
@@ -839,82 +796,18 @@ export function GameRoomHostProvider({
       if (discovery.runtime !== runtime)
         throw new Error("ROOM_RUNTIME_MISMATCH");
       await host.joinRoom(gameId, roomCode, discovery.setupProtocol);
-    } catch {
+    } catch (error) {
       if (connectionAttempt.current === attempt)
-        setLocalError("房间码无效或房间已关闭，请重试。");
+        setLocalError(
+          error instanceof Error &&
+            error.message === "PROTOCOL_VERSION_UNSUPPORTED"
+            ? PROTOCOL_UPDATE_MESSAGE
+            : "房间码无效或房间已关闭，请重试。",
+        );
     } finally {
       if (connectionAttempt.current === attempt) setBusy(false);
     }
   }, [gameId, host, roomCode, runtime]);
-
-  const selectStarter = useCallback(
-    async (starter: StarterChoice): Promise<void> => {
-      setBusy(true);
-      setLocalError(null);
-      try {
-        await host.selectStarter(starter);
-      } catch {
-        setLocalError("无法更新下一局先手方。");
-      } finally {
-        setBusy(false);
-      }
-    },
-    [host],
-  );
-
-  const selectPlayerCount = useCallback(
-    async (playerCount: number): Promise<void> => {
-      setBusy(true);
-      setLocalError(null);
-      try {
-        await host.selectPlayerCount(playerCount);
-      } catch {
-        setLocalError("无法更新本轮人数。");
-      } finally {
-        setBusy(false);
-      }
-    },
-    [host],
-  );
-
-  const selectPlayerAssignment = useCallback(
-    async (assignment: string): Promise<void> => {
-      setBusy(true);
-      setLocalError(null);
-      try {
-        await host.selectPlayerAssignment(assignment);
-      } catch {
-        setLocalError("该营地不可用，请选择其他营地。");
-      } finally {
-        setBusy(false);
-      }
-    },
-    [host],
-  );
-
-  const clearPlayerAssignment = useCallback(async (): Promise<void> => {
-    setBusy(true);
-    setLocalError(null);
-    try {
-      await host.clearPlayerAssignment();
-    } catch {
-      setLocalError("无法取消营地选择。");
-    } finally {
-      setBusy(false);
-    }
-  }, [host]);
-
-  const startRematch = useCallback(async (): Promise<void> => {
-    setBusy(true);
-    setLocalError(null);
-    try {
-      await host.startRematch();
-    } catch {
-      setLocalError("无法立即重新对局，请确认双方均已在线。");
-    } finally {
-      setBusy(false);
-    }
-  }, [host]);
 
   const toggleRoundReady = useCallback(async (): Promise<void> => {
     setBusy(true);
@@ -997,25 +890,12 @@ export function GameRoomHostProvider({
   const openNextRoundSetup = useCallback(async (): Promise<void> => {
     const currentRoom = state.room;
     if (currentRoom === null) return;
-    if (state.roomLifecycle?.nextRound?.assignmentOptions !== undefined) {
-      try {
-        await host.clearPlayerAssignment();
-      } catch {
-        setLocalError("无法清空本轮营地选择。");
-        return;
-      }
-    }
     allowCompletedSetup.current = true;
     router.push(
       `/games/${encodeURIComponent(currentRoom.gameId)}/rooms/${encodeURIComponent(currentRoom.roomCode)}`,
       { scroll: false },
     );
-  }, [
-    host,
-    router,
-    state.room,
-    state.roomLifecycle?.nextRound?.assignmentOptions,
-  ]);
+  }, [router, state.room]);
 
   const value = useMemo<GameRoomHostContextValue>(
     () => ({
@@ -1032,12 +912,7 @@ export function GameRoomHostProvider({
       setRoomCode,
       createRoom,
       joinRoom,
-      selectStarter,
-      selectPlayerCount,
-      selectPlayerAssignment,
-      clearPlayerAssignment,
       toggleRoundReady,
-      startRematch,
       copyInviteLink,
       selectInviteFallback,
       closeRoom,
@@ -1061,11 +936,6 @@ export function GameRoomHostProvider({
       playerCountNotice,
       roomCode,
       selectInviteFallback,
-      selectStarter,
-      startRematch,
-      selectPlayerCount,
-      selectPlayerAssignment,
-      clearPlayerAssignment,
       state,
       toggleRoundReady,
       runtime,

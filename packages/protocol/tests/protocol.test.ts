@@ -6,45 +6,41 @@ import {
   MAX_GAME_ACTION_BYTES,
   MAX_GAME_SETUP_ACTION_BYTES,
   MAX_REALTIME_INPUT_BYTES,
-  PROTOCOL_VERSION,
   SETUP_PROTOCOL_VERSION,
   REALTIME_INPUT_MESSAGE,
   REALTIME_PROTOCOL_VERSION,
   REALTIME_SERVER_MESSAGE,
   ROOM_CONTROL_MESSAGE,
   SERVER_PROTOCOL_MESSAGE,
-  anyGameServerTicketClaimsSchema,
-  commandIdSchema,
-  commandRejectedSchema,
-  clientMessageV6Schema,
-  createGameRoomRequestSchema,
-  gameActionCommandSchema,
-  gameSetupCommandSchema,
-  gameServerTicketClaimsSchema,
   gameServerTicketClaimsV6Schema,
-  joinGameRoomRequestSchema,
-  matchSnapshotSchema,
+  commandIdSchema,
+  commandRejectedV6Schema,
+  clientMessageV6Schema,
+  createGameRoomRequestV6Schema,
+  gameActionCommandV6Schema,
+  gameSetupCommandSchema,
+  joinGameRoomRequestV6Schema,
+  matchSnapshotV6Schema,
   realtimeInputCommandSchema,
   realtimeRejectedSchema,
   realtimeServerMessageSchema,
   realtimeSnapshotSchema,
-  roomControlCommandSchema,
+  roomControlCommandV6Schema,
   roomDiscoveryQuerySchema,
   roomDiscoverySchema,
-  roomLifecycleStateSchema,
   roomLifecycleStateV6Schema,
-  roomConnectedSchema,
-  serverMessageSchema,
+  roomConnectedV6Schema,
+  serverMessageV6Schema,
 } from "../src/index.js";
 import type {
-  GameActionCommand,
-  MatchSnapshot,
+  GameActionCommandV6,
+  MatchSnapshotV6,
   ProtocolErrorCode,
 } from "../src/index.js";
 
 const actionCommand = {
   type: "game.action",
-  protocolVersion: PROTOCOL_VERSION,
+  protocolVersion: SETUP_PROTOCOL_VERSION,
   commandId: "command-1",
   roundNumber: 1,
   expectedRevision: 0,
@@ -53,7 +49,7 @@ const actionCommand = {
 
 const snapshot = {
   type: "match.snapshot",
-  protocolVersion: PROTOCOL_VERSION,
+  protocolVersion: SETUP_PROTOCOL_VERSION,
   gameId: "tic-tac-toe",
   gameVersion: "1.0.0",
   roundNumber: 1,
@@ -66,8 +62,8 @@ const snapshot = {
 } as const;
 
 describe("transport conventions", () => {
-  it("keeps Protocol V5 room and custom message names stable", () => {
-    expect(PROTOCOL_VERSION).toBe(5);
+  it("keeps V6 room and custom message names stable", () => {
+    expect(SETUP_PROTOCOL_VERSION).toBe(6);
     expect(GAME_ROOM_NAME).toBe("game");
     expect(GAME_ACTION_MESSAGE).toBe("game.action");
     expect(ROOM_CONTROL_MESSAGE).toBe("room.control");
@@ -75,35 +71,49 @@ describe("transport conventions", () => {
   });
 });
 
-describe("Protocol V6 game-defined setup", () => {
-  const lifecycle = {
-    type: "room.lifecycle",
-    protocolVersion: SETUP_PROTOCOL_VERSION,
-    isOwner: true,
-    currentRound: { roundNumber: 1, status: "completed" },
-    nextRound: {
-      roundNumber: 2,
-      setupRevision: 3,
-      setupView: { starter: "slot-2", targetScore: 5 },
-      readiness: {
-        canReady: true,
-        selfReady: true,
-        readySlotIds: ["slot-1"],
-        requiredSlotIds: ["slot-1", "slot-2"],
-      },
+const lifecycle = {
+  type: "room.lifecycle",
+  protocolVersion: SETUP_PROTOCOL_VERSION,
+  isOwner: true,
+  currentRound: { roundNumber: 1, status: "completed" },
+  nextRound: {
+    roundNumber: 2,
+    setupRevision: 3,
+    setupView: { starter: "slot-2", targetScore: 5 },
+    readiness: {
+      canReady: true,
+      selfReady: true,
+      readySlotIds: ["slot-1"],
+      requiredSlotIds: ["slot-1", "slot-2"],
     },
-    players: [
-      { slotId: "slot-1", occupied: true, online: true, ready: true },
-      { slotId: "slot-2", occupied: true, online: true, ready: false },
-    ],
-    closed: false,
-    closeReason: null,
-  } as const;
+  },
+  players: [
+    { slotId: "slot-1", occupied: true, online: true, ready: true },
+    { slotId: "slot-2", occupied: true, online: true, ready: false },
+  ],
+  closed: false,
+  closeReason: null,
+} as const;
 
-  it("keeps V6 setup separate from exact V5 schemas", () => {
-    expect(SETUP_PROTOCOL_VERSION).toBe(6);
+describe("Protocol V6 game-defined setup", () => {
+  it("rejects retired generations instead of negotiating or downgrading", () => {
     expect(roomLifecycleStateV6Schema.parse(lifecycle)).toEqual(lifecycle);
-    expect(roomLifecycleStateSchema.safeParse(lifecycle).success).toBe(false);
+    for (const protocolVersion of [1, 2, 3, 4, 5, 7]) {
+      expect(
+        roomLifecycleStateV6Schema.safeParse({ ...lifecycle, protocolVersion })
+          .success,
+      ).toBe(false);
+      expect(
+        gameActionCommandV6Schema.safeParse({
+          ...actionCommand,
+          protocolVersion,
+        }).success,
+      ).toBe(false);
+      expect(
+        matchSnapshotV6Schema.safeParse({ ...snapshot, protocolVersion })
+          .success,
+      ).toBe(false);
+    }
   });
 
   it("accepts opaque setup intent without identity or authoritative data", () => {
@@ -170,7 +180,7 @@ describe("Realtime Protocol V1", () => {
     acknowledgedInputSequence: 3,
   } as const;
 
-  it("keeps realtime messages separate from Protocol V5 envelopes", () => {
+  it("keeps realtime messages separate from Protocol V6 envelopes", () => {
     expect(REALTIME_PROTOCOL_VERSION).toBe(1);
     expect(REALTIME_INPUT_MESSAGE).toBe("realtime.input");
     expect(REALTIME_SERVER_MESSAGE).toBe("realtime");
@@ -180,7 +190,9 @@ describe("Realtime Protocol V1", () => {
     expect(realtimeServerMessageSchema.parse(realtimeSnapshot)).toEqual(
       realtimeSnapshot,
     );
-    expect(serverMessageSchema.safeParse(realtimeSnapshot).success).toBe(false);
+    expect(serverMessageV6Schema.safeParse(realtimeSnapshot).success).toBe(
+      false,
+    );
   });
 
   it("accepts only minimal direction intent metadata", () => {
@@ -246,53 +258,34 @@ describe("Realtime Protocol V1", () => {
 });
 
 describe("room control", () => {
-  it("parses strict setup and close commands without identity fields", () => {
-    expect(
-      roomControlCommandSchema.parse({
-        type: "room.control",
-        protocolVersion: PROTOCOL_VERSION,
-        commandId: "select-owner",
-        operation: "SELECT_STARTER",
-        starter: "OWNER",
-      }),
-    ).toMatchObject({ operation: "SELECT_STARTER", starter: "OWNER" });
-    expect(
-      roomControlCommandSchema.parse({
-        type: "room.control",
-        protocolVersion: PROTOCOL_VERSION,
-        commandId: "select-random",
-        operation: "SELECT_STARTER",
-        starter: "RANDOM",
-      }),
-    ).toMatchObject({ operation: "SELECT_STARTER", starter: "RANDOM" });
+  it("accepts only platform readiness and close controls", () => {
     for (const operation of [
       "READY_FOR_ROUND",
       "CANCEL_ROUND_READY",
-      "START_REMATCH",
       "CLOSE_ROOM",
     ] as const) {
       expect(
-        roomControlCommandSchema.parse({
+        roomControlCommandV6Schema.parse({
           type: "room.control",
-          protocolVersion: PROTOCOL_VERSION,
+          protocolVersion: SETUP_PROTOCOL_VERSION,
           commandId: `control-${operation}`,
           operation,
         }),
       ).toMatchObject({ operation });
     }
     expect(
-      roomControlCommandSchema.safeParse({
+      roomControlCommandV6Schema.safeParse({
         type: "room.control",
-        protocolVersion: PROTOCOL_VERSION,
+        protocolVersion: SETUP_PROTOCOL_VERSION,
         commandId: "forged-control",
         operation: "CLOSE_ROOM",
         playerSessionId: "another-player",
       }).success,
     ).toBe(false);
     expect(
-      roomControlCommandSchema.safeParse({
+      roomControlCommandV6Schema.safeParse({
         type: "room.control",
-        protocolVersion: PROTOCOL_VERSION,
+        protocolVersion: SETUP_PROTOCOL_VERSION,
         commandId: "invalid-starter",
         operation: "SELECT_STARTER",
         starter: "SPECTATOR",
@@ -300,85 +293,70 @@ describe("room control", () => {
     ).toBe(false);
   });
 
-  it("validates per-viewer lifecycle state without exposing participant ids", () => {
-    const lifecycle = roomLifecycleStateSchema.parse({
-      type: "room.lifecycle",
-      protocolVersion: PROTOCOL_VERSION,
-      isOwner: false,
-      currentRound: { roundNumber: 1, status: "completed" },
-      nextRound: {
-        roundNumber: 2,
-        starter: "NON_OWNER",
-        selfReady: true,
-        readyPlayerCount: 1,
-        requiredPlayerCount: 2,
-      },
-      closed: false,
-      closeReason: null,
-      causedByCommandId: "ready-1",
-    });
-    expect(lifecycle).not.toHaveProperty("playerSessionId");
-    expect(JSON.stringify(lifecycle)).not.toContain("another-player");
+  it("validates projected lifecycle without exposing session identity", () => {
+    const parsed = roomLifecycleStateV6Schema.parse(lifecycle);
+    expect(parsed.nextRound?.readiness.selfReady).toBe(true);
+    expect(parsed).not.toHaveProperty("playerSessionId");
+    expect(JSON.stringify(parsed)).not.toContain("another-player");
   });
 
   it.each([
-    [
-      {
-        type: "room.lifecycle",
-        protocolVersion: PROTOCOL_VERSION,
-        isOwner: true,
-        currentRound: null,
-        nextRound: {
-          roundNumber: 1,
-          starter: "OWNER",
-          selfReady: false,
-          readyPlayerCount: 3,
-          requiredPlayerCount: 2,
+    {
+      ...lifecycle,
+      nextRound: {
+        ...lifecycle.nextRound,
+        readiness: {
+          ...lifecycle.nextRound.readiness,
+          readySlotIds: ["slot-1", "slot-2", "slot-3"],
         },
-        closed: false,
-        closeReason: null,
       },
-    ],
-    [
-      {
-        type: "room.lifecycle",
-        protocolVersion: PROTOCOL_VERSION,
-        isOwner: true,
-        currentRound: { roundNumber: 1, status: "active" },
-        nextRound: {
-          roundNumber: 2,
-          starter: "OWNER",
-          selfReady: true,
-          readyPlayerCount: 1,
-          requiredPlayerCount: 2,
+    },
+    { ...lifecycle, currentRound: { roundNumber: 1, status: "active" } },
+    { ...lifecycle, closed: true, closeReason: null, nextRound: null },
+    { ...lifecycle, nextRound: { ...lifecycle.nextRound, roundNumber: 3 } },
+    { ...lifecycle, nextRound: null },
+    { ...lifecycle, closed: true, closeReason: "OWNER_CLOSED" },
+    {
+      ...lifecycle,
+      nextRound: {
+        ...lifecycle.nextRound,
+        readiness: {
+          ...lifecycle.nextRound.readiness,
+          requiredSlotIds: ["slot-1", "slot-1"],
         },
-        closed: false,
-        closeReason: null,
       },
-    ],
-    [
-      {
-        type: "room.lifecycle",
-        protocolVersion: PROTOCOL_VERSION,
-        isOwner: true,
-        currentRound: null,
-        nextRound: null,
-        closed: true,
-        closeReason: null,
-      },
-    ],
-  ])("rejects inconsistent lifecycle state %#", (candidate) => {
-    expect(roomLifecycleStateSchema.safeParse(candidate).success).toBe(false);
+    },
+  ])("rejects inconsistent V6 lifecycle state %#", (candidate) => {
+    expect(roomLifecycleStateV6Schema.safeParse(candidate).success).toBe(false);
+  });
+
+  it.each([
+    "SELECT_STARTER",
+    "SELECT_PLAYER_COUNT",
+    "SELECT_PLAYER_ASSIGNMENT",
+    "CLEAR_PLAYER_ASSIGNMENT",
+    "START_REMATCH",
+  ])("rejects removed platform operation %s in every envelope", (operation) => {
+    for (const protocolVersion of [5, 6]) {
+      expect(
+        roomControlCommandV6Schema.safeParse({
+          type: "room.control",
+          protocolVersion,
+          commandId: "obsolete-control",
+          operation,
+        }).success,
+      ).toBe(false);
+    }
   });
 });
 
-describe("GameActionCommand", () => {
-  it("parses a strict V5 envelope and keeps action unknown", () => {
-    const parsed = gameActionCommandSchema.parse(actionCommand);
+describe("GameActionCommandV6", () => {
+  it("parses a strict V6 envelope and keeps action unknown", () => {
+    const parsed = gameActionCommandV6Schema.parse(actionCommand);
     expect(parsed).toEqual(actionCommand);
-    expectTypeOf<GameActionCommand["action"]>().toBeUnknown();
+    expectTypeOf<GameActionCommandV6["action"]>().toBeUnknown();
     expect(
-      gameActionCommandSchema.safeParse({
+      gameActionCommandV6Schema.safeParse({
         type: actionCommand.type,
         protocolVersion: actionCommand.protocolVersion,
         commandId: actionCommand.commandId,
@@ -398,7 +376,7 @@ describe("GameActionCommand", () => {
     [{ ...actionCommand, actorSlotId: "player-2" }],
     [{ ...actionCommand, state: { board: [] } }],
   ])("rejects unsupported or forged envelope %#", (candidate) => {
-    expect(gameActionCommandSchema.safeParse(candidate).success).toBe(false);
+    expect(gameActionCommandV6Schema.safeParse(candidate).success).toBe(false);
   });
 
   it("rejects a missing action and non-JSON action", () => {
@@ -408,16 +386,16 @@ describe("GameActionCommand", () => {
       commandId: actionCommand.commandId,
       expectedRevision: actionCommand.expectedRevision,
     };
-    expect(gameActionCommandSchema.safeParse(missingAction).success).toBe(
+    expect(gameActionCommandV6Schema.safeParse(missingAction).success).toBe(
       false,
     );
     const { roundNumber, ...missingRoundNumber } = actionCommand;
     expect(roundNumber).toBe(1);
-    expect(gameActionCommandSchema.safeParse(missingRoundNumber).success).toBe(
-      false,
-    );
     expect(
-      gameActionCommandSchema.safeParse({
+      gameActionCommandV6Schema.safeParse(missingRoundNumber).success,
+    ).toBe(false);
+    expect(
+      gameActionCommandV6Schema.safeParse({
         ...actionCommand,
         action: { value: undefined },
       }).success,
@@ -427,7 +405,7 @@ describe("GameActionCommand", () => {
   it("rejects oversized action JSON", () => {
     const oversized = "x".repeat(MAX_GAME_ACTION_BYTES);
     expect(
-      gameActionCommandSchema.safeParse({
+      gameActionCommandV6Schema.safeParse({
         ...actionCommand,
         action: { oversized },
       }).success,
@@ -437,11 +415,11 @@ describe("GameActionCommand", () => {
 
 describe("server envelopes", () => {
   it("round trips a complete per-viewer snapshot", () => {
-    const parsed = matchSnapshotSchema.parse(
+    const parsed = matchSnapshotV6Schema.parse(
       JSON.parse(JSON.stringify(snapshot)) as unknown,
     );
     expect(parsed).toEqual(snapshot);
-    expectTypeOf<MatchSnapshot>().toMatchTypeOf(parsed);
+    expectTypeOf<MatchSnapshotV6>().toMatchTypeOf(parsed);
   });
 
   it.each([
@@ -458,21 +436,21 @@ describe("server envelopes", () => {
       },
     ],
   ])("rejects invalid or private snapshot field %#", (candidate) => {
-    expect(matchSnapshotSchema.safeParse(candidate).success).toBe(false);
+    expect(matchSnapshotV6Schema.safeParse(candidate).success).toBe(false);
   });
 
   it("requires a round number in every snapshot", () => {
     const { roundNumber, ...missingRoundNumber } = snapshot;
     expect(roundNumber).toBe(1);
-    expect(matchSnapshotSchema.safeParse(missingRoundNumber).success).toBe(
+    expect(matchSnapshotV6Schema.safeParse(missingRoundNumber).success).toBe(
       false,
     );
   });
 
   it("parses platform and game-rule rejection without conflating codes", () => {
-    const parsed = commandRejectedSchema.parse({
+    const parsed = commandRejectedV6Schema.parse({
       type: "command.rejected",
-      protocolVersion: PROTOCOL_VERSION,
+      protocolVersion: SETUP_PROTOCOL_VERSION,
       commandId: "command-1",
       code: "GAME_RULE_REJECTED",
       revision: 1,
@@ -487,23 +465,23 @@ describe("server envelopes", () => {
 
   it("rejects unknown discriminators, error codes, and diagnostic leaks", () => {
     expect(
-      serverMessageSchema.safeParse({
+      serverMessageV6Schema.safeParse({
         type: "server.error",
-        protocolVersion: PROTOCOL_VERSION,
+        protocolVersion: SETUP_PROTOCOL_VERSION,
       }).success,
     ).toBe(false);
     expect(
-      commandRejectedSchema.safeParse({
+      commandRejectedV6Schema.safeParse({
         type: "command.rejected",
-        protocolVersion: PROTOCOL_VERSION,
+        protocolVersion: SETUP_PROTOCOL_VERSION,
         code: "UNKNOWN_ERROR",
         retryable: false,
       }).success,
     ).toBe(false);
     expect(
-      commandRejectedSchema.safeParse({
+      commandRejectedV6Schema.safeParse({
         type: "command.rejected",
-        protocolVersion: PROTOCOL_VERSION,
+        protocolVersion: SETUP_PROTOCOL_VERSION,
         code: "INTERNAL_ERROR",
         retryable: false,
         stack: "secret",
@@ -520,56 +498,49 @@ describe("ticket and room matchmaking contracts", () => {
     issuedAt: 100,
     expiresAt: 130,
     ticketId: "ticket-a",
-    protocolVersion: PROTOCOL_VERSION,
+    protocolVersion: SETUP_PROTOCOL_VERSION,
   } as const;
 
   it("parses strict ticket claims and rejects incompatible claims", () => {
-    expect(gameServerTicketClaimsSchema.parse(claims)).toEqual(claims);
-    const claimsV6 = {
-      ...claims,
-      protocolVersion: SETUP_PROTOCOL_VERSION,
-    } as const;
-    expect(gameServerTicketClaimsV6Schema.parse(claimsV6)).toEqual(claimsV6);
-    expect(anyGameServerTicketClaimsSchema.parse(claims)).toEqual(claims);
-    expect(anyGameServerTicketClaimsSchema.parse(claimsV6)).toEqual(claimsV6);
-    expect(gameServerTicketClaimsSchema.safeParse(claimsV6).success).toBe(
-      false,
-    );
-    expect(gameServerTicketClaimsV6Schema.safeParse(claims).success).toBe(
-      false,
-    );
+    expect(gameServerTicketClaimsV6Schema.parse(claims)).toEqual(claims);
+    for (const protocolVersion of [1, 2, 3, 4, 5, 7]) {
+      expect(
+        gameServerTicketClaimsV6Schema.safeParse({ ...claims, protocolVersion })
+          .success,
+      ).toBe(false);
+    }
     expect(
-      gameServerTicketClaimsSchema.parse({
+      gameServerTicketClaimsV6Schema.parse({
         ...claims,
         userId: "11111111-1111-4111-8111-111111111111",
       }),
     ).toMatchObject({ userId: "11111111-1111-4111-8111-111111111111" });
     expect(
-      gameServerTicketClaimsSchema.safeParse({
+      gameServerTicketClaimsV6Schema.safeParse({
         ...claims,
         audience: "another-service",
       }).success,
     ).toBe(false);
     expect(
-      gameServerTicketClaimsSchema.safeParse({
+      gameServerTicketClaimsV6Schema.safeParse({
         ...claims,
         protocolVersion: 1,
       }).success,
     ).toBe(false);
     expect(
-      gameServerTicketClaimsSchema.safeParse({
+      gameServerTicketClaimsV6Schema.safeParse({
         ...claims,
         expiresAt: claims.issuedAt,
       }).success,
     ).toBe(false);
     expect(
-      gameServerTicketClaimsSchema.safeParse({
+      gameServerTicketClaimsV6Schema.safeParse({
         ...claims,
         userId: "forged-user-id",
       }).success,
     ).toBe(false);
     expect(
-      gameServerTicketClaimsSchema.safeParse({
+      gameServerTicketClaimsV6Schema.safeParse({
         ...claims,
         userId: "11111111-1111-4111-8111-111111111111",
         role: "admin",
@@ -579,25 +550,25 @@ describe("ticket and room matchmaking contracts", () => {
 
   it("accepts create/join intent without client-selected version, slot, or room id", () => {
     expect(
-      createGameRoomRequestSchema.parse({
+      createGameRoomRequestV6Schema.parse({
         type: "room.create",
-        protocolVersion: PROTOCOL_VERSION,
+        protocolVersion: SETUP_PROTOCOL_VERSION,
         ticket: "opaque-ticket",
         gameId: "tic-tac-toe",
         initialConfig: null,
       }),
     ).toEqual({
       type: "room.create",
-      protocolVersion: PROTOCOL_VERSION,
+      protocolVersion: SETUP_PROTOCOL_VERSION,
       ticket: "opaque-ticket",
       gameId: "tic-tac-toe",
       initialConfig: null,
     });
 
     expect(
-      joinGameRoomRequestSchema.parse({
+      joinGameRoomRequestV6Schema.parse({
         type: "room.join",
-        protocolVersion: PROTOCOL_VERSION,
+        protocolVersion: SETUP_PROTOCOL_VERSION,
         ticket: "opaque-ticket",
         roomCode: " abcd2345 ",
       }).roomCode,
@@ -609,9 +580,9 @@ describe("ticket and room matchmaking contracts", () => {
       { roomId: "internal-room" },
     ]) {
       expect(
-        createGameRoomRequestSchema.safeParse({
+        createGameRoomRequestV6Schema.safeParse({
           type: "room.create",
-          protocolVersion: PROTOCOL_VERSION,
+          protocolVersion: SETUP_PROTOCOL_VERSION,
           ticket: "opaque-ticket",
           gameId: "tic-tac-toe",
           initialConfig: null,
@@ -643,15 +614,15 @@ describe("ticket and room matchmaking contracts", () => {
   });
 
   it("round trips the public room connection response without internal ids", () => {
-    const connected = roomConnectedSchema.parse({
+    const connected = roomConnectedV6Schema.parse({
       type: "room.connected",
-      protocolVersion: PROTOCOL_VERSION,
+      protocolVersion: SETUP_PROTOCOL_VERSION,
       roomCode: "ABCD2345",
       gameId: "tic-tac-toe",
       gameVersion: "1.0.0",
       playerSlotId: "slot-1",
     });
-    expect(serverMessageSchema.parse(connected)).toEqual(connected);
+    expect(serverMessageV6Schema.parse(connected)).toEqual(connected);
     expect(connected).not.toHaveProperty("roomId");
     expect(commandIdSchema.safeParse("x".repeat(129)).success).toBe(false);
   });

@@ -54,7 +54,7 @@ describe("game-server composition helpers", () => {
       status: "verified",
       playerSessionId: "session-a",
       userId: null,
-      claims: { issuer: "web-production", protocolVersion: 5 },
+      claims: { issuer: "web-production", protocolVersion: 6 },
     });
     await expect(
       verifier.verify(

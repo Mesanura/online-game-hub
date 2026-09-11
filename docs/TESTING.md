@@ -125,12 +125,13 @@ Replay tests 使用 exact definition 和内存 fixtures，验证重建 State/RNG
 
 Protocol contract 至少验证：
 
-- V5/V6 exact 互拒、V1–V4 拒绝、缺字段/extra fields/非法 discriminator、大小限制和序列化 round trip。
+- V6 exact schema、V1–V5 request/ticket/message 拒绝、缺字段/extra fields/非法 discriminator、大小限制和序列化 round trip。
 - Ticket 的账户/游客 claims、伪造 UserId、过期、issuer/audience 和代际一致性；payload 不含未授权身份或秘密。
 - 房间显示资料扩展覆盖规范化显示名、可选字段与旧客户端形状；资料更新只接受同一席位身份的新签名 ticket，拒绝伪造 slot、账户切换和过期 ticket，不改变准备或游戏状态。
 - roundNumber、revision、inputSequence、readiness 集合与 current/next Round 不变量。
-- V5 冻结的 starter/人数/assignment/rematch 与 V6 opaque Setup 分别解析；Realtime V1 不与平台 envelope 混用。
-- Discovery 只允许 roomCode/gameId/gameVersion/setupProtocol/runtime，规范化 code，拒绝敏感 extra fields，并验证 404/503/private cache 行为。
+- 平台 control 只允许 ready/cancel/close；旧 starter/人数/assignment/immediate-rematch control 拒绝，opaque Setup 由游戏 schema 解析；Realtime V1 不与平台 envelope 混用。
+- Ticket HTTP API 必须显式声明 V6，空 body/缺版本返回 400 invalid，V1–V5 返回 400 unsupported；Host/Web 能安全传递错误并提示刷新，不降级。
+- Discovery 只允许 roomCode/gameId/gameVersion/setupProtocol/runtime，规范化 code，拒绝敏感 extra fields，并验证历史 V5 的 400 unsupported、404/503/private cache 行为。
 - Platform error 与 opaque gameRuleCode 分开，响应不泄漏 stack、DSN、ticket、seed、State 或 canonical record。
 
 ## Server 与多人 integration
@@ -148,11 +149,12 @@ Protocol contract 至少验证：
 ### 生命周期与重连
 
 - 创建/加入获得不同 stable slots；首局 Setup 没有 gameplay snapshot、Match 或 replay。
-- 设置、逐人 ready/cancel、accepted 清 ready、断线/takeover 清对应 ready、V6 完整设置重开与 V5 immediate rematch 各自符合代际。
+- 设置、逐人 ready/cancel、accepted 清 ready、断线/takeover 清对应 ready、完整设置重开均遵守 V6；重复设置规则拒绝不清 ready，重新对局不能替其他玩家确认。
 - active/completed/abandoned、terminal outsider 拒绝、owner close、non-owner leave、60 秒 reconnect timeout 与 5 分钟 terminal TTL。
 - 同 session 与账户身份通过新 ticket/new reservation 恢复，错误 session 不能窃取 slot，新连接接管后旧连接不能写入。
-- generation 从 create 固定到 ticket/join/lifecycle/reconnect；加入 legacy room 后再创建仍读取 deployment default，异步旧尝试不能污染新目标。
+- V6 从 create 固定到 ticket/join/lifecycle/reconnect；异步旧连接尝试不能污染新目标，V5 在各入站 channel 被拒绝且不改变 State/revision/ready/RNG/replay。
 - Discovery 覆盖两类 runtime、开放/关闭/未知房间、gameId 不匹配、同码歧义、store 故障和损坏 generation。
+- `/metrics.liveRooms` 覆盖两个 runtime 的等待、满员/locked、completed 保留、断线宽限与关闭后消失；缺失/非法代际计入 unknown，数据库历史行不计入存活房间。
 
 时间边界用 fake clock，不真实等待一分钟。重启测试只验证 archive/replay/history 仍可读取与遗留 active 标记 abandoned，不声称恢复 live State。
 
@@ -246,7 +248,7 @@ try {
 - Round 启动才创建 Match/players；完成关联 completed replay，abandoned 不伪造 Outcome；多轮唯一、连续、参与者集合固定且 playerOrder 正确。
 - 用户归属只在开局快照，旧游客永久不回填；私有历史最多 50 条，不泄漏其他参与者、identity、seed 或记录。
 - 密码/session/显示名迁移与更新可跨连接读取，旧资料回填正确，最长组合 emoji 显示名可存储和重读，错误与 shutdown 无 credential 或连接泄漏。
-- V5/V6 room generation 创建后不可变；旧 realtime 行默认 V5，非法整数/损坏记录 fail closed。
+- 在线 room generation 只允许 V6 创建/保存且不可改变；真实 SQL 构造的旧 realtime 行默认 V5，跨连接重读仍为 V5，不能在线写入或静默重标为 V6；非法整数/损坏记录 fail closed。
 - 多人 room/archive/replay 校验覆盖 2–8 人与 exact manifest；坦克迷战包含八人归档、重开和重读。
 
 ## Surface、Host 与 E2E

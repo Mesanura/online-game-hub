@@ -9,8 +9,7 @@ export {
   playerDisplayNameSchema,
 } from "./player-profile.js";
 
-export const PROTOCOL_VERSION = 5 as const;
-/** Game-defined round setup protocol. V5 remains available during migration. */
+/** The only supported online room protocol, with game-defined round setup. */
 export const SETUP_PROTOCOL_VERSION = 6 as const;
 export const MAX_GAME_ACTION_BYTES = 16_384;
 export const MAX_GAME_SETUP_ACTION_BYTES = 16_384;
@@ -130,12 +129,8 @@ function isSetupActionPayload(value: unknown): boolean {
   );
 }
 
-export const protocolVersionSchema = z.literal(PROTOCOL_VERSION);
 export const setupProtocolVersionSchema = z.literal(SETUP_PROTOCOL_VERSION);
-export const setupProtocolGenerationSchema = z.union([
-  protocolVersionSchema,
-  setupProtocolVersionSchema,
-]);
+export const setupProtocolGenerationSchema = setupProtocolVersionSchema;
 export type SetupProtocolGeneration = z.infer<
   typeof setupProtocolGenerationSchema
 >;
@@ -218,91 +213,10 @@ export const matchStatusSchema = z.enum([
 ]);
 export type MatchStatus = z.infer<typeof matchStatusSchema>;
 
-export const gameActionCommandSchema = z
-  .object({
-    type: z.literal("game.action"),
-    protocolVersion: protocolVersionSchema,
-    commandId: commandIdSchema,
-    roundNumber: roundNumberSchema,
-    expectedRevision: revisionSchema,
-    action: gameActionPayloadSchema,
-  })
-  .strict();
-export type GameActionCommand = z.infer<typeof gameActionCommandSchema>;
-
-export const starterChoiceSchema = z.enum(["OWNER", "NON_OWNER", "RANDOM"]);
-export type StarterChoice = z.infer<typeof starterChoiceSchema>;
-export const playerCountSchema = z.number().int().min(2).max(6);
-export const assignmentSchema = z.string().min(1).max(64);
-
-const roomControlBaseSchema = z.object({
-  type: z.literal("room.control"),
-  protocolVersion: protocolVersionSchema,
-  commandId: commandIdSchema,
-});
-
-export const roomControlCommandSchema = z.discriminatedUnion("operation", [
-  roomControlBaseSchema
-    .extend({
-      operation: z.literal("SELECT_STARTER"),
-      starter: starterChoiceSchema,
-    })
-    .strict(),
-  roomControlBaseSchema
-    .extend({ operation: z.literal("READY_FOR_ROUND") })
-    .strict(),
-  roomControlBaseSchema
-    .extend({ operation: z.literal("CANCEL_ROUND_READY") })
-    .strict(),
-  roomControlBaseSchema
-    .extend({ operation: z.literal("START_REMATCH") })
-    .strict(),
-  roomControlBaseSchema.extend({ operation: z.literal("CLOSE_ROOM") }).strict(),
-  roomControlBaseSchema
-    .extend({
-      operation: z.literal("SELECT_PLAYER_COUNT"),
-      playerCount: playerCountSchema,
-    })
-    .strict(),
-  roomControlBaseSchema
-    .extend({
-      operation: z.literal("SELECT_PLAYER_ASSIGNMENT"),
-      assignment: assignmentSchema,
-    })
-    .strict(),
-  roomControlBaseSchema
-    .extend({ operation: z.literal("CLEAR_PLAYER_ASSIGNMENT") })
-    .strict(),
-]);
-export type RoomControlCommand = z.infer<typeof roomControlCommandSchema>;
-export type RoomControlOperation = RoomControlCommand["operation"];
-
 const currentRoundLifecycleSchema = z
   .object({
     roundNumber: roundNumberSchema,
     status: z.enum(["active", "completed", "abandoned"]),
-  })
-  .strict();
-
-const nextRoundLifecycleSchema = z
-  .object({
-    roundNumber: roundNumberSchema,
-    starter: starterChoiceSchema.nullable(),
-    selfReady: z.boolean(),
-    readyPlayerCount: z.number().int().nonnegative(),
-    requiredPlayerCount: z.number().int().min(2).max(6),
-    assignmentOptions: z.array(assignmentSchema).optional(),
-  })
-  .strict();
-
-const lifecyclePlayerSchema = z
-  .object({
-    slotId: z.string().min(1),
-    displayName: playerDisplayNameSchema.nullable().optional(),
-    occupied: z.boolean(),
-    online: z.boolean(),
-    ready: z.boolean(),
-    assignment: assignmentSchema.nullable(),
   })
   .strict();
 
@@ -314,95 +228,6 @@ export const roomCloseReasonSchema = z.enum([
 ]);
 export type RoomCloseReason = z.infer<typeof roomCloseReasonSchema>;
 
-export const roomLifecycleStateSchema = z
-  .object({
-    type: z.literal("room.lifecycle"),
-    protocolVersion: protocolVersionSchema,
-    isOwner: z.boolean(),
-    currentRound: currentRoundLifecycleSchema.nullable(),
-    nextRound: nextRoundLifecycleSchema.nullable(),
-    closed: z.boolean(),
-    closeReason: roomCloseReasonSchema.nullable(),
-    players: z.array(lifecyclePlayerSchema).min(1).max(6).optional(),
-    causedByCommandId: commandIdSchema.optional(),
-  })
-  .strict()
-  .superRefine((state, context) => {
-    const nextRound = state.nextRound;
-    if (
-      nextRound !== null &&
-      nextRound.readyPlayerCount > nextRound.requiredPlayerCount
-    ) {
-      context.addIssue({
-        code: "custom",
-        message: "Ready player count cannot exceed the required count.",
-        path: ["nextRound", "readyPlayerCount"],
-      });
-    }
-    if (nextRound?.selfReady === true && nextRound.readyPlayerCount === 0) {
-      context.addIssue({
-        code: "custom",
-        message: "A ready viewer must be included in the ready count.",
-        path: ["nextRound", "selfReady"],
-      });
-    }
-    if (
-      nextRound !== null &&
-      nextRound.starter === null &&
-      (nextRound.selfReady || nextRound.readyPlayerCount !== 0)
-    ) {
-      context.addIssue({
-        code: "custom",
-        message: "A round without a starter cannot contain ready players.",
-        path: ["nextRound"],
-      });
-    }
-    if (state.closed !== (state.closeReason !== null)) {
-      context.addIssue({
-        code: "custom",
-        message: "Closed state and close reason must be consistent.",
-        path: ["closeReason"],
-      });
-    }
-    if (state.closed && nextRound !== null) {
-      context.addIssue({
-        code: "custom",
-        message: "A closed room cannot offer a next round.",
-        path: ["nextRound"],
-      });
-    }
-    if (
-      !state.closed &&
-      nextRound === null &&
-      state.currentRound?.status !== "active"
-    ) {
-      context.addIssue({
-        code: "custom",
-        message:
-          "An open room without an active round must offer a next round.",
-        path: ["nextRound"],
-      });
-    }
-    if (state.currentRound?.status === "active" && nextRound !== null) {
-      context.addIssue({
-        code: "custom",
-        message: "An active round cannot offer a next round.",
-        path: ["nextRound"],
-      });
-    }
-    if (
-      nextRound !== null &&
-      nextRound.roundNumber !== (state.currentRound?.roundNumber ?? 0) + 1
-    ) {
-      context.addIssue({
-        code: "custom",
-        message: "The next round number must follow the current round.",
-        path: ["nextRound", "roundNumber"],
-      });
-    }
-  });
-export type RoomLifecycleState = z.infer<typeof roomLifecycleStateSchema>;
-
 const gameServerTicketClaimsShape = {
   issuer: z.string().min(1).max(128),
   audience: z.literal(GAME_SERVER_TICKET_AUDIENCE),
@@ -413,84 +238,6 @@ const gameServerTicketClaimsShape = {
   expiresAt: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
   ticketId: z.string().min(1).max(128),
 } as const;
-
-export const gameServerTicketClaimsSchema = z
-  .object({
-    ...gameServerTicketClaimsShape,
-    protocolVersion: protocolVersionSchema,
-  })
-  .strict()
-  .refine((claims) => claims.expiresAt > claims.issuedAt, {
-    error: "Ticket expiry must be after issue time.",
-    path: ["expiresAt"],
-  });
-export type GameServerTicketClaims = z.infer<
-  typeof gameServerTicketClaimsSchema
->;
-
-export const createGameRoomRequestSchema = z
-  .object({
-    type: z.literal("room.create"),
-    protocolVersion: protocolVersionSchema,
-    ticket: gameServerTicketSchema,
-    gameId: gameIdSchema,
-    initialConfig: jsonValueSchema,
-  })
-  .strict();
-export type CreateGameRoomRequest = z.infer<typeof createGameRoomRequestSchema>;
-
-export const joinGameRoomRequestSchema = z
-  .object({
-    type: z.literal("room.join"),
-    protocolVersion: protocolVersionSchema,
-    ticket: gameServerTicketSchema,
-    roomCode: roomCodeSchema,
-  })
-  .strict();
-export type JoinGameRoomRequest = z.infer<typeof joinGameRoomRequestSchema>;
-
-export const gameRoomRequestSchema = z.discriminatedUnion("type", [
-  createGameRoomRequestSchema,
-  joinGameRoomRequestSchema,
-]);
-export type GameRoomRequest = z.infer<typeof gameRoomRequestSchema>;
-
-export const roomConnectedSchema = z
-  .object({
-    type: z.literal("room.connected"),
-    protocolVersion: protocolVersionSchema,
-    roomCode: roomCodeSchema,
-    gameId: gameIdSchema,
-    gameVersion: gameVersionSchema,
-    playerSlotId: z.string().min(1),
-  })
-  .strict();
-export type RoomConnected = z.infer<typeof roomConnectedSchema>;
-
-export const matchSnapshotSchema = z
-  .object({
-    type: z.literal("match.snapshot"),
-    protocolVersion: protocolVersionSchema,
-    gameId: gameIdSchema,
-    gameVersion: gameVersionSchema,
-    roundNumber: roundNumberSchema,
-    revision: revisionSchema,
-    status: matchStatusSchema,
-    viewer: viewerSchema,
-    view: jsonValueSchema,
-    outcome: jsonValueSchema.nullable(),
-    causedByCommandId: commandIdSchema.optional(),
-  })
-  .strict();
-
-type InferredMatchSnapshot = z.infer<typeof matchSnapshotSchema>;
-export type MatchSnapshot<View = unknown, Outcome = unknown> = Omit<
-  InferredMatchSnapshot,
-  "outcome" | "view"
-> & {
-  readonly view: View;
-  readonly outcome: Outcome | null;
-};
 
 export const protocolErrorCodeSchema = z.enum([
   "UNAUTHENTICATED",
@@ -512,36 +259,6 @@ export const protocolErrorCodeSchema = z.enum([
   "INTERNAL_ERROR",
 ]);
 export type ProtocolErrorCode = z.infer<typeof protocolErrorCodeSchema>;
-
-export const commandRejectedSchema = z
-  .object({
-    type: z.literal("command.rejected"),
-    protocolVersion: protocolVersionSchema,
-    commandId: commandIdSchema.optional(),
-    code: protocolErrorCodeSchema,
-    revision: revisionSchema.optional(),
-    gameRuleCode: z.string().min(1).optional(),
-    retryable: z.boolean(),
-    snapshot: matchSnapshotSchema.optional(),
-  })
-  .strict();
-
-type InferredCommandRejected = z.infer<typeof commandRejectedSchema>;
-export type CommandRejected = Omit<InferredCommandRejected, "snapshot"> & {
-  readonly snapshot?: MatchSnapshot;
-};
-
-export const clientMessageSchema = z.discriminatedUnion("type", [
-  gameActionCommandSchema,
-  roomControlCommandSchema,
-]);
-export const serverMessageSchema = z.discriminatedUnion("type", [
-  roomConnectedSchema,
-  matchSnapshotSchema,
-  commandRejectedSchema,
-]);
-export type ClientMessage = z.infer<typeof clientMessageSchema>;
-export type ServerMessage = z.infer<typeof serverMessageSchema>;
 
 const protocolV6BaseSchema = z.object({
   protocolVersion: setupProtocolVersionSchema,
@@ -715,21 +432,20 @@ export const gameServerTicketClaimsV6Schema = z
 export type GameServerTicketClaimsV6 = z.infer<
   typeof gameServerTicketClaimsV6Schema
 >;
-export const anyGameServerTicketClaimsSchema = z.discriminatedUnion(
-  "protocolVersion",
-  [gameServerTicketClaimsSchema, gameServerTicketClaimsV6Schema],
-);
-export type AnyGameServerTicketClaims = z.infer<
-  typeof anyGameServerTicketClaimsSchema
->;
-
-export const createGameRoomRequestV6Schema = createGameRoomRequestSchema
-  .omit({ protocolVersion: true })
-  .extend({ protocolVersion: setupProtocolVersionSchema })
+export const createGameRoomRequestV6Schema = protocolV6BaseSchema
+  .extend({
+    type: z.literal("room.create"),
+    ticket: gameServerTicketSchema,
+    gameId: gameIdSchema,
+    initialConfig: jsonValueSchema,
+  })
   .strict();
-export const joinGameRoomRequestV6Schema = joinGameRoomRequestSchema
-  .omit({ protocolVersion: true })
-  .extend({ protocolVersion: setupProtocolVersionSchema })
+export const joinGameRoomRequestV6Schema = protocolV6BaseSchema
+  .extend({
+    type: z.literal("room.join"),
+    ticket: gameServerTicketSchema,
+    roomCode: roomCodeSchema,
+  })
   .strict();
 export const gameRoomRequestV6Schema = z.discriminatedUnion("type", [
   createGameRoomRequestV6Schema,
@@ -741,15 +457,30 @@ export type CreateGameRoomRequestV6 = z.infer<
 export type JoinGameRoomRequestV6 = z.infer<typeof joinGameRoomRequestV6Schema>;
 export type GameRoomRequestV6 = z.infer<typeof gameRoomRequestV6Schema>;
 
-export const roomConnectedV6Schema = roomConnectedSchema
-  .omit({ protocolVersion: true })
-  .extend({ protocolVersion: setupProtocolVersionSchema })
+export const roomConnectedV6Schema = protocolV6BaseSchema
+  .extend({
+    type: z.literal("room.connected"),
+    roomCode: roomCodeSchema,
+    gameId: gameIdSchema,
+    gameVersion: gameVersionSchema,
+    playerSlotId: z.string().min(1),
+  })
   .strict();
 export type RoomConnectedV6 = z.infer<typeof roomConnectedV6Schema>;
 
-export const matchSnapshotV6Schema = matchSnapshotSchema
-  .omit({ protocolVersion: true })
-  .extend({ protocolVersion: setupProtocolVersionSchema })
+export const matchSnapshotV6Schema = protocolV6BaseSchema
+  .extend({
+    type: z.literal("match.snapshot"),
+    gameId: gameIdSchema,
+    gameVersion: gameVersionSchema,
+    roundNumber: roundNumberSchema,
+    revision: revisionSchema,
+    status: matchStatusSchema,
+    viewer: viewerSchema,
+    view: jsonValueSchema,
+    outcome: jsonValueSchema.nullable(),
+    causedByCommandId: commandIdSchema.optional(),
+  })
   .strict();
 type InferredMatchSnapshotV6 = z.infer<typeof matchSnapshotV6Schema>;
 export type MatchSnapshotV6<View = unknown, Outcome = unknown> = Omit<

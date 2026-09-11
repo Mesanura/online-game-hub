@@ -4,7 +4,7 @@ import { z } from "zod";
 
 import { createHmacGameServerTicketAuthority } from "@online-game-hub/game-server-ticket";
 import {
-  PROTOCOL_VERSION,
+  SETUP_PROTOCOL_VERSION,
   normalizePlayerDisplayName,
   setupProtocolGenerationSchema,
 } from "@online-game-hub/protocol";
@@ -30,18 +30,31 @@ const ticketRequestSchema = z
   })
   .strict();
 
-async function requestedTicket(request: NextRequest): Promise<{
-  protocolVersion: SetupProtocolGeneration;
-  displayName?: string;
-} | null> {
+async function requestedTicket(request: NextRequest): Promise<
+  | {
+      protocolVersion: SetupProtocolGeneration;
+      displayName?: string;
+    }
+  | "unsupported"
+  | null
+> {
   const text = await request.text();
   if (Buffer.byteLength(text, "utf8") > 4096) return null;
-  if (text.trim().length === 0) return { protocolVersion: PROTOCOL_VERSION };
+  if (text.trim().length === 0) return null;
   let value: unknown;
   try {
     value = JSON.parse(text) as unknown;
   } catch {
     return null;
+  }
+  if (
+    value !== null &&
+    typeof value === "object" &&
+    "protocolVersion" in value &&
+    typeof value.protocolVersion === "number" &&
+    value.protocolVersion !== SETUP_PROTOCOL_VERSION
+  ) {
+    return "unsupported";
   }
   const parsed = ticketRequestSchema.safeParse(value);
   if (!parsed.success) return null;
@@ -56,6 +69,12 @@ async function requestedTicket(request: NextRequest): Promise<{
 export async function POST(request: NextRequest) {
   try {
     const requested = await requestedTicket(request);
+    if (requested === "unsupported") {
+      return NextResponse.json(
+        { code: "PROTOCOL_VERSION_UNSUPPORTED" },
+        { status: 400, headers: { "cache-control": "no-store, private" } },
+      );
+    }
     if (requested === null) {
       return NextResponse.json(
         { code: "INVALID_TICKET_REQUEST" },

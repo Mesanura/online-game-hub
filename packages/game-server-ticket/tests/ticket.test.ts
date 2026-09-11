@@ -2,7 +2,6 @@ import { createHmac } from "node:crypto";
 
 import {
   GAME_SERVER_TICKET_AUDIENCE,
-  PROTOCOL_VERSION,
   SETUP_PROTOCOL_VERSION,
 } from "@online-game-hub/protocol";
 import { describe, expect, it } from "vitest";
@@ -22,7 +21,7 @@ function encodeUnsafeClaims(claims: unknown): string {
 }
 
 describe("HMAC Game Server ticket authority", () => {
-  it.each([5, 6] as const)(
+  it.each([6] as const)(
     "signs optional V%i public names without accepting tampering",
     (protocolVersion) => {
       const authority = createHmacGameServerTicketAuthority({
@@ -63,7 +62,7 @@ describe("HMAC Game Server ticket authority", () => {
     },
   );
 
-  it("issues short-lived Protocol V5 guest and account claims controlled by the server", () => {
+  it("issues short-lived V6 guest and account claims controlled by the server", () => {
     const authority = createHmacGameServerTicketAuthority({
       issuer: "web-test",
       secret: SECRET,
@@ -72,6 +71,7 @@ describe("HMAC Game Server ticket authority", () => {
       ids: { createTicketId: () => "ticket-1" },
     });
     const ticket = authority.issue("session-a");
+    expect(() => authority.issue("session-a", undefined, 5 as never)).toThrow();
     expect(authority.verify(ticket)).toEqual({
       status: "verified",
       claims: {
@@ -81,7 +81,7 @@ describe("HMAC Game Server ticket authority", () => {
         issuedAt: 100,
         expiresAt: 130,
         ticketId: "ticket-1",
-        protocolVersion: PROTOCOL_VERSION,
+        protocolVersion: SETUP_PROTOCOL_VERSION,
       },
     });
     expect(ticket).not.toContain(SECRET);
@@ -95,7 +95,7 @@ describe("HMAC Game Server ticket authority", () => {
       claims: {
         playerSessionId: "session-b",
         userId: "11111111-1111-4111-8111-111111111111",
-        protocolVersion: PROTOCOL_VERSION,
+        protocolVersion: SETUP_PROTOCOL_VERSION,
       },
     });
 
@@ -140,7 +140,7 @@ describe("HMAC Game Server ticket authority", () => {
       issuedAt: 90,
       expiresAt: 110,
       ticketId: "ticket-1",
-      protocolVersion: PROTOCOL_VERSION,
+      protocolVersion: SETUP_PROTOCOL_VERSION,
     };
     expect(authority.verify(`${encodeUnsafeClaims(validClaims)}x`)).toEqual({
       status: "rejected",
@@ -156,14 +156,16 @@ describe("HMAC Game Server ticket authority", () => {
         encodeUnsafeClaims({ ...validClaims, audience: "another-service" }),
       ),
     ).toEqual({ status: "rejected", code: "WRONG_AUDIENCE" });
-    expect(
-      authority.verify(
-        encodeUnsafeClaims({ ...validClaims, protocolVersion: 3 }),
-      ),
-    ).toEqual({
-      status: "rejected",
-      code: "PROTOCOL_VERSION_UNSUPPORTED",
-    });
+    for (const protocolVersion of [1, 2, 3, 4, 5, 7]) {
+      expect(
+        authority.verify(
+          encodeUnsafeClaims({ ...validClaims, protocolVersion }),
+        ),
+      ).toEqual({
+        status: "rejected",
+        code: "PROTOCOL_VERSION_UNSUPPORTED",
+      });
+    }
     expect(
       authority.verify(
         encodeUnsafeClaims({ ...validClaims, issuedAt: 101, expiresAt: 110 }),

@@ -60,7 +60,7 @@ interface RealtimeGameDefinition<Config, State, Input, View, Outcome> {
 
 ### 多人参与者
 
-Realtime manifest 的 `minPlayers/maxPlayers` 允许 2–8。V6 runtime 按 manifest 分配 stable slots，由 finalized Setup 固定实际参与者与 playerOrder；V6 lifecycle/readiness 上限为 8。Pong、羽毛球的 manifest 仍限定双人，V5 realtime 路径也保持双人语义。
+Realtime manifest 的 `minPlayers/maxPlayers` 允许 2–8。runtime 按 manifest 分配 stable slots，由 finalized Setup 固定实际参与者与 playerOrder；V6 lifecycle/readiness 上限为 8。Pong、羽毛球的 manifest 仍限定双人。历史规则版本继续按各自 manifest 和 Core 重建。
 
 RoomStore、archive 和 replay reader 同时校验参与者唯一性与 exact manifest 人数范围。扩展使用现有 JSONB/关联表，不把坦克颜色、地图或小局规则加入平台 schema。
 
@@ -79,7 +79,7 @@ canonical journal 保存规范化且 accepted 的事件。服务器、验证器�
 
 ## Realtime Protocol V1
 
-平台 ticket、matchmaking、room lifecycle 和 Setup 按房间固定的 V5/V6 处理；实时 Input/Snapshot 使用独立 `realtimeProtocolVersion: 1`。平台升级到 V6 不会把实时消息改为回合制 envelope。
+平台 ticket、matchmaking、room lifecycle、Setup 和 reconnect 只接受 V6；实时 Input/Snapshot 使用独立 `realtimeProtocolVersion: 1`。平台 V5 退役不改变实时 envelope、tick/ack 或 replay 格式；历史 realtime metadata 的 V5 读取边界见 [网络协议](./NETWORK_PROTOCOL.md#32-共享-api-迁移与历史兼容)。
 
 Colyseus realtime room 名称为 `realtime-game`；输入 channel 为 `realtime.input`，服务端实时消息 channel 为 `realtime`，平台消息仍按 [网络协议](./NETWORK_PROTOCOL.md) 分派。
 

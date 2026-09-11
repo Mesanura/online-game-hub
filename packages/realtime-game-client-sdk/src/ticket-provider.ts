@@ -1,5 +1,5 @@
 import {
-  PROTOCOL_VERSION,
+  SETUP_PROTOCOL_VERSION,
   gameServerTicketSchema,
   setupProtocolGenerationSchema,
 } from "@online-game-hub/protocol";
@@ -11,8 +11,15 @@ export type RealtimeTicketProvider = (
 ) => Promise<string>;
 
 export class RealtimeTicketRequestError extends Error {
-  public constructor() {
-    super("A new Game Server ticket could not be obtained.");
+  public constructor(
+    public readonly code:
+      "TICKET_ERROR" | "PROTOCOL_VERSION_UNSUPPORTED" = "TICKET_ERROR",
+  ) {
+    super(
+      code === "PROTOCOL_VERSION_UNSUPPORTED"
+        ? code
+        : "A new Game Server ticket could not be obtained.",
+    );
     this.name = "RealtimeTicketRequestError";
   }
 }
@@ -26,7 +33,7 @@ export function createRealtimeHttpTicketProvider(
   endpoint = "/api/game-ticket",
   fetchImplementation: typeof fetch = globalThis.fetch,
 ): RealtimeTicketProvider {
-  return async (protocolVersion = PROTOCOL_VERSION) => {
+  return async (protocolVersion = SETUP_PROTOCOL_VERSION) => {
     try {
       const generation = setupProtocolGenerationSchema.parse(protocolVersion);
       const response = await fetchImplementation(endpoint, {
@@ -39,8 +46,17 @@ export function createRealtimeHttpTicketProvider(
         },
         body: JSON.stringify({ protocolVersion: generation }),
       });
-      if (!response.ok) throw new RealtimeTicketRequestError();
       const payload = (await response.json()) as unknown;
+      if (!response.ok) {
+        throw new RealtimeTicketRequestError(
+          payload !== null &&
+            typeof payload === "object" &&
+            "code" in payload &&
+            payload.code === "PROTOCOL_VERSION_UNSUPPORTED"
+            ? "PROTOCOL_VERSION_UNSUPPORTED"
+            : "TICKET_ERROR",
+        );
+      }
       if (
         payload === null ||
         typeof payload !== "object" ||

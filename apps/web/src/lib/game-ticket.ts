@@ -1,6 +1,6 @@
 import {
   gameServerTicketSchema,
-  PROTOCOL_VERSION,
+  SETUP_PROTOCOL_VERSION,
   type SetupProtocolGeneration,
 } from "@online-game-hub/protocol";
 
@@ -12,7 +12,7 @@ import {
 
 /** The Web owns browser profiles; both client runtimes receive an opaque ticket. */
 export async function requestGameTicket(
-  protocolVersion: SetupProtocolGeneration = PROTOCOL_VERSION,
+  protocolVersion: SetupProtocolGeneration = SETUP_PROTOCOL_VERSION,
 ): Promise<string> {
   let displayName = DEFAULT_DISPLAY_NAME;
   try {
@@ -29,8 +29,18 @@ export async function requestGameTicket(
     headers: { accept: "application/json", "content-type": "application/json" },
     body: JSON.stringify({ protocolVersion, displayName }),
   });
-  if (!response.ok) throw new Error("Game Server ticket is unavailable.");
   const payload: unknown = await response.json();
+  if (!response.ok) {
+    if (
+      payload !== null &&
+      typeof payload === "object" &&
+      "code" in payload &&
+      payload.code === "PROTOCOL_VERSION_UNSUPPORTED"
+    ) {
+      throw new Error("PROTOCOL_VERSION_UNSUPPORTED");
+    }
+    throw new Error("Game Server ticket is unavailable.");
+  }
   if (
     payload === null ||
     typeof payload !== "object" ||

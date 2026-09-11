@@ -29,7 +29,6 @@ function renderShell() {
       onRematch={() => Promise.resolve()}
       onResign={() => undefined}
       owner
-      protocolVersion={6}
       playerSlotId="slot-1"
       resignPending={false}
       resultSummary={null}
@@ -87,7 +86,6 @@ describe("PlaySurfaceShell", () => {
         onResign={() => undefined}
         owner
         playerSlotId="slot-1"
-        protocolVersion={6}
         readyPlayerCount={1}
         requiredPlayerCount={2}
         resignPending={false}

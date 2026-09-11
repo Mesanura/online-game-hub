@@ -6,26 +6,22 @@ import {
   REALTIME_INPUT_MESSAGE,
   REALTIME_SERVER_MESSAGE,
   ROOM_CONTROL_MESSAGE,
+  ROOM_PROFILE_MESSAGE,
   SERVER_PROTOCOL_MESSAGE,
-  PROTOCOL_VERSION,
   SETUP_PROTOCOL_VERSION,
   REALTIME_PROTOCOL_VERSION,
   realtimeRejectedSchema,
   realtimeSnapshotSchema,
-  roomLifecycleStateSchema,
-  roomConnectedSchema,
-  commandRejectedV6Schema,
-  roomConnectedV6Schema,
   roomLifecycleStateV6Schema,
+  roomConnectedV6Schema,
+  commandRejectedV6Schema,
 } from "@online-game-hub/protocol";
 import type {
   CommandRejectedV6,
   RealtimeRejected,
   RealtimeSnapshot,
-  RoomLifecycleState,
-  RoomConnected,
-  RoomConnectedV6,
   RoomLifecycleStateV6,
+  RoomConnectedV6,
 } from "@online-game-hub/protocol";
 import {
   InMemoryRealtimeReplayStore,
@@ -78,8 +74,8 @@ class RecordingRealtimeArchive implements RealtimeMatchArchive {
   }
 }
 interface RoomMessages {
-  readonly connected: RoomConnected[];
-  readonly lifecycle: RoomLifecycleState[];
+  readonly connected: RoomConnectedV6[];
+  readonly lifecycle: RoomLifecycleStateV6[];
   readonly snapshots: RealtimeSnapshot[];
   readonly rejections: RealtimeRejected[];
 }
@@ -132,7 +128,7 @@ function messages(room: ClientRoom): RoomMessages {
     rejections: [],
   };
   room.onMessage<unknown>(SERVER_PROTOCOL_MESSAGE, (raw) => {
-    const parsed = roomConnectedSchema.safeParse(raw);
+    const parsed = roomConnectedV6Schema.safeParse(raw);
     if (parsed.success) {
       value.connected.push(parsed.data);
       return;
@@ -141,7 +137,7 @@ function messages(room: ClientRoom): RoomMessages {
     // channel, while input rejections use the realtime channel.
   });
   room.onMessage<unknown>(ROOM_CONTROL_MESSAGE, (raw) => {
-    const parsed = roomLifecycleStateSchema.safeParse(raw);
+    const parsed = roomLifecycleStateV6Schema.safeParse(raw);
     if (parsed.success) value.lifecycle.push(parsed.data);
   });
   room.onMessage<unknown>(REALTIME_SERVER_MESSAGE, (raw) => {
@@ -169,14 +165,13 @@ async function waitUntil(
 }
 function control(
   commandId: string,
-  operation: "SELECT_STARTER" | "READY_FOR_ROUND" | "CLOSE_ROOM",
+  operation: "READY_FOR_ROUND" | "CLOSE_ROOM",
 ) {
   return {
     type: "room.control",
-    protocolVersion: PROTOCOL_VERSION,
+    protocolVersion: SETUP_PROTOCOL_VERSION,
     commandId,
     operation,
-    ...(operation === "SELECT_STARTER" ? { starter: "OWNER" as const } : {}),
   };
 }
 function input(commandId: string, sequence: number, value: unknown) {
@@ -189,6 +184,24 @@ function input(commandId: string, sequence: number, value: unknown) {
     input: value,
   };
 }
+async function liveRealtimeRoomCount(httpUrl: string): Promise<number> {
+  const response = await fetch(`${httpUrl}/metrics`);
+  expect(response.status).toBe(200);
+  expect(response.headers.get("cache-control")).toBe("no-store");
+  const payload = (await response.json()) as {
+    liveRooms: { realtime: { v5: number; v6: number; unknown: number } };
+  };
+  expect(payload.liveRooms.realtime).toMatchObject({ v5: 0, unknown: 0 });
+  return payload.liveRooms.realtime.v6;
+}
+
+async function expectLiveRealtimeRooms(
+  httpUrl: string,
+  count: number,
+): Promise<void> {
+  await expect.poll(() => liveRealtimeRoomCount(httpUrl)).toBe(count);
+}
+
 describe.sequential("realtime Pong Game Server", () => {
   const clock = new FakeRuntimeClock(1000000);
   const schedulerTimer = new ManualSchedulerTimer();
@@ -205,7 +218,11 @@ describe.sequential("realtime Pong Game Server", () => {
   const ids: RealtimeRuntimeIdSource = {
     // The platform room-code alphabet intentionally excludes I/O to avoid
     // ambiguous invite codes.
-    createRoomCode: () => (roomCodeSequence++ === 0 ? "PANG2345" : "PANG2346"),
+    createRoomCode: () => {
+      const code = ["PANG2345", "PANG2346", "PANG2347"][roomCodeSequence++];
+      if (code === undefined) throw new Error("Test room codes exhausted.");
+      return code;
+    },
     createReplayId: () => "realtime-replay-1",
     createSetupRngSeed: () => "realtime-setup-seed-1",
     createRngSeed: () => "realtime-seed-1",
@@ -229,7 +246,7 @@ describe.sequential("realtime Pong Game Server", () => {
         resolveRealtimeGameDefinition(gameId, "1.0.0"),
       resolveSetupProtocol: (gameId, gameVersion) =>
         gameId === "pong" && gameVersion === "1.0.0"
-          ? PROTOCOL_VERSION
+          ? SETUP_PROTOCOL_VERSION
           : undefined,
       logger: { write: () => undefined },
     });
@@ -243,7 +260,7 @@ describe.sequential("realtime Pong Game Server", () => {
     const clientB = new ColyseusClient(address.httpUrl);
     const roomA = await clientA.create(REALTIME_GAME_ROOM_NAME, {
       type: "room.create",
-      protocolVersion: PROTOCOL_VERSION,
+      protocolVersion: SETUP_PROTOCOL_VERSION,
       ticket: authority.issue("realtime-a"),
       gameId: "pong",
       initialConfig: { targetScore: 3 },
@@ -252,6 +269,7 @@ describe.sequential("realtime Pong Game Server", () => {
     await waitUntil(
       () => inboxA.connected.length === 1 && inboxA.lifecycle.length >= 1,
     );
+    await expectLiveRealtimeRooms(address.httpUrl, 1);
     const discoveryResponse = await fetch(
       `${address.httpUrl}/room-discovery?gameId=pong&roomCode=pang2345`,
     );
@@ -265,7 +283,7 @@ describe.sequential("realtime Pong Game Server", () => {
       roomCode: "PANG2345",
       gameId: "pong",
       gameVersion: "1.0.0",
-      setupProtocol: PROTOCOL_VERSION,
+      setupProtocol: SETUP_PROTOCOL_VERSION,
       runtime: "realtime",
     });
     expect(Object.keys(discovery).sort()).toEqual([
@@ -278,7 +296,7 @@ describe.sequential("realtime Pong Game Server", () => {
     expect(JSON.stringify(discovery)).not.toMatch(/session|slot|ticket/iu);
     const roomB = await clientB.join(REALTIME_GAME_ROOM_NAME, {
       type: "room.join",
-      protocolVersion: PROTOCOL_VERSION,
+      protocolVersion: SETUP_PROTOCOL_VERSION,
       ticket: authority.issue("realtime-b"),
       roomCode: "PANG2345",
     });
@@ -294,7 +312,17 @@ describe.sequential("realtime Pong Game Server", () => {
       playerSlotId: "slot-2",
       roomCode: "PANG2345",
     });
-    roomA.send(ROOM_CONTROL_MESSAGE, control("starter", "SELECT_STARTER"));
+    roomA.send(GAME_SETUP_MESSAGE, {
+      type: "game.setup",
+      protocolVersion: SETUP_PROTOCOL_VERSION,
+      commandId: "starter",
+      roundNumber: 1,
+      expectedSetupRevision: 0,
+      action: { type: "SELECT_STARTER", starter: "OWNER" },
+    });
+    await waitUntil(
+      () => inboxA.lifecycle.at(-1)?.nextRound?.setupRevision === 1,
+    );
     roomA.send(ROOM_CONTROL_MESSAGE, control("ready-a", "READY_FOR_ROUND"));
     roomB.send(ROOM_CONTROL_MESSAGE, control("ready-b", "READY_FOR_ROUND"));
     await waitUntil(() =>
@@ -306,6 +334,7 @@ describe.sequential("realtime Pong Game Server", () => {
     await waitUntil(() =>
       inboxB.snapshots.some((snapshot) => snapshot.tick === 0),
     );
+    await expectLiveRealtimeRooms(address.httpUrl, 1);
     await schedulerTimer.tick();
     await waitUntil(() =>
       inboxA.snapshots.some((snapshot) => snapshot.tick === 1),
@@ -358,7 +387,7 @@ describe.sequential("realtime Pong Game Server", () => {
     const clientATakeover = new ColyseusClient(address.httpUrl);
     const roomATakeover = await clientATakeover.join(REALTIME_GAME_ROOM_NAME, {
       type: "room.join",
-      protocolVersion: PROTOCOL_VERSION,
+      protocolVersion: SETUP_PROTOCOL_VERSION,
       ticket: authority.issue("realtime-a"),
       roomCode: "PANG2345",
     });
@@ -383,6 +412,7 @@ describe.sequential("realtime Pong Game Server", () => {
         (state) => state.currentRound?.status === "completed",
       ),
     );
+    await expectLiveRealtimeRooms(address.httpUrl, 1);
     const replay = await replayStore.get("realtime-replay-1");
     expect(replay?.finalTick).toBeGreaterThan(0);
     expect(replay?.recordedOutcome).not.toBeNull();
@@ -393,13 +423,30 @@ describe.sequential("realtime Pong Game Server", () => {
     expect(archive.saved.at(-1)?.currentRound).toMatchObject({
       status: "completed",
     });
+    roomATakeover.send(
+      ROOM_CONTROL_MESSAGE,
+      control("close-completed", "CLOSE_ROOM"),
+    );
+    await waitUntil(() => inboxATakeover.lifecycle.at(-1)?.closed === true);
+    expect(inboxATakeover.lifecycle.at(-1)).toMatchObject({
+      causedByCommandId: "close-completed",
+      closeReason: "OWNER_CLOSED",
+      nextRound: null,
+    });
+    expect(await roomStore.getByRoomCode("PANG2345")).toMatchObject({
+      currentRound: { status: "completed" },
+      closeReason: "OWNER_CLOSED",
+      nextRoundSetup: { readySlotIds: [] },
+    });
+    await expectLiveRealtimeRooms(address.httpUrl, 0);
   });
   it("abandonment closes an active room after the reconnect grace window", async () => {
+    const initialRoomCount = await liveRealtimeRoomCount(address.httpUrl);
     const clientA = new ColyseusClient(address.httpUrl);
     const clientB = new ColyseusClient(address.httpUrl);
     const roomA = await clientA.create(REALTIME_GAME_ROOM_NAME, {
       type: "room.create",
-      protocolVersion: PROTOCOL_VERSION,
+      protocolVersion: SETUP_PROTOCOL_VERSION,
       ticket: authority.issue("abandon-a"),
       gameId: "pong",
       initialConfig: { targetScore: 3 },
@@ -408,15 +455,22 @@ describe.sequential("realtime Pong Game Server", () => {
     await waitUntil(() => inboxA.connected.length === 1);
     const roomB = await clientB.join(REALTIME_GAME_ROOM_NAME, {
       type: "room.join",
-      protocolVersion: PROTOCOL_VERSION,
+      protocolVersion: SETUP_PROTOCOL_VERSION,
       ticket: authority.issue("abandon-b"),
       roomCode: "PANG2346",
     });
     const inboxB = messages(roomB);
     await waitUntil(() => inboxB.connected.length === 1);
-    roomA.send(
-      ROOM_CONTROL_MESSAGE,
-      control("abandon-starter", "SELECT_STARTER"),
+    roomA.send(GAME_SETUP_MESSAGE, {
+      type: "game.setup",
+      protocolVersion: SETUP_PROTOCOL_VERSION,
+      commandId: "abandon-starter",
+      roundNumber: 1,
+      expectedSetupRevision: 0,
+      action: { type: "SELECT_STARTER", starter: "OWNER" },
+    });
+    await waitUntil(
+      () => inboxA.lifecycle.at(-1)?.nextRound?.setupRevision === 1,
     );
     roomA.send(
       ROOM_CONTROL_MESSAGE,
@@ -435,12 +489,44 @@ describe.sequential("realtime Pong Game Server", () => {
       const reservedUntil = stored?.players[1]?.reservedUntilMilliseconds;
       return reservedUntil !== null && reservedUntil !== undefined;
     });
+    await expectLiveRealtimeRooms(address.httpUrl, initialRoomCount + 1);
     clock.advanceBy(60000);
     await waitUntil(() => inboxA.lifecycle.some((state) => state.closed));
     expect(inboxA.lifecycle.at(-1)).toMatchObject({
       closed: true,
       closeReason: "RECONNECT_TIMEOUT",
     });
+    await expectLiveRealtimeRooms(address.httpUrl, initialRoomCount);
+  });
+  it("acknowledges closing a waiting room while retaining its durable Setup", async () => {
+    const room = await new ColyseusClient(address.httpUrl).create(
+      REALTIME_GAME_ROOM_NAME,
+      {
+        type: "room.create",
+        protocolVersion: SETUP_PROTOCOL_VERSION,
+        ticket: authority.issue("waiting-owner"),
+        gameId: "pong",
+        initialConfig: { targetScore: 3 },
+      },
+    );
+    const inbox = messages(room);
+    await waitUntil(() => inbox.lifecycle.length > 0);
+    await expectLiveRealtimeRooms(address.httpUrl, 1);
+    room.send(ROOM_CONTROL_MESSAGE, control("close-waiting", "CLOSE_ROOM"));
+    await waitUntil(() => inbox.lifecycle.at(-1)?.closed === true);
+    expect(inbox.lifecycle.at(-1)).toMatchObject({
+      causedByCommandId: "close-waiting",
+      currentRound: null,
+      nextRound: null,
+      closeReason: "OWNER_CLOSED",
+    });
+    expect(await roomStore.getByRoomCode("PANG2347")).toMatchObject({
+      setupProtocol: 6,
+      currentRound: null,
+      closeReason: "OWNER_CLOSED",
+      nextRoundSetup: { readySlotIds: [] },
+    });
+    await expectLiveRealtimeRooms(address.httpUrl, 0);
   });
 });
 describe.sequential("realtime Pong Protocol V6 setup", () => {
@@ -542,7 +628,7 @@ describe.sequential("realtime Pong Protocol V6 setup", () => {
     await expect(
       clientA.create(REALTIME_GAME_ROOM_NAME, {
         type: "room.create",
-        protocolVersion: PROTOCOL_VERSION,
+        protocolVersion: 5,
         ticket: authority.issue("v6-owner"),
         gameId: "pong",
         initialConfig: { targetScore: 3 },
@@ -580,6 +666,32 @@ describe.sequential("realtime Pong Protocol V6 setup", () => {
       canEdit: false,
       participantSlotIds: ["v6-slot-1", "v6-slot-2"],
     });
+    const beforeRetiredMessages = await roomStore.getByRoomCode("VSPN2345");
+    for (const [channel, payload] of [
+      [GAME_SETUP_MESSAGE, setupCommand("retired-setup", 0, "OWNER")],
+      [ROOM_CONTROL_MESSAGE, readyCommand("retired-control")],
+      [
+        ROOM_PROFILE_MESSAGE,
+        {
+          type: ROOM_PROFILE_MESSAGE,
+          commandId: "retired-profile",
+          ticket: ticket("v6-owner"),
+        },
+      ],
+    ] as const) {
+      const rejectionCount = inboxA.rejections.length;
+      roomA.send(channel, { ...payload, protocolVersion: 5 });
+      await waitUntil(() => inboxA.rejections.length > rejectionCount);
+      expect(inboxA.rejections.at(-1)).toMatchObject({
+        protocolVersion: 6,
+        code: "PROTOCOL_VERSION_UNSUPPORTED",
+        retryable: false,
+      });
+    }
+    expect(await roomStore.getByRoomCode("VSPN2345")).toEqual(
+      beforeRetiredMessages,
+    );
+
     roomB.send(GAME_SETUP_MESSAGE, setupCommand("guest-forged", 0, "OWNER"));
     await waitUntil(() => inboxB.rejections.length >= 1);
     expect(inboxB.rejections.at(-1)).toMatchObject({

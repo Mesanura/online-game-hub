@@ -243,7 +243,7 @@ type Action = {
 
 客户端的合法操作提示不构成权威判断；服务器 Core 始终重新验证 Action/Input。投降支持由 exact deployment 的 `platformControls` 与 Surface schema 决定，不能让旧 Core 接受新 Action。
 
-删除旧渲染路径不等于退役 Protocol V5。仍登记 V5 的历史版本继续使用原有 envelope、房间生命周期和重连契约，历史 Core、golden 与 exact replay 读取继续保留。
+所有受支持规则版本已登记游戏自有 V6 Setup，Protocol V5 在线路径已退役。历史 Core、golden 与 exact Surface/replay 读取继续保留；不得把协议退役当作删除历史规则的依据。共享 API 迁移和旧数据库 reader 边界见 [网络协议](./NETWORK_PROTOCOL.md#32-共享-api-迁移与历史兼容)。
 
 ## 9. Round Setup Definition
 

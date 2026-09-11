@@ -164,7 +164,28 @@ docker compose pull
 docker compose up -d --force-recreate --wait
 ```
 
-只更新一个服务可使用 `docker compose pull web` 或 `docker compose pull game-server`，随后执行 `docker compose up -d --no-deps --force-recreate web` 或对应服务名。migration 与 schema 变化仍应通过完整 `docker compose up -d --wait` 应用依赖顺序。
+确认通信契约兼容时，只更新一个服务可使用 `docker compose pull web` 或 `docker compose pull game-server`，随后执行 `docker compose up -d --no-deps --force-recreate web` 或对应服务名。migration 与 schema 变化仍应通过完整 `docker compose up -d --wait` 应用依赖顺序。V5 退役属于需要协调 Web 与 Game Server 的升级，按下节执行。
+
+### V5 退役升级与回滚
+
+V5 在线路径已经移除；受支持的历史规则版本全部使用 V6 Setup。该升级不新增数据库 migration，不改写旧行的代际，也不改变 Core/replay 或 Realtime Input/Snapshot V1。共享 API 和历史读取兼容范围见 [网络协议](./NETWORK_PROTOCOL.md#32-共享-api-迁移与历史兼容)。
+
+1. 安排维护窗口。记录当前 Compose ref、三个应用镜像的固定 tag/digest 与配置位置，准备数据库备份；确认目标发布包含全部 exact Core 与 Surface。将 `DOCKER_IMAGE_TAG` 固定到已审查的发布版本，提前拉取 Web、Game Server 与 migrator 的配套镜像，不能用浮动 `latest` 作为升级或回滚依据。
+2. 通过部署层维护入口阻止新建房间，规则须覆盖直接 matchmaking 请求；保留现有 WebSocket、ticket 刷新与重连，让玩家完成对局并退出。只关闭网页入口不能阻止已有客户端继续建房或重新对局。
+3. 检查每个待升级实例的 `GET /metrics`。两个 runtime 的 `v5` 和 `unknown` 均须为零，等待房、满员/locked 房、终局保留房和断线宽限房都必须计入。排空判定依据是当前 Colyseus 存活房间，不能查询历史 Match/Room 数据库行代替。字段含义见 [指标契约](./NETWORK_PROTOCOL.md#13-observability)。
+4. 如果旧实例没有 `liveRooms`、请求失败或存在 `unknown`，不能声称已排空。新版本的计数也不能追溯证明旧实例升级前的状态；先在旧版本回补同等只读指标，或取得独立核实的运维排空结果。单实例进程重启不恢复任何 live room，所以本次协调重启还应等待 V6 房间排空。
+5. 保持维护入口关闭，在确认排空后停止 Web 与 Game Server，再启动同一发布版本的配套服务并等待健康检查。不要让旧 Web 与只支持 V6 的新 Game Server 长期混用。
+
+```bash
+docker compose pull web game-server migrate
+docker compose stop web game-server
+docker compose up -d --wait
+docker compose ps -a
+```
+
+维护窗口内验证健康检查、两个 runtime 的 V6 创建/加入/Setup/逐人 ready/重连，以及账户历史和已有 replay 读取；V5 ticket/request 必须返回不支持协议，旧请求不得被静默升级。确认新 Web 能提示刷新后再开放入口。
+
+回滚仍在维护窗口内协调停止两个应用服务，将 Compose/config 和三个应用镜像恢复到前一已验证的固定版本，再执行 `docker compose up -d --wait`。本次 schema 未改变，不应删除或重新标注 V5 历史 metadata。回滚镜像必须可读取当前 schema，并包含所需 exact Core/Surface；恢复服务前复查历史和新建对局。数据库备份与旧镜像都不能恢复被重启丢失的 active room、连接、ready 或内存 State，回滚也不是免排空手段。
 
 ## 从源码构建镜像
 

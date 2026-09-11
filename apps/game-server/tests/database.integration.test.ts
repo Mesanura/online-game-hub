@@ -14,6 +14,7 @@ import { resolveGameDefinition } from "@online-game-hub/game-registry/server";
 import {
   GAME_ACTION_MESSAGE,
   GAME_ROOM_NAME,
+  GAME_SETUP_MESSAGE,
   ROOM_CONTROL_MESSAGE,
   SERVER_PROTOCOL_MESSAGE,
   verifyReplay,
@@ -21,32 +22,35 @@ import {
 import { createDeterministicRuntimeIdSource } from "@online-game-hub/game-server-runtime/testing";
 import { createHmacGameServerTicketAuthority } from "@online-game-hub/game-server-ticket";
 import {
-  PROTOCOL_VERSION,
-  roomLifecycleStateSchema,
-  serverMessageSchema,
+  SETUP_PROTOCOL_VERSION,
+  roomLifecycleStateV6Schema,
+  serverMessageV6Schema,
 } from "@online-game-hub/protocol";
 import type {
-  GameActionCommand,
-  RoomControlCommand,
-  RoomControlOperation,
-  RoomLifecycleState,
-  ServerMessage,
-  StarterChoice,
+  GameActionCommandV6,
+  RoomControlCommandV6,
+  RoomLifecycleStateV6,
+  ServerMessageV6,
 } from "@online-game-hub/protocol";
 import { describe, expect, it } from "vitest";
 
 import { createProductionGameServer } from "../src/index.js";
 
+const latestLifecycleByRoom = new WeakMap<ClientRoom, RoomLifecycleStateV6>();
+
 class MessageInbox {
-  readonly #messages: ServerMessage[] = [];
+  readonly #messages: ServerMessageV6[] = [];
   readonly #waiters: Array<{
-    readonly predicate: (message: ServerMessage) => boolean;
-    readonly resolve: (message: ServerMessage) => void;
+    readonly predicate: (message: ServerMessageV6) => boolean;
+    readonly resolve: (message: ServerMessageV6) => void;
   }> = [];
 
   public constructor(room: ClientRoom) {
+    room.onMessage<unknown>(ROOM_CONTROL_MESSAGE, (raw) => {
+      latestLifecycleByRoom.set(room, roomLifecycleStateV6Schema.parse(raw));
+    });
     room.onMessage<unknown>(SERVER_PROTOCOL_MESSAGE, (raw) => {
-      const parsed = serverMessageSchema.safeParse(raw);
+      const parsed = serverMessageV6Schema.safeParse(raw);
       if (!parsed.success) {
         throw new Error("Server emitted an invalid protocol message.");
       }
@@ -62,9 +66,9 @@ class MessageInbox {
   }
 
   public next(
-    predicate: (message: ServerMessage) => boolean,
+    predicate: (message: ServerMessageV6) => boolean,
     label = "server message",
-  ): Promise<ServerMessage> {
+  ): Promise<ServerMessageV6> {
     const index = this.#messages.findIndex(predicate);
     if (index !== -1) {
       const message = this.#messages.splice(index, 1)[0];
@@ -98,15 +102,15 @@ class MessageInbox {
 }
 
 class LifecycleInbox {
-  readonly #messages: RoomLifecycleState[] = [];
+  readonly #messages: RoomLifecycleStateV6[] = [];
   readonly #waiters: Array<{
-    readonly predicate: (message: RoomLifecycleState) => boolean;
-    readonly resolve: (message: RoomLifecycleState) => void;
+    readonly predicate: (message: RoomLifecycleStateV6) => boolean;
+    readonly resolve: (message: RoomLifecycleStateV6) => void;
   }> = [];
 
   public constructor(room: ClientRoom) {
     room.onMessage<unknown>(ROOM_CONTROL_MESSAGE, (raw) => {
-      const parsed = roomLifecycleStateSchema.safeParse(raw);
+      const parsed = roomLifecycleStateV6Schema.safeParse(raw);
       if (!parsed.success) {
         throw new Error("Server emitted an invalid room lifecycle message.");
       }
@@ -122,9 +126,9 @@ class LifecycleInbox {
   }
 
   public next(
-    predicate: (message: RoomLifecycleState) => boolean,
+    predicate: (message: RoomLifecycleStateV6) => boolean,
     label = "room lifecycle",
-  ): Promise<RoomLifecycleState> {
+  ): Promise<RoomLifecycleStateV6> {
     const index = this.#messages.findIndex(predicate);
     if (index !== -1) {
       const message = this.#messages.splice(index, 1)[0];
@@ -151,10 +155,10 @@ function command(
   expectedRevision: number,
   action: unknown,
   roundNumber = 1,
-): GameActionCommand {
+): GameActionCommandV6 {
   return {
     type: "game.action",
-    protocolVersion: PROTOCOL_VERSION,
+    protocolVersion: SETUP_PROTOCOL_VERSION,
     commandId,
     roundNumber,
     expectedRevision,
@@ -164,42 +168,57 @@ function command(
 
 function controlCommand(
   commandId: string,
-  operation: RoomControlOperation,
-  starter?: StarterChoice,
-): RoomControlCommand {
-  if (operation === "SELECT_STARTER") {
-    if (starter === undefined) {
-      throw new Error("SELECT_STARTER requires a starter.");
-    }
-    return {
-      type: "room.control",
-      protocolVersion: PROTOCOL_VERSION,
-      commandId,
-      operation,
-      starter,
-    };
-  }
+  operation: RoomControlCommandV6["operation"],
+): RoomControlCommandV6 {
   return {
     type: "room.control",
-    protocolVersion: PROTOCOL_VERSION,
+    protocolVersion: SETUP_PROTOCOL_VERSION,
     commandId,
     operation,
-  } as RoomControlCommand;
+  };
 }
 
-function startRound(
+async function waitUntil(predicate: () => boolean): Promise<void> {
+  const deadline = Date.now() + 5_000;
+  while (!predicate()) {
+    if (Date.now() >= deadline)
+      throw new Error("Timed out waiting for V6 setup.");
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+}
+
+async function startRound(
   ownerRoom: ClientRoom,
   nonOwnerRoom: ClientRoom,
   commandPrefix: string,
-  starter: StarterChoice = "OWNER",
-): void {
-  ownerRoom.send(
-    ROOM_CONTROL_MESSAGE,
-    controlCommand(`${commandPrefix}-starter`, "SELECT_STARTER", starter),
+): Promise<void> {
+  await waitUntil(
+    () => latestLifecycleByRoom.get(ownerRoom)?.nextRound != null,
+  );
+  const nextRound = latestLifecycleByRoom.get(ownerRoom)?.nextRound;
+  if (nextRound === undefined || nextRound === null)
+    throw new Error("Expected V6 setup.");
+  ownerRoom.send(GAME_SETUP_MESSAGE, {
+    type: "game.setup",
+    protocolVersion: SETUP_PROTOCOL_VERSION,
+    commandId: `${commandPrefix}-starter`,
+    roundNumber: nextRound.roundNumber,
+    expectedSetupRevision: nextRound.setupRevision,
+    action: { type: "SELECT_STARTER", starter: "OWNER" },
+  });
+  await waitUntil(
+    () =>
+      latestLifecycleByRoom.get(ownerRoom)?.causedByCommandId ===
+      `${commandPrefix}-starter`,
   );
   ownerRoom.send(
     ROOM_CONTROL_MESSAGE,
     controlCommand(`${commandPrefix}-owner-ready`, "READY_FOR_ROUND"),
+  );
+  await waitUntil(
+    () =>
+      latestLifecycleByRoom.get(ownerRoom)?.causedByCommandId ===
+      `${commandPrefix}-owner-ready`,
   );
   nonOwnerRoom.send(
     ROOM_CONTROL_MESSAGE,
@@ -234,7 +253,7 @@ describe("real PostgreSQL authoritative persistence", () => {
       {
         ids: createDeterministicRuntimeIdSource(["PERS2345"]),
         logger: { write: () => undefined },
-        resolveSetupProtocol: () => PROTOCOL_VERSION,
+        resolveSetupProtocol: () => SETUP_PROTOCOL_VERSION,
       },
     );
     let roomA: ClientRoom | undefined;
@@ -248,7 +267,7 @@ describe("real PostgreSQL authoritative persistence", () => {
       const clientB = new ColyseusClient(address.httpUrl);
       roomA = await clientA.create(GAME_ROOM_NAME, {
         type: "room.create",
-        protocolVersion: PROTOCOL_VERSION,
+        protocolVersion: SETUP_PROTOCOL_VERSION,
         ticket: tickets.issue("database-account-a", accountA.userId),
         gameId: "tic-tac-toe",
         initialConfig: null,
@@ -265,7 +284,7 @@ describe("real PostgreSQL authoritative persistence", () => {
       );
       roomB = await clientB.join(GAME_ROOM_NAME, {
         type: "room.join",
-        protocolVersion: PROTOCOL_VERSION,
+        protocolVersion: SETUP_PROTOCOL_VERSION,
         ticket: tickets.issue("database-guest-b"),
         roomCode: "PERS2345",
       });
@@ -274,7 +293,7 @@ describe("real PostgreSQL authoritative persistence", () => {
         (message) => message.type === "room.connected",
         "joiner connection",
       );
-      startRound(roomA, roomB, "database-tic-tac-toe-round-1");
+      await startRound(roomA, roomB, "database-tic-tac-toe-round-1");
       await Promise.all([
         activeA,
         inboxB.next(
@@ -416,7 +435,7 @@ describe("real PostgreSQL authoritative persistence", () => {
     }
   }, 120_000);
 
-  it("persists two legacy V5 Connect Four rounds and rebuilds exact replays plus safe history from a new connection", async () => {
+  it("persists two V6 Connect Four rounds and rebuilds exact replays plus safe history from a new connection", async () => {
     const isolated = await createIsolatedTestDatabase(
       requireTestDatabaseUrl(process.env),
     );
@@ -442,7 +461,7 @@ describe("real PostgreSQL authoritative persistence", () => {
       {
         ids: createDeterministicRuntimeIdSource(["CFDB2345", "CFAB2345"]),
         logger: { write: () => undefined },
-        resolveSetupProtocol: () => PROTOCOL_VERSION,
+        resolveSetupProtocol: () => SETUP_PROTOCOL_VERSION,
       },
     );
     let roomA: ClientRoom | undefined;
@@ -458,7 +477,7 @@ describe("real PostgreSQL authoritative persistence", () => {
       const unrelatedAccount = await users.createUser();
       roomA = await new ColyseusClient(address.httpUrl).create(GAME_ROOM_NAME, {
         type: "room.create",
-        protocolVersion: PROTOCOL_VERSION,
+        protocolVersion: SETUP_PROTOCOL_VERSION,
         ticket: tickets.issue("database-connect-four-a", accountA.userId),
         gameId: "connect-four",
         initialConfig: null,
@@ -476,7 +495,7 @@ describe("real PostgreSQL authoritative persistence", () => {
       );
       roomB = await new ColyseusClient(address.httpUrl).join(GAME_ROOM_NAME, {
         type: "room.join",
-        protocolVersion: PROTOCOL_VERSION,
+        protocolVersion: SETUP_PROTOCOL_VERSION,
         ticket: tickets.issue("database-connect-four-b", accountB.userId),
         roomCode: "CFDB2345",
       });
@@ -486,7 +505,7 @@ describe("real PostgreSQL authoritative persistence", () => {
         (message) => message.type === "room.connected",
         "Connect Four joiner connection",
       );
-      startRound(roomA, roomB, "database-connect-four-round-1");
+      await startRound(roomA, roomB, "database-connect-four-round-1");
       await Promise.all([
         activeA,
         inboxB.next(
@@ -559,7 +578,7 @@ describe("real PostgreSQL authoritative persistence", () => {
           message.revision === 0,
         "joiner round two snapshot",
       );
-      startRound(roomA, roomB, "database-connect-four-round-2");
+      await startRound(roomA, roomB, "database-connect-four-round-2");
       await Promise.all([roundTwoSnapshotA, roundTwoSnapshotB]);
       for (const [index, column] of winningColumns.entries()) {
         await acceptedDrop(
@@ -584,7 +603,7 @@ describe("real PostgreSQL authoritative persistence", () => {
         GAME_ROOM_NAME,
         {
           type: "room.create",
-          protocolVersion: PROTOCOL_VERSION,
+          protocolVersion: SETUP_PROTOCOL_VERSION,
           ticket: tickets.issue(
             "database-connect-four-abandoned-a",
             abandonedAccount.userId,
@@ -607,7 +626,7 @@ describe("real PostgreSQL authoritative persistence", () => {
         GAME_ROOM_NAME,
         {
           type: "room.join",
-          protocolVersion: PROTOCOL_VERSION,
+          protocolVersion: SETUP_PROTOCOL_VERSION,
           ticket: tickets.issue("database-connect-four-abandoned-b"),
           roomCode: "CFAB2345",
         },
@@ -617,7 +636,7 @@ describe("real PostgreSQL authoritative persistence", () => {
         (message) => message.type === "room.connected",
         "abandoned joiner connection",
       );
-      startRound(
+      await startRound(
         abandonedRoomA,
         abandonedRoomB,
         "database-connect-four-abandoned-round-1",

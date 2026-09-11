@@ -1,6 +1,6 @@
 # 网络协议
 
-本文定义身份、房间、平台消息、revision 和重连语义。所有受支持规则版本已登记 V6 Setup，V5 继续支持存量房间；Realtime Input/Snapshot Protocol V1 独立。完整类型见 [protocol](../packages/protocol/src/index.ts)，游戏 payload 见 [Game Plugin](./GAME_PLUGIN_SPEC.md)。
+本文定义身份、房间、平台消息、revision 和重连语义。所有受支持规则版本均使用 V6 Setup，在线协议仅支持 V6；Realtime Input/Snapshot Protocol V1 独立。历史 Core、精确 Surface 映射、golden 与 replay/history 读取继续保留。完整类型见 [protocol](../packages/protocol/src/index.ts)，游戏 payload 见 [Game Plugin](./GAME_PLUGIN_SPEC.md)。
 
 ## 1. 协议目标
 
@@ -22,11 +22,11 @@
 
 浏览器直接连接 Game Server。Next.js 不代理 WebSocket，也不保存 authoritative match State。
 
-部署注册表为每个 exact game version 选择 V5 或 V6，新注册只影响随后创建的房间。已有房间始终使用创建时固定的代际，不逐消息猜测。下文通用平台样例以 V6 为例；V5 对应字段仍使用 literal `5`，其专有控制单列在第 6.1 节。
+部署注册表为每个 exact game version 登记 V6 Setup。房间创建时固定代际，不逐消息猜测，也不在运行中升级旧房间。V5 在线路径退役前必须排空旧房间，部署操作见 [Compose 升级流程](./DEPLOYMENT_DOCKER_COMPOSE.md#v5-退役升级与回滚)。
 
 ## 3. 协议版本
 
-平台 envelope 携带整数 `protocolVersion`：V5 为 `5`，V6 为 `6`；V1–V4 request、ticket 和 message 被 exact schema 拒绝。源码的 `PROTOCOL_VERSION` 保留为 V5 常量，`SETUP_PROTOCOL_VERSION` 为 V6，不能将前者误当作所有新房间的默认值。V5 的 starter/player-count/assignment 控制保持冻结；V6 使用 opaque `game.setup`。
+平台 envelope 携带 `protocolVersion: 6`，源码常量为 `SETUP_PROTOCOL_VERSION`。V1–V5 request、ticket 和 message 均被 exact schema 拒绝；设置统一使用 opaque `game.setup`。旧 `PROTOCOL_VERSION` 常量和 V5 schema/runtime 已移除。
 
 - 版本表示 wire envelope 兼容性，不等同于 `gameVersion` 或 `replayFormatVersion`。
 - Game Server 在连接或首条消息阶段拒绝不支持的版本。
@@ -34,9 +34,25 @@
 
 ### 3.1 Realtime 协议边界
 
-Realtime room 使用独立 `realtimeProtocolVersion: 1` 传输 input/snapshot，不使用 `game.action`、`match.snapshot` 或 Action revision。ticket、matchmaking、lifecycle 和 reconnect 仍遵守房间固定的 V5/V6；服务器决定输入顺序和生效 tick，客户端只接收完整 projected snapshot 与本 viewer 的 acknowledgement。
+Realtime room 使用独立 `realtimeProtocolVersion: 1` 传输 input/snapshot，不使用 `game.action`、`match.snapshot` 或 Action revision。ticket、matchmaking、lifecycle、Setup 和 reconnect 使用 V6；服务器决定输入顺序和生效 tick，客户端只接收完整 projected snapshot 与本 viewer 的 acknowledgement。
 
 实时消息、大小限制、输入交付和版本策略由 [Realtime Runtime 设计](./REALTIME_RUNTIME_DESIGN.md) 定义。修改共享 ticket/lifecycle 与修改实时 envelope 分别评估版本，不互相替代。
+
+### 3.2 共享 API 迁移与历史兼容
+
+退役统一了 Web、两类 Client Host、ticket issuer/verifier、两类 runtime、registry 与 store 的在线边界，避免平台继续解释游戏的先手、人数或阵营。所有仓库消费者与 contract tests 同步迁移，不保留把旧名称静默指向 V6 的别名。
+
+| 已移除或收窄的 API                                                                            | 迁移方式                                                                                          |
+| --------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `PROTOCOL_VERSION`、`protocolVersionSchema`                                                   | 使用 `SETUP_PROTOCOL_VERSION`、`setupProtocolVersionSchema`；`SetupProtocolGeneration` 仅为 `6`   |
+| V5 create/join/action/control/lifecycle/connected/snapshot/rejection/message schemas 与 types | 使用对应 `V6Schema` 与 `V6` 类型；`RoomControlOperation` 改用 `RoomControlCommandV6["operation"]` |
+| `gameServerTicketClaimsSchema`、`anyGameServerTicketClaimsSchema` 及其 types                  | 使用 `gameServerTicketClaimsV6Schema`、`GameServerTicketClaimsV6`；不签发或验证 V5 ticket         |
+| `StarterChoice`、starter/player-count/assignment 平台 schemas 与控制                          | 游戏自己定义 Setup Action/View，经 `game.setup` 处理；平台只解析 opaque JSON envelope             |
+| 两类 Host 的 `selectStarter`、人数/assignment convenience methods、`startRematch`             | 使用 `submitSetup(action)`；每位参与者用 `readyForRound()` 确认下一局                             |
+| runtime 的 legacy starter/assignment 状态、平台随机选择 ports                                 | 使用游戏 Setup、独立 Setup RNG 与固化的 `FinalizedRoundSetup`                                     |
+| `StoredGameRoom`、`RealtimeStoredRoom` 的在线代际                                             | 仅允许 V6 创建和保存；realtime store 读取返回 `RealtimeStoredRoomRecord`，允许历史 V5 metadata    |
+
+历史 realtime SQL 的 `DEFAULT 5` 和 `5 | 6` check 继续用于原有数据读取，旧行不回填为 V6，也不变成可连接房间。V5 metadata 的 discovery 返回不支持协议；它不是 V5 在线 runtime。历史 Core、golden、精确 Surface/replay 映射与 Match archive 保持可读。本次不改变游戏规则、`gameVersion`、Bridge、Surface artifact、replay envelope 或 Realtime Protocol V1。
 
 ## 4. 匿名身份与连接票据
 
@@ -62,13 +78,13 @@ interface GameServerTicketClaims {
   issuedAt: number;
   expiresAt: number;
   ticketId: string;
-  protocolVersion: 5 | 6;
+  protocolVersion: 6;
 }
 ```
 
 - `@online-game-hub/game-server-ticket` 使用两个 canonical base64url segments（JSON claims 与 HMAC-SHA256 signature），secret 至少 32 UTF-8 bytes。默认 lifetime 为 30 秒，可配置范围为 1–300 秒。
-- Issuer 生成服务器控制的 `ticketId`、`issuedAt`、`expiresAt` 与 audience；Host 只声明当前房间要求的 V5/V6 generation，浏览器只取得完整 bearer ticket，不能选择 `PlayerSessionId`、`UserId` 或修改 claims。
-- Verifier 在建立身份前以 timing-safe comparison 验证 signature，并按 `protocolVersion` 严格验证 exact V5 或 V6 claims schema、配置的 issuer、固定 audience、`issuedAt <= now` 和 `expiresAt > now`。缺失、超大、非 canonical、篡改、过期、未来签发或其他版本 ticket 都被拒绝；room runtime 还必须验证 ticket generation 与 create/join request 及固定房间 generation 一致。
+- Issuer 生成服务器控制的 `ticketId`、`issuedAt`、`expiresAt` 与 audience；Host 声明 V6，浏览器只取得完整 bearer ticket，不能选择 `PlayerSessionId`、`UserId` 或修改 claims。
+- Verifier 在建立身份前以 timing-safe comparison 验证 signature，再严格验证 exact V6 claims schema、配置的 issuer、固定 audience、`issuedAt <= now` 和 `expiresAt > now`。缺失、超大、非 canonical、篡改、过期、未来签发或其他版本 ticket 都被拒绝；room runtime 还必须验证 ticket generation 与 create/join request 及固定房间 generation 一致。
 - Web 与 Game Server 通过环境注入完全一致的 issuer/ticket secret；guest session secret 必须独立。只有可信账户 session 才能让 Web 签入 `userId`；浏览器不能提交或修改它。Game Server 将 verifier 返回的账户身份保存在 slot 私有字段，lifecycle/snapshot/View/日志均不发送。生产 `apps/game-server` adapter 不导入 testing subpath，`TestTicketAuthority` 只供 contract/integration tests。
 - Ticket 可以短暂存在于 `GameClientHost` 的调用栈以完成 Colyseus reservation，但不得持久化到 URL、local/session storage、UI、日志或错误响应；secret 永远不进入客户端 bundle。
 - 当前没有独立 key rotation 基础设施；变更共享 secret 需要协调两个进程重启。
@@ -77,27 +93,27 @@ Ticket 是签名 bearer token，不是加密载荷，持有者可以解码 claim
 
 ### 4.3 HTTP Ticket API
 
-`POST /api/game-ticket` 使用 same-origin guest cookie，请求体允许声明 ticket generation，以及可选的游客显示名：
+`POST /api/game-ticket` 使用 same-origin guest cookie，必须提交声明 V6 的 JSON 请求体，可选游客显示名：
 
 ```json
 { "protocolVersion": 6, "displayName": "游客" }
 ```
 
-generation 只能是 `5 | 6`；无请求体仅作为 legacy V5 兼容。body 上限为 4096 UTF-8 bytes。提供 `displayName` 表示客户端支持房间资料扩展，值按 [产品资料规则](./PRODUCT.md#显示名与头像菜单) 校验和规范化；账户登录有效时，签入数据库中的账户显示名，不能用请求值覆盖账户资料。省略该字段时保持原始 claims 形状。成功响应为：
+`protocolVersion` 必须是 `6`；不接受空请求体或省略版本。body 上限为 4096 UTF-8 bytes。提供 `displayName` 表示客户端支持房间资料扩展，值按 [产品资料规则](./PRODUCT.md#显示名与头像菜单) 校验和规范化；账户登录有效时，签入数据库中的账户显示名，不能用请求值覆盖账户资料。省略该字段时保持原始 claims 形状。成功响应为：
 
 ```json
 { "ticket": "<short-lived bearer ticket>" }
 ```
 
-成功响应为 `200`，非法 generation/body 返回 `400 { "code": "INVALID_TICKET_REQUEST" }`，配置或签发失败只返回 `503 { "code": "TICKET_UNAVAILABLE" }`；所有响应都设置 `Cache-Control: no-store, private`。route 只从 HttpOnly cookie 解析 session，不接受浏览器提交的 `PlayerSessionId` 或 `UserId`，且不在响应或错误中返回 cookie/secret。
+成功响应为 `200`。不支持的数字版本返回 `400 { "code": "PROTOCOL_VERSION_UNSUPPORTED" }`；空 body、缺少版本或其他非法 body 返回 `400 { "code": "INVALID_TICKET_REQUEST" }`；配置或签发失败只返回 `503 { "code": "TICKET_UNAVAILABLE" }`。所有响应都设置 `Cache-Control: no-store, private`。route 只从 HttpOnly cookie 解析 session，不接受浏览器提交的 `PlayerSessionId` 或 `UserId`，且不在响应或错误中返回 cookie/secret。
 
 #### 房间显示资料扩展
 
-V5/V6 ticket claims 均支持可选的规范化 `displayName`。创建、加入和重连时，runtime 从已验证 ticket 更新内存席位资料；旧 ticket 对应的玩家默认显示“游客”。只有当前连接的 ticket 包含该字段时，lifecycle 的 `players[]` 才带上 `displayName: string | null`：已占用席位为显示名，空席位为 null，断线时保留。头像由 Web 按显示名生成，不传输图片、头像 URL 或账户标识。
+V6 ticket claims 支持可选的规范化 `displayName`。创建、加入和重连时，runtime 从已验证 ticket 更新内存席位资料；没有显示名的 V6 ticket 对应玩家默认显示“游客”。只有当前连接的 ticket 包含该字段时，lifecycle 的 `players[]` 才带上 `displayName: string | null`：已占用席位为显示名，空席位为 null，断线时保留。头像由 Web 按显示名生成，不传输图片、头像 URL 或账户标识。
 
-资料保存后，两类 Client Host 的 `refreshProfile()` 获取新 ticket，并通过独立 `room.profile` channel 提交严格 `{ type: "room.profile", protocolVersion: 5 | 6, commandId, ticket }`。服务器在房间队列中验证当前连接、相同 session/账户身份、房间代际与 ticket 有效期；不接受客户端指定 slot 或直接提交待广播的名字。成功后通过 lifecycle 的 `causedByCommandId` 确认并广播，重复 command 只确认当前资料，不能回滚后续改名。旧连接、退出房间后的异步 ticket 和被后续请求取代的资料刷新不能修改新连接。
+资料保存后，两类 Client Host 的 `refreshProfile()` 获取新 ticket，并通过独立 `room.profile` channel 提交严格 `{ type: "room.profile", protocolVersion: 6, commandId, ticket }`。服务器在房间队列中验证当前连接、相同 session/账户身份、房间代际与 ticket 有效期；不接受客户端指定 slot 或直接提交待广播的名字。成功后通过 lifecycle 的 `causedByCommandId` 确认并广播，重复 command 只确认当前资料，不能回滚后续改名。旧连接、退出房间后的异步 ticket 和被后续请求取代的资料刷新不能修改新连接。
 
-资料变化不清空 ready，不推进 Setup/gameplay revision，不消费 RNG，不进入 RoomStore、Match archive 或 canonical replay。扩展仅涉及平台资料，游戏、Bridge、Surface 和 replay 版本均不变。V5/V6 代际保持不变：新 reader 接受字段缺省，未声明支持的旧客户端继续收到原有 lifecycle；启用新 Web 前须先升级 ticket verifier 和两类 runtime。
+资料变化不清空 ready，不推进 Setup/gameplay revision，不消费 RNG，不进入 RoomStore、Match archive 或 canonical replay。扩展仅涉及平台资料，游戏、Bridge、Surface 和 replay 版本均不变。V6 reader 接受字段缺省，未声明支持资料扩展的 V6 客户端继续收到不含显示名的 lifecycle。
 
 ### 4.4 Private Match History API
 
@@ -138,7 +154,7 @@ Repository 的 recordedOutcome 与 players 仅为服务器投影输入。Web 使
 
 ### 5.1 创建房间
 
-V6 matchmaking options 使用以下 strict request；V5 对应类型仅使用自己的版本常量。客户端不能选择 `gameVersion`、slot、UserId 或内部 `roomId`：
+V6 matchmaking options 使用以下 strict request。客户端不能选择 `gameVersion`、slot、UserId 或内部 `roomId`：
 
 ```ts
 interface CreateGameRoomRequestV6 {
@@ -185,15 +201,16 @@ interface RoomDiscovery {
   roomCode: string;
   gameId: string;
   gameVersion: string;
-  setupProtocol: 5 | 6;
+  setupProtocol: 6;
   runtime: "turn-based" | "realtime";
 }
 ```
 
 - 浏览器校验响应的 gameId、规范 room code 和 catalog runtime，再按 `setupProtocol` 请求同代 ticket 并发送同代 join request。Client Host 把 generation 固定在本次连接目标上；异步 reservation、后续命令和自动重连都使用该固定值，不读取可被另一连接尝试改变的全局默认值。
 - 创建房间不使用 discovery。它始终读取 exact deployment registration 的 generation；一次 join 选择不会改变 Host 的创建默认值。
-- room record 的 `setupProtocol` 创建后不可修改。内存 store 对非 `5 | 6` 或代际变更 fail closed；realtime PostgreSQL 旧行由 `DEFAULT 5` 解释，数据库 check 只允许 `5 | 6`。该字段不允许 runtime 在生命周期内重新推断或升级房间。
+- 在线 room record 的 `setupProtocol` 创建后不可修改，内存 store 与新的 PostgreSQL 写入只接受 `6`。历史 realtime SQL 读取保留 `5 | 6`，不得用旧行恢复在线 V5 runtime 或改写其代际。
 - 未找到、已关闭、gameId 不匹配或两个 runtime 出现同码歧义时返回 `404 { "code": "ROOM_NOT_FOUND" }`；store 故障、损坏记录或非法上游 payload 返回稳定的 `503 { "code": "ROOM_DISCOVERY_UNAVAILABLE" }`。
+- 找到未关闭的历史 V5 metadata 时返回 `400 { "code": "PROTOCOL_VERSION_UNSUPPORTED" }`，Web 原样传递该稳定错误并提示刷新页面。
 - Game Server 响应使用 `Cache-Control: no-store`，Web 响应使用 `Cache-Control: no-store, private`。query 和 response 都是 strict schema；响应不得包含内部 room ID、ticket、session、UserId、slot、State、seed、replay 或 reservation 数据。
 
 Discovery 只钉住连接协议，不承诺 seat 可用，也不改变单实例 active-room 恢复边界；成功 discovery 后的 join 仍由对应 runtime authoritative 地验证房间、席位、身份和 lifecycle。
@@ -230,105 +247,21 @@ type MatchStatus = "waiting" | "active" | "completed" | "abandoned";
 
 状态转换由 Game Server 管理。Game Core 只决定游戏 Outcome，不决定网络断开、房间销毁或 session 权限。
 
-### 6.1 V5 兼容：Live Room、轮次与控制
+### 6.1 Live Room、轮次与关闭
 
-一个 live room 可以顺序承载多轮，但每轮都由 `roundNumber = 1, 2, ...` 标识，并拥有独立 `playerOrder`、Match、RNG、revision 序列和 canonical replay。room code、Config 和 stable slots 不变；`playerOrder` 由首手策略和可选 assignment 顺序共同决定。Core 初始化与 replay header 必须使用完全相同的顺序，新轮 revision 从 `0` 开始。
+一个 live room 可以顺序承载多轮，但每轮都由 `roundNumber = 1, 2, ...` 标识，并拥有独立 Match、RNG、revision 序列和 canonical replay。room code 与 stable slots 不变；本轮 Config、参与者、`playerOrder` 和 assignments 由游戏 Setup 固化。Core 初始化与 replay header 必须使用完全相同的结果，新轮 revision 从 `0` 开始。
 
-首局与 completed 后续局都进入统一的 `nextRound` setup。V5 使用独立 Colyseus custom message type `room.control`，命令是严格 discriminated union：
-
-```ts
-type StarterChoice = "OWNER" | "NON_OWNER" | "RANDOM";
-
-type RoomControlCommand =
-  | {
-      type: "room.control";
-      protocolVersion: 5;
-      commandId: string;
-      operation: "SELECT_STARTER";
-      starter: StarterChoice;
-    }
-  | {
-      type: "room.control";
-      protocolVersion: 5;
-      commandId: string;
-      operation: "SELECT_PLAYER_COUNT";
-      playerCount: number;
-    }
-  | {
-      type: "room.control";
-      protocolVersion: 5;
-      commandId: string;
-      operation: "SELECT_PLAYER_ASSIGNMENT";
-      assignment: string;
-    }
-  | {
-      type: "room.control";
-      protocolVersion: 5;
-      commandId: string;
-      operation: "CLEAR_PLAYER_ASSIGNMENT";
-    }
-  | {
-      type: "room.control";
-      protocolVersion: 5;
-      commandId: string;
-      operation:
-        | "READY_FOR_ROUND"
-        | "CANCEL_ROUND_READY"
-        | "START_REMATCH"
-        | "CLOSE_ROOM";
-    };
-```
-
-Server 在同一 `room.control` channel 按 viewer 返回：
-
-```ts
-interface RoomLifecycleState {
-  type: "room.lifecycle";
-  protocolVersion: 5;
-  isOwner: boolean;
-  currentRound: {
-    roundNumber: number;
-    status: "active" | "completed" | "abandoned";
-  } | null;
-  nextRound: {
-    roundNumber: number;
-    starter: StarterChoice | null;
-    selfReady: boolean;
-    readyPlayerCount: number;
-    requiredPlayerCount: number;
-    assignmentOptions?: readonly string[];
-  } | null;
-  players?: readonly {
-    slotId: string;
-    occupied: boolean;
-    online: boolean;
-    ready: boolean;
-    assignment: string | null;
-  }[];
-  closed: boolean;
-  closeReason:
-    | "OWNER_CLOSED"
-    | "PLAYER_LEFT"
-    | "RECONNECT_TIMEOUT"
-    | "REMATCH_TIMEOUT"
-    | null;
-  causedByCommandId?: string;
-}
-```
-
-- 只有 room creator 可 `SELECT_STARTER` 或 `CLOSE_ROOM`；权限绑定 creator session，不因本轮先后手变化。非 owner 伪造选择返回 `ROOM_CONTROL_NOT_ALLOWED`。`START_REMATCH` 只允许原玩家在 completed 状态使用。
-- 房主可在另一 slot 尚未分配时预选并提前 ready；任何玩家在 starter 为 null 时 ready 都被拒绝。开局必须同时满足：所有规定 slots 已分配、全部在线、starter 已选、所有参与者 ready。
-- 改为不同 starter 会清除全部 ready 和旧 pending candidate；重复选择同一值保持 ready。断线或 connection takeover 只清对应 session ready，保留 starter；重新连接后必须重新 ready。
-- `RANDOM` 由 Server 使用本轮新 seed 规范决定首位，但不推进传给 Game Core 的初始 RNG cursor；最终顺序写入 Replay header 和 Match archive。
-- Round 启动后 `nextRound = null`；Round 完成后立即把下一轮 starter 重置为 null 并清空 ready，同时保留 completed snapshot。常规设置需要房主逐局重新选择；任一原玩家也可在双方在线时以 `START_REMATCH` 复用上一轮实际 playerOrder 立即创建独立新 Round。
-- 当 manifest 声明 `playerAssignment` 时，房主可发送 `SELECT_PLAYER_COUNT`（2–6 且不小于已占用席位），玩家发送 `SELECT_PLAYER_ASSIGNMENT` 或 `CLEAR_PLAYER_ASSIGNMENT`。开局要求实际人数、在线/ready、assignment 唯一且完整；其余玩家按 manifest 的固定顺序排列。lifecycle 返回最多六个 slot 的占用、在线、ready 和 assignment 状态。
+- 首局与 completed 后续局都进入 `nextRound` Setup。active 时 `nextRound = null`；completed snapshot 在下一轮启动前继续保留。
+- 只有 room creator 可 `CLOSE_ROOM`，权限绑定 creator session，不因本轮先后手变化。其他玩家请求关闭返回 `ROOM_CONTROL_NOT_ALLOWED`。游戏设置权限由 Setup definition 决定。
+- 断线或 connection takeover 只清对应 session 的 ready，保留游戏设置；重新连接后必须重新 ready。
 - 非 owner 的主动离开由 `GameClientHost.leaveRoom()` 发起 consented transport leave。首局未开始时离开/超时关闭 room 但不创建 Match；active leave 把当前 Match 标记 `abandoned`，completed leave 只移除连接并保留 slot。
 - Web 只在 active 状态执行关闭/离开前确认；未开局/completed 不弹确认。completed room 拒绝新参与者，并在 5 分钟未开始下一轮时以兼容名称 `REMATCH_TIMEOUT` 关闭。选择或 ready 不延长 TTL；成功启动下一轮时取消 TTL。active/未开局房间的 60 秒 reconnect timeout 以 `RECONNECT_TIMEOUT` 关闭 room，只有 active Round 会产生 abandoned Match。
 - 关闭 lifecycle 先发送，server 经过 25 ms 有界 WebSocket drain 后断开 clients；客户端不能把该时间窗口当成 durable acknowledgment。
+- 实时 room 关闭时，持久化 metadata 保留未开局或 completed 房间最后的 Setup 快照并清空 ready，以满足既有数据库约束；关闭 lifecycle 的 `nextRound` 仍为 null，发起者通过 `causedByCommandId` 确认关闭命令。
 
 ### 6.2 Protocol V6 Game-defined Setup
 
-V6 删除 `SELECT_STARTER`、`SELECT_PLAYER_COUNT`、`SELECT_PLAYER_ASSIGNMENT`、`CLEAR_PLAYER_ASSIGNMENT` 和 `START_REMATCH`。平台 `room.control` 只保留 `READY_FOR_ROUND`、`CANCEL_ROUND_READY`、`CLOSE_ROOM`；主动离开使用 transport leave。设置由独立 `game.setup` intent 承载：
+平台 `room.control` 只接受 `READY_FOR_ROUND`、`CANCEL_ROUND_READY`、`CLOSE_ROOM`，严格字段为 `{ type: "room.control", protocolVersion: 6, commandId, operation }`。旧的 starter/player-count/assignment 控制与 `START_REMATCH` 均被拒绝；主动离开使用 transport leave。设置由独立 `game.setup` intent 承载：
 
 ```ts
 interface GameSetupCommand {
@@ -377,13 +310,13 @@ interface RoomLifecycleStateV6 {
 }
 ```
 
-V6 的 `players`、`readySlotIds` 与 `requiredSlotIds` 上限为 8；实际人数仍由 exact manifest 和 Setup 校验，V5 上限保持不变。只有 Setup 选中的参与者可以 ready。全部 required slots 已占用且在线、逐人 ready、Setup 可 finalize 且平台校验通过后才启动 Round。Setup 使用独立服务端 RNG；finalized result 在重试前固化，Gameplay 再获得新 seed。Setup View 与 Surface 消息不包含任一 seed。
+`players`、`readySlotIds` 与 `requiredSlotIds` 上限为 8；实际人数由 exact manifest 和 Setup 校验。只有 Setup 选中的参与者可以 ready。全部 required slots 已占用且在线、逐人 ready、Setup 可 finalize 且平台校验通过后才启动 Round；条件不足时 ready 返回 `SETUP_NOT_READY`。Setup 使用独立服务端 RNG；finalized result 在重试前固化，Gameplay 再获得新 seed。Setup View 与 Surface 消息不包含任一 seed。
 
 完成一局后，runtime 立即以上一局完整 `FinalizedRoundSetup` 初始化下一轮，复用 config、参与者、实际 playerOrder 与 assignments；随机顺序不自动重抽。每个参与者点击“重新对局”只等价于自己的 `READY_FOR_ROUND`，不会替其他玩家确认；“调整设置”仅打开 Setup Surface。新局的 State、Outcome、revision/tick、seed、RNG cursor、Match/replay ID 全部重新创建。
 
 回合制 V6 runtime 对 Setup Action/ready 使用与 gameplay 相同的单 writer queue。accepted Setup Action 先保存 coordinator candidate 再递增内存 `setupRevision`；保存失败返回 `INTERNAL_ERROR` 且不缓存命令，因此同一 command ID 可安全重试。最后一名玩家 ready 后，finalized setup（含随机实际顺序）先写入 RoomStore，再创建 replay/Match/active Round；后续 port 失败保留相同 finalized setup、replay ID 和 gameplay seed。若玩家在该失败窗口取消并再次 ready，继续复用已固化结果，不重新抽取随机顺序。
 
-V5/V6 generation 由 exact deployment registration 决定并固定在 live room record；Surface presentation 单独按精确映射加载。注册切换或回滚不改变已有房间代际；只有 V5 房间排空且全部受支持版本已有迁移路径后，才能删除旧 schema/runtime。Realtime Input/Snapshot Protocol 仍为 V1。
+所有受支持规则版本通过 exact deployment registration 使用 V6 Setup；Surface presentation 单独按精确映射加载。历史规则版本继续使用原 Core 与 replay 重建，不能因在线协议退役而改写规则或重新标注旧 replay。
 
 ## 7. Client Action Envelope
 
@@ -401,7 +334,7 @@ interface GameActionCommandV6 {
 ```
 
 - `commandId` 由客户端为每次用户意图生成，在同一 session/live room 内唯一。
-- `roundNumber` 在 V5/V6 均必填；缺失由 strict schema 拒绝，与当前轮不一致时返回 `STALE_REVISION` 和当前 snapshot，不进入 Core。
+- `roundNumber` 必填；缺失由 strict schema 拒绝，与当前轮不一致时返回 `STALE_REVISION` 和当前 snapshot，不进入 Core。
 - `expectedRevision` 是用户产生 Action 时看到的 revision。
 - `action` 先由通用 envelope schema 读取为 `unknown`，再由当前游戏的 `actionSchema` 解析。
 - 通用 schema 要求 `action` 是 JSON value，且序列化后的 UTF-8 长度不超过 16 KiB；transport 仍应在进入 Zod/Core 前设置总消息上限。
@@ -416,7 +349,7 @@ interface GameActionCommandV6 {
 - schema invalid、platform rejected、game-rule rejected 和 duplicate Action 不增加 revision。
 - Room 在单一串行队列中处理命令，不并发调用 Core。
 - `expectedRevision` 不等于当前 revision 时返回 `STALE_REVISION` 和最新 snapshot，命令不进入 Core。
-- Server 以 `PlayerSessionId + commandId` 为 key 缓存 command outcome。V5 内存缓存保留整个 live room lifetime，包括后续轮次；重复 `commandId` 返回带原 `roundNumber` 的原结果，不重复调用 Core、消费 RNG、追加 replay 或广播 snapshot。
+- Server 以 `PlayerSessionId + commandId` 为 key 缓存 command outcome。内存缓存保留整个 live room lifetime，包括后续轮次；重复 `commandId` 返回带原 `roundNumber` 的原结果，不重复调用 Core、消费 RNG、追加 replay 或广播 snapshot。
 - 后续长生命周期房间可以加入有界淘汰，但保留窗口不得短于客户端正常重连与请求重试窗口。
 
 ## 9. Server Snapshot
@@ -462,7 +395,7 @@ interface CommandRejectedV6 {
 }
 ```
 
-V5/V6 `ProtocolErrorCode` 至少包括；Setup 专用代码只会出现在 V6：
+`ProtocolErrorCode` 至少包括：
 
 | Code                           | 语义                                 | Retryable                        |
 | ------------------------------ | ------------------------------------ | -------------------------------- |
@@ -497,12 +430,12 @@ V5/V6 `ProtocolErrorCode` 至少包括；Setup 专用代码只会出现在 V6：
 ### 11.1 Client Host 收敛语义
 
 - `GameClientHostState` 明确暴露 `idle | loading | connecting | connected | reconnecting | closed`，以及独立的 room metadata、`roomLifecycle`、最新 snapshot、command rejection 和 ticket/room/protocol/closed error。
-- `createRoom(gameId, initialConfig)` 按 deployment default generation 获取新 ticket；`joinRoom(gameId, roomCode, setupProtocol)` 使用 discovery 固定的 V5/V6 generation，并在调用 Colyseus SDK 前执行 `trim().toUpperCase()`。连接目标保存 exact generation，自动重连继续请求同代 ticket；后续 create 恢复 deployment default，不继承上次加入房间的代际。
+- `createRoom(gameId, initialConfig)` 获取 V6 ticket；`joinRoom(gameId, roomCode, setupProtocol)` 只接受 discovery 返回的 V6，并在调用 Colyseus SDK 前执行 `trim().toUpperCase()`。连接目标保存 exact generation，自动重连继续请求 V6 ticket；后续 create 不继承旧连接尝试的状态。
 - 开始新的 create/join 时清空上一房间的 metadata、lifecycle、snapshot 和 rejection；旧连接与已取消的加入请求不得更新新目标的状态。
-- Host 将每个 `protocol` transport payload 当作 `unknown`，通过固定代际的 `serverMessageSchema` 或 `serverMessageV6Schema`，并确认 game/room/version/viewer identity 与连接一致后才更新状态；非法消息关闭连接并报告 `INVALID_SERVER_MESSAGE`。
+- Host 将每个 transport payload 当作 `unknown`，通过 `serverMessageV6Schema` 或 `roomLifecycleStateV6Schema`，并确认 game/room/version/viewer identity 与连接一致后才更新状态；不支持的代际关闭连接并报告 `PROTOCOL_VERSION_UNSUPPORTED`，其他非法消息报告 `INVALID_SERVER_MESSAGE`。ticket、discovery 或连接发现不支持的协议时，Web 显示“请刷新页面后重试”并提供刷新按钮，不静默尝试 V5。
 - `submitAction(action)` 只在 current Round 为 active、snapshot 与 lifecycle 的 round/status 一致时可用；它使用安全 UUID command ID，并填充必填 `roundNumber` 和 `expectedRevision`。Host 不接收 actor/State/Outcome，也不计算下一个 revision；pending promise 只由同轮 matching rejection 或服务器 snapshot 结算。
 - Rejection 中若包含 snapshot，host 先应用完整 snapshot 再暴露 rejection。duplicate、stale 和 reconnect 都通过 server snapshot 收敛，不在客户端 replay Action 或推导 authoritative State。
-- V6 设置通过 Setup intent，`readyForRound()`、`cancelRoundReady()` 和 `closeRoom()` 发送平台 control；`selectStarter` 等方法仅属于 V5 兼容路径。Host 支持首局已连接但无 snapshot。`leaveRoom()` 使用 consented leave、清空本地 room 并进入 `idle`；`close()` 用于刷新/卸载，以 non-consented leave 保留重连宽限，不能代替主动离开。
+- `submitSetup(action)` 发送 opaque Setup intent，`readyForRound()`、`cancelRoundReady()` 和 `closeRoom()` 发送平台 control。Host 支持首局已连接但无 snapshot。`leaveRoom()` 使用 consented leave、清空本地 room 并进入 `idle`；`close()` 用于刷新/卸载，以 non-consented leave 保留重连宽限，不能代替主动离开。
 - 非主动 leave 后，host 在默认 60 秒窗口内从 100 ms 到 2 s 指数退避；每次尝试使用新 ticket 和新 join reservation。窗口耗尽进入 `closed`；收到 closed lifecycle 后进入 `idle` 且不重连。
 
 ## 12. 安全与隐私不变量
@@ -529,3 +462,19 @@ V5/V6 `ProtocolErrorCode` 至少包括；Setup 专用代码只会出现在 V6：
 样本可带 `gameId`/`gameVersion` labels；日志至少使用 `roomId`、game/version、revision、错误码、lifecycle status 和不可逆的 session correlation id 中与事件相关的字段。
 
 指标不改变游戏行为，也不作为 replay 输入。
+
+`GET /metrics` 返回原有 `samples` 和按 runtime/代际聚合的 `liveRooms`，设置 `Cache-Control: no-store`：
+
+```json
+{
+  "samples": [],
+  "liveRooms": {
+    "turn-based": { "v5": 0, "v6": 0, "unknown": 0 },
+    "realtime": { "v5": 0, "v6": 0, "unknown": 0 }
+  }
+}
+```
+
+计数来自当前 Colyseus room listings，包括等待、满员/locked、终局保留与断线宽限中的房间；关闭后的有界 drain/dispose 完成才会消失。不查询历史 Room/Match 数据库行，也不以 `active_rooms` 代替排空检查。缺失或非法的 `setupProtocol` 计入 `unknown`，查询失败返回 `503 { "code": "METRICS_UNAVAILABLE" }`，不能视为零。
+
+V5 排空要求每个待升级实例的两个 runtime 都满足 `v5 = 0` 且 `unknown = 0`，并已阻止新 V5 房间创建。缺少 `liveRooms` 的旧实例没有提供排空证据；需在旧版本回补同等只读计数，或使用已核实的运维排空结果。维护窗口内的协调升级和回滚见 [Compose 部署](./DEPLOYMENT_DOCKER_COMPOSE.md#v5-退役升级与回滚)。

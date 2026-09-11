@@ -17,7 +17,6 @@ import {
   SignOut,
   Trophy,
   ArrowsClockwise,
-  Shuffle,
   UserPlus,
   UsersThree,
   WarningCircle,
@@ -34,6 +33,7 @@ import { DEFAULT_DISPLAY_NAME, getAvatarLabel } from "../lib/profile";
 
 import {
   connectionLabels,
+  PROTOCOL_UPDATE_MESSAGE,
   useGameRoomHost,
   type InviteCopyState,
   type WebRoomHostState,
@@ -58,6 +58,8 @@ interface GameRoomPageProps {
 function rejectionLabel(state: WebRoomHostState): string | null {
   const rejection = state.rejection;
   if (rejection === null) return null;
+  if (rejection.code === "PROTOCOL_VERSION_UNSUPPORTED")
+    return PROTOCOL_UPDATE_MESSAGE;
   if (rejection.type === "realtime.rejected") {
     const realtimeRules: Record<string, string> = {
       NOT_A_PLAYER: "你不是该房间的玩家。",
@@ -191,8 +193,21 @@ export function InviteButton({
 function PageAlerts() {
   const { localError, localNotice, state } = useGameRoomHost();
   const rejection = rejectionLabel(state);
+  const needsRefresh =
+    localError === PROTOCOL_UPDATE_MESSAGE ||
+    state.error?.code === "PROTOCOL_VERSION_UNSUPPORTED" ||
+    rejection === PROTOCOL_UPDATE_MESSAGE;
   return (
     <div className="page-alerts" aria-live="polite">
+      {needsRefresh ? (
+        <button
+          className="clay-button clay-button-primary"
+          type="button"
+          onClick={() => window.location.reload()}
+        >
+          刷新页面
+        </button>
+      ) : null}
       {localNotice === null ? null : (
         <p className="notice-banner" data-testid="room-notice" role="status">
           <CheckCircle size={18} weight="bold" aria-hidden="true" />
@@ -366,7 +381,6 @@ function PlayerPod({
   ready,
   online,
   slotLabel,
-  assignment,
 }: {
   readonly displayName?: string | null | undefined;
   readonly occupied: boolean;
@@ -375,7 +389,6 @@ function PlayerPod({
   readonly ready: boolean;
   readonly online: boolean;
   readonly slotLabel: string;
-  readonly assignment?: string | null | undefined;
 }) {
   const name = occupied
     ? (displayName ?? DEFAULT_DISPLAY_NAME)
@@ -422,11 +435,6 @@ function PlayerPod({
             {ready ? "已准备" : "未准备"}
           </span>
         ) : null}
-        {assignment === undefined ? null : (
-          <span className="player-slot-label">
-            营地：{assignment ?? "未选择"}
-          </span>
-        )}
       </div>
     </article>
   );
@@ -445,10 +453,6 @@ function RoomView({ title }: Pick<GameRoomPageProps, "title">) {
     host,
     leaveRoom,
     selectInviteFallback,
-    selectStarter,
-    selectPlayerCount,
-    selectPlayerAssignment,
-    clearPlayerAssignment,
     state,
     toggleRoundReady,
   } = useGameRoomHost();
@@ -458,34 +462,19 @@ function RoomView({ title }: Pick<GameRoomPageProps, "title">) {
   if (room === null || lifecycle === null || lifecycle.closed) {
     return <LoadingView label="正在连接房间…" />;
   }
-  const setupSurfaceEntrypoint =
-    lifecycle.protocolVersion === 6
-      ? resolveGameSurfaceEntrypoint(room.gameId, room.gameVersion, "setup")
-      : undefined;
+  const setupSurfaceEntrypoint = resolveGameSurfaceEntrypoint(
+    room.gameId,
+    room.gameVersion,
+    "setup",
+  );
   const roundNumber =
     nextRound?.roundNumber ?? lifecycle.currentRound?.roundNumber ?? 1;
   const selfReady = nextRound?.selfReady ?? false;
   const required = nextRound?.requiredPlayerCount ?? 2;
   const readyCount = nextRound?.readyPlayerCount ?? 0;
   const canReady =
-    nextRound !== null && (nextRound.canReady ?? nextRound.starter !== null);
-  const otherReady = readyCount === required || (readyCount > 0 && !selfReady);
-  const lifecyclePlayers = lifecycle.players ?? [
-    {
-      slotId: room.playerSlotId,
-      occupied: true,
-      online: state.connectionState === "connected",
-      ready: selfReady,
-      assignment: null,
-    },
-    {
-      slotId: "slot-2",
-      occupied: otherReady,
-      online: otherReady,
-      ready: otherReady,
-      assignment: null,
-    },
-  ];
+    setupSurfaceEntrypoint !== undefined && nextRound?.canReady === true;
+  const lifecyclePlayers = lifecycle.players;
   return (
     <div className="page-shell console-page room-page">
       <aside className="game-rail clay-surface">
@@ -532,11 +521,6 @@ function RoomView({ title }: Pick<GameRoomPageProps, "title">) {
           <div className="player-pod-grid">
             {lifecyclePlayers.map((player, index) => (
               <PlayerPod
-                assignment={
-                  nextRound?.assignmentOptions === undefined
-                    ? undefined
-                    : player.assignment
-                }
                 displayName={player.displayName}
                 occupied={player.occupied}
                 key={player.slotId}
@@ -549,70 +533,6 @@ function RoomView({ title }: Pick<GameRoomPageProps, "title">) {
             ))}
           </div>
         </section>
-        {setupSurfaceEntrypoint !== undefined ||
-        nextRound?.assignmentOptions === undefined ? null : (
-          <section
-            aria-labelledby="assignment-heading"
-            className="round-dock clay-surface assignment-dock"
-          >
-            <div className="round-dock-header">
-              <div>
-                <p className="eyebrow">营地选择</p>
-                <h2 id="assignment-heading">选择你的六角营地</h2>
-              </div>
-              {lifecycle.isOwner ? (
-                <label className="player-count-control">
-                  <span>本轮人数</span>
-                  <select
-                    aria-label="本轮人数"
-                    data-testid="player-count"
-                    disabled={busy}
-                    onChange={(event) =>
-                      void selectPlayerCount(Number(event.target.value))
-                    }
-                    value={required}
-                  >
-                    {[2, 3, 4, 5, 6].map((count) => (
-                      <option key={count} value={count}>
-                        {count} 人
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              ) : null}
-            </div>
-            <div aria-label="营地选项" className="assignment-options">
-              {nextRound.assignmentOptions.map((assignment) => {
-                const selected =
-                  lifecyclePlayers.find(
-                    (player) => player.slotId === room.playerSlotId,
-                  )?.assignment === assignment;
-                const occupied = lifecyclePlayers.some(
-                  (player) =>
-                    player.slotId !== room.playerSlotId &&
-                    player.assignment === assignment,
-                );
-                return (
-                  <button
-                    aria-pressed={selected}
-                    className="assignment-choice"
-                    data-assignment={assignment}
-                    disabled={busy || occupied}
-                    key={assignment}
-                    onClick={() =>
-                      void (selected
-                        ? clearPlayerAssignment()
-                        : selectPlayerAssignment(assignment))
-                    }
-                    type="button"
-                  >
-                    {assignment}
-                  </button>
-                );
-              })}
-            </div>
-          </section>
-        )}
         <section
           aria-labelledby="round-settings-heading"
           className="round-dock clay-surface"
@@ -620,11 +540,7 @@ function RoomView({ title }: Pick<GameRoomPageProps, "title">) {
           <div className="round-dock-header">
             <div>
               <p className="eyebrow">第 {roundNumber} 局</p>
-              <h2 id="round-settings-heading">
-                {setupSurfaceEntrypoint === undefined
-                  ? "房主选择先手"
-                  : "游戏规则"}
-              </h2>
+              <h2 id="round-settings-heading">游戏规则</h2>
             </div>
             <span className="round-dock-note">
               <UsersThree size={18} weight="bold" aria-hidden="true" />
@@ -655,51 +571,9 @@ function RoomView({ title }: Pick<GameRoomPageProps, "title">) {
                 setupRevision={nextRound.setupRevision ?? 0}
               />
             </div>
-          ) : lifecycle.isOwner && nextRound !== null ? (
-            <div aria-label="选择先手方" className="starter-options">
-              <button
-                aria-pressed={nextRound.starter === "OWNER"}
-                className="starter-choice"
-                data-testid="starter-owner"
-                disabled={busy}
-                onClick={() => void selectStarter("OWNER")}
-                type="button"
-              >
-                <span className="stone stone-black" aria-hidden="true" />
-                我方先手
-              </button>
-              <button
-                aria-pressed={nextRound.starter === "NON_OWNER"}
-                className="starter-choice"
-                data-testid="starter-non-owner"
-                disabled={busy}
-                onClick={() => void selectStarter("NON_OWNER")}
-                type="button"
-              >
-                <span className="stone stone-white" aria-hidden="true" />
-                对方先手
-              </button>
-              <button
-                aria-pressed={nextRound.starter === "RANDOM"}
-                className="starter-choice"
-                data-testid="starter-random"
-                disabled={busy}
-                onClick={() => void selectStarter("RANDOM")}
-                type="button"
-              >
-                <Shuffle size={20} weight="bold" aria-hidden="true" />
-                随机先手
-              </button>
-            </div>
           ) : (
-            <p className="waiting-copy">
-              {nextRound?.starter === null
-                ? "等待房主选择先手方。"
-                : nextRound?.starter === "OWNER"
-                  ? "房主选择由房主先手。"
-                  : nextRound?.starter === "NON_OWNER"
-                    ? "房主选择由另一位玩家先手。"
-                    : "房主选择随机决定先手。"}
+            <p className="waiting-copy" role="status">
+              游戏设置暂不可用，请刷新后重试。
             </p>
           )}
           <div className="round-dock-actions">
@@ -709,9 +583,7 @@ function RoomView({ title }: Pick<GameRoomPageProps, "title">) {
               role="status"
             >
               {!canReady
-                ? setupSurfaceEntrypoint === undefined
-                  ? "房主尚未选择先手方"
-                  : "请先完成本局游戏设置"
+                ? "请先完成本局游戏设置"
                 : `${selfReady ? "你已准备；" : ""}${readyCount}/${required} 人已准备`}
             </p>
             <button
@@ -824,7 +696,6 @@ interface PlaySurfaceShellProps {
   readonly revision: number;
   readonly completed: boolean;
   readonly resultSummary: SurfaceResultSummaryV2 | null;
-  readonly protocolVersion: 5 | 6;
   readonly selfReady: boolean;
   readonly readyPlayerCount: number;
   readonly requiredPlayerCount: number;
@@ -854,7 +725,6 @@ export function PlaySurfaceShell({
   revision,
   completed,
   resultSummary,
-  protocolVersion,
   selfReady,
   readyPlayerCount,
   requiredPlayerCount,
@@ -986,20 +856,18 @@ export function PlaySurfaceShell({
       ? "正在确认…"
       : rematchPending === "cancel"
         ? "正在取消…"
-        : protocolVersion === 6 && selfReady
+        : selfReady
           ? remainingPlayers === 0
             ? "正在开始下一局…"
             : `等待其余 ${remainingPlayers} 名玩家确认`
           : "重新对局";
   const rematchAriaLabel =
-    protocolVersion === 6 && selfReady && remainingPlayers > 0
+    selfReady && remainingPlayers > 0
       ? `取消重新对局确认，当前还需 ${remainingPlayers} 名玩家确认`
       : rematchLabel;
   const submitRematch = async (): Promise<void> => {
     if (rematchPending !== null) return;
-    setRematchPending(
-      protocolVersion === 6 && selfReady ? "cancel" : "confirm",
-    );
+    setRematchPending(selfReady ? "cancel" : "confirm");
     try {
       await onRematch();
     } finally {
@@ -1082,7 +950,7 @@ export function PlaySurfaceShell({
                   busy ||
                   rematchPending !== null ||
                   state.connectionState !== "connected" ||
-                  (protocolVersion === 6 && !selfReady && !canReady)
+                  (!selfReady && !canReady)
                 }
                 onClick={() => void submitRematch()}
                 type="button"
@@ -1250,7 +1118,6 @@ function TurnBasedPlayView({ title }: Pick<GameRoomPageProps, "title">) {
     host,
     leaveRoom,
     openNextRoundSetup,
-    startRematch,
     state,
     toggleRoundReady,
   } = useGameRoomHost();
@@ -1295,7 +1162,7 @@ function TurnBasedPlayView({ title }: Pick<GameRoomPageProps, "title">) {
   return (
     <PlaySurfaceShell
       busy={busy}
-      canReady={nextRound?.canReady ?? true}
+      canReady={nextRound?.canReady ?? false}
       canResign={canResign}
       completed={isCompleted}
       errorMessage={resignError ?? undefined}
@@ -1303,12 +1170,9 @@ function TurnBasedPlayView({ title }: Pick<GameRoomPageProps, "title">) {
       onAdjustSettings={() => void openNextRoundSetup()}
       onCloseRoom={() => void closeRoom()}
       onLeaveRoom={() => void leaveRoom()}
-      onRematch={() =>
-        lifecycle.protocolVersion === 6 ? toggleRoundReady() : startRematch()
-      }
+      onRematch={toggleRoundReady}
       onResign={() => void resign()}
       owner={lifecycle.isOwner}
-      protocolVersion={lifecycle.protocolVersion}
       overlays={
         <>
           <PageAlerts />
@@ -1368,7 +1232,6 @@ function RealtimePlayView({ title }: Pick<GameRoomPageProps, "title">) {
     host,
     leaveRoom,
     openNextRoundSetup,
-    startRematch,
     state,
     toggleRoundReady,
   } = useGameRoomHost();
@@ -1413,7 +1276,7 @@ function RealtimePlayView({ title }: Pick<GameRoomPageProps, "title">) {
   return (
     <PlaySurfaceShell
       busy={busy}
-      canReady={nextRound?.canReady ?? true}
+      canReady={nextRound?.canReady ?? false}
       canResign={canResign}
       completed={isCompleted}
       errorMessage={resignError ?? undefined}
@@ -1421,12 +1284,9 @@ function RealtimePlayView({ title }: Pick<GameRoomPageProps, "title">) {
       onAdjustSettings={() => void openNextRoundSetup()}
       onCloseRoom={() => void closeRoom()}
       onLeaveRoom={() => void leaveRoom()}
-      onRematch={() =>
-        lifecycle.protocolVersion === 6 ? toggleRoundReady() : startRematch()
-      }
+      onRematch={toggleRoundReady}
       onResign={() => void resign()}
       owner={lifecycle.isOwner}
-      protocolVersion={lifecycle.protocolVersion}
       overlays={
         <>
           <PageAlerts />

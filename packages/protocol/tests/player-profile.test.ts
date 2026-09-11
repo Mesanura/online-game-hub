@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import {
   normalizePlayerDisplayName,
   playerDisplayNameSchema,
-  roomLifecycleStateSchema,
   roomLifecycleStateV6Schema,
   roomProfileCommandSchema,
 } from "../src/index.js";
@@ -26,19 +25,15 @@ describe("public room profile extension", () => {
     }
   });
 
-  it.each([5, 6] as const)(
-    "keeps V%i legacy payloads valid and rejects private profile fields",
+  it.each([6] as const)(
+    "keeps V%i profiles optional and rejects private profile fields",
     (protocolVersion) => {
-      const schema =
-        protocolVersion === 5
-          ? roomLifecycleStateSchema
-          : roomLifecycleStateV6Schema;
+      const schema = roomLifecycleStateV6Schema;
       const player = {
         slotId: "slot-1",
         occupied: true,
         online: true,
         ready: false,
-        ...(protocolVersion === 5 ? { assignment: null } : {}),
       };
       const lifecycle = {
         type: "room.lifecycle",
@@ -78,6 +73,13 @@ describe("public room profile extension", () => {
         ticket: "signed-ticket",
       };
       expect(roomProfileCommandSchema.parse(update)).toEqual(update);
+      expect(
+        roomProfileCommandSchema.safeParse({ ...update, protocolVersion: 5 })
+          .success,
+      ).toBe(false);
+      expect(
+        schema.safeParse({ ...lifecycle, protocolVersion: 5 }).success,
+      ).toBe(false);
       for (const extra of [
         { slotId: "forged" },
         { displayName: "forged" },

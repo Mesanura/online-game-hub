@@ -51,7 +51,7 @@ Web 不验证游戏规则、不持有权威 State、不生成 Outcome。页面�
 | `realtime-game-sdk`            | 固定 tick simulation、实时类型/RNG、canonical replay 与纯重建器                                  |
 | `realtime-game-server-runtime` | 实时输入队列、单 writer scheduler、快照、reconnect 与 realtime replay port                       |
 | `realtime-game-client-sdk`     | 实时连接 Host、input sequence/ack、快照顺序与显示插值时钟                                        |
-| `protocol`                     | V5/V6 平台 envelope、独立 Realtime V1、错误码、ticket claims 与 strict schemas                   |
+| `protocol`                     | V6 平台 envelope、独立 Realtime V1、错误码、ticket claims 与 strict schemas                      |
 | `game-server-ticket`           | Web issuer 与 Game Server verifier 共用的 HMAC-SHA256 ticket authority                           |
 | `game-setup`                   | 两类 runtime 共用的纯 Setup definition、coordinator、projection/finalize 与最终设置校验          |
 | `game-surface-bridge`          | Artifact 与 Bridge V1/V2 JSON schemas、消息和可选 Host/Surface helpers                           |
@@ -106,9 +106,9 @@ apps ──────────────────────> 各自�
 
 ### 协议代际
 
-创建房间时将 exact deployment 的 `setupProtocol: 5 | 6` 固定到 room record，此后保存不得改变代际。已有房间通过 discovery 返回最小 `{ roomCode, gameId, gameVersion, setupProtocol, runtime }`；ticket、matchmaking、消息与 reconnect 必须全部使用该代际。注册切换或回滚只影响新房间。
+创建房间时将 exact deployment 的 `setupProtocol: 6` 固定到 room record，此后保存不得改变代际。已有房间通过 discovery 返回最小 `{ roomCode, gameId, gameVersion, setupProtocol, runtime }`；ticket、matchmaking、消息与 reconnect 必须全部使用 V6。注册切换或回滚不能改变运行中房间的代际。
 
-当前游戏使用 V6，历史 V5 路径继续兼容。Discovery 不承诺席位可用或活动房间可恢复；身份、席位和 room 存活仍由 join/runtime 验证。exact schemas、HTTP 错误和重连语义见 [网络协议](./NETWORK_PROTOCOL.md)。
+所有受支持规则版本均使用 V6，V5 在线 schema/runtime 已退役。历史 realtime metadata 保留 V5 读取类型，在线写入只允许 V6；旧数据不能恢复 V5 房间。Discovery 不承诺席位可用或活动房间可恢复；身份、席位和 room 存活仍由 join/runtime 验证。exact schemas、API 迁移、历史读取和 HTTP 错误见 [网络协议](./NETWORK_PROTOCOL.md)。
 
 ### V6 逐局设置
 
@@ -116,7 +116,7 @@ apps ──────────────────────> 各自�
 
 Platform 验证 `FinalizedRoundSetup` 的 Config、参与 slot、人数范围、严格 playerOrder 排列与 assignment 键集合。accepted Setup Action 增加 setupRevision 并清空 ready，rejected/stale/duplicate 保持不变。Setup 使用独立 RNG，finalize 结果先固化，持久化重试不重新随机；Gameplay 获得新 seed。
 
-全部所选参与者在线且分别 ready 后才开局。completed 后复用完整 finalized setup 初始化下一轮，但不复用 ready、State、Outcome、revision/tick、RNG、seed、Match 或 replay ID。V5 的 starter/assignment/immediate-rematch 行为只属于其兼容路径。
+全部所选参与者在线且分别 ready 后才开局。completed 后复用完整 finalized setup 初始化下一轮，但不复用 ready、State、Outcome、revision/tick、RNG、seed、Match 或 replay ID。平台不再提供 starter/assignment/immediate-rematch 分支。
 
 ### 权威执行
 
@@ -174,12 +174,12 @@ Docker Compose 组合独立 Web、Game Server、一次性 migrator 和 PostgreSQ
 
 共享 API 变更须说明真实跨 package 价值、兼容性和迁移范围，同步权威文档、全部消费者与 contract/integration tests，并分别评估规则、wire、Bridge、artifact 和 replay 版本。仅减少少量重复不足以证明需要共享抽象。
 
-| 风险                  | 控制措施                                                               |
-| --------------------- | ---------------------------------------------------------------------- |
-| 历史版本维护成本增长  | exact resolver、冻结 Core、golden replay；结束读取承诺前明确迁移或审批 |
-| UI 或网络时序影响规则 | 纯 Core、per-viewer projection、独立 scheduler、按 tick 归档输入       |
-| 重启或部分持久化失败  | 不承诺活动恢复；使用 pending candidate、事务、唯一约束与幂等重试       |
-| 密钥或 origin 误配    | 独立 secrets、严格 issuer/audience/config 校验和最小 origin allowlist  |
-| 兼容路径误删          | 核对支持版本、V5 存量与构建消费者，按路线图完成退役门禁                |
+| 风险                  | 控制措施                                                                       |
+| --------------------- | ------------------------------------------------------------------------------ |
+| 历史版本维护成本增长  | exact resolver、冻结 Core、golden replay；结束读取承诺前明确迁移或审批         |
+| UI 或网络时序影响规则 | 纯 Core、per-viewer projection、独立 scheduler、按 tick 归档输入               |
+| 重启或部分持久化失败  | 不承诺活动恢复；使用 pending candidate、事务、唯一约束与幂等重试               |
+| 密钥或 origin 误配    | 独立 secrets、严格 issuer/audience/config 校验和最小 origin allowlist          |
+| 历史兼容误删          | 核对历史 Core、golden、精确 Surface/replay 映射和数据库 reader，按测试矩阵验证 |
 
 扩容、预测/回滚、ECS 和隐藏信息权限等未排期能力按产品需求单独设计，不预先扩张当前接口。

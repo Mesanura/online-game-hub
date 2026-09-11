@@ -99,8 +99,17 @@ function roomRecord(
     roomCode,
     gameId: "tic-tac-toe",
     gameVersion: "1.0.0",
-    setupProtocol: 5,
+    setupProtocol: 6,
     initialConfig: null,
+    previousFinalizedSetup: {
+      config: null,
+      participantSlotIds: ["slot-1", "slot-2"],
+      playerOrder: ["slot-1", "slot-2"],
+      assignments: [
+        { slotId: "slot-1", assignment: null },
+        { slotId: "slot-2", assignment: null },
+      ],
+    },
     players: [
       {
         slotId: "slot-1",
@@ -143,14 +152,13 @@ function currentRound(room: StoredGameRoom): StoredGameRound {
 function realtimeRoomRecord(
   roomId: string,
   roomCode: string,
-  setupProtocol: 5 | 6,
 ): RealtimeStoredRoom {
   return {
     roomId,
     roomCode,
     gameId: "pong",
     gameVersion: "1.0.0",
-    setupProtocol,
+    setupProtocol: 6,
     initialConfig: { targetScore: 3 },
     players: [
       {
@@ -167,26 +175,22 @@ function realtimeRoomRecord(
       },
     ],
     currentRound: null,
-    ...(setupProtocol === 6
-      ? {
-          nextRoundSetup: {
-            schemaVersion: 1 as const,
-            setupState: {
-              config: { targetScore: 3 },
-              starter: "UNSELECTED",
-              fixedStarterSlotId: null,
-            },
-            setupRevision: 0,
-            setupRng: {
-              algorithm: "fnv1a32-counter-v1" as const,
-              seed: "database-realtime-setup-seed",
-              cursor: 0,
-            },
-            readySlotIds: [],
-            finalizedSetup: null,
-          },
-        }
-      : {}),
+    nextRoundSetup: {
+      schemaVersion: 1,
+      setupState: {
+        config: { targetScore: 3 },
+        starter: "UNSELECTED",
+        fixedStarterSlotId: null,
+      },
+      setupRevision: 0,
+      setupRng: {
+        algorithm: "fnv1a32-counter-v1",
+        seed: "database-realtime-setup-seed",
+        cursor: 0,
+      },
+      readySlotIds: [],
+      finalizedSetup: null,
+    },
     closeReason: null,
   };
 }
@@ -243,27 +247,48 @@ describe.sequential("PostgreSQL + Drizzle persistence", () => {
     ]);
   });
 
-  it("persists pinned realtime room generations across adapter reconstruction", async () => {
+  it("writes only V6 rooms while retaining immutable V5 metadata across adapter reconstruction", async () => {
     const store = new PostgresRealtimeRoomStore(isolated.client.database);
-    const v5Room = realtimeRoomRecord(
+    const { nextRoundSetup: legacySetup, ...legacyBase } = realtimeRoomRecord(
       "realtime-room-generation-v5",
       "PERS2345",
-      5,
     );
-    const v6Room = realtimeRoomRecord(
-      "realtime-room-generation-v6",
-      "PERS6789",
-      6,
-    );
-    await store.create(v5Room);
-    await store.create(v6Room);
-    await store.save({
-      ...v5Room,
-      players: v5Room.players.map((player) =>
+    expect(legacySetup).toBeDefined();
+    const v5Room = {
+      ...legacyBase,
+      setupProtocol: 5 as const,
+      players: legacyBase.players.map((player) =>
         player.slotId === "right"
           ? { ...player, playerSessionId: "realtime-session-right" }
           : player,
       ),
+    };
+    const v6Room = realtimeRoomRecord(
+      "realtime-room-generation-v6",
+      "PERS6789",
+    );
+    await expect(store.create(v5Room as never)).rejects.toMatchObject({
+      code: "DATABASE_OPERATION_ERROR",
+    });
+    await expect(store.getByRoomCode(v5Room.roomCode)).resolves.toBeNull();
+    // Seed the pre-retirement SQL shape; online adapters may only write V6.
+    await isolated.client.database.insert(realtimeRooms).values({
+      roomId: v5Room.roomId,
+      roomCode: v5Room.roomCode,
+      gameId: v5Room.gameId,
+      gameVersion: v5Room.gameVersion,
+      initialConfig: v5Room.initialConfig,
+    });
+    await isolated.client.database.insert(realtimeRoomPlayers).values(
+      v5Room.players.map((player) => ({
+        roomId: v5Room.roomId,
+        playerSlotId: player.slotId,
+        playerSessionId: player.playerSessionId,
+      })),
+    );
+    await store.create(v6Room);
+    await expect(store.save(v5Room as never)).rejects.toMatchObject({
+      code: "DATABASE_OPERATION_ERROR",
     });
     if (v6Room.nextRoundSetup === undefined) {
       throw new Error("Expected the V6 realtime setup fixture.");
@@ -319,7 +344,9 @@ describe.sequential("PostgreSQL + Drizzle persistence", () => {
       players: [{ slotId: "left" }, { slotId: "right" }],
     });
     const setupRoom = await store.getByRoomCode("PERS6789");
-    if (setupRoom === null) throw new Error("Expected the V6 realtime room.");
+    if (setupRoom === null || setupRoom.setupProtocol !== 6) {
+      throw new Error("Expected the V6 realtime room.");
+    }
     const { nextRoundSetup: _nextRoundSetup, ...roomWithoutNextSetup } =
       setupRoom;
     expect(_nextRoundSetup).not.toBeNull();
@@ -336,7 +363,11 @@ describe.sequential("PostgreSQL + Drizzle persistence", () => {
       },
     });
     await expect(
-      store.save({ ...v5Room, setupProtocol: 6 }),
+      store.save({
+        ...v6Room,
+        roomId: v5Room.roomId,
+        roomCode: v5Room.roomCode,
+      }),
     ).rejects.toMatchObject({ code: "DATABASE_OPERATION_ERROR" });
     await expect(store.getByRoomCode(" pers2345 ")).resolves.toMatchObject({
       setupProtocol: 5,
@@ -417,7 +448,6 @@ describe.sequential("PostgreSQL + Drizzle persistence", () => {
     const corrupted = realtimeRoomRecord(
       "realtime-room-generation-corrupt",
       "CRPT2345",
-      5,
     );
     await store.create(corrupted);
     await isolated.client.database.execute(sql`
@@ -439,7 +469,7 @@ describe.sequential("PostgreSQL + Drizzle persistence", () => {
     } finally {
       await isolated.client.database
         .update(realtimeRooms)
-        .set({ setupProtocol: 5 })
+        .set({ setupProtocol: 6 })
         .where(eq(realtimeRooms.roomId, corrupted.roomId));
       await isolated.client.database.execute(sql`
         alter table "realtime_rooms"
@@ -797,7 +827,22 @@ describe.sequential("PostgreSQL + Drizzle persistence", () => {
       userA.userId,
       userB.userId,
     );
-    await roomStore.create({ ...waiting, currentRound: null });
+    const { previousFinalizedSetup: finalizedSetup, ...beforeFirstRound } =
+      waiting;
+    expect(finalizedSetup).toBeDefined();
+    const firstSetup = {
+      schemaVersion: 1 as const,
+      setupState: { starter: "UNSELECTED", fixedStarterSlotId: null },
+      setupRevision: 0,
+      setupRng: createRng("history-setup-round-1"),
+      readySlotIds: [],
+      finalizedSetup: null,
+    };
+    await roomStore.create({
+      ...beforeFirstRound,
+      currentRound: null,
+      nextRoundSetup: firstSetup,
+    });
     await expect(matchRepository.listForUser(userA.userId)).resolves.toEqual(
       [],
     );
@@ -832,6 +877,11 @@ describe.sequential("PostgreSQL + Drizzle persistence", () => {
     );
     const completed: StoredGameRoom = {
       ...active,
+      nextRoundSetup: {
+        ...firstSetup,
+        setupState: { starter: "FIXED", fixedStarterSlotId: "slot-1" },
+        setupRng: createRng("history-setup-round-2"),
+      },
       currentRound: {
         ...currentRound(active),
         revision: 5,

@@ -1,11 +1,10 @@
 import {
   GAME_ACTION_MESSAGE,
   GAME_SETUP_MESSAGE,
-  PROTOCOL_VERSION,
+  SETUP_PROTOCOL_VERSION,
   ROOM_CONTROL_MESSAGE,
   ROOM_PROFILE_MESSAGE,
   SERVER_PROTOCOL_MESSAGE,
-  SETUP_PROTOCOL_VERSION,
 } from "@online-game-hub/protocol";
 import { describe, expect, it } from "vitest";
 
@@ -114,7 +113,7 @@ class FakeTransport implements GameTransportFactory {
 
 const connected = {
   type: "room.connected",
-  protocolVersion: PROTOCOL_VERSION,
+  protocolVersion: SETUP_PROTOCOL_VERSION,
   roomCode: "ABCD2345",
   gameId: "tic-tac-toe",
   gameVersion: "1.0.0",
@@ -135,7 +134,7 @@ function snapshot(
 ) {
   return {
     type: "match.snapshot",
-    protocolVersion: PROTOCOL_VERSION,
+    protocolVersion: SETUP_PROTOCOL_VERSION,
     gameId: "tic-tac-toe",
     gameVersion: "1.0.0",
     roundNumber,
@@ -166,18 +165,41 @@ function lifecycle(
     !closed && (roundNumber === null || status === "completed");
   return {
     type: "room.lifecycle",
-    protocolVersion: PROTOCOL_VERSION,
+    protocolVersion: SETUP_PROTOCOL_VERSION,
     isOwner: true,
     currentRound: roundNumber === null ? null : { roundNumber, status },
     nextRound: offersNextRound
       ? {
           roundNumber: (roundNumber ?? 0) + 1,
-          starter: options.starter ?? null,
-          selfReady: options.selfReady ?? false,
-          readyPlayerCount: options.readyPlayerCount ?? 0,
-          requiredPlayerCount: 2,
+          setupRevision: 0,
+          setupView: { starter: options.starter ?? null },
+          readiness: {
+            canReady: options.starter !== null,
+            selfReady: options.selfReady ?? false,
+            readySlotIds:
+              options.readyPlayerCount === 2
+                ? ["slot-1", "slot-2"]
+                : options.selfReady
+                  ? ["slot-1"]
+                  : [],
+            requiredSlotIds: ["slot-1", "slot-2"],
+          },
         }
       : null,
+    players: [
+      {
+        slotId: "slot-1",
+        occupied: true,
+        online: true,
+        ready: options.selfReady ?? false,
+      },
+      {
+        slotId: "slot-2",
+        occupied: true,
+        online: true,
+        ready: options.readyPlayerCount === 2,
+      },
+    ],
     closed,
     closeReason: options.closeReason ?? null,
     ...(options.causedByCommandId === undefined
@@ -236,7 +258,7 @@ function lifecycleV6(
 }
 
 describe("GameClientHost", () => {
-  it.each([5, 6] as const)(
+  it.each([6] as const)(
     "refreshes V%i public profiles through an acknowledged signed ticket",
     async (setupProtocol) => {
       const room = new FakeRoom();
@@ -248,20 +270,13 @@ describe("GameClientHost", () => {
         commandIds: { createCommandId: () => "refresh-profile" },
       });
       await host.createRoom("tic-tac-toe", null);
-      room.emit(setupProtocol === 5 ? connected : connectedV6);
-      const initial =
-        setupProtocol === 5
-          ? lifecycle(null, {
-              starter: "OWNER",
-              selfReady: true,
-              readyPlayerCount: 1,
-            })
-          : lifecycleV6(null, {
-              setupRevision: 1,
-              canReady: true,
-              selfReady: true,
-              readySlotIds: ["slot-1"],
-            });
+      room.emit(connectedV6);
+      const initial = lifecycleV6(null, {
+        setupRevision: 1,
+        canReady: true,
+        selfReady: true,
+        readySlotIds: ["slot-1"],
+      });
       room.emitLifecycle(initial);
       await expect(host.refreshProfile()).rejects.toThrow("not available");
       const players = [
@@ -271,7 +286,6 @@ describe("GameClientHost", () => {
           occupied: true,
           online: true,
           ready: true,
-          ...(setupProtocol === 5 ? { assignment: null } : {}),
         },
         {
           slotId: "slot-2",
@@ -279,7 +293,6 @@ describe("GameClientHost", () => {
           occupied: true,
           online: true,
           ready: false,
-          ...(setupProtocol === 5 ? { assignment: null } : {}),
         },
       ];
       room.emitLifecycle({ ...initial, players });
@@ -384,7 +397,7 @@ describe("GameClientHost", () => {
         roomName: "game",
         options: {
           type: "room.join",
-          protocolVersion: PROTOCOL_VERSION,
+          protocolVersion: SETUP_PROTOCOL_VERSION,
           ticket: "ticket-1",
           roomCode: "ABCD2345",
         },
@@ -419,7 +432,7 @@ describe("GameClientHost", () => {
         type: GAME_ACTION_MESSAGE,
         payload: {
           type: "game.action",
-          protocolVersion: PROTOCOL_VERSION,
+          protocolVersion: SETUP_PROTOCOL_VERSION,
           commandId: "command-1",
           roundNumber: 1,
           expectedRevision: 4,
@@ -458,7 +471,10 @@ describe("GameClientHost", () => {
     room.emit(connectedV6);
     room.emitLifecycle(lifecycleV6(null));
 
-    const setupCommand = host.selectStarter("OWNER");
+    const setupCommand = host.submitSetup({
+      type: "SELECT_STARTER",
+      starter: "OWNER",
+    });
     expect(room.sent.at(-1)).toEqual({
       type: GAME_SETUP_MESSAGE,
       payload: {
@@ -512,7 +528,7 @@ describe("GameClientHost", () => {
     });
   });
 
-  it("pins a discovered V6 generation through reconnect and resets create to its default", async () => {
+  it("pins a discovered V6 generation through reconnect and uses V6 for subsequent creation", async () => {
     const firstRoom = new FakeRoom();
     const reconnectedRoom = new FakeRoom();
     const createdRoom = new FakeRoom();
@@ -563,11 +579,11 @@ describe("GameClientHost", () => {
     expect(ticketGenerations).toEqual([
       SETUP_PROTOCOL_VERSION,
       SETUP_PROTOCOL_VERSION,
-      PROTOCOL_VERSION,
+      SETUP_PROTOCOL_VERSION,
     ]);
     expect(transport.clients[2]?.requests[0]).toMatchObject({
       method: "create",
-      options: { protocolVersion: PROTOCOL_VERSION, ticket: "ticket-3" },
+      options: { protocolVersion: SETUP_PROTOCOL_VERSION, ticket: "ticket-3" },
     });
   });
 
@@ -586,7 +602,7 @@ describe("GameClientHost", () => {
     const submitted = host.submitAction({ type: "PLACE_MARK", cell: 0 });
     room.emit({
       type: "command.rejected",
-      protocolVersion: PROTOCOL_VERSION,
+      protocolVersion: SETUP_PROTOCOL_VERSION,
       commandId: "stale-1",
       code: "STALE_REVISION",
       revision: 2,
@@ -661,15 +677,19 @@ describe("GameClientHost", () => {
     room.emitLifecycle(lifecycle(1, { status: "completed" }));
     room.emit(snapshot(5, undefined, 1, "completed"));
 
-    const selectStarter = host.selectStarter("NON_OWNER");
+    const selectStarter = host.submitSetup({
+      type: "SELECT_STARTER",
+      starter: "NON_OWNER",
+    });
     expect(room.sent.at(-1)).toEqual({
-      type: ROOM_CONTROL_MESSAGE,
+      type: GAME_SETUP_MESSAGE,
       payload: {
-        type: "room.control",
-        protocolVersion: PROTOCOL_VERSION,
+        type: "game.setup",
+        protocolVersion: SETUP_PROTOCOL_VERSION,
         commandId: "starter-1",
-        operation: "SELECT_STARTER",
-        starter: "NON_OWNER",
+        roundNumber: 2,
+        expectedSetupRevision: 0,
+        action: { type: "SELECT_STARTER", starter: "NON_OWNER" },
       },
     });
     room.emitLifecycle(
@@ -779,7 +799,7 @@ describe("GameClientHost", () => {
       snapshot: null,
       roomLifecycle: {
         currentRound: null,
-        nextRound: { roundNumber: 1, starter: null },
+        nextRound: { roundNumber: 1, setupView: { starter: null } },
       },
     });
     await expect(
@@ -787,7 +807,7 @@ describe("GameClientHost", () => {
     ).rejects.toThrow("not active");
   });
 
-  it("sends an immediate rematch control and adopts the new round lifecycle", async () => {
+  it("confirms rematch readiness and waits for the authoritative next round", async () => {
     const room = new FakeRoom();
     const host = new GameClientHost({
       gameServerUrl: "http://127.0.0.1:1234",
@@ -800,11 +820,23 @@ describe("GameClientHost", () => {
     room.emitLifecycle(lifecycle(1, { status: "completed" }));
     room.emit(snapshot(5, undefined, 1, "completed"));
 
-    const rematch = host.startRematch();
+    const rematch = host.readyForRound();
     expect(room.sent.at(-1)).toMatchObject({
       type: ROOM_CONTROL_MESSAGE,
-      payload: { commandId: "rematch-1", operation: "START_REMATCH" },
+      payload: { commandId: "rematch-1", operation: "READY_FOR_ROUND" },
     });
+    room.emitLifecycle(
+      lifecycle(1, {
+        status: "completed",
+        starter: "OWNER",
+        selfReady: true,
+        readyPlayerCount: 1,
+        causedByCommandId: "rematch-1",
+      }),
+    );
+    await expect(rematch).resolves.toBeUndefined();
+    expect(host.getState().roomLifecycle?.currentRound?.roundNumber).toBe(1);
+    expect(host.getState().snapshot?.revision).toBe(5);
     room.emitLifecycle(
       lifecycle(2, {
         causedByCommandId: "rematch-1",
@@ -865,6 +897,31 @@ describe("GameClientHost", () => {
     await cleanupHost.close();
     expect(cleanupRoom.leaveConsents).toEqual([false]);
   });
+
+  it.each([SERVER_PROTOCOL_MESSAGE, ROOM_CONTROL_MESSAGE])(
+    "closes with an update error for V5 on %s",
+    async (channel) => {
+      const room = new FakeRoom();
+      const host = new GameClientHost({
+        gameServerUrl: "http://127.0.0.1:1234",
+        ticketProvider: async () => "ticket-1",
+        transport: new FakeTransport([room]),
+      });
+      await host.joinRoom("tic-tac-toe", "ABCD2345");
+      if (channel === SERVER_PROTOCOL_MESSAGE) {
+        room.emit({ ...connected, protocolVersion: 5 });
+      } else {
+        room.emit(connected);
+        room.emitLifecycle({ ...lifecycle(null), protocolVersion: 5 });
+      }
+      expect(host.getState()).toMatchObject({
+        connectionState: "closed",
+        snapshot: null,
+        error: { code: "PROTOCOL_VERSION_UNSUPPORTED" },
+      });
+      expect(room.left).toBe(true);
+    },
+  );
 
   it("fails closed on unknown server payload without exposing transport data", async () => {
     const room = new FakeRoom();

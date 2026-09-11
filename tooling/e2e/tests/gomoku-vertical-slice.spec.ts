@@ -490,7 +490,7 @@ test("historical Gomoku replays preserve the 19 by 19 board and private read-onl
       roomCode: "HSTR2345",
       gameId: "gomoku",
       gameVersion: "1.0.0",
-      setupProtocol: 5,
+      setupProtocol: 6,
       initialConfig: replay.header.initialConfig,
       players: replay.header.players.map((player, index) => ({
         slotId: player.slotId,
@@ -499,6 +499,15 @@ test("historical Gomoku replays preserve the 19 by 19 board and private read-onl
         reservedUntilMilliseconds: null,
       })),
       currentRound: round,
+      previousFinalizedSetup: {
+        config: replay.header.initialConfig,
+        participantSlotIds: round.playerOrder,
+        playerOrder: round.playerOrder,
+        assignments: round.playerOrder.map((slotId) => ({
+          slotId,
+          assignment: null,
+        })),
+      },
       closeReason: null,
     };
     const replayStore = new PostgresReplayStore(databaseClient.database);

@@ -3,6 +3,7 @@ import {
   createRouter,
   defineRoom,
   defineServer,
+  matchMaker,
 } from "@colyseus/core";
 import { WebSocketTransport } from "@colyseus/ws-transport";
 import {
@@ -26,7 +27,6 @@ import type {
   RealtimeRoomStore,
   RealtimeRuntimeClock,
   RealtimeRuntimeIdSource,
-  RealtimePlatformRandom,
   RealtimeSchedulerTimer,
   RealtimeTicketVerifier,
   RealtimeReplayStore,
@@ -58,6 +58,7 @@ import {
   resolveRoundSetupDefinition,
 } from "@online-game-hub/game-registry/server";
 import { resolveGameDeployment } from "@online-game-hub/game-registry/deployment";
+import { countLiveRooms } from "./live-room-counts.js";
 
 export interface GameServerStartOptions {
   readonly hostname?: string;
@@ -101,7 +102,6 @@ export interface GameServerCompositionOptions {
   ) => UnknownRealtimeGameDefinition | undefined;
   readonly realtimeReconnectGraceMilliseconds?: number;
   readonly realtimeTerminalRoomTtlMilliseconds?: number;
-  readonly realtimeRandom?: RealtimePlatformRandom;
   readonly realtimeSchedulerTimer?: RealtimeSchedulerTimer;
 }
 
@@ -168,9 +168,6 @@ export function createGameServer(
           terminalRoomTtlMilliseconds:
             options.realtimeTerminalRoomTtlMilliseconds,
         }),
-    ...(options.realtimeRandom === undefined
-      ? {}
-      : { random: options.realtimeRandom }),
     ...(options.realtimeSchedulerTimer === undefined
       ? {}
       : { schedulerTimer: options.realtimeSchedulerTimer }),
@@ -213,9 +210,21 @@ export function createGameServer(
     health: createEndpoint("/health", { method: "GET" }, async () =>
       Response.json({ status: "ok" }, { status: 200 }),
     ),
-    metrics: createEndpoint("/metrics", { method: "GET" }, async () =>
-      Response.json({ samples: metrics.snapshot() }, { status: 200 }),
-    ),
+    metrics: createEndpoint("/metrics", { method: "GET" }, async () => {
+      try {
+        // Do not filter locked rooms or query historical database metadata.
+        const liveRooms = countLiveRooms(await matchMaker.query({}));
+        return Response.json(
+          { samples: metrics.snapshot(), liveRooms },
+          { status: 200, headers: { "cache-control": "no-store" } },
+        );
+      } catch {
+        return Response.json(
+          { code: "METRICS_UNAVAILABLE" },
+          { status: 503, headers: { "cache-control": "no-store" } },
+        );
+      }
+    }),
     roomDiscovery: createEndpoint(
       "/room-discovery",
       { method: "GET", query: roomDiscoveryQuerySchema },
@@ -245,6 +254,12 @@ export function createGameServer(
                 status: 404,
                 headers: { "cache-control": "no-store" },
               },
+            );
+          }
+          if (candidate.room.setupProtocol === 5) {
+            return Response.json(
+              { code: "PROTOCOL_VERSION_UNSUPPORTED" },
+              { status: 400, headers: { "cache-control": "no-store" } },
             );
           }
           return Response.json(

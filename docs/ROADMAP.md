@@ -4,11 +4,11 @@
 
 ## 当前阶段
 
-M1–M8 已完成。M9 的契约、外壳、Surface 工具链、V6 Setup 与游戏画面迁移已落地；当前仍处于兼容路径收尾阶段，不能据此宣称 V5 runtime 已退役。
+M1–M8 与 M9-A–F 已完成。独立 Surface、V6 Setup 与全量游戏画面迁移已落地，V5 在线 schema/runtime 已退役；后续 M9-G 游戏 Setup 交互独立推进。
 
 - 九款当前游戏都注册为 V6 Setup 与独立 Bridge V2 Surface。
 - 所有受支持历史规则版本都有精确 Surface 映射；七款旧 Client 源码、渲染契约与 registry loader 已移除。
-- 所有受支持规则版本已登记 V6 Setup；存量 V5 房间仍按创建时代际连接，V5 schema/runtime、两类连接 SDK、历史 Core、golden 与 replay 读取继续保留。
+- 所有受支持规则版本已登记 V6 Setup；两类 runtime、连接 SDK 与 Web 只接受 V6，历史 Core、golden、精确 Surface/replay 映射与旧数据库 metadata 读取继续保留。
 - create-game 已支持可通过全仓检查的 V6/Bridge V2 双目录草稿；草稿不自动进入 catalog 或生产制品。
 - Pong、羽毛球、坦克迷战的全部支持版本为 `record-only`；服务端记录与验证继续保留。
 
@@ -34,7 +34,7 @@ M1–M8 已完成。M9 的契约、外壳、Surface 工具链、V6 Setup 与游�
 | M7-B 私有回放      | 按账户授权、exact definition 重建和只含 projected frames 的播放界面                    |
 | M8 实时运行时      | 独立 SDK/server/client runtime、Realtime Protocol V1、实时 replay 与 Phaser Pong 纵切  |
 
-其间已完成逐局先手、随机先手、通用投降、三阶段 Web 路由、窄版 create-game 工具和多人中国跳棋。Protocol V1–V4 是阶段历史，现行支持 V5/V6；M8 的公共变更依据保留在 [历史审计](./archive/M8_SHARED_API_AUDIT.md)。历史阶段曾提供的 Pong 玩家播放现已暂停，当前能力以 manifest 为准。
+其间已完成逐局先手、随机先手、通用投降、三阶段 Web 路由、窄版 create-game 工具和多人中国跳棋。平台 Protocol V1–V5 是阶段历史，在线仅支持 V6；Realtime Input/Snapshot 仍为独立 V1。M8 的公共变更依据保留在 [历史审计](./archive/M8_SHARED_API_AUDIT.md)。历史阶段曾提供的 Pong 玩家播放现已暂停，当前能力以 manifest 为准。
 
 ## M9：独立 Surface、Setup V6 与显示系统
 
@@ -42,19 +42,20 @@ M1–M8 已完成。M9 的契约、外壳、Surface 工具链、V6 Setup 与游�
 
 | 子阶段                | 状态       | 范围与退出条件                                                                                         |
 | --------------------- | ---------- | ------------------------------------------------------------------------------------------------------ |
-| M9-A 契约与兼容骨架   | 已完成     | Bridge V1/V2、artifact、纯 Setup、V5/V6 exact 双轨、显式 replay capability 与 deployment registration  |
+| M9-A 契约与兼容骨架   | 已完成     | Bridge V1/V2、artifact、纯 Setup、迁移期 exact 双轨、显式 replay capability 与 deployment registration |
 | M9-B 游戏页外壳       | 已完成     | 覆盖式 HUD、独立全屏/focus mode、可访问性与 viewport 回归；保留舞台尺寸                                |
 | M9-C 工具链与 Host    | 已完成     | 独立构建、摘要锁、immutable publish、Docker 静态复制、sandboxed iframe、Workbench 与 conformance tests |
 | M9-D 双 runtime Setup | 已完成     | 共用 Setup coordinator、权限/projection、独立 RNG、ready、失败重试与完整重新对局设置                   |
 | M9-E 双试点           | 已完成     | 井字棋和 Pong 验证两类 runtime 的独立 Surface、数据库、integration 和浏览器链路                        |
-| M9-F 全量迁移与退役   | 进行中     | 全量画面与旧 Client 清理已完成；V5 的退役条件仍需完成                                                  |
+| M9-F 全量迁移与退役   | 已完成     | 全量 Surface/历史 V6 Setup、旧 Client 与 V5 在线路径退役、历史读取及部署排空验证                       |
 | M9-G 游戏 Setup 交互  | 待独立推进 | 在稳定契约上逐游戏优化解释、预览、顺序和 assignment 交互，不引入通用表单 DSL                           |
 
-### M9-F 剩余工作
+### M9-F 完成边界
 
-1. 历史版本的 V6 Setup 替代路径已补齐；已有 V5 房间仍不能在运行中切代。
-2. 在存量 V5 房间排空、全部需保留的版本已有替代路径后，再删除旧 Setup schema/runtime 分支。
-3. 退役后按 [测试矩阵](./TESTING.md) 验证两类 runtime、历史 golden、账户回放和完整浏览器流程。部分 Next transpile 条目仍服务 manifest/Core 静态导入，按实际依赖保留。
+1. 全部受支持历史规则版本已有 V6 Setup 与精确 Surface 映射；历史 Core、golden 和 replay 重建结果保持不变。
+2. 存量 V5 房间排空已确认。ticket、matchmaking、lifecycle、Setup、control 与回合制消息仅支持 V6；旧平台表单、先手/人数/阵营控制与即时 rematch 分支已删除。
+3. 两类 runtime、SDK、真实 PostgreSQL、历史 golden、账户回放和完整浏览器流程已按 [测试矩阵](./TESTING.md) 验证。旧 realtime SQL metadata 仍按创建时代际读取，不迁移为可连接房间。
+4. 存活房间代际计数与 [Compose 升级/回滚流程](./DEPLOYMENT_DOCKER_COMPOSE.md#v5-退役升级与回滚) 已补齐。部署仍须按实例确认排空，缺失指标不能视为零；进程重启不恢复 live room。部分 Next transpile 条目仍服务 manifest/Core 静态导入，按实际依赖保留。
 
 M9 不包含真正 `replay:none` 的数据库语义、外部仓库发布、独立无 Cookie 资源域或平台通用 Setup 表单。生产继续使用同域静态路径与 opaque iframe origin。
 

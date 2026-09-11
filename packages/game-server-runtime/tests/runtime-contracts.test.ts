@@ -15,7 +15,7 @@ const storedRoom = {
   roomCode: "ABCD2345",
   gameId: "tic-tac-toe",
   gameVersion: "1.0.0",
-  setupProtocol: 5,
+  setupProtocol: 6,
   initialConfig: null,
   players: [
     {
@@ -26,7 +26,7 @@ const storedRoom = {
     },
     {
       slotId: "slot-2",
-      playerSessionId: null,
+      playerSessionId: "session-b",
       userId: null,
       reservedUntilMilliseconds: null,
     },
@@ -40,6 +40,15 @@ const storedRoom = {
     status: "active",
     outcome: null,
     replayId: "replay-1",
+  },
+  previousFinalizedSetup: {
+    config: null,
+    participantSlotIds: ["slot-1", "slot-2"],
+    playerOrder: ["slot-1", "slot-2"],
+    assignments: [
+      { slotId: "slot-1", assignment: null },
+      { slotId: "slot-2", assignment: null },
+    ],
   },
   closeReason: null,
 } as const satisfies StoredGameRoom;
@@ -58,7 +67,7 @@ describe("ticket verifier port test authority", () => {
       status: "verified",
       playerSessionId: "session-a",
       userId: null,
-      claims: { protocolVersion: 5, audience: "game-server" },
+      claims: { protocolVersion: 6, audience: "game-server" },
     });
     await expect(authority.verify(undefined)).resolves.toMatchObject({
       status: "rejected",
@@ -155,17 +164,19 @@ describe("in-memory platform ports", () => {
       store.save({ ...storedRoom, roomId: "missing" }),
     ).rejects.toMatchObject({ code: "ROOM_NOT_FOUND" });
     await expect(
-      store.save({ ...storedRoom, setupProtocol: 6 }),
+      store.save({ ...storedRoom, setupProtocol: 5 } as never),
     ).rejects.toMatchObject({ code: "INVALID_ROOM" });
     await expect(store.getByRoomId(storedRoom.roomId)).resolves.toMatchObject({
-      setupProtocol: 5,
+      setupProtocol: 6,
     });
   });
 
   it("stores Protocol V6 setup state defensively and enforces generation shape", async () => {
     const store = new InMemoryRoomStore();
+    const { previousFinalizedSetup, ...waitingRoom } = storedRoom;
+    expect(previousFinalizedSetup).toBeDefined();
     const v6Room = {
-      ...storedRoom,
+      ...waitingRoom,
       roomId: "setup-v6",
       roomCode: "VSET2345",
       setupProtocol: 6,
@@ -201,6 +212,7 @@ describe("in-memory platform ports", () => {
         ...storedRoom,
         roomId: "legacy-with-setup",
         roomCode: "LEGA2345",
+        setupProtocol: 5 as never,
         nextRoundSetup: v6Room.nextRoundSetup,
       }),
     ).rejects.toMatchObject({ code: "INVALID_ROOM" });

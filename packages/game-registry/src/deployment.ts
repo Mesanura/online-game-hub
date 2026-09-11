@@ -6,7 +6,7 @@ import type {
 
 import { gameCatalog } from "./catalog.js";
 
-export type SetupProtocolGeneration = 5 | 6;
+export type SetupProtocolGeneration = 6;
 
 export interface GamePresentationRegistration {
   readonly kind: "surface-v1";

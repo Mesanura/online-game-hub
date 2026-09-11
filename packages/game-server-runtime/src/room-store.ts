@@ -207,17 +207,14 @@ function validRoom(room: StoredGameRoom): boolean {
       isJsonValue(round.state) &&
       isJsonValue(round.outcome));
   const validSetup =
-    room.setupProtocol === 5
-      ? room.nextRoundSetup === undefined &&
-        room.previousFinalizedSetup === undefined
-      : (room.nextRoundSetup === undefined ||
-          validRoundSetup(room.nextRoundSetup, room.players)) &&
-        (room.previousFinalizedSetup === undefined ||
-          validFinalizedSetup(room.previousFinalizedSetup, room.players)) &&
-        (room.closeReason !== null || round?.status === "active"
-          ? true
-          : room.nextRoundSetup !== undefined) &&
-        (round === null || room.previousFinalizedSetup !== undefined);
+    (room.nextRoundSetup === undefined ||
+      validRoundSetup(room.nextRoundSetup, room.players)) &&
+    (room.previousFinalizedSetup === undefined ||
+      validFinalizedSetup(room.previousFinalizedSetup, room.players)) &&
+    (room.closeReason !== null ||
+      round?.status === "active" ||
+      room.nextRoundSetup !== undefined) &&
+    (round === null || room.previousFinalizedSetup !== undefined);
   return (
     room.roomId.length > 0 &&
     /^[A-HJ-NP-Z2-9]{8}$/u.test(room.roomCode) &&

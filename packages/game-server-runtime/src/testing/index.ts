@@ -2,11 +2,11 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 
 import {
   GAME_SERVER_TICKET_AUDIENCE,
-  PROTOCOL_VERSION,
-  anyGameServerTicketClaimsSchema,
+  SETUP_PROTOCOL_VERSION,
+  gameServerTicketClaimsV6Schema,
   setupProtocolGenerationSchema,
 } from "@online-game-hub/protocol";
-import type { AnyGameServerTicketClaims } from "@online-game-hub/protocol";
+import type { GameServerTicketClaimsV6 } from "@online-game-hub/protocol";
 
 import { definePlayerSessionId } from "../auth.js";
 import type { TicketVerificationResult, TicketVerifier } from "../auth.js";
@@ -164,7 +164,7 @@ export class TestTicketAuthority implements TicketVerifier {
       issuedAt: overrides.issuedAt ?? nowSeconds,
       expiresAt: overrides.expiresAt ?? nowSeconds + this.#lifetimeSeconds,
       ticketId: overrides.ticketId ?? `test-ticket-${this.#ticketSequence}`,
-      protocolVersion: overrides.protocolVersion ?? PROTOCOL_VERSION,
+      protocolVersion: overrides.protocolVersion ?? SETUP_PROTOCOL_VERSION,
     };
     const payload = Buffer.from(JSON.stringify(claims)).toString("base64url");
     return `${payload}.${this.#sign(payload)}`;
@@ -209,7 +209,7 @@ export class TestTicketAuthority implements TicketVerifier {
       return this.#reject("WRONG_ISSUER");
     }
 
-    const parsed = anyGameServerTicketClaimsSchema.safeParse(candidate);
+    const parsed = gameServerTicketClaimsV6Schema.safeParse(candidate);
     if (!parsed.success) {
       return this.#reject("INVALID_TICKET");
     }
@@ -224,7 +224,7 @@ export class TestTicketAuthority implements TicketVerifier {
       status: "verified",
       playerSessionId: definePlayerSessionId(parsed.data.playerSessionId),
       userId: parsed.data.userId ?? null,
-      claims: parsed.data satisfies AnyGameServerTicketClaims,
+      claims: parsed.data satisfies GameServerTicketClaimsV6,
     };
   }
 

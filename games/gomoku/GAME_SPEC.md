@@ -46,7 +46,7 @@ State、Action、View、Outcome 和 Config 都由 strict Zod schema 验证；boa
 - current `1.1.0` 新房间使用游戏自有 Setup V6。Setup 保存规范化 Config，由房主选择 OWNER、NON_OWNER 或服务端 RANDOM 先手，并把最终 `playerOrder[0]` 解释为 BLACK。
 - completed 后的下一局 Setup 从上一局 `FinalizedRoundSetup` 复用完整 Config 与实际 player order；不重新随机棋色，双方仍必须分别重新 ready。任何 accepted 设置变更由平台清空全部 ready。
 - 独立 Surface 承载 Setup、Play 和 Replay，按 exact 规则版本解析 View；Play 提交 `PLACE_STONE` 或支持版本的 `RESIGN`，Setup 提交 `SELECT_STARTER`。画面和 artifact 说明见 [Surface README](../../game-surfaces/gomoku/README.md)。
-- 历史 `1.0.0` 已登记 V6 Setup，复用相同的 15/19 棋盘 Config 与参与者顺序契约；存量 V5 房间仍保持创建时代际。同一 exact-version Surface 渲染 Setup/Play/Replay。Surface 视觉升级不改变 `gameVersion` 或 Replay Format。
+- 历史 `1.0.0` 已登记 V6 Setup，复用相同的 15/19 棋盘 Config 与参与者顺序契约。同一 exact-version Surface 渲染 Setup/Play/Replay。Surface 视觉升级不改变 `gameVersion` 或 Replay Format。
 
 ## 版本兼容
 

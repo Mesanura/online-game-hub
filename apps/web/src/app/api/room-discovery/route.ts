@@ -36,6 +36,20 @@ export async function GET(request: NextRequest) {
         headers: { accept: "application/json" },
       },
     );
+    const payload: unknown = await response.json();
+    if (
+      !response.ok &&
+      response.status === 400 &&
+      payload !== null &&
+      typeof payload === "object" &&
+      "code" in payload &&
+      payload.code === "PROTOCOL_VERSION_UNSUPPORTED"
+    ) {
+      return NextResponse.json(
+        { code: "PROTOCOL_VERSION_UNSUPPORTED" },
+        { status: 400, headers: noStoreHeaders },
+      );
+    }
     if (!response.ok) {
       return NextResponse.json(
         {
@@ -50,9 +64,7 @@ export async function GET(request: NextRequest) {
         },
       );
     }
-    const discovery = roomDiscoverySchema.safeParse(
-      (await response.json()) as unknown,
-    );
+    const discovery = roomDiscoverySchema.safeParse(payload);
     if (
       !discovery.success ||
       discovery.data.gameId !== parsedQuery.data.gameId ||
