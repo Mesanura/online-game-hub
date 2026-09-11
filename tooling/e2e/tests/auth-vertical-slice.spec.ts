@@ -62,7 +62,7 @@ async function completeTicTacToeRound(pageA: Page, pageB: Page): Promise<void> {
 
 test("guest rounds stay unclaimed while account rounds survive logout and another device", async ({
   browser,
-}) => {
+}, info) => {
   const contextA = await browser.newContext();
   const contextB = await browser.newContext();
   let pageA = await contextA.newPage();
@@ -110,10 +110,12 @@ test("guest rounds stay unclaimed while account rounds survive logout and anothe
     status: "completed",
     finalRevision: 5,
     playerSlotId: "slot-1",
+    result: { kind: "win-loss", value: "win" },
   });
   expect(payloadB.matches[0]).toMatchObject({
     matchId: payloadA.matches[0]?.matchId,
     playerSlotId: "slot-2",
+    result: { kind: "win-loss", value: "loss" },
   });
   const serialized = JSON.stringify([payloadA, payloadB]);
   for (const forbidden of [
@@ -128,6 +130,28 @@ test("guest rounds stay unclaimed while account rounds survive logout and anothe
   await pageA.goto(`${harness.webUrl}/account/matches`);
   await expect(pageA.getByRole("heading", { name: "我的对局" })).toBeVisible();
   await expect(pageA.locator(".history-row")).toHaveCount(1);
+  await pageB.goto(`${harness.webUrl}/account/matches`);
+  for (const viewport of [
+    { width: 1280, height: 800 },
+    { width: 390, height: 844 },
+  ]) {
+    for (const [page, result] of [
+      [pageA, "胜利"],
+      [pageB, "失败"],
+    ] as const) {
+      await page.setViewportSize(viewport);
+      await expect(page.locator(".history-result")).toHaveText(result);
+      await expect(page.getByRole("link", { name: "进入回放" })).toBeVisible();
+      expect(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth <= window.innerWidth,
+        ),
+      ).toBe(true);
+    }
+    await pageA.screenshot({
+      path: info.outputPath(`history-${viewport.width}.png`),
+    });
+  }
 
   const secondDevice = await browser.newContext();
   await loginE2eAccount(secondDevice.request, harness.webUrl, usernameA);

@@ -41,6 +41,12 @@ export interface MatchHistoryItem {
   readonly replayAvailable: boolean;
 }
 
+/** Server-only inputs for the game's history projectView; never serialize to HTTP. */
+export interface MatchHistoryProjectionItem extends MatchHistoryItem {
+  readonly recordedOutcome: unknown;
+  readonly players: unknown;
+}
+
 export interface AuthorizedReplayMatch {
   readonly roundNumber: number;
   readonly gameId: string;
@@ -539,6 +545,25 @@ export class PostgresMatchRepository {
     return this.#list(eq(matchPlayers.userId, userId), limit);
   }
 
+  public async listForUserWithResults(
+    userId: string,
+    limit = MAX_MATCH_HISTORY_RESULTS,
+  ): Promise<readonly MatchHistoryProjectionItem[]> {
+    if (!validUuid(userId)) {
+      throw new DatabaseError("DATABASE_CONFIGURATION_ERROR");
+    }
+    validateLimit(limit);
+    const rows = await this.#historyRows(
+      eq(matchPlayers.userId, userId),
+      limit,
+    );
+    return rows.map((row) => ({
+      ...parseHistoryRow(row),
+      recordedOutcome: row.recordedOutcome,
+      players: row.players,
+    }));
+  }
+
   /**
    * Returns a completed replay only when this exact account occupied one
    * unambiguous archived player slot. Replay internals stay server-side.
@@ -592,13 +617,12 @@ export class PostgresMatchRepository {
     limit: number,
   ): Promise<readonly MatchHistoryItem[]> {
     validateLimit(limit);
-    return this.#historyRows(identityCondition, limit);
+    return (await this.#historyRows(identityCondition, limit)).map(
+      parseHistoryRow,
+    );
   }
 
-  async #historyRows(
-    identityCondition: SQL<unknown>,
-    limit: number,
-  ): Promise<readonly MatchHistoryItem[]> {
+  async #historyRows(identityCondition: SQL<unknown>, limit: number) {
     try {
       const rows = await this.database
         .select({
@@ -614,6 +638,8 @@ export class PostgresMatchRepository {
           completedAt: matches.completedAt,
           abandonedAt: matches.abandonedAt,
           replayCompletedAt: replays.completedAt,
+          recordedOutcome: replays.recordedOutcome,
+          players: replays.players,
         })
         .from(matchPlayers)
         .innerJoin(matches, eq(matches.id, matchPlayers.matchId))
@@ -621,7 +647,7 @@ export class PostgresMatchRepository {
         .where(identityCondition)
         .orderBy(desc(matches.createdAt), desc(matches.id))
         .limit(limit);
-      return rows.map((row) => parseHistoryRow(row));
+      return rows;
     } catch (error) {
       if (error instanceof DatabaseError) throw error;
       throw new DatabaseError("DATABASE_OPERATION_ERROR");

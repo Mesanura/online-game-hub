@@ -297,6 +297,7 @@ async function assertPrivateCompletedHistory(
   pageB: Page,
   expectedRoundNumber: number,
   expectedRevision: number,
+  expectedResult: "win" | "draw",
 ): Promise<string> {
   const [responseA, responseB] = await Promise.all([
     pageA.request.get(`${harness.webUrl}/api/matches`),
@@ -330,6 +331,7 @@ async function assertPrivateCompletedHistory(
     startedAt: expect.any(String),
     finishedAt: expect.any(String),
     replayAvailable: true,
+    result: { kind: "win-loss", value: expectedResult },
   });
   expect(bodyB.matches).toEqual(
     expect.arrayContaining([
@@ -339,6 +341,10 @@ async function assertPrivateCompletedHistory(
         playerSlotId: "slot-2",
         status: "completed",
         replayAvailable: true,
+        result: {
+          kind: "win-loss",
+          value: expectedResult === "win" ? "loss" : "draw",
+        },
       }),
     ]),
   );
@@ -472,6 +478,7 @@ test("two isolated accounts complete win/draw, converge on reconnect, and cannot
     pageB,
     1,
     5,
+    "win",
   );
   const replayPage = await contextA.newPage();
   await replayPage.goto(
@@ -593,7 +600,7 @@ test("two isolated accounts complete win/draw, converge on reconnect, and cannot
     "本局平局",
   );
   await assertCanonicalReplay(winningRoom.roomCode, 2, 9, "DRAW");
-  await assertPrivateCompletedHistory(pageA, pageB, 2, 9);
+  await assertPrivateCompletedHistory(pageA, pageB, 2, 9, "draw");
 
   const terminalOutsiderContext = await browser.newContext();
   const terminalOutsiderPage = await terminalOutsiderContext.newPage();

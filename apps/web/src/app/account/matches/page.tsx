@@ -4,18 +4,10 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { gameCatalog } from "@online-game-hub/game-registry/catalog";
+import { MatchHistoryResultView } from "../../../components/match-history-result";
+import type { AccountMatchHistoryItem } from "../../../lib/match-history";
 
-type Match = {
-  matchId: string;
-  roundNumber: number;
-  gameId: string;
-  gameVersion: string;
-  status: string;
-  finalRevision: number;
-  createdAt: string;
-  finishedAt: string | null;
-  replayAvailable: boolean;
-};
+type Match = AccountMatchHistoryItem;
 
 const statusLabels: Record<string, string> = {
   completed: "已完成",
@@ -90,7 +82,7 @@ export default function AccountMatchesPage() {
         <div className="history-list">
           {matches.map((match) => (
             <article className="history-row clay-surface" key={match.matchId}>
-              <div>
+              <div className="history-match">
                 <strong>
                   {gameCatalog.find((game) => game.id === match.gameId)
                     ?.title ?? "历史对局"}
@@ -100,7 +92,10 @@ export default function AccountMatchesPage() {
                   {statusLabels[match.status] ?? "状态未知"}
                 </span>
               </div>
-              <div>
+              {match.status === "completed" ? (
+                <MatchHistoryResultView result={match.result ?? null} />
+              ) : null}
+              <div className="history-metadata">
                 <span>版本 {match.gameVersion}</span>
                 <span>{match.finalRevision} 次操作</span>
                 <span>

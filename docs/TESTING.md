@@ -117,6 +117,8 @@ create-game unit tests 使用系统临时目录中的隔离 workspace 和本地 
 - 参与者不足、人数上限、离线/重连、席位替换、playerOrder 排列、assignment 完整唯一与随机结果重试稳定。
 - 下一局复用完整 Config/participants/order/assignments，生成新 gameplay seed、State、revision/tick、Match/replay，并要求全员重新 ready。
 
+历史结果额外覆盖各游戏支持版本与 golden 中保存的 Outcome、席位方向、胜负/平局/投降、名次并列跳位、未知/损坏结果降级。数据库 `tests/history.database.test.ts` 验证两类 history adapter 的账户隔离和跨连接重读；API 校验 DTO 白名单，浏览器覆盖三类结果、record-only 无播放入口、空列表、失败状态和窄屏。
+
 ## Replay 与 Protocol
 
 Replay tests 使用 exact definition 和内存 fixtures，验证重建 State/RNG/Outcome、sequence gap/重复、未知版本、非法 actor/schema、非 canonical payload、规则拒绝、输入交付差异与结果篡改。Rejected/duplicate/stale 不进入日志；append/complete 幂等且冲突失败。实时还覆盖 tick/finalTick、空输入 tick 和 latest/events 的一致性。两种格式的历史 golden 均须持续通过。

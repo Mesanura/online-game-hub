@@ -490,7 +490,11 @@ test("two accounts play two authoritative Connect Four rounds with independent r
       startedAt: expect.any(String),
       finishedAt: expect.any(String),
       replayAvailable: true,
+      result: { kind: "win-loss", value: "win" },
     });
+  }
+  for (const match of historyB) {
+    expect(match.result).toEqual({ kind: "win-loss", value: "loss" });
   }
   const serializedHistory = JSON.stringify([historyA, historyB]);
   for (const forbidden of [

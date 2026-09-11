@@ -5,7 +5,8 @@ import {
   PostgresMatchRepository,
   createPostgresDatabaseClient,
 } from "@online-game-hub/database";
-import type { MatchHistoryItem } from "@online-game-hub/database";
+import { projectMatchHistoryResult } from "@online-game-hub/game-registry/history";
+import type { AccountMatchHistoryItem } from "../lib/match-history";
 import type { UserMatchReplayRead } from "@online-game-hub/database";
 import type { UserRealtimeMatchReplayRead } from "@online-game-hub/database";
 import {
@@ -27,7 +28,7 @@ export function getGameReplayMode(gameId: string, gameVersion: string) {
 export async function listUserMatchHistory(
   config: WebServerConfig,
   userId: string,
-): Promise<readonly MatchHistoryItem[]> {
+): Promise<readonly AccountMatchHistoryItem[]> {
   if (config.databaseMode !== "postgres" || config.databaseUrl === null) {
     throw new Error("MATCH_HISTORY_DATABASE_UNAVAILABLE");
   }
@@ -38,8 +39,12 @@ export async function listUserMatchHistory(
   });
   try {
     const [turnBased, realtime] = await Promise.all([
-      new PostgresMatchRepository(client.database).listForUser(userId),
-      new PostgresRealtimeMatchRepository(client.database).listForUser(userId),
+      new PostgresMatchRepository(client.database).listForUserWithResults(
+        userId,
+      ),
+      new PostgresRealtimeMatchRepository(
+        client.database,
+      ).listForUserWithResults(userId),
     ]);
     return [...turnBased, ...realtime]
       .sort((left, right) => {
@@ -50,12 +55,22 @@ export async function listUserMatchHistory(
       })
       .slice(0, 50)
       .map((match) => ({
-        ...match,
+        matchId: match.matchId,
+        roundNumber: match.roundNumber,
+        gameId: match.gameId,
+        gameVersion: match.gameVersion,
+        status: match.status,
+        finalRevision: match.finalRevision,
+        playerSlotId: match.playerSlotId,
+        createdAt: match.createdAt,
+        startedAt: match.startedAt,
+        finishedAt: match.finishedAt,
+        result: projectMatchHistoryResult(match),
         replayAvailable:
           match.replayAvailable &&
           getGameReplayMode(match.gameId, match.gameVersion) ===
             "player-playback",
-      })) satisfies readonly MatchHistoryItem[];
+      })) satisfies readonly AccountMatchHistoryItem[];
   } finally {
     await client.close();
   }

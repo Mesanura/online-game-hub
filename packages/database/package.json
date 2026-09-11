@@ -24,7 +24,7 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "node dist/migrate-cli.js",
     "test": "vitest run tests/config.test.ts",
-    "test:database": "vitest run tests/database.integration.test.ts",
+    "test:database": "vitest run tests/database.integration.test.ts tests/history.database.test.ts",
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {

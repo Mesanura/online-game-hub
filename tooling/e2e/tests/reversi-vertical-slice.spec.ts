@@ -508,6 +508,7 @@ test("two accounts complete authoritative Reversi with flips and a non-full term
     "matchId",
     "playerSlotId",
     "replayAvailable",
+    "result",
     "roundNumber",
     "startedAt",
     "status",
@@ -521,10 +522,12 @@ test("two accounts complete authoritative Reversi with flips and a non-full term
     finalRevision: 11,
     playerSlotId: slotA,
     replayAvailable: true,
+    result: { kind: "win-loss", value: "win" },
   });
   expect(historyB[0]).toMatchObject({
     matchId: historyA[0]?.matchId,
     playerSlotId: slotB,
+    result: { kind: "win-loss", value: "loss" },
   });
   for (const match of [...historyA, ...historyB]) {
     expect(match).not.toHaveProperty("action");

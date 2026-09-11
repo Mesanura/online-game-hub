@@ -774,6 +774,12 @@ export interface RealtimeMatchHistoryItem {
   readonly replayAvailable: boolean;
 }
 
+/** Server-only inputs for the game's history projectView; never serialize to HTTP. */
+export interface RealtimeMatchHistoryProjectionItem extends RealtimeMatchHistoryItem {
+  readonly recordedOutcome: unknown;
+  readonly players: unknown;
+}
+
 export interface AuthorizedRealtimeReplayMatch {
   readonly roundNumber: number;
   readonly gameId: string;
@@ -851,6 +857,23 @@ export class PostgresRealtimeMatchRepository {
     userId: string,
     limit = 50,
   ): Promise<readonly RealtimeMatchHistoryItem[]> {
+    return (await this.#historyRows(userId, limit)).map(
+      parseRealtimeHistoryRow,
+    );
+  }
+
+  public async listForUserWithResults(
+    userId: string,
+    limit = 50,
+  ): Promise<readonly RealtimeMatchHistoryProjectionItem[]> {
+    return (await this.#historyRows(userId, limit)).map((row) => ({
+      ...parseRealtimeHistoryRow(row),
+      recordedOutcome: row.recordedOutcome,
+      players: row.players,
+    }));
+  }
+
+  async #historyRows(userId: string, limit: number) {
     if (
       !validUuid(userId) ||
       !Number.isSafeInteger(limit) ||
@@ -873,6 +896,8 @@ export class PostgresRealtimeMatchRepository {
           completedAt: realtimeMatches.completedAt,
           abandonedAt: realtimeMatches.abandonedAt,
           replayCompletedAt: realtimeReplays.completedAt,
+          recordedOutcome: realtimeReplays.recordedOutcome,
+          players: realtimeReplays.players,
         })
         .from(realtimeMatchPlayers)
         .innerJoin(
@@ -886,7 +911,7 @@ export class PostgresRealtimeMatchRepository {
         .where(eq(realtimeMatchPlayers.userId, userId))
         .orderBy(desc(realtimeMatches.createdAt), desc(realtimeMatches.id))
         .limit(limit);
-      return rows.map((row) => parseRealtimeHistoryRow(row));
+      return rows;
     } catch (error) {
       rethrow(error);
     }

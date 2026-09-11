@@ -117,11 +117,20 @@ interface MatchHistoryResponse {
     startedAt: string | null;
     finishedAt: string | null;
     replayAvailable: boolean;
+    result:
+      | { kind: "win-loss"; value: "win" | "loss" | "draw" }
+      | { kind: "rank"; rank: number; tied: boolean }
+      | { kind: "score"; own: number; opponent: number }
+      | null;
   }[];
 }
 ```
 
 结果最多 50 条并稳定排序；response 设置 `Cache-Control: no-store, private` 与 `Vary: Cookie`。query/body 中的 `PlayerSessionId`、`UserId`、slot 或 room ID 一律不作为授权输入。其他账户即使猜到 match ID，也只能得到自己的列表，不泄漏参与关系。API 不返回 canonical replay、replay ID、Config、Action、Outcome、RNG seed、authoritative State、session identity 或 credential。
+
+结果由对应 exact 游戏的 [历史 projectView](./GAME_PLUGIN_SPEC.md#账户历史结果投影) 产生，玩家视角只取已授权的归档席位，比分固定为我方/对方。仅 completed 记录返回结果；其余状态为 null。已完成但结算缺失、非法或版本不支持时 result 为 null，列表仍可读取，页面显示“结果暂不可用”。结果与 replayAvailable 独立。
+
+Repository 的 recordedOutcome 与 players 仅为服务器投影输入。Web 使用显式 DTO 白名单构造响应，不能展开 repository row；API 只新增个人 result，不返回原始 Outcome、replay header 或完整参赛信息。此加法 HTTP 字段不改变 WebSocket protocolVersion。
 
 ## 5. 房间标识与流程
 
