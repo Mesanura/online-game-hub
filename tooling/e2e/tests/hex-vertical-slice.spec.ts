@@ -150,7 +150,7 @@ test("two accounts complete Hex by connection, then use the shared HUD to cancel
   await expect(pageA.getByTestId("match-status")).toHaveCount(0);
   await expect(pageA.getByTestId("game-surface-iframe")).toHaveAttribute(
     "src",
-    "/game-surfaces/hex/1.0.2/setup/index.html",
+    "/game-surfaces/hex/1.0.3/setup/index.html",
   );
   await hexSurface(pageA).getByRole("button", { name: "房主先手" }).click();
 
@@ -177,7 +177,7 @@ test("two accounts complete Hex by connection, then use the shared HUD to cancel
       await expect(page.getByTestId("room-code")).toHaveText(roomCode);
       await expect(page.getByTestId("game-surface-iframe")).toHaveAttribute(
         "src",
-        "/game-surfaces/hex/1.0.2/play/index.html",
+        "/game-surfaces/hex/1.0.3/play/index.html",
       );
       await expect(
         hexSurface(page).getByRole("grid", { name: "六贯棋棋盘" }),
@@ -369,7 +369,7 @@ test("two accounts complete Hex by connection, then use the shared HUD to cancel
       await expect(page.getByTestId("match-status")).toHaveText("对局进行中");
       await expect(page.getByTestId("game-surface-iframe")).toHaveAttribute(
         "src",
-        "/game-surfaces/hex/1.0.2/play/index.html",
+        "/game-surfaces/hex/1.0.3/play/index.html",
       );
     }),
   );
@@ -509,7 +509,7 @@ test("two accounts complete Hex by connection, then use the shared HUD to cancel
   await expect(pageA.getByTestId("replay-page")).toBeVisible();
   await expect(pageA.getByTestId("game-surface-iframe")).toHaveAttribute(
     "src",
-    "/game-surfaces/hex/1.0.2/replay/index.html",
+    "/game-surfaces/hex/1.0.3/replay/index.html",
   );
   await expect(hexSurface(pageA).locator("[data-cell-index]")).toHaveCount(121);
   await expect(pageA.getByTestId("replay-frame-count")).toHaveText("1 / 22");

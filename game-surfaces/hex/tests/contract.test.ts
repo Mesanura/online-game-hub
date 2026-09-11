@@ -21,7 +21,7 @@ describe("Hex Surface artifact contract", () => {
       schemaVersion: 1,
       gameId: "hex",
       supportedGameVersions: ["1.0.0"],
-      surfaceVersion: "1.0.2",
+      surfaceVersion: "1.0.3",
       bridgeVersion: 2,
       entrypoints: {
         setup: "setup/index.html",

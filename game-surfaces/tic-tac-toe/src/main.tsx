@@ -25,7 +25,9 @@ import {
   resultSummary,
   setupStatusLabel,
 } from "./model";
+import { setupNotice } from "./setup-ui";
 import "./styles.css";
+import "./setup.css";
 
 type HostInit = Extract<HostSurfaceMessage, { readonly type: "host.init" }>;
 type HostState = Extract<HostSurfaceMessage, { readonly type: "host.state" }>;
@@ -110,10 +112,22 @@ function handleHostMessage(message: HostSurfaceMessage): void {
     }
     try {
       const payload = parsePayload(message);
+      const resetPending =
+        runtime.hostState !== null &&
+        (message.connectionState !== "connected" ||
+          message.readOnly ||
+          message.roundNumber !== runtime.hostState.roundNumber);
       updateRuntime({
         hostState: message,
         payload,
         error: null,
+        pendingIntentId: resetPending ? null : runtime.pendingIntentId,
+        notice: resetPending
+          ? runtime.pendingIntentId !== null &&
+            message.connectionState !== "connected"
+            ? "连接已中断，请在重连后检查当前设置。"
+            : null
+          : runtime.notice,
       });
       if (runtime.mode === "play") {
         const summary = resultSummary(payload as TicTacToePlayView);
@@ -162,12 +176,7 @@ function handleHostMessage(message: HostSurfaceMessage): void {
   }
   if (message.type === "host.intent-result") {
     if (message.clientIntentId !== runtime.pendingIntentId) return;
-    const notice =
-      message.status === "accepted"
-        ? null
-        : message.status === "stale"
-          ? "房间状态已更新，请重新操作。"
-          : `操作未被接受${message.code === undefined ? "" : `：${message.code}`}`;
+    const notice = setupNotice(message.status, message.code);
     updateRuntime({ pendingIntentId: null, notice });
     return;
   }
@@ -181,7 +190,14 @@ function submitIntent(
     | ReturnType<typeof createResignIntent>,
   requestedIntentId?: string,
 ): void {
-  if (bridge === null || runtime.pendingIntentId !== null) return;
+  if (
+    bridge === null ||
+    runtime.pendingIntentId !== null ||
+    runtime.disposed ||
+    runtime.hostState?.connectionState !== "connected" ||
+    runtime.hostState.readOnly
+  )
+    return;
   if (requestedIntentId === undefined) intentSequence += 1;
   const clientIntentId =
     requestedIntentId ?? `tic-tac-toe-${runtime.mode}-${intentSequence}`;
@@ -223,27 +239,81 @@ function SetupSurface({
   const disabled =
     hostState.readOnly ||
     hostState.connectionState !== "connected" ||
-    !view.canEdit ||
-    runtime.pendingIntentId !== null;
+    !view.canEdit;
   const options = [
     ["OWNER", "房主先手", "由创建房间的玩家执 X"],
     ["NON_OWNER", "另一位玩家先手", "由加入房间的玩家执 X"],
-    ["RANDOM", "随机先手", "开始时由权威服务端抽取"],
+    ["RANDOM", "随机先手", "开始时随机决定谁执 X"],
   ] as const;
   return (
     <main className="setup-surface">
       <section className="setup-card" aria-labelledby="setup-title">
         <div className="eyebrow">下一局设置</div>
         <h1 id="setup-title">选择谁先手</h1>
-        <p className="setup-summary">{setupStatusLabel(view)}</p>
+        <p
+          className="setup-summary"
+          data-testid="setup-summary"
+          aria-live="polite"
+        >
+          {setupStatusLabel(view)}
+        </p>
+        <figure className="setup-preview" data-testid="setup-preview">
+          <svg
+            viewBox="0 0 160 160"
+            role="img"
+            aria-label="三乘三棋盘，第一行三个X相连获胜"
+          >
+            <rect width="160" height="160" rx="18" fill="#ede5f7" />
+            <path
+              d="M55 12v136M105 12v136M12 55h136M12 105h136"
+              stroke="#ad9bc5"
+              strokeWidth="2"
+            />
+            <g fill="#67539f" fontSize="32" textAnchor="middle">
+              <text x="30" y="43">
+                X
+              </text>
+              <text x="80" y="43">
+                X
+              </text>
+              <text x="130" y="43">
+                X
+              </text>
+              <text x="80" y="94" fill="#327662">
+                O
+              </text>
+              <text x="30" y="144" fill="#327662">
+                O
+              </text>
+            </g>
+            <path d="M17 30h126" stroke="#67539f" strokeWidth="2" />
+          </svg>
+          <figcaption>
+            <strong>X 先手，O 后手</strong>
+            <p>
+              轮流在 3×3
+              棋盘的空格落子。横、竖或斜向三子相连即获胜；九格填满且无人三连则平局。
+            </p>
+          </figcaption>
+        </figure>
+        <p className="setup-footnote">
+          已加入 {view.participantSlotIds.length}/2 人；
+          {view.canEdit
+            ? "选择本局设置后，双方分别准备。"
+            : "由房主修改本局规则，你可以查看后准备。"}
+        </p>
         <div className="setup-options" role="group" aria-label="先手规则">
           {options.map(([value, label, description]) => (
             <button
               aria-pressed={view.starter === value}
+              aria-disabled={disabled || runtime.pendingIntentId !== null}
               className="setup-option"
               disabled={disabled}
               key={value}
-              onClick={() => submitIntent(createSetupIntent(value))}
+              onClick={() => {
+                if (view.starter !== value)
+                  submitIntent(createSetupIntent(value));
+              }}
               type="button"
             >
               <strong>{label}</strong>

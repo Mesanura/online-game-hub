@@ -10,6 +10,7 @@ import {
   gomokuSetupViewSchema,
 } from "../src/contracts";
 import {
+  createBoardSizeIntent,
   createPlaceStoneIntent,
   createResignIntent,
   createSetupIntent,
@@ -21,6 +22,26 @@ import {
 const emptyBoard: (string | null)[] = Array.from({ length: 225 }, () => null);
 
 describe("Gomoku Surface model", () => {
+  it.each([15, 19] as const)(
+    "submits only the selected %i board size",
+    (boardSize) => {
+      expect(
+        gomokuSetupIntentSchema.parse(createBoardSizeIntent(boardSize)),
+      ).toEqual({ type: "SET_BOARD_SIZE", boardSize });
+      expect(
+        gomokuSetupIntentSchema.safeParse({
+          ...createBoardSizeIntent(boardSize),
+          actor: "slot-a",
+        }).success,
+      ).toBe(false);
+      expect(
+        gomokuSetupIntentSchema.safeParse({
+          type: "SET_BOARD_SIZE",
+          boardSize: 17,
+        }).success,
+      ).toBe(false);
+    },
+  );
   it.each([15, 19] as const)(
     "validates the complete square projected board of size %i",
     (boardSize) => {
@@ -158,5 +179,18 @@ describe("Gomoku Surface model", () => {
       expect(gomokuPlayViewSchema.safeParse({ ...view, outcome }).success).toBe(
         false,
       );
+  });
+});
+import { setupNotice } from "../src/setup-ui";
+
+describe("Setup feedback", () => {
+  it("distinguishes permissions, stale settings, and failed connections without exposing codes", () => {
+    expect(setupNotice("accepted")).toBeNull();
+    expect(setupNotice("stale")).toContain("设置已被更新");
+    expect(setupNotice("rejected", "NOT_OWNER")).toContain("只有房主");
+    expect(setupNotice("rejected", "HOST_REJECTED")).toContain("连接");
+    expect(setupNotice("rejected", "UNKNOWN_INTERNAL_CODE")).not.toContain(
+      "UNKNOWN_INTERNAL_CODE",
+    );
   });
 });

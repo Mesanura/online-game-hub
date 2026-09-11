@@ -21,7 +21,10 @@ import {
   resultSummary,
   setupStatusLabel,
 } from "./model";
+import { setupNotice, replaceSetupContents } from "./setup-ui";
+import { setupPreview } from "./setup-preview";
 import "./styles.css";
+import "./setup.css";
 
 type HostInit = Extract<HostSurfaceMessage, { readonly type: "host.init" }>;
 type HostState = Extract<HostSurfaceMessage, { readonly type: "host.state" }>;
@@ -103,10 +106,22 @@ function handleHostMessage(message: HostSurfaceMessage): void {
     }
     try {
       const payload = parsePayload(message);
+      const resetPending =
+        runtime.hostState !== null &&
+        (message.connectionState !== "connected" ||
+          message.readOnly ||
+          message.roundNumber !== runtime.hostState.roundNumber);
       updateRuntime({
         hostState: message,
         payload,
         error: null,
+        pendingIntentId: resetPending ? null : runtime.pendingIntentId,
+        notice: resetPending
+          ? runtime.pendingIntentId !== null &&
+            message.connectionState !== "connected"
+            ? "连接已中断，请在重连后检查当前设置。"
+            : null
+          : runtime.notice,
       });
       if (runtime.mode === "play") {
         const summary = resultSummary(payload as ReversiPlayView);
@@ -155,12 +170,7 @@ function handleHostMessage(message: HostSurfaceMessage): void {
   }
   if (message.type === "host.intent-result") {
     if (message.clientIntentId !== runtime.pendingIntentId) return;
-    const notice =
-      message.status === "accepted"
-        ? null
-        : message.status === "stale"
-          ? "房间状态已更新，请重新操作。"
-          : `操作未被接受${message.code === undefined ? "" : `：${message.code}`}`;
+    const notice = setupNotice(message.status, message.code);
     updateRuntime({ pendingIntentId: null, notice });
     return;
   }
@@ -174,7 +184,14 @@ function submitIntent(
     | ReturnType<typeof createResignIntent>,
   requestedIntentId?: string,
 ): void {
-  if (bridge === null || runtime.pendingIntentId !== null) return;
+  if (
+    bridge === null ||
+    runtime.pendingIntentId !== null ||
+    runtime.disposed ||
+    runtime.hostState?.connectionState !== "connected" ||
+    runtime.hostState.readOnly
+  )
+    return;
   if (requestedIntentId === undefined) intentSequence += 1;
   const clientIntentId =
     requestedIntentId ?? `reversi-${runtime.mode}-${intentSequence}`;
@@ -199,20 +216,22 @@ function renderSetup(hostState: HostState, view: ReversiSetupView): string {
   const disabled =
     hostState.readOnly ||
     hostState.connectionState !== "connected" ||
-    !view.canEdit ||
-    runtime.pendingIntentId !== null;
+    !view.canEdit;
   const options = [
     ["OWNER", "房主先手", "房主使用黑棋"],
     ["NON_OWNER", "对手先手", "加入房间的玩家使用黑棋"],
-    ["RANDOM", "随机先手", "由权威服务端决定黑棋"],
+    ["RANDOM", "随机先手", "决定黑棋"],
   ] as const;
   return `<main class="surface-center"><section class="setup-card" aria-labelledby="setup-title">
     <div class="eyebrow">下一局设置</div><h1 id="setup-title">选择黑棋玩家</h1>
-    <p>${setupStatusLabel(view)}</p><div class="setup-options" role="group" aria-label="先手规则">
+    <p data-testid="setup-summary" aria-live="polite">${setupStatusLabel(view)}</p>
+    ${setupPreview()}
+    <p class="footnote">已加入 ${view.participantSlotIds.length}/2 人；${view.canEdit ? "选择本局设置后，双方分别准备。" : "由房主修改本局规则，你可以查看后准备。"}</p>
+    <div class="setup-options" role="group" aria-label="先手规则">
       ${options
         .map(
           ([value, label, description]) =>
-            `<button aria-pressed="${String(view.starter === value)}" data-starter="${value}" ${disabled ? "disabled" : ""} type="button"><strong>${label}</strong><span>${description}</span></button>`,
+            `<button aria-pressed="${String(view.starter === value)}" data-setup-focus="starter-${value}" aria-disabled="${String(disabled || runtime.pendingIntentId !== null)}" data-starter="${value}" ${disabled ? "disabled" : ""} type="button"><strong>${label}</strong><span>${description}</span></button>`,
         )
         .join("")}
     </div><p class="footnote">设置决定本局黑白棋色；双方仍需分别准备。</p>
@@ -289,7 +308,8 @@ function bindControls(): void {
           starter === "NON_OWNER" ||
           starter === "RANDOM"
         ) {
-          submitIntent(createSetupIntent(starter));
+          if ((runtime.payload as ReversiSetupView).starter !== starter)
+            submitIntent(createSetupIntent(starter));
         }
       });
     });
@@ -322,10 +342,17 @@ function render(): void {
       '<main class="surface-center" role="status"><p>正在同步游戏…</p></main>';
     return;
   }
-  surfaceRoot.innerHTML =
-    runtime.mode === "setup"
-      ? renderSetup(runtime.hostState, runtime.payload as ReversiSetupView)
-      : renderPlay(runtime.hostState, runtime.payload as ReversiPlayView);
+  if (runtime.mode === "setup") {
+    replaceSetupContents(
+      surfaceRoot,
+      renderSetup(runtime.hostState, runtime.payload as ReversiSetupView),
+    );
+  } else {
+    surfaceRoot.innerHTML = renderPlay(
+      runtime.hostState,
+      runtime.payload as ReversiPlayView,
+    );
+  }
   bindControls();
   if (runtime.notice !== null) {
     const notice = document.createElement("div");

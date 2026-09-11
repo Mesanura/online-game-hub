@@ -133,3 +133,16 @@ describe("Tic-Tac-Toe Surface model", () => {
     ).toBe(false);
   });
 });
+import { setupNotice } from "../src/setup-ui";
+
+describe("Setup feedback", () => {
+  it("distinguishes permissions, stale settings, and failed connections without exposing codes", () => {
+    expect(setupNotice("accepted")).toBeNull();
+    expect(setupNotice("stale")).toContain("设置已被更新");
+    expect(setupNotice("rejected", "NOT_OWNER")).toContain("只有房主");
+    expect(setupNotice("rejected", "HOST_REJECTED")).toContain("连接");
+    expect(setupNotice("rejected", "UNKNOWN_INTERNAL_CODE")).not.toContain(
+      "UNKNOWN_INTERNAL_CODE",
+    );
+  });
+});

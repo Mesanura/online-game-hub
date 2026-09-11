@@ -148,12 +148,12 @@ describe("explicit game registry", () => {
         setupProtocol: 6,
         presentation: {
           kind: "surface-v1",
-          publicBasePath: "/game-surfaces/tic-tac-toe/1.0.3",
+          publicBasePath: "/game-surfaces/tic-tac-toe/1.0.4",
           artifact: {
             supportedGameVersions: ["1.0.0", "1.1.0"],
-            surfaceVersion: "1.0.3",
+            surfaceVersion: "1.0.4",
             contentDigest:
-              "sha256-FDqwoCgmGtlngOmmb+e/LFQlKogBKWPA8r1pk2KnOCg=",
+              "sha256-LDNiF0tIsX/E/ltr8/e4b3lbtEHGD74KplDZamHiaUY=",
           },
         },
         platformControls: gameVersion === "1.1.0" ? ["RESIGN"] : [],
@@ -164,10 +164,10 @@ describe("explicit game registry", () => {
         ).toMatchObject({
           gameId: "tic-tac-toe",
           gameVersion,
-          surfaceVersion: "1.0.3",
+          surfaceVersion: "1.0.4",
           mode,
           platformControls: gameVersion === "1.1.0" ? ["RESIGN"] : [],
-          url: `/game-surfaces/tic-tac-toe/1.0.3/${mode}/index.html`,
+          url: `/game-surfaces/tic-tac-toe/1.0.4/${mode}/index.html`,
         });
       }
     }
@@ -207,12 +207,12 @@ describe("explicit game registry", () => {
         setupProtocol: 6,
         presentation: {
           kind: "surface-v1",
-          publicBasePath: "/game-surfaces/connect-four/1.0.4",
+          publicBasePath: "/game-surfaces/connect-four/1.0.5",
           artifact: {
             supportedGameVersions: ["1.0.0", "1.1.0"],
-            surfaceVersion: "1.0.4",
+            surfaceVersion: "1.0.5",
             contentDigest:
-              "sha256-JCQswgU+KZfH9Db91JBSAJjZPiBs09i8GuC5xa5HhRI=",
+              "sha256-fQmmobZNselpWyiV8WVHY3077RzFv3OoCn7WP1LBjBc=",
           },
         },
         platformControls: gameVersion === "1.1.0" ? ["RESIGN"] : [],
@@ -223,10 +223,10 @@ describe("explicit game registry", () => {
         ).toMatchObject({
           gameId: "connect-four",
           gameVersion,
-          surfaceVersion: "1.0.4",
+          surfaceVersion: "1.0.5",
           mode,
           platformControls: gameVersion === "1.1.0" ? ["RESIGN"] : [],
-          url: `/game-surfaces/connect-four/1.0.4/${mode}/index.html`,
+          url: `/game-surfaces/connect-four/1.0.5/${mode}/index.html`,
         });
       }
     }
@@ -265,12 +265,12 @@ describe("explicit game registry", () => {
         setupProtocol: 6,
         presentation: {
           kind: "surface-v1",
-          publicBasePath: "/game-surfaces/gomoku/1.0.3",
+          publicBasePath: "/game-surfaces/gomoku/1.0.4",
           artifact: {
             supportedGameVersions: ["1.0.0", "1.1.0"],
-            surfaceVersion: "1.0.3",
+            surfaceVersion: "1.0.4",
             contentDigest:
-              "sha256-qfKagp6wbInfeCpwMnl8Iv8rpUiUt0r8hKXThxfX0ow=",
+              "sha256-OZX0VTjFnX/1iAYBysAU3Gn10+gF/qJ0y/8VUGcce6M=",
           },
         },
         platformControls: gameVersion === "1.1.0" ? ["RESIGN"] : [],
@@ -281,10 +281,10 @@ describe("explicit game registry", () => {
         ).toMatchObject({
           gameId: "gomoku",
           gameVersion,
-          surfaceVersion: "1.0.3",
+          surfaceVersion: "1.0.4",
           mode,
           platformControls: gameVersion === "1.1.0" ? ["RESIGN"] : [],
-          url: `/game-surfaces/gomoku/1.0.3/${mode}/index.html`,
+          url: `/game-surfaces/gomoku/1.0.4/${mode}/index.html`,
         });
       }
     }
@@ -292,11 +292,11 @@ describe("explicit game registry", () => {
       setupProtocol: 6,
       presentation: {
         kind: "surface-v1",
-        publicBasePath: "/game-surfaces/hex/1.0.2",
+        publicBasePath: "/game-surfaces/hex/1.0.3",
         artifact: {
           supportedGameVersions: ["1.0.0"],
-          surfaceVersion: "1.0.2",
-          contentDigest: "sha256-vobFsX7c/17tr5xaFIdphPiGqzmVCPL0plSD03PswGM=",
+          surfaceVersion: "1.0.3",
+          contentDigest: "sha256-d8uH4c1RVPBLFQGLsn8V5m0/+4n7tlKHykiZ3sXhMGY=",
         },
       },
       platformControls: ["RESIGN"],
@@ -305,10 +305,10 @@ describe("explicit game registry", () => {
       expect(resolveGameSurfaceEntrypoint("hex", "1.0.0", mode)).toMatchObject({
         gameId: "hex",
         gameVersion: "1.0.0",
-        surfaceVersion: "1.0.2",
+        surfaceVersion: "1.0.3",
         mode,
         platformControls: ["RESIGN"],
-        url: `/game-surfaces/hex/1.0.2/${mode}/index.html`,
+        url: `/game-surfaces/hex/1.0.3/${mode}/index.html`,
       });
     }
     for (const gameVersion of ["1.0.0", "1.1.0"] as const) {
@@ -316,12 +316,12 @@ describe("explicit game registry", () => {
         setupProtocol: 6,
         presentation: {
           kind: "surface-v1",
-          publicBasePath: "/game-surfaces/reversi/1.0.4",
+          publicBasePath: "/game-surfaces/reversi/1.0.5",
           artifact: {
             supportedGameVersions: ["1.0.0", "1.1.0"],
-            surfaceVersion: "1.0.4",
+            surfaceVersion: "1.0.5",
             contentDigest:
-              "sha256-Wph0/bjO1Gdrc4c6+D64QGwVI9Nwi8h/FCpmCXiArSs=",
+              "sha256-jTTVeQvsd5G1jZHa2PpYHy1lE5na+eEuqIGns6x9RW8=",
           },
         },
         platformControls: gameVersion === "1.1.0" ? ["RESIGN"] : [],
@@ -332,10 +332,10 @@ describe("explicit game registry", () => {
         ).toMatchObject({
           gameId: "reversi",
           gameVersion,
-          surfaceVersion: "1.0.4",
+          surfaceVersion: "1.0.5",
           mode,
           platformControls: gameVersion === "1.1.0" ? ["RESIGN"] : [],
-          url: `/game-surfaces/reversi/1.0.4/${mode}/index.html`,
+          url: `/game-surfaces/reversi/1.0.5/${mode}/index.html`,
         });
       }
     }

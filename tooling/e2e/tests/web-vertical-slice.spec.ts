@@ -109,7 +109,7 @@ async function createAndJoinRoom(
   await expect(pageA.getByTestId("match-status")).toHaveCount(0);
   await expect(pageA.getByTestId("game-surface-iframe")).toHaveAttribute(
     "src",
-    "/game-surfaces/tic-tac-toe/1.0.3/setup/index.html",
+    "/game-surfaces/tic-tac-toe/1.0.4/setup/index.html",
   );
   await expect(pageA.getByTestId("round-setup-status")).toHaveText(
     "请先完成本局游戏设置",
@@ -188,7 +188,7 @@ async function createAndJoinRoom(
       await expect(page.getByTestId("game-stage")).toBeVisible();
       await expect(page.getByTestId("game-surface-iframe")).toHaveAttribute(
         "src",
-        "/game-surfaces/tic-tac-toe/1.0.3/play/index.html",
+        "/game-surfaces/tic-tac-toe/1.0.4/play/index.html",
       );
       const readyNotice = page.getByTestId("player-count-notice");
       await expect(readyNotice).toHaveText("玩家已到齐，游戏开始！");
@@ -487,7 +487,7 @@ test("two isolated accounts complete win/draw, converge on reconnect, and cannot
   await expect(replayPage.getByTestId("replay-page")).toBeVisible();
   await expect(replayPage.getByTestId("game-surface-iframe")).toHaveAttribute(
     "src",
-    "/game-surfaces/tic-tac-toe/1.0.3/replay/index.html",
+    "/game-surfaces/tic-tac-toe/1.0.4/replay/index.html",
   );
   await replayPage.getByTestId("replay-last").click();
   await expect(ticTacToeSurface(replayPage).getByRole("heading")).toHaveText(
@@ -538,7 +538,7 @@ test("two isolated accounts complete win/draw, converge on reconnect, and cannot
 
   await expect(pageA.getByTestId("game-surface-iframe")).toHaveAttribute(
     "src",
-    "/game-surfaces/tic-tac-toe/1.0.3/setup/index.html",
+    "/game-surfaces/tic-tac-toe/1.0.4/setup/index.html",
   );
   await selectSurfaceStarter(pageA, "另一位玩家先手");
   await expect(pageB.getByTestId("round-setup-status")).toHaveText(

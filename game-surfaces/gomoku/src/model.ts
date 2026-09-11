@@ -8,9 +8,13 @@ import type {
 } from "./contracts";
 
 export function createSetupIntent(
-  starter: GomokuSetupIntent["starter"],
+  starter: Extract<GomokuSetupIntent, { type: "SELECT_STARTER" }>["starter"],
 ): GomokuSetupIntent {
   return { type: "SELECT_STARTER", starter };
+}
+
+export function createBoardSizeIntent(boardSize: 15 | 19): GomokuSetupIntent {
+  return { type: "SET_BOARD_SIZE", boardSize };
 }
 
 export function createPlaceStoneIntent(cell: number): GomokuPlayIntent {
@@ -22,11 +26,10 @@ export function createResignIntent(): GomokuPlayIntent {
 }
 
 export function setupStatusLabel(view: Readonly<GomokuSetupView>): string {
-  if (view.participantSlotIds.length < 2) return "等待另一位玩家加入";
   if (view.starter === "UNSELECTED") return "请选择本局先手";
   if (view.starter === "OWNER") return "房主使用黑棋并先手";
   if (view.starter === "NON_OWNER") return "另一位玩家使用黑棋并先手";
-  if (view.starter === "RANDOM") return "开始时由服务端随机决定黑棋";
+  if (view.starter === "RANDOM") return "开始时随机决定黑棋";
   return "沿用上一局的实际棋色与顺序";
 }
 

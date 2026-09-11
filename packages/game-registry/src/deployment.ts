@@ -43,7 +43,7 @@ const ticTacToeSurfaceArtifactV1 = {
   schemaVersion: 1,
   gameId: "tic-tac-toe",
   supportedGameVersions: ["1.0.0", "1.1.0"],
-  surfaceVersion: "1.0.3",
+  surfaceVersion: "1.0.4",
   bridgeVersion: 2,
   entrypoints: {
     setup: "setup/index.html",
@@ -51,7 +51,7 @@ const ticTacToeSurfaceArtifactV1 = {
     replay: "replay/index.html",
   },
   capabilities: {},
-  contentDigest: "sha256-FDqwoCgmGtlngOmmb+e/LFQlKogBKWPA8r1pk2KnOCg=",
+  contentDigest: "sha256-LDNiF0tIsX/E/ltr8/e4b3lbtEHGD74KplDZamHiaUY=",
 } satisfies SurfaceArtifactManifestV1;
 
 const ticTacToeSurface = (
@@ -66,7 +66,7 @@ const ticTacToeSurface = (
       gameVersion === "1.1.0" ? resignPlatformControls : noPlatformControls,
     presentation: Object.freeze({
       kind: "surface-v1",
-      publicBasePath: "/game-surfaces/tic-tac-toe/1.0.3",
+      publicBasePath: "/game-surfaces/tic-tac-toe/1.0.4",
       artifact: ticTacToeSurfaceArtifactV1,
     }),
   });
@@ -104,7 +104,7 @@ const connectFourSurfaceArtifactV1 = {
   schemaVersion: 1,
   gameId: "connect-four",
   supportedGameVersions: ["1.0.0", "1.1.0"],
-  surfaceVersion: "1.0.4",
+  surfaceVersion: "1.0.5",
   bridgeVersion: 2,
   entrypoints: {
     setup: "setup/index.html",
@@ -112,7 +112,7 @@ const connectFourSurfaceArtifactV1 = {
     replay: "replay/index.html",
   },
   capabilities: {},
-  contentDigest: "sha256-JCQswgU+KZfH9Db91JBSAJjZPiBs09i8GuC5xa5HhRI=",
+  contentDigest: "sha256-fQmmobZNselpWyiV8WVHY3077RzFv3OoCn7WP1LBjBc=",
 } satisfies SurfaceArtifactManifestV1;
 
 const connectFourSurface = (
@@ -127,7 +127,7 @@ const connectFourSurface = (
       gameVersion === "1.1.0" ? resignPlatformControls : noPlatformControls,
     presentation: Object.freeze({
       kind: "surface-v1",
-      publicBasePath: "/game-surfaces/connect-four/1.0.4",
+      publicBasePath: "/game-surfaces/connect-four/1.0.5",
       artifact: connectFourSurfaceArtifactV1,
     }),
   });
@@ -136,7 +136,7 @@ const gomokuSurfaceArtifactV1 = {
   schemaVersion: 1,
   gameId: "gomoku",
   supportedGameVersions: ["1.0.0", "1.1.0"],
-  surfaceVersion: "1.0.3",
+  surfaceVersion: "1.0.4",
   bridgeVersion: 2,
   entrypoints: {
     setup: "setup/index.html",
@@ -144,7 +144,7 @@ const gomokuSurfaceArtifactV1 = {
     replay: "replay/index.html",
   },
   capabilities: {},
-  contentDigest: "sha256-qfKagp6wbInfeCpwMnl8Iv8rpUiUt0r8hKXThxfX0ow=",
+  contentDigest: "sha256-OZX0VTjFnX/1iAYBysAU3Gn10+gF/qJ0y/8VUGcce6M=",
 } satisfies SurfaceArtifactManifestV1;
 
 const gomokuSurface = (
@@ -159,7 +159,7 @@ const gomokuSurface = (
       gameVersion === "1.1.0" ? resignPlatformControls : noPlatformControls,
     presentation: Object.freeze({
       kind: "surface-v1",
-      publicBasePath: "/game-surfaces/gomoku/1.0.3",
+      publicBasePath: "/game-surfaces/gomoku/1.0.4",
       artifact: gomokuSurfaceArtifactV1,
     }),
   });
@@ -168,7 +168,7 @@ const hexSurfaceArtifactV1 = {
   schemaVersion: 1,
   gameId: "hex",
   supportedGameVersions: ["1.0.0"],
-  surfaceVersion: "1.0.2",
+  surfaceVersion: "1.0.3",
   bridgeVersion: 2,
   entrypoints: {
     setup: "setup/index.html",
@@ -176,7 +176,7 @@ const hexSurfaceArtifactV1 = {
     replay: "replay/index.html",
   },
   capabilities: {},
-  contentDigest: "sha256-vobFsX7c/17tr5xaFIdphPiGqzmVCPL0plSD03PswGM=",
+  contentDigest: "sha256-d8uH4c1RVPBLFQGLsn8V5m0/+4n7tlKHykiZ3sXhMGY=",
 } satisfies SurfaceArtifactManifestV1;
 
 const hexSurfaceV1: GameDeploymentRegistration = Object.freeze({
@@ -186,7 +186,7 @@ const hexSurfaceV1: GameDeploymentRegistration = Object.freeze({
   platformControls: resignPlatformControls,
   presentation: Object.freeze({
     kind: "surface-v1",
-    publicBasePath: "/game-surfaces/hex/1.0.2",
+    publicBasePath: "/game-surfaces/hex/1.0.3",
     artifact: hexSurfaceArtifactV1,
   }),
 });
@@ -195,7 +195,7 @@ const reversiSurfaceArtifactV1 = {
   schemaVersion: 1,
   gameId: "reversi",
   supportedGameVersions: ["1.0.0", "1.1.0"],
-  surfaceVersion: "1.0.4",
+  surfaceVersion: "1.0.5",
   bridgeVersion: 2,
   entrypoints: {
     setup: "setup/index.html",
@@ -203,7 +203,7 @@ const reversiSurfaceArtifactV1 = {
     replay: "replay/index.html",
   },
   capabilities: {},
-  contentDigest: "sha256-Wph0/bjO1Gdrc4c6+D64QGwVI9Nwi8h/FCpmCXiArSs=",
+  contentDigest: "sha256-jTTVeQvsd5G1jZHa2PpYHy1lE5na+eEuqIGns6x9RW8=",
 } satisfies SurfaceArtifactManifestV1;
 
 const reversiSurface = (
@@ -218,7 +218,7 @@ const reversiSurface = (
       gameVersion === "1.1.0" ? resignPlatformControls : noPlatformControls,
     presentation: Object.freeze({
       kind: "surface-v1",
-      publicBasePath: "/game-surfaces/reversi/1.0.4",
+      publicBasePath: "/game-surfaces/reversi/1.0.5",
       artifact: reversiSurfaceArtifactV1,
     }),
   });

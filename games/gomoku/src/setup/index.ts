@@ -35,12 +35,20 @@ export const gomokuSetupStateSchema = z
 
 export type GomokuSetupState = z.infer<typeof gomokuSetupStateSchema>;
 
-export const gomokuSetupActionSchema = z
-  .object({
-    type: z.literal("SELECT_STARTER"),
-    starter: z.enum(["OWNER", "NON_OWNER", "RANDOM"]),
-  })
-  .strict();
+export const gomokuSetupActionSchema = z.discriminatedUnion("type", [
+  z
+    .object({
+      type: z.literal("SELECT_STARTER"),
+      starter: z.enum(["OWNER", "NON_OWNER", "RANDOM"]),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("SET_BOARD_SIZE"),
+      boardSize: z.union([z.literal(15), z.literal(19)]),
+    })
+    .strict(),
+]);
 
 export type GomokuSetupAction = z.infer<typeof gomokuSetupActionSchema>;
 
@@ -130,6 +138,21 @@ export const gomokuSetupDefinition = Object.freeze({
   },
   transition(context) {
     if (!context.isOwner) return { status: "rejected", code: "NOT_OWNER" };
+    if (context.action.type === "SET_BOARD_SIZE") {
+      if (context.state.config.boardSize === context.action.boardSize) {
+        return { status: "rejected", code: "SETUP_UNCHANGED" };
+      }
+      return {
+        status: "accepted",
+        state: Object.freeze({
+          ...context.state,
+          config: Object.freeze({
+            ...context.state.config,
+            boardSize: context.action.boardSize,
+          }),
+        }),
+      };
+    }
     if (
       context.state.starter === context.action.starter &&
       context.state.fixedStarterSlotId === null

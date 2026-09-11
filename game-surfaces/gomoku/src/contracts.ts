@@ -132,12 +132,20 @@ export const gomokuPlayViewSchema = z
   });
 export type GomokuPlayView = z.infer<typeof gomokuPlayViewSchema>;
 
-export const gomokuSetupIntentSchema = z
-  .object({
-    type: z.literal("SELECT_STARTER"),
-    starter: z.enum(["OWNER", "NON_OWNER", "RANDOM"]),
-  })
-  .strict();
+export const gomokuSetupIntentSchema = z.discriminatedUnion("type", [
+  z
+    .object({
+      type: z.literal("SELECT_STARTER"),
+      starter: z.enum(["OWNER", "NON_OWNER", "RANDOM"]),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("SET_BOARD_SIZE"),
+      boardSize: z.union([z.literal(15), z.literal(19)]),
+    })
+    .strict(),
+]);
 export type GomokuSetupIntent = z.infer<typeof gomokuSetupIntentSchema>;
 
 export const gomokuHistoricalPlayIntentSchema = z

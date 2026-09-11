@@ -2314,7 +2314,7 @@ describe.sequential("authoritative Colyseus Game Server", () => {
         protocolVersion: SETUP_PROTOCOL_VERSION,
         ticket: authority.issue("gomoku-a"),
         gameId: "gomoku",
-        initialConfig: { boardSize: 19, winLength: 5 },
+        initialConfig: { boardSize: 15, winLength: 5 },
       },
     );
     const inboxA = new MessageInbox(roomA);
@@ -2347,6 +2347,115 @@ describe.sequential("authoritative Colyseus Game Server", () => {
       roomCode: "GMPLAY45",
       playerSlotId: "slot-2",
     });
+    const setupInbox = new V6LifecycleInbox(roomA);
+    await waitUntil(() => latestLifecycleByRoom.get(roomA)?.nextRound != null);
+    sendSetup(roomA, "gomoku-initial-starter", {
+      type: "SELECT_STARTER",
+      starter: "NON_OWNER",
+    });
+    await setupInbox.next(
+      (state) => state.causedByCommandId === "gomoku-initial-starter",
+    );
+    roomA.send(
+      ROOM_CONTROL_MESSAGE,
+      controlCommand("gomoku-initial-ready", "READY_FOR_ROUND"),
+    );
+    await setupInbox.next(
+      (state) => state.causedByCommandId === "gomoku-initial-ready",
+    );
+    const beforeRejected = (await roomStore.getByRoomCode("GMPLAY45"))
+      ?.nextRoundSetup;
+    expect(beforeRejected).toMatchObject({
+      setupRevision: 1,
+      readySlotIds: ["slot-1"],
+      setupRng: { cursor: 0 },
+    });
+    for (const [id, sender, inbox, revision, action, code, gameRuleCode] of [
+      [
+        "size-guest",
+        roomB,
+        inboxB,
+        1,
+        { type: "SET_BOARD_SIZE", boardSize: 19 },
+        "SETUP_RULE_REJECTED",
+        "NOT_OWNER",
+      ],
+      [
+        "size-same",
+        roomA,
+        inboxA,
+        1,
+        { type: "SET_BOARD_SIZE", boardSize: 15 },
+        "SETUP_RULE_REJECTED",
+        "SETUP_UNCHANGED",
+      ],
+      [
+        "size-invalid",
+        roomA,
+        inboxA,
+        1,
+        { type: "SET_BOARD_SIZE", boardSize: 17 },
+        "INVALID_SETUP_PAYLOAD",
+        undefined,
+      ],
+      [
+        "size-forged",
+        roomA,
+        inboxA,
+        1,
+        { type: "SET_BOARD_SIZE", boardSize: 19, actor: "slot-1" },
+        "INVALID_SETUP_PAYLOAD",
+        undefined,
+      ],
+      [
+        "size-stale",
+        roomA,
+        inboxA,
+        0,
+        { type: "SET_BOARD_SIZE", boardSize: 19 },
+        "STALE_SETUP_REVISION",
+        undefined,
+      ],
+    ] as const) {
+      sender.send(GAME_SETUP_MESSAGE, v6SetupCommand(id, revision, action));
+      const rejected = await inbox.next(
+        (message) =>
+          message.type === "command.rejected" && message.commandId === id,
+      );
+      expect(rejected).toMatchObject({
+        code,
+        setupRevision: 1,
+        ...(gameRuleCode === undefined ? {} : { gameRuleCode }),
+      });
+      expect(
+        (await roomStore.getByRoomCode("GMPLAY45"))?.nextRoundSetup,
+      ).toEqual(beforeRejected);
+    }
+    const sizeCommand = v6SetupCommand("gomoku-size-19", 1, {
+      type: "SET_BOARD_SIZE",
+      boardSize: 19,
+    });
+    roomA.send(GAME_SETUP_MESSAGE, sizeCommand);
+    const resized = await setupInbox.next(
+      (state) => state.causedByCommandId === "gomoku-size-19",
+    );
+    expect(resized.nextRound).toMatchObject({
+      setupRevision: 2,
+      setupView: {
+        config: { boardSize: 19, winLength: 5 },
+        starter: "NON_OWNER",
+      },
+      readiness: { readySlotIds: [] },
+    });
+    const afterResize = (await roomStore.getByRoomCode("GMPLAY45"))
+      ?.nextRoundSetup;
+    roomA.send(GAME_SETUP_MESSAGE, sizeCommand);
+    await setupInbox.next(
+      (state) => state.causedByCommandId === "gomoku-size-19",
+    );
+    expect((await roomStore.getByRoomCode("GMPLAY45"))?.nextRoundSetup).toEqual(
+      afterResize,
+    );
     await startRound(roomA, roomB, "gomoku-round-1");
     const [initialA, initialB] = await Promise.all([
       activeA,
@@ -2469,6 +2578,16 @@ describe.sequential("authoritative Colyseus Game Server", () => {
       status: "verified",
       rng: { cursor: 0 },
       outcome: { type: "WIN", winnerSlotId: "slot-1" },
+    });
+    await waitUntil(
+      () => latestLifecycleByRoom.get(roomA)?.nextRound?.roundNumber === 2,
+    );
+    expect(latestLifecycleByRoom.get(roomA)?.nextRound).toMatchObject({
+      setupView: {
+        config: { boardSize: 19, winLength: 5 },
+        starter: "FIXED",
+        fixedStarterSlotId: "slot-1",
+      },
     });
   });
 
@@ -4579,7 +4698,13 @@ describe.sequential("historical rules with V6 setup", () => {
             protocolVersion: SETUP_PROTOCOL_VERSION,
             ticket: ticket("historical-owner"),
             gameId,
-            initialConfig,
+            initialConfig:
+              gameId === "gomoku"
+                ? {
+                    boardSize: initialConfig?.boardSize === 19 ? 15 : 19,
+                    winLength: 5,
+                  }
+                : initialConfig,
           },
         );
         rooms.push(owner);
@@ -4620,9 +4745,21 @@ describe.sequential("historical rules with V6 setup", () => {
         await ownerLifecycle.next((state) =>
           state.players.every((player) => player.occupied),
         );
+        if (gameId === "gomoku") {
+          owner.send(
+            GAME_SETUP_MESSAGE,
+            v6SetupCommand("historical-size", 0, {
+              type: "SET_BOARD_SIZE",
+              boardSize: initialConfig?.boardSize,
+            }),
+          );
+          await ownerLifecycle.next(
+            (state) => state.causedByCommandId === "historical-size",
+          );
+        }
         owner.send(
           GAME_SETUP_MESSAGE,
-          v6SetupCommand("historical-setup", 0, {
+          v6SetupCommand("historical-setup", gameId === "gomoku" ? 1 : 0, {
             type: "SELECT_STARTER",
             starter,
           }),

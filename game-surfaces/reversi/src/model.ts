@@ -26,11 +26,10 @@ export function coordinateLabel(cell: number): string {
 }
 
 export function setupStatusLabel(view: Readonly<ReversiSetupView>): string {
-  if (view.participantSlotIds.length < 2) return "等待另一位玩家加入";
   if (view.starter === "UNSELECTED") return "请选择本局黑棋玩家";
   if (view.starter === "OWNER") return "房主使用黑棋并先手";
   if (view.starter === "NON_OWNER") return "另一位玩家使用黑棋并先手";
-  if (view.starter === "RANDOM") return "开始时由服务端随机决定黑棋";
+  if (view.starter === "RANDOM") return "开始时随机决定黑棋";
   return "沿用上一局的实际棋色与顺序";
 }
 

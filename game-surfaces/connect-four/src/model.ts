@@ -42,11 +42,10 @@ export function landingCell(
 }
 
 export function setupStatusLabel(view: Readonly<ConnectFourSetupView>): string {
-  if (view.participantSlotIds.length < 2) return "等待另一位玩家加入";
   if (view.starter === "UNSELECTED") return "请选择本局先手";
   if (view.starter === "OWNER") return "房主使用红棋并先手";
   if (view.starter === "NON_OWNER") return "另一位玩家使用红棋并先手";
-  if (view.starter === "RANDOM") return "开始时由服务端随机决定红棋";
+  if (view.starter === "RANDOM") return "开始时随机决定红棋";
   return "沿用上一局的实际棋色与顺序";
 }
 
