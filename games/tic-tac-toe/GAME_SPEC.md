@@ -46,7 +46,7 @@
 
 ## 版本兼容
 
-- 独立 `tic-tac-toe@surfaceVersion 1.0.3` 使用 Bridge V2 承载 Setup、Play 与 Replay，并在 completed Play View 后发送 viewer-specific 纯文本结果摘要。
+- 独立 [井字棋 Surface](../../game-surfaces/tic-tac-toe/README.md) 使用 Bridge V2 承载 Setup、Play 与 Replay，并在 completed Play View 后发送 viewer-specific 纯文本结果摘要。
 - `1.0.0` 只接受 `PLACE_MARK`，State 不含 `resignedSlotId`；其独立 frozen definition 和原 golden fixture 保留不变。
 - 两个版本均登记 V6 Setup，复用相同的 `null` Config 与参与者顺序契约。
 - `1.1.0` 增加 off-turn `RESIGN`、`state.resignedSlotId` 和 `RESIGNATION` WIN；普通落子、连线与平局规则不变。

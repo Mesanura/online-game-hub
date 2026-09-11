@@ -4,7 +4,7 @@
 
 ## 当前阶段
 
-M1–M8 与 M9-A–F 已完成。独立 Surface、V6 Setup 与全量游戏画面迁移已落地，V5 在线 schema/runtime 已退役；后续 M9-G 游戏 Setup 交互独立推进。
+M1–M8 与 M9-A–G 已完成。独立 Surface、V6 Setup、全量游戏画面迁移与九款游戏的开局交互已落地，V5 在线 schema/runtime 已退役。
 
 - 九款当前游戏都注册为 V6 Setup 与独立 Bridge V2 Surface。
 - 所有受支持历史规则版本都有精确 Surface 映射；七款旧 Client 源码、渲染契约与 registry loader 已移除。
@@ -40,15 +40,15 @@ M1–M8 与 M9-A–F 已完成。独立 Surface、V6 Setup 与全量游戏画面
 
 目标是让游戏表现层独立于 Next/React 构建链；逐局规则、参与者、顺序和阵营归游戏 Setup，平台外壳不挤压舞台或猜测游戏字段。
 
-| 子阶段                | 状态       | 范围与退出条件                                                                                         |
-| --------------------- | ---------- | ------------------------------------------------------------------------------------------------------ |
-| M9-A 契约与兼容骨架   | 已完成     | Bridge V1/V2、artifact、纯 Setup、迁移期 exact 双轨、显式 replay capability 与 deployment registration |
-| M9-B 游戏页外壳       | 已完成     | 覆盖式 HUD、独立全屏/focus mode、可访问性与 viewport 回归；保留舞台尺寸                                |
-| M9-C 工具链与 Host    | 已完成     | 独立构建、摘要锁、immutable publish、Docker 静态复制、sandboxed iframe、Workbench 与 conformance tests |
-| M9-D 双 runtime Setup | 已完成     | 共用 Setup coordinator、权限/projection、独立 RNG、ready、失败重试与完整重新对局设置                   |
-| M9-E 双试点           | 已完成     | 井字棋和 Pong 验证两类 runtime 的独立 Surface、数据库、integration 和浏览器链路                        |
-| M9-F 全量迁移与退役   | 已完成     | 全量 Surface/历史 V6 Setup、旧 Client 与 V5 在线路径退役、历史读取及部署排空验证                       |
-| M9-G 游戏 Setup 交互  | 待独立推进 | 在稳定契约上逐游戏优化解释、预览、顺序和 assignment 交互，不引入通用表单 DSL                           |
+| 子阶段                | 状态   | 范围与退出条件                                                                                         |
+| --------------------- | ------ | ------------------------------------------------------------------------------------------------------ |
+| M9-A 契约与兼容骨架   | 已完成 | Bridge V1/V2、artifact、纯 Setup、迁移期 exact 双轨、显式 replay capability 与 deployment registration |
+| M9-B 游戏页外壳       | 已完成 | 覆盖式 HUD、独立全屏/focus mode、可访问性与 viewport 回归；保留舞台尺寸                                |
+| M9-C 工具链与 Host    | 已完成 | 独立构建、摘要锁、immutable publish、Docker 静态复制、sandboxed iframe、Workbench 与 conformance tests |
+| M9-D 双 runtime Setup | 已完成 | 共用 Setup coordinator、权限/projection、独立 RNG、ready、失败重试与完整重新对局设置                   |
+| M9-E 双试点           | 已完成 | 井字棋和 Pong 验证两类 runtime 的独立 Surface、数据库、integration 和浏览器链路                        |
+| M9-F 全量迁移与退役   | 已完成 | 全量 Surface/历史 V6 Setup、旧 Client 与 V5 在线路径退役、历史读取及部署排空验证                       |
+| M9-G 游戏 Setup 交互  | 已完成 | 九款游戏的规则说明、确认预览、顺序与阵营、配置与错误恢复；独立 Surface 和历史版本完成验收              |
 
 ### M9-F 完成边界
 
@@ -56,6 +56,12 @@ M1–M8 与 M9-A–F 已完成。独立 Surface、V6 Setup 与全量游戏画面
 2. 存量 V5 房间排空已确认。ticket、matchmaking、lifecycle、Setup、control 与回合制消息仅支持 V6；旧平台表单、先手/人数/阵营控制与即时 rematch 分支已删除。
 3. 两类 runtime、SDK、真实 PostgreSQL、历史 golden、账户回放和完整浏览器流程已按 [测试矩阵](./TESTING.md) 验证。旧 realtime SQL metadata 仍按创建时代际读取，不迁移为可连接房间。
 4. 存活房间代际计数与 [Compose 升级/回滚流程](./DEPLOYMENT_DOCKER_COMPOSE.md#v5-退役升级与回滚) 已补齐。部署仍须按实例确认排空，缺失指标不能视为零；进程重启不恢复 live room。部分 Next transpile 条目仍服务 manifest/Core 静态导入，按实际依赖保留。
+
+### M9-G 完成边界
+
+1. 九款游戏在各自 Surface 内完成规则说明、投影驱动的设置摘要与示意、顺序和阵营选择；五子棋棋盘尺寸与 Pong 目标分数开放既有 Core 配置。具体规则和历史差异见 [游戏索引](../games/README.md)。
+2. 设置以服务器确认投影为准，SDK 到 Web/Bridge 保留拒绝原因和过期状态，Surface 只接收状态与错误码。重复提交防护、拒绝与断线恢复、有效焦点、触屏操作、重连和下一局实际设置复用均按 [测试矩阵](./TESTING.md) 验证。
+3. 九款 Surface 各提升一个 patch 并同步摘要锁和全部支持版本的精确映射；Gameplay Core、gameVersion、Config schema、Protocol V6、Bridge V2 与 replay 格式保持兼容。独立契约、历史 golden、真实 PostgreSQL 和完整浏览器旅程已通过。
 
 M9 不包含真正 `replay:none` 的数据库语义、外部仓库发布、独立无 Cookie 资源域或平台通用 Setup 表单。生产继续使用同域静态路径与 opaque iframe origin。
 

@@ -67,6 +67,6 @@ o o o o o o o o o o
 
 ## Surface
 
-`chinese-checkers@surfaceVersion 1.1.1` 以独立 Bridge V2 Setup/Play/Replay artifact 精确支持 `gameVersion 1.0.0` 与 `1.1.0`。Setup 提供指定营地与随机首位，所有画面的营地名称统一显示顺时针编号。新版 Play/Replay 使用服务器逐格 geometry 绘制 73 格、180 条等距连线和七个区域底色；旧版使用冻结的旧编号坐标表，不能回退到新版几何。两种 View schema 严格分派并互相拒绝，缺少新版 geometry 时 fail closed。
+[中国跳棋 Surface](../../game-surfaces/chinese-checkers/README.md) 以独立 Bridge V2 Setup/Play/Replay artifact 精确支持 `gameVersion 1.0.0` 与 `1.1.0`。Setup 提供指定营地与随机首位，所有画面的营地名称统一显示顺时针编号。新版 Play/Replay 使用服务器逐格 geometry 绘制 73 格、180 条等距连线和七个区域底色；旧版使用冻结的旧编号坐标表，不能回退到新版几何。两种 View schema 严格分派并互相拒绝，缺少新版 geometry 时 fail closed。
 
 棋子颜色只取玩家 assignment，不随所在棋位变化。Surface 只消费服务器 `legalMoves`、排名和 Outcome，不搜索跳跃路径、不推导排名，也不接触 actor、raw State、seed 或 canonical replay。棋盘在桌面保持等比例适配；触屏棋位至少 44px，超出视口时只在棋盘容器内滚动，所有六个角都必须可达。
