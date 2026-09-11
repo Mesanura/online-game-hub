@@ -237,12 +237,12 @@ describe("explicit game registry", () => {
         setupProtocol: 6,
         presentation: {
           kind: "surface-v1",
-          publicBasePath: "/game-surfaces/chinese-checkers/1.1.1",
+          publicBasePath: "/game-surfaces/chinese-checkers/1.1.2",
           artifact: {
             supportedGameVersions: ["1.0.0", "1.1.0"],
-            surfaceVersion: "1.1.1",
+            surfaceVersion: "1.1.2",
             contentDigest:
-              "sha256-1KN8MRLajLvX7ABYV+JyEgzl54TsyaqZVP0U5+jQuDs=",
+              "sha256-62jydJV17R+HBPZwM8BEfSwRTVp1WaC4ImxtI05nfhg=",
           },
         },
         platformControls: ["RESIGN"],
@@ -253,10 +253,10 @@ describe("explicit game registry", () => {
         ).toMatchObject({
           gameId: "chinese-checkers",
           gameVersion,
-          surfaceVersion: "1.1.1",
+          surfaceVersion: "1.1.2",
           mode,
           platformControls: ["RESIGN"],
-          url: `/game-surfaces/chinese-checkers/1.1.1/${mode}/index.html`,
+          url: `/game-surfaces/chinese-checkers/1.1.2/${mode}/index.html`,
         });
       }
     }
@@ -449,7 +449,7 @@ describe("explicit game registry", () => {
       expect(resolveRoundSetupDefinition("tank-maze", version)).toBeDefined();
       expect(
         resolveGameSurfaceEntrypoint("tank-maze", version, "play")?.url,
-      ).toBe("/game-surfaces/tank-maze/1.1.1/play/index.html");
+      ).toBe("/game-surfaces/tank-maze/1.1.2/play/index.html");
       expect(resolveGameDeployment("tank-maze", version)?.setupProtocol).toBe(
         6,
       );
@@ -457,9 +457,9 @@ describe("explicit game registry", () => {
         resolveGameDeployment("tank-maze", version)?.presentation,
       ).toMatchObject({
         artifact: {
-          surfaceVersion: "1.1.1",
+          surfaceVersion: "1.1.2",
           supportedGameVersions: ["1.0.0", "1.1.0"],
-          contentDigest: "sha256-zpBtnML1xVLg81QlpCn55K/APCTOsAXa1UIQKYARPOk=",
+          contentDigest: "sha256-xkLz9ffLoV7SlIkJHqFFnMVaoScjOtAForL5b+SbYhY=",
         },
       });
       expect(

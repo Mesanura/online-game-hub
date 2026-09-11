@@ -1,5 +1,7 @@
 # 坦克迷战 Surface
 
+Setup 展示人数、目标分数、本人颜色和全部参与者颜色，解释多小局累计计分。人数调低后若超员，提示房主增容或等待玩家离开，不自动移除玩家；准备状态仍由服务器决定。选择、占用和摘要均取自投影，提交期间阻止重复操作，断线和迟到回执不会遗留 pending，拒绝后显示中文原因。卡片支持手机横竖屏滚动、44px 控件及更新时保留有效焦点。
+
 独立 TypeScript + SVG Setup/Play 画面，消费 Bridge V2 projected View，不运行权威物理或寻路。规则与兼容性见 [GAME_SPEC](../../games/tank-maze/GAME_SPEC.md)，公共开发和发布流程见 [Game Surface 规范](../../docs/GAME_SURFACE_SPEC.md)。
 
 ```sh

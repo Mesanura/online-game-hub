@@ -15,7 +15,10 @@ import {
 import { TankAudio } from "./audio";
 import { hasNewHit, pickupSymbol } from "./presentation";
 import surfaceConfig from "../surface.config.json";
+import { setupNotice, replaceSetupContents } from "./setup-ui";
+import { renderSetupView } from "./setup-presentation";
 import "./styles.css";
+import "./setup.css";
 const root = required(document.getElementById("root"));
 const mode = location.pathname.includes("/setup/") ? "setup" : "play";
 const controls = new Controls(),
@@ -42,12 +45,14 @@ let failed = false,
   received = 0,
   lastEvent = 0;
 let pendingSetup: string | null = null;
+let setupMessage = "";
 let arenaKey = "";
 let shakeAnimation: Animation | null = null;
 const trails = new Map<number, { x: number; y: number }[]>();
 const explosions = new Map<number, { x: number; y: number; until: number }>();
 const p = (n: number) => n / 1000;
 function notice(text: string) {
+  if (mode === "setup") setupMessage = text;
   const el = document.getElementById("notice");
   if (el) el.textContent = text;
 }
@@ -86,88 +91,18 @@ function release() {
 }
 function fail(code: string, message: string) {
   failed = true;
+  pendingSetup = null;
   controls.reset();
   root.textContent = message;
   bridge.send({ type: "surface.error", code, message });
 }
 function renderSetup() {
-  const s = setup;
-  if (s === null) return;
-  const selected = s.selfSlotId === null ? undefined : s.colors[s.selfSlotId];
-  root.innerHTML =
-    '<main class="setup"><div class="eyebrow">TANK MAZE · 2–8 PLAYERS</div><h1>坦克迷战</h1><p class="intro">拐角之后，谁会成为最后的幸存者？</p><div class="settings"><label>本场人数<select data-setting="count" ' +
-    (!s.canEdit || pendingSetup ? "disabled" : "") +
-    ">" +
-    [2, 3, 4, 5, 6, 7, 8]
-      .map(
-        (n) =>
-          "<option " +
-          (n === s.config.playerCount ? "selected" : "") +
-          ' value="' +
-          n +
-          '">' +
-          n +
-          " 人</option>",
-      )
-      .join("") +
-    '</select></label><label>获胜分数<select data-setting="score" ' +
-    (!s.canEdit || pendingSetup ? "disabled" : "") +
-    ">" +
-    [5, 10, 15, 20]
-      .map(
-        (n) =>
-          "<option " +
-          (n === s.config.targetScore ? "selected" : "") +
-          ' value="' +
-          n +
-          '">' +
-          n +
-          " 分</option>",
-      )
-      .join("") +
-    '</select></label></div><h2>选择你的颜色</h2><div class="palette">' +
-    COLORS.map((c, i) => {
-      const occupied = s.players.some(
-        (t) => t.color === i && t.slotId !== s.selfSlotId,
-      );
-      return (
-        '<button data-color="' +
-        i +
-        '" aria-pressed="' +
-        (i === selected) +
-        '" style="--tank:' +
-        c +
-        '" ' +
-        (occupied || pendingSetup ? "disabled" : "") +
-        '><span class="mini-tank"></span>' +
-        COLOR_NAMES[i] +
-        (i === selected ? " · 你" : occupied ? " · 已选" : "") +
-        "</button>"
-      );
-    }).join("") +
-    '</div><p class="roster">' +
-    s.players.length +
-    " / " +
-    s.config.playerCount +
-    " 人已加入。" +
-    (s.players.length > s.config.playerCount
-      ? "请房主增加人数，或让多余玩家离开后准备。"
-      : "在房间中全部准备后开始。") +
-    '</p><div class="rules"><h2>操作与规则</h2><p><kbd>W</kbd><kbd>S</kbd> 前进 / 后退　<kbd>A</kbd><kbd>D</kbd> 旋转　<kbd>空格</kbd> 按次开火<br>也支持方向键与触屏多指按钮。</p><p>普通炮最多 5 颗，13 秒后消失。所有攻击都能伤到自己！最后一辆坦克坚持 4 秒得 1 分；全灭无人得分。</p><div class="weapon-list">' +
-    Object.entries(WEAPONS)
-      .filter(([k]) => k !== "normal")
-      .map(
-        ([k, n]) =>
-          "<span>" +
-          { laser: "⌁", missile: "➤", machine: "⋮", shotgun: "⁙", shield: "◇" }[
-            k
-          ] +
-          " " +
-          n +
-          "</span>",
-      )
-      .join("") +
-    '</div><p>一把特殊武器＋独立护盾；新武器替换旧武器。每小局换图复活，120 秒僵持则平局。</p></div><p id="notice" role="status"></p></main>';
+  if (setup === null) return;
+  replaceSetupContents(
+    root,
+    renderSetupView(setup, !connected(), pendingSetup !== null),
+  );
+  notice(setupMessage);
 }
 function mountPlay() {
   root.innerHTML =
@@ -472,9 +407,15 @@ function handle(message: HostSurfaceMessage) {
       host = message;
       if (
         oldHost?.roundNumber !== message.roundNumber ||
-        oldHost?.connectionState !== message.connectionState
-      )
+        message.connectionState !== "connected" ||
+        message.readOnly
+      ) {
+        setupMessage =
+          pendingSetup !== null && message.connectionState !== "connected"
+            ? "连接已中断，请在重连后检查当前设置。"
+            : "";
         pendingSetup = null;
+      }
       if (mode === "setup") {
         setup = setupSchema.parse(message.payload);
         renderSetup();
@@ -546,8 +487,13 @@ function handle(message: HostSurfaceMessage) {
     return;
   }
   if (message.type === "host.intent-result") {
-    if (message.clientIntentId === pendingSetup) pendingSetup = null;
-    if (mode === "setup") renderSetup();
+    if (mode === "setup") {
+      if (message.clientIntentId !== pendingSetup) return;
+      pendingSetup = null;
+      setupMessage = setupNotice(message.status, message.code) ?? "";
+      renderSetup();
+      return;
+    }
     if (message.status !== "accepted")
       notice(
         message.status === "stale"
@@ -558,6 +504,7 @@ function handle(message: HostSurfaceMessage) {
   }
   if (message.type === "host.environment") return;
   disposed = true;
+  pendingSetup = null;
   shakeAnimation?.cancel();
   controls.reset();
   audio.close();
@@ -580,14 +527,19 @@ root.addEventListener(
     if (
       !(target instanceof HTMLSelectElement) ||
       setup?.canEdit !== true ||
-      pendingSetup
-    )
+      pendingSetup ||
+      !connected()
+    ) {
+      if (mode === "setup") renderSetup();
       return;
+    }
+    setupMessage = "";
     pendingSetup = send(
       target.dataset.setting === "count"
         ? { type: "SET_PLAYER_COUNT", playerCount: Number(target.value) }
         : { type: "SET_TARGET_SCORE", targetScore: Number(target.value) },
     );
+    renderSetup();
   },
   { signal: listeners.signal },
 );
@@ -605,11 +557,23 @@ root.addEventListener(
       target.textContent = audio.muted ? "声音 关" : "声音 开";
       target.setAttribute("aria-pressed", String(audio.muted));
     }
-    if (target.dataset.color !== undefined && !pendingSetup)
+    if (
+      target.dataset.color !== undefined &&
+      !pendingSetup &&
+      !target.disabled
+    ) {
+      if (
+        setup?.selfSlotId !== null &&
+        setup?.colors[setup.selfSlotId] === Number(target.dataset.color)
+      )
+        return;
+      setupMessage = "";
       pendingSetup = send({
         type: "SELECT_COLOR",
         color: Number(target.dataset.color),
       });
+      renderSetup();
+    }
   },
   { signal: listeners.signal },
 );

@@ -58,7 +58,7 @@ test("eight browsers play SVG tanks with keyboard/touch, reconnect and persist a
       await page.goto(invite);
       await expect(page.getByTestId("connection-state")).toHaveText("已连接");
     }
-    await expect(surface(a).locator(".roster")).toContainText("8 / 8");
+    await expect(surface(a).getByTestId("setup-status")).toContainText("8/8");
     await a.screenshot({ path: info.outputPath("tank-setup.png") });
     for (const page of pages)
       await page.getByTestId("toggle-round-ready").click();

@@ -29,7 +29,15 @@ import {
   type ChineseCheckersCamp,
 } from "./model";
 import { layoutBoard } from "./board";
+import { setupNotice, replaceSetupContents } from "./setup-ui";
+import {
+  setupPreview,
+  setupSummary,
+  setupHints,
+  confirmedStarterCamp,
+} from "./setup-preview";
 import "./styles.css";
+import "./setup.css";
 
 type HostInit = Extract<HostSurfaceMessage, { readonly type: "host.init" }>;
 type HostState = Extract<HostSurfaceMessage, { readonly type: "host.state" }>;
@@ -122,6 +130,11 @@ function handleHostMessage(message: HostSurfaceMessage): void {
     }
     try {
       const payload = parsePayload(message);
+      const resetPending =
+        runtime.hostState !== null &&
+        (message.connectionState !== "connected" ||
+          message.readOnly ||
+          message.roundNumber !== runtime.hostState.roundNumber);
       const selectedCell =
         runtime.mode === "setup" || runtime.selectedCell === null
           ? null
@@ -135,6 +148,13 @@ function handleHostMessage(message: HostSurfaceMessage): void {
         payload,
         selectedCell,
         error: null,
+        pendingIntentId: resetPending ? null : runtime.pendingIntentId,
+        notice: resetPending
+          ? runtime.pendingIntentId !== null &&
+            message.connectionState !== "connected"
+            ? "连接已中断，请在重连后检查当前设置。"
+            : null
+          : runtime.notice,
       });
       if (runtime.mode === "play") {
         const summary = resultSummary(payload as ChineseCheckersPlayView);
@@ -182,12 +202,7 @@ function handleHostMessage(message: HostSurfaceMessage): void {
   }
   if (message.type === "host.intent-result") {
     if (message.clientIntentId !== runtime.pendingIntentId) return;
-    const notice =
-      message.status === "accepted"
-        ? null
-        : message.status === "stale"
-          ? "房间状态已更新，请重新操作。"
-          : `操作未被接受${message.code === undefined ? "" : `：${message.code}`}`;
+    const notice = setupNotice(message.status, message.code);
     updateRuntime({
       pendingIntentId: null,
       selectedCell: message.status === "accepted" ? null : runtime.selectedCell,
@@ -202,7 +217,16 @@ function submitIntent(
   intent: ChineseCheckersSetupIntent | ChineseCheckersPlayIntent,
   requestedIntentId?: string,
 ): void {
-  if (bridge === null || runtime.pendingIntentId !== null) return;
+  if (
+    bridge === null ||
+    runtime.pendingIntentId !== null ||
+    runtime.disposed ||
+    runtime.hostState?.connectionState !== "connected" ||
+    runtime.hostState.readOnly
+  ) {
+    if (runtime.mode === "setup") render();
+    return;
+  }
   if (requestedIntentId === undefined) intentSequence += 1;
   const clientIntentId =
     requestedIntentId ?? `chinese-checkers-${runtime.mode}-${intentSequence}`;
@@ -224,11 +248,7 @@ function renderStatus(hostState: HostState): string {
 }
 
 function setupDisabled(hostState: HostState): boolean {
-  return (
-    hostState.readOnly ||
-    hostState.connectionState !== "connected" ||
-    runtime.pendingIntentId !== null
-  );
+  return hostState.readOnly || hostState.connectionState !== "connected";
 }
 
 function renderSetup(
@@ -244,13 +264,14 @@ function renderSetup(
     .join("");
   const starters = [
     ["CAMP", "指定首位", "选择本局最先行动的营地"],
-    ["RANDOM", "随机首位", "服务端从所有参赛营地中随机选择"],
+    ["RANDOM", "随机首位", "开局时从参赛营地中随机选择"],
   ] as const;
   const specifiedStarter =
     view.starter !== "UNSELECTED" && view.starter !== "RANDOM";
+  const confirmedCamp = confirmedStarterCamp(view);
   const starterCamps = CHINESE_CHECKERS_CAMPS.map(
     (camp) =>
-      `<option ${view.starterCamp === camp ? "selected" : ""} value="${camp}">${campLabels[camp]}</option>`,
+      `<option ${confirmedCamp === camp ? "selected" : ""} value="${camp}">${campLabels[camp]}</option>`,
   ).join("");
   const participantCamps = new Set(
     view.participants.flatMap((participant) =>
@@ -261,26 +282,31 @@ function renderSetup(
     const selected = view.yourCamp === camp;
     const taken = participantCamps.has(camp) && !selected;
     const unavailable = disabled || !view.canSelectCamp || taken;
-    return `<button aria-pressed="${String(selected)}" class="camp-option" data-camp-option="${camp}" data-camp="${camp}" ${unavailable ? "disabled" : ""} type="button"><span class="camp-dot" aria-hidden="true"></span><strong>${campLabels[camp]}</strong><small>${taken ? "已被选择" : selected ? "你的营地" : "选择此营地"}</small></button>`;
+    return `<button aria-pressed="${String(selected)}" aria-disabled="${String(unavailable || runtime.pendingIntentId !== null)}" data-setup-focus="camp-${camp}" class="camp-option" data-camp-option="${camp}" data-camp="${camp}" ${unavailable ? "disabled" : ""} type="button"><span class="camp-dot" aria-hidden="true"></span><strong>${campLabels[camp]}</strong><small>${taken ? "已被选择" : selected ? "你的营地" : "选择此营地"}</small></button>`;
   }).join("");
   const participants = view.participants
     .map(
-      (participant) =>
-        `<li><span>${escapeHtml(participant.slotId)}${participant.isOwner ? " · 房主" : ""}</span><strong data-participant-camp="${participant.camp ?? "UNSELECTED"}">${participant.camp === null ? "未选营地" : campLabels[participant.camp]}</strong></li>`,
+      (participant, index) =>
+        `<li><span>玩家 ${index + 1}${participant.isOwner ? " · 房主" : ""}${participant.camp !== null && participant.camp === view.yourCamp ? " · 你" : ""}</span><strong data-participant-camp="${participant.camp ?? "UNSELECTED"}">${participant.camp === null ? "未选营地" : campLabels[participant.camp]}</strong></li>`,
     )
     .join("");
   return `<main class="surface-center"><section class="setup-card" aria-labelledby="setup-title">
-    <header class="setup-header"><div><div class="eyebrow">下一局设置</div><h1 id="setup-title">人数、营地与首位</h1></div><label class="player-count">参赛人数<select data-player-count ${disabled || !view.canEditRules ? "disabled" : ""}>${playerCounts}</select></label></header>
+    <header class="setup-header"><div><div class="eyebrow">下一局设置</div><h1 id="setup-title">人数、营地与首位</h1></div><label class="player-count">参赛人数<select data-player-count data-setup-focus="count" aria-disabled="${String(disabled || !view.canEditRules || runtime.pendingIntentId !== null)}" ${disabled || !view.canEditRules ? "disabled" : ""}>${playerCounts}</select></label></header>
     <p data-testid="setup-status">${setupStatusLabel(view)}</p>
-    <div class="setup-grid"><section aria-labelledby="camp-title"><h2 id="camp-title">选择你的营地</h2><div class="camp-options" role="group" aria-label="营地选择">${camps}</div>${view.yourCamp === null ? "" : `<button class="clear-camp" data-clear-camp ${disabled || !view.canSelectCamp ? "disabled" : ""} type="button">清除我的营地</button>`}</section>
+    <p data-testid="setup-summary" aria-live="polite">${setupSummary(view)}</p>
+    ${setupPreview(view)}
+    <ul class="setup-hints" aria-label="开局前提示">${setupHints(view)
+      .map((hint) => `<li>${hint}</li>`)
+      .join("")}</ul>
+    <div class="setup-grid"><section aria-labelledby="camp-title"><h2 id="camp-title">选择你的营地</h2><div class="camp-options" role="group" aria-label="营地选择">${camps}</div>${view.yourCamp === null ? "" : `<button class="clear-camp" data-clear-camp data-setup-focus="clear-camp" aria-disabled="${String(disabled || !view.canSelectCamp || runtime.pendingIntentId !== null)}" ${disabled || !view.canSelectCamp ? "disabled" : ""} type="button">清除我的营地</button>`}</section>
     <section aria-labelledby="starter-title"><h2 id="starter-title">本局首位</h2><div class="starter-options" role="group" aria-label="首位规则">${starters
       .map(
         ([value, label, description]) =>
-          `<button aria-pressed="${String(value === "CAMP" ? specifiedStarter : view.starter === value)}" data-starter="${value}" ${disabled || !view.canEditRules ? "disabled" : ""} type="button"><strong>${label}</strong><span>${description}</span></button>`,
+          `<button aria-pressed="${String(value === "CAMP" ? specifiedStarter : view.starter === value)}" aria-disabled="${String(disabled || !view.canEditRules || runtime.pendingIntentId !== null)}" data-setup-focus="starter-${value}" data-starter="${value}" ${disabled || !view.canEditRules ? "disabled" : ""} type="button"><strong>${label}</strong><span>${description}</span></button>`,
       )
       .join(
         "",
-      )}</div>${specifiedStarter ? `<label class="starter-camp">首位营地<select aria-describedby="starter-camp-hint" data-starter-camp ${disabled || !view.canEditRules ? "disabled" : ""}>${view.starterCamp === null ? '<option selected disabled value="">请选择营地</option>' : ""}${starterCamps}</select></label><p class="footnote" id="starter-camp-hint">从北开始顺时针编号；指定营地须有玩家参与。</p>` : ""}</section></div>
+      )}</div>${specifiedStarter ? `<label class="starter-camp">首位营地<select aria-describedby="starter-camp-hint" data-starter-camp data-setup-focus="starter-camp" aria-disabled="${String(disabled || !view.canEditRules || runtime.pendingIntentId !== null)}" ${disabled || !view.canEditRules ? "disabled" : ""}>${confirmedCamp === null ? '<option selected disabled value="">请选择营地</option>' : ""}${starterCamps}</select></label><p class="footnote" id="starter-camp-hint">从北开始顺时针编号；指定营地须有玩家参与。</p>` : ""}</section></div>
     <ol aria-label="参赛席位" class="participant-list">${participants}</ol>
     <p class="footnote">营地决定逆时针顺序；设置完成后每位参赛者仍需分别准备。</p>
     <div class="surface-meta" aria-live="polite">${renderStatus(hostState)}</div>
@@ -496,16 +522,20 @@ function render(): void {
       '<main class="surface-center" role="status"><p>正在同步游戏…</p></main>';
     return;
   }
-  surfaceRoot.innerHTML =
-    runtime.mode === "setup"
-      ? renderSetup(
-          runtime.hostState,
-          runtime.payload as ChineseCheckersSetupView,
-        )
-      : renderPlay(
-          runtime.hostState,
-          runtime.payload as ChineseCheckersPlayView,
-        );
+  if (runtime.mode === "setup") {
+    replaceSetupContents(
+      surfaceRoot,
+      renderSetup(
+        runtime.hostState,
+        runtime.payload as ChineseCheckersSetupView,
+      ),
+    );
+  } else {
+    surfaceRoot.innerHTML = renderPlay(
+      runtime.hostState,
+      runtime.payload as ChineseCheckersPlayView,
+    );
+  }
   if (runtime.mode === "setup") bindSetupControls();
   else bindBoardControls();
   if (runtime.notice !== null) {

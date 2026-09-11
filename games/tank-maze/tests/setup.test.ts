@@ -7,6 +7,81 @@ const slots = Array.from({ length: 8 }, (_, i) => ({
   online: true,
   isOwner: i === 0,
 }));
+it.each([2, 3, 8])(
+  "retains the finalized %i-player configuration and all color assignments",
+  (count) => {
+    const participants = slots.slice(0, count);
+    const state = setup.initialize({
+      source: {
+        kind: "defaults",
+        config: { playerCount: count, targetScore: 10, colors: [] },
+      },
+      slots: participants,
+    });
+    const changed = setup.transition({
+      state,
+      slots: participants,
+      actorSlotId: "p0",
+      isOwner: true,
+      action: { type: "SET_TARGET_SCORE", targetScore: 15 },
+    });
+    if (changed.status !== "accepted") throw new Error("Score was rejected.");
+    const final = setup.finalize({
+      state: changed.state,
+      slots: participants,
+      rng: createSetupRng("scores"),
+    });
+    if (final.status !== "finalized")
+      throw new Error("Setup could not finalize.");
+    expect(final.setup.config).toEqual({
+      playerCount: count,
+      targetScore: 15,
+      colors: Array.from({ length: count }, (_, i) => i),
+    });
+    const rematch = setup.initialize({
+      source: { kind: "previous-round", setup: final.setup },
+      slots: participants,
+    });
+    expect(
+      setup.finalize({
+        state: rematch,
+        slots: participants,
+        rng: createSetupRng("scores"),
+      }),
+    ).toEqual(final);
+    expect(final.rng.cursor).toBe(0);
+  },
+);
+it("accepts a smaller configured capacity while readiness blocks excess players", () => {
+  const participants = slots.slice(0, 3);
+  const state = setup.initialize({
+    source: {
+      kind: "defaults",
+      config: { playerCount: 3, targetScore: 10, colors: [] },
+    },
+    slots: participants,
+  });
+  const before = JSON.stringify(state);
+  const changed = setup.transition({
+    state,
+    slots: participants,
+    actorSlotId: "p0",
+    isOwner: true,
+    action: { type: "SET_PLAYER_COUNT", playerCount: 2 },
+  });
+  if (changed.status !== "accepted") throw new Error("Capacity was rejected.");
+  expect(JSON.stringify(state)).toBe(before);
+  expect(setup.getReadiness(changed.state, participants).canFinalize).toBe(
+    false,
+  );
+  expect(
+    setup.finalize({
+      state: changed.state,
+      slots: participants,
+      rng: createSetupRng("capacity"),
+    }),
+  ).toEqual({ status: "rejected", code: "PLAYERS_NOT_READY" });
+});
 it("requires the configured participants and persists selected colors for rematches", () => {
   let state = setup.initialize({
     source: {

@@ -26,6 +26,13 @@ import {
   setupStatusLabel,
 } from "../src/model";
 import { layoutBoard } from "../src/board";
+import {
+  setupHints,
+  setupSummary,
+  confirmedStarterCamp,
+  oppositeCamp,
+} from "../src/setup-preview";
+import { setupNotice } from "../src/setup-ui";
 
 function fixtureValue<Value>(value: Value | undefined): Value {
   if (value === undefined) throw new Error("Missing board fixture value.");
@@ -49,6 +56,50 @@ const campCells = (camp: string) =>
   geometry.flatMap((cell, index) => (cell.camp === camp ? [index] : []));
 
 describe("Chinese Checkers Surface model", () => {
+  it("explains all incomplete selections and preserves a vacant designated starter", () => {
+    const setup = chineseCheckersSetupViewSchema.parse({
+      targetPlayerCount: 3,
+      starter: "CAMP",
+      fixedStarterSlotId: null,
+      starterCamp: "NW",
+      participants: [
+        { slotId: "a", isOwner: true, camp: null },
+        { slotId: "b", isOwner: false, camp: "S" },
+      ],
+      canEditRules: true,
+      canSelectCamp: true,
+      yourCamp: null,
+    });
+    expect(setupHints(setup).join(" ")).toContain("已加入 2/3");
+    expect(setupHints(setup).join(" ")).toContain("你还没有选择营地");
+    expect(setupHints(setup).join(" ")).toContain("首位营地无人参与");
+    expect(confirmedStarterCamp(setup)).toBe("NW");
+    expect(setupSummary(setup)).toContain("西北营地（6号）");
+    expect(
+      confirmedStarterCamp({
+        ...setup,
+        starter: "FIXED",
+        fixedStarterSlotId: "b",
+        starterCamp: null,
+      }),
+    ).toBe("S");
+    expect(confirmedStarterCamp({ ...setup, starter: "RANDOM" })).toBeNull();
+    expect(oppositeCamp).toEqual({
+      N: "S",
+      NE: "SW",
+      SE: "NW",
+      S: "N",
+      SW: "NE",
+      NW: "SE",
+    });
+    expect(setupNotice("rejected", "CAMP_TAKEN")).toContain("已被其他玩家");
+    expect(setupNotice("rejected", "PLAYER_COUNT_TOO_SMALL")).toContain(
+      "不能少于",
+    );
+    expect(setupNotice("rejected", "NOT_OWNER")).toContain("只有房主");
+    expect(setupNotice("stale")).toContain("已被更新");
+    expect(setupNotice("rejected", "HOST_REJECTED")).toContain("连接");
+  });
   it("accepts strict game-owned setup projections and minimal intents", () => {
     const setup = chineseCheckersSetupViewSchema.parse({
       targetPlayerCount: 3,

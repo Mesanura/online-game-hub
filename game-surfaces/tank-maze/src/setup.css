@@ -1,0 +1,62 @@
+.setup-card {
+  height: 100dvh;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.setup-card [aria-disabled="true"] {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.setup-card button,
+.setup-card select {
+  min-width: 44px;
+  min-height: 44px;
+}
+.setup-roster {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  list-style: none;
+  padding: 0;
+}
+.setup-roster li {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  background: #e8ece1;
+  border-radius: 12px;
+  padding: 0.8rem;
+  font-size: 0.85rem;
+}
+.setup-roster .mini-tank {
+  flex: 0 0 27px;
+}
+.bout-preview {
+  display: grid;
+  grid-template-columns: minmax(0, 14rem) minmax(0, 1fr);
+  align-items: center;
+  gap: 1rem;
+  margin: 1.5rem 0;
+  font-size: 0.9rem;
+  line-height: 1.7;
+}
+.bout-preview svg {
+  width: 100%;
+  display: block;
+}
+@media (max-width: 540px) {
+  .bout-preview {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .bout-preview svg {
+    width: 14rem;
+    max-width: 100%;
+    margin: auto;
+  }
+  .settings {
+    flex-wrap: wrap;
+  }
+  .settings label {
+    min-width: 7rem;
+  }
+}

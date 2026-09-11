@@ -227,7 +227,7 @@ const chineseCheckersSurfaceArtifactV1 = {
   schemaVersion: 1,
   gameId: "chinese-checkers",
   supportedGameVersions: ["1.0.0", "1.1.0"],
-  surfaceVersion: "1.1.1",
+  surfaceVersion: "1.1.2",
   bridgeVersion: 2,
   entrypoints: {
     setup: "setup/index.html",
@@ -235,7 +235,7 @@ const chineseCheckersSurfaceArtifactV1 = {
     replay: "replay/index.html",
   },
   capabilities: {},
-  contentDigest: "sha256-1KN8MRLajLvX7ABYV+JyEgzl54TsyaqZVP0U5+jQuDs=",
+  contentDigest: "sha256-62jydJV17R+HBPZwM8BEfSwRTVp1WaC4ImxtI05nfhg=",
 } satisfies SurfaceArtifactManifestV1;
 
 const chineseCheckersSurface = (
@@ -248,7 +248,7 @@ const chineseCheckersSurface = (
     platformControls: resignPlatformControls,
     presentation: Object.freeze({
       kind: "surface-v1",
-      publicBasePath: "/game-surfaces/chinese-checkers/1.1.1",
+      publicBasePath: "/game-surfaces/chinese-checkers/1.1.2",
       artifact: chineseCheckersSurfaceArtifactV1,
     }),
   });
@@ -285,16 +285,16 @@ const tankMazeSurface = (gameVersion: "1.0.0" | "1.1.0") =>
     platformControls: resignPlatformControls,
     presentation: {
       kind: "surface-v1",
-      publicBasePath: "/game-surfaces/tank-maze/1.1.1",
+      publicBasePath: "/game-surfaces/tank-maze/1.1.2",
       artifact: {
         schemaVersion: 1,
         gameId: "tank-maze",
         supportedGameVersions: ["1.0.0", "1.1.0"],
-        surfaceVersion: "1.1.1",
+        surfaceVersion: "1.1.2",
         bridgeVersion: 2,
         entrypoints: { setup: "setup/index.html", play: "play/index.html" },
         capabilities: {},
-        contentDigest: "sha256-zpBtnML1xVLg81QlpCn55K/APCTOsAXa1UIQKYARPOk=",
+        contentDigest: "sha256-xkLz9ffLoV7SlIkJHqFFnMVaoScjOtAForL5b+SbYhY=",
       },
     },
   }) as const satisfies GameDeploymentRegistration;

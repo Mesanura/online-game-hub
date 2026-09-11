@@ -1,0 +1,83 @@
+.camp-preview {
+  display: grid;
+  grid-template-columns: minmax(12rem, 16rem) minmax(0, 1fr);
+  align-items: center;
+  gap: 1rem;
+  margin: 1rem 0;
+}
+.camp-preview svg {
+  display: block;
+  width: 100%;
+  max-height: 19rem;
+}
+.camp-preview circle {
+  fill: var(--camp-color);
+  stroke: #88796b;
+  stroke-width: 1;
+  opacity: 0.35;
+}
+.camp-preview [data-occupied="true"] circle {
+  opacity: 1;
+}
+.camp-preview [data-self="true"] circle {
+  stroke: #254d62;
+  stroke-width: 5;
+}
+.camp-preview [data-target="true"] circle {
+  stroke: #254d62;
+  stroke-width: 4;
+  stroke-dasharray: 4 3;
+}
+.camp-preview text {
+  font-weight: 700;
+  font-size: 15px;
+  fill: #332d28;
+}
+.camp-preview .camp-state {
+  font-size: 11px;
+}
+.camp-preview .target-line {
+  stroke: #254d62;
+  stroke-width: 1.5;
+  stroke-dasharray: 5 4;
+}
+.camp-preview .order-arrow {
+  fill: none;
+  stroke: #85715a;
+  stroke-width: 2;
+}
+.camp-preview .order-label {
+  font-size: 12px;
+}
+.camp-preview p {
+  margin: 0.5rem 0;
+  line-height: 1.65;
+  font-size: 0.9rem;
+}
+.setup-hints {
+  padding-left: 1.2rem;
+  line-height: 1.65;
+  color: #7a4922;
+}
+.setup-hints:empty {
+  display: none;
+}
+.setup-card button,
+.setup-card select {
+  min-height: 44px;
+  min-width: 44px;
+}
+.setup-card [aria-disabled="true"] {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+@media (max-width: 540px) {
+  .camp-preview {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .camp-preview svg {
+    width: 15rem;
+    max-width: 100%;
+    margin: auto;
+  }
+}
