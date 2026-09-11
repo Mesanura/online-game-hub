@@ -1,5 +1,11 @@
 # 中国跳棋规则规范
 
+## 账户历史结果
+
+使用 Outcome 中当前席位的最终 rank，显示“第 N 名”；保留完成、投降、阻塞和最后剩余玩家的权威排名，不重新排序。
+
+独立 `/history` 入口覆盖本文全部受支持版本，按 [历史投影契约](../../docs/GAME_PLUGIN_SPEC.md#账户历史结果投影) 校验并投影已保存结算；不改变 Core、规则版本、Surface 或 replay 格式。
+
 > 状态：current `gameVersion 1.1.0`；保留 frozen `1.0.0` 历史规则
 
 ## 规则

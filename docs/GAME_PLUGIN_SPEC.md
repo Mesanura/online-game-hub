@@ -18,6 +18,24 @@
 - 所有跨边界数据必须是 JSON 可序列化数据。
 - 一个游戏的 Core 不得依赖另一个游戏。
 
+## 账户历史结果投影
+
+两类游戏通过独立纯 `/history` 入口导出自有历史定义：`gameId`、显式 `gameVersions` 与 `projectView({ gameVersion, recordedOutcome, players, playerSlotId })`。输入中的 players 是 replay header 原始席位顺序，playerSlotId 来自服务器授权的账户归档席位。此入口只处理已保存 Outcome，不读取 State、日志、时钟、数据库或环境，也不重建规则。
+
+`game-registry/history` 按 exact game/version 解析，通过 `game-registry/history-types` 的结构类型约束全部游戏，游戏不得反向依赖 registry。返回 `MatchHistoryResult | null`：
+
+- `{ kind: "win-loss", value: "win" | "loss" | "draw" }`
+- `{ kind: "rank", rank: number, tied: boolean }`
+- `{ kind: "score", own: number, opponent: number }`
+
+各游戏拥有 Outcome 校验、席位匹配、展示类别及其解释，规则以各自 GAME_SPEC 为准。未知版本、缺失/非法结果或席位不匹配返回 null，不猜测结果。投影必须确定性、JSON-safe、不修改输入，只返回授权个人摘要；原始 Outcome、完整排名、参赛身份和 replay header 不能出站。隐藏信息游戏同样必须在自己的 projectView 中保证隐私。
+
+平台只对 completed 记录请求结果，并只渲染上述统一结构；历史结果与 replay playback capability 独立，record-only 游戏也显示摘要。数据库直接读取现有归档字段，无需 migration、回填或重跑 replay。增加展示投影不改变 Core 的重建结果，因此无需提升 gameVersion、Bridge、Surface、WebSocket 或 replay 格式版本；历史 HTTP API 加法扩展见 [网络协议](./NETWORK_PROTOCOL.md#44-private-match-history-api)。
+
+两类 repository 保留仅含 metadata 的 `listForUser`；Web 使用独立的服务端 `listForUserWithResults` 读取投影输入，旧调用方不会获得原始结算。Web 必须显式构造响应白名单。
+
+接入游戏时显式注册所有支持版本并测试 golden 中的已有结算、每个玩家视角、投降/平局/名次/比分、非法输入及不变性。公共契约 owner 为 registry；迁移时同步游戏入口、数据库读取类型、Web DTO/API、消费者及 contract tests。
+
 ## 3. 基础类型
 
 以下接口省略部分 readonly/泛型细节，完整 public API 由 [game-sdk](../packages/game-sdk/src/index.ts) 导出并由 contract tests 约束。

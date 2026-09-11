@@ -1,5 +1,11 @@
 # 五子棋规则规范
 
+## 账户历史结果
+
+以当前账户归档席位与 Outcome 的 winner 比较，显示“胜利”或“失败”；DRAW 显示“平局”，投降按权威 winner 显示胜负。
+
+独立 `/history` 入口覆盖本文全部受支持版本，按 [历史投影契约](../../docs/GAME_PLUGIN_SPEC.md#账户历史结果投影) 校验并投影已保存结算；不改变 Core、规则版本、Surface 或 replay 格式。
+
 > 状态：当前 `gameVersion 1.1.0`；历史 `1.0.0` 继续支持 exact replay
 > 展示名：五子棋
 > 本文是五子棋 Core 规则与 JSON 数据形状的权威来源；通用契约见 [Game Plugin 规范](../../docs/GAME_PLUGIN_SPEC.md)。

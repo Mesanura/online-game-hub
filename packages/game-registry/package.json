@@ -8,6 +8,14 @@
     "dist"
   ],
   "exports": {
+    "./history": {
+      "types": "./dist/history.d.ts",
+      "import": "./dist/history.js"
+    },
+    "./history-types": {
+      "types": "./dist/history-types.d.ts",
+      "import": "./dist/history-types.js"
+    },
     "./catalog": {
       "types": "./dist/catalog.d.ts",
       "import": "./dist/catalog.js"

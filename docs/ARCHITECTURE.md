@@ -69,6 +69,7 @@ Web 不验证游戏规则、不持有权威 State、不生成 Outcome。页面�
 
 - `/catalog` 公开 manifest 与 current 目录选择。
 - `/server` 按 exact `gameId + gameVersion` 解析对应 runtime 的 Core 与 Setup。
+- `/history` 按 exact game/version 组合游戏自有历史 projectView；`/history-types` 提供安全个人结果类型，具体契约见 [Game Plugin](./GAME_PLUGIN_SPEC.md#账户历史结果投影)。
 - `/deployment` 固定 Setup generation、平台控制能力，并把 exact game/version/mode 映射到 immutable Surface。
 
 创建新房间先从 catalog 确定 current 版本，再走 exact resolver，不依赖数组顺序。加入和 replay 都使用房间或记录中的 exact 版本。manifest 的 `defaultConfig` 必须是 `configSchema` 接受且无需再规范化的 JSON 数据，服务器仍重新校验。
