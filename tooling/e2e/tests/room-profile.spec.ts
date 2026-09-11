@@ -96,7 +96,9 @@ for (const gameId of ["tic-tac-toe", "pong"] as const) {
 
       await owner
         .frameLocator('[data-testid="game-surface-iframe"]')
-        .getByRole("button", { name: /^房主(?:先手|发球)/ })
+        .getByRole("button", {
+          name: gameId === "pong" ? /^房主在左/ : "房主先手",
+        })
         .click();
       await owner.getByTestId("toggle-round-ready").click();
       const longName = "👩‍💻".repeat(24);
