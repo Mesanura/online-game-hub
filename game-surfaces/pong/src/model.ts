@@ -28,9 +28,13 @@ export function serveArrowVisible(
 }
 
 export function createSetupIntent(
-  starter: PongSetupIntent["starter"],
+  starter: Extract<PongSetupIntent, { type: "SELECT_STARTER" }>["starter"],
 ): PongSetupIntent {
   return { type: "SELECT_STARTER", starter };
+}
+
+export function createTargetScoreIntent(targetScore: number): PongSetupIntent {
+  return { type: "SET_TARGET_SCORE", targetScore };
 }
 
 export function createDirectionIntent(direction: -1 | 0 | 1): PongPlayIntent {
@@ -56,12 +60,11 @@ export function lerp(previous: number, current: number, alpha: number): number {
 }
 
 export function setupStatusLabel(view: Readonly<PongSetupView>): string {
-  if (view.participantSlotIds.length < 2) return "等待另一位玩家加入";
-  if (view.starter === "UNSELECTED") return "请选择本局发球方";
-  if (view.starter === "OWNER") return "房主将在本局先发球";
-  if (view.starter === "NON_OWNER") return "另一位玩家将先发球";
-  if (view.starter === "RANDOM") return "开始时由服务端随机决定发球方";
-  return "沿用上一局的实际发球顺序";
+  if (view.starter === "UNSELECTED") return "请选择本局左右站位";
+  if (view.starter === "OWNER") return "房主在左，对手在右";
+  if (view.starter === "NON_OWNER") return "对手在左，房主在右";
+  if (view.starter === "RANDOM") return "开局时随机决定左右站位";
+  return "沿用上一局的实际左右站位";
 }
 
 export function winnerText(view: Readonly<PongPlayView>): string {

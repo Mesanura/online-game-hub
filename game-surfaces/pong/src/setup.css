@@ -1,0 +1,63 @@
+.setup-card {
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+.setup-card button,
+.setup-card select {
+  min-width: 44px;
+  min-height: 44px;
+  touch-action: manipulation;
+}
+.setup-card [aria-disabled="true"] {
+  cursor: default;
+  opacity: 0.6;
+}
+.setup-card select:focus-visible {
+  outline: 3px solid #fff4c7;
+  outline-offset: 3px;
+}
+.setup-preview {
+  margin: 0 0 1rem;
+  padding: 0.75rem;
+  border: 1px solid #416663;
+  border-radius: 1rem;
+  background: #162d2d;
+}
+.setup-preview svg {
+  display: block;
+  width: 100%;
+  max-height: 170px;
+  font:
+    14px "Segoe UI",
+    sans-serif;
+}
+.setup-preview figcaption {
+  margin-top: 0.4rem;
+  color: var(--ink-muted);
+  font-size: 0.88rem;
+  line-height: 1.6;
+}
+.target-score {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin: 1rem 0;
+}
+.target-score select {
+  padding: 0.4rem 0.8rem;
+  border: 1px solid #7fd0c4;
+  border-radius: 0.7rem;
+  background: #203a3b;
+  color: inherit;
+  font: inherit;
+}
+@media (max-width: 480px) {
+  .setup-options {
+    grid-template-columns: 1fr;
+    gap: 0.65rem;
+  }
+  .setup-option {
+    min-height: 70px;
+    padding: 0.7rem 0.85rem;
+  }
+}

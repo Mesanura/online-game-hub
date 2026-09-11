@@ -652,13 +652,13 @@ describe.sequential("realtime Pong Protocol V6 setup", () => {
       readiness: { canReady: false, readySlotIds: [] },
     });
     const clientB = new ColyseusClient(address.httpUrl);
-    const roomB = await clientB.join(REALTIME_GAME_ROOM_NAME, {
+    let roomB = await clientB.join(REALTIME_GAME_ROOM_NAME, {
       type: "room.join",
       protocolVersion: SETUP_PROTOCOL_VERSION,
       ticket: ticket("v6-guest"),
       roomCode: "VSPN2345",
     });
-    const inboxB = messagesV6(roomB);
+    let inboxB = messagesV6(roomB);
     await waitUntil(
       () => inboxB.connected.length === 1 && inboxB.lifecycle.length >= 1,
     );
@@ -733,6 +733,147 @@ describe.sequential("realtime Pong Protocol V6 setup", () => {
     await waitUntil(() =>
       inboxA.lifecycle.some((state) => state.nextRound?.setupRevision === 3),
     );
+    roomA.send(ROOM_CONTROL_MESSAGE, readyCommand("ready-before-score"));
+    await waitUntil(
+      () => inboxA.lifecycle.at(-1)?.nextRound?.readiness.selfReady === true,
+    );
+    const beforeScore = (await roomStore.getByRoomCode("VSPN2345"))
+      ?.nextRoundSetup;
+    expect(beforeScore).toMatchObject({
+      setupRevision: 3,
+      readySlotIds: ["v6-slot-1"],
+      setupRng: { cursor: 0 },
+    });
+    for (const [id, sender, inbox, revision, action, code, gameRuleCode] of [
+      [
+        "score-guest",
+        roomB,
+        inboxB,
+        3,
+        { type: "SET_TARGET_SCORE", targetScore: 7 },
+        "SETUP_RULE_REJECTED",
+        "NOT_OWNER",
+      ],
+      [
+        "score-same",
+        roomA,
+        inboxA,
+        3,
+        { type: "SET_TARGET_SCORE", targetScore: 3 },
+        "SETUP_RULE_REJECTED",
+        "SETUP_UNCHANGED",
+      ],
+      [
+        "score-low",
+        roomA,
+        inboxA,
+        3,
+        { type: "SET_TARGET_SCORE", targetScore: 0 },
+        "INVALID_SETUP_PAYLOAD",
+        undefined,
+      ],
+      [
+        "score-high",
+        roomA,
+        inboxA,
+        3,
+        { type: "SET_TARGET_SCORE", targetScore: 10 },
+        "INVALID_SETUP_PAYLOAD",
+        undefined,
+      ],
+      [
+        "score-fraction",
+        roomA,
+        inboxA,
+        3,
+        { type: "SET_TARGET_SCORE", targetScore: 1.5 },
+        "INVALID_SETUP_PAYLOAD",
+        undefined,
+      ],
+      [
+        "score-forged",
+        roomA,
+        inboxA,
+        3,
+        { type: "SET_TARGET_SCORE", targetScore: 7, actorSlotId: "v6-slot-1" },
+        "INVALID_SETUP_PAYLOAD",
+        undefined,
+      ],
+      [
+        "score-stale",
+        roomA,
+        inboxA,
+        2,
+        { type: "SET_TARGET_SCORE", targetScore: 7 },
+        "STALE_SETUP_REVISION",
+        undefined,
+      ],
+    ] as const) {
+      sender.send(GAME_SETUP_MESSAGE, {
+        ...setupCommand(id, revision, "OWNER"),
+        action,
+      });
+      await waitUntil(() =>
+        inbox.rejections.some((rejection) => rejection.commandId === id),
+      );
+      expect(
+        inbox.rejections.find((rejection) => rejection.commandId === id),
+      ).toMatchObject({
+        code,
+        setupRevision: 3,
+        ...(gameRuleCode === undefined ? {} : { gameRuleCode }),
+      });
+      expect(
+        (await roomStore.getByRoomCode("VSPN2345"))?.nextRoundSetup,
+      ).toEqual(beforeScore);
+    }
+    const scoreCommand = {
+      ...setupCommand("score-seven", 3, "OWNER"),
+      action: { type: "SET_TARGET_SCORE", targetScore: 7 },
+    };
+    roomA.send(GAME_SETUP_MESSAGE, scoreCommand);
+    await waitUntil(
+      () => inboxA.lifecycle.at(-1)?.nextRound?.setupRevision === 4,
+    );
+    expect(inboxA.lifecycle.at(-1)?.nextRound).toMatchObject({
+      setupView: { config: { targetScore: 7 }, starter: "OWNER" },
+      readiness: { readySlotIds: [] },
+    });
+    const afterScore = (await roomStore.getByRoomCode("VSPN2345"))
+      ?.nextRoundSetup;
+    expect(afterScore?.setupRng).toEqual(beforeScore?.setupRng);
+    const acknowledgements = inboxA.lifecycle.filter(
+      (state) => state.causedByCommandId === "score-seven",
+    ).length;
+    roomA.send(GAME_SETUP_MESSAGE, scoreCommand);
+    await waitUntil(
+      () =>
+        inboxA.lifecycle.filter(
+          (state) => state.causedByCommandId === "score-seven",
+        ).length > acknowledgements,
+    );
+    expect((await roomStore.getByRoomCode("VSPN2345"))?.nextRoundSetup).toEqual(
+      afterScore,
+    );
+    roomB = await clientB.join(REALTIME_GAME_ROOM_NAME, {
+      type: "room.join",
+      protocolVersion: SETUP_PROTOCOL_VERSION,
+      ticket: ticket("v6-guest"),
+      roomCode: "VSPN2345",
+    });
+    inboxB = messagesV6(roomB);
+    await waitUntil(
+      () => inboxB.connected.length === 1 && inboxB.lifecycle.length > 0,
+    );
+    expect(inboxB.connected[0]?.playerSlotId).toBe("v6-slot-2");
+    expect(inboxB.lifecycle.at(-1)?.nextRound).toMatchObject({
+      setupRevision: 4,
+      setupView: {
+        config: { targetScore: 7 },
+        starter: "OWNER",
+        canEdit: false,
+      },
+    });
     roomA.send(ROOM_CONTROL_MESSAGE, readyCommand("ready-owner"));
     roomB.send(ROOM_CONTROL_MESSAGE, readyCommand("ready-guest"));
     await waitUntil(() =>
@@ -747,7 +888,7 @@ describe.sequential("realtime Pong Protocol V6 setup", () => {
     expect(activeStoredRoom).toMatchObject({
       setupProtocol: SETUP_PROTOCOL_VERSION,
       previousFinalizedSetup: {
-        config: { targetScore: 3 },
+        config: { targetScore: 7 },
         playerOrder: ["v6-slot-1", "v6-slot-2"],
       },
       currentRound: { roundNumber: 1, status: "active" },
@@ -760,6 +901,7 @@ describe.sequential("realtime Pong Protocol V6 setup", () => {
       expect(inbox.snapshots.at(-1)).toMatchObject({
         tick: 0,
         view: {
+          targetScore: 7,
           ball: { x: 400000, y: 200000 },
           serve: { ticksRemaining: 120 },
         },
@@ -796,6 +938,8 @@ describe.sequential("realtime Pong Protocol V6 setup", () => {
     const completed = await roomStore.getByRoomCode("VSPN2345");
     const replay = await replayStore.get("realtime-v6-replay-1");
     expect(replay?.header.gameVersion).toBe("1.2.0");
+    expect(replay?.header.initialConfig).toEqual({ targetScore: 7 });
+    expect(replay?.events).toHaveLength(1);
     expect(
       verifyRealtimeReplay(replay, resolveRealtimeGameDefinition),
     ).toMatchObject({ ok: true });
@@ -805,7 +949,7 @@ describe.sequential("realtime Pong Protocol V6 setup", () => {
         setupRevision: 0,
         readySlotIds: [],
         setupState: {
-          config: { targetScore: 3 },
+          config: { targetScore: 7 },
           starter: "FIXED",
           fixedStarterSlotId: "v6-slot-1",
         },
@@ -844,6 +988,9 @@ describe.sequential("realtime Pong Protocol V6 setup", () => {
     expect(archive.created.at(-1)?.currentRound?.replayId).toBe(
       "realtime-v6-replay-2",
     );
+    expect(
+      (await replayStore.get("realtime-v6-replay-2"))?.header.initialConfig,
+    ).toEqual({ targetScore: 7 });
     failNextSimulationStep = true;
     await schedulerTimer.tick();
     expect(failNextSimulationStep).toBe(false);

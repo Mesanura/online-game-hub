@@ -16,12 +16,15 @@ import {
   createDirectionIntent,
   createResignIntent,
   createSetupIntent,
-  setupStatusLabel,
+  createTargetScoreIntent,
   winnerText,
   resultSummary,
 } from "./model";
 import { PongScene, type PongRenderState } from "./pong-scene";
+import { setupNotice, replaceSetupContents } from "./setup-ui";
+import { renderSetupView } from "./setup-presentation";
 import "./styles.css";
+import "./setup.css";
 
 type HostInit = Extract<HostSurfaceMessage, { readonly type: "host.init" }>;
 type HostState = Extract<HostSurfaceMessage, { readonly type: "host.state" }>;
@@ -35,7 +38,8 @@ interface RuntimeState {
   readonly previousPlayView: PongPlayView | null;
   readonly receivedAt: number;
   readonly pendingIntentId: string | null;
-  readonly pendingIntentType: "SELECT_STARTER" | "DIRECTION" | "RESIGN" | null;
+  readonly pendingIntentType:
+    PongSetupIntent["type"] | "DIRECTION" | "RESIGN" | null;
   readonly notice: string | null;
   readonly error: string | null;
   readonly disposed: boolean;
@@ -118,6 +122,11 @@ function handleHostMessage(message: HostSurfaceMessage): void {
         runtime.hostState.connectionState !== "connected" &&
         message.connectionState === "connected";
       const payload = parsePayload(message);
+      const resetPending =
+        runtime.hostState !== null &&
+        (message.connectionState !== "connected" ||
+          message.readOnly ||
+          message.roundNumber !== runtime.hostState.roundNumber);
       updateRuntime({
         hostState: message,
         payload,
@@ -129,6 +138,14 @@ function handleHostMessage(message: HostSurfaceMessage): void {
               : (runtime.payload as PongPlayView),
         receivedAt: performance.now(),
         error: null,
+        pendingIntentId: resetPending ? null : runtime.pendingIntentId,
+        pendingIntentType: resetPending ? null : runtime.pendingIntentType,
+        notice: resetPending
+          ? runtime.pendingIntentId !== null &&
+            message.connectionState !== "connected"
+            ? "连接已中断，请在重连后检查当前设置。"
+            : null
+          : runtime.notice,
       });
       if (shouldResyncDirection) pongScene?.syncDirection();
       if (runtime.mode === "play") {
@@ -178,12 +195,7 @@ function handleHostMessage(message: HostSurfaceMessage): void {
   }
   if (message.type === "host.intent-result") {
     if (message.clientIntentId !== runtime.pendingIntentId) return;
-    const notice =
-      message.status === "accepted"
-        ? null
-        : message.status === "stale"
-          ? "房间状态已更新，请重新操作。"
-          : `操作未被接受${message.code === undefined ? "" : `：${message.code}`}`;
+    const notice = setupNotice(message.status, message.code);
     updateRuntime({ pendingIntentId: null, pendingIntentType: null, notice });
     return;
   }
@@ -206,8 +218,12 @@ function submitIntent(
 ): void {
   if (
     bridge === null ||
+    runtime.disposed ||
+    runtime.hostState?.connectionState !== "connected" ||
+    runtime.hostState.readOnly ||
     (runtime.mode === "setup" && runtime.pendingIntentId !== null)
   ) {
+    if (runtime.mode === "setup") render();
     return;
   }
   if (requestedIntentId === undefined) intentSequence += 1;
@@ -284,35 +300,6 @@ function renderStatus(hostState: HostState): string {
   }`;
 }
 
-function renderSetup(hostState: HostState, view: PongSetupView): string {
-  const disabled =
-    hostState.readOnly ||
-    hostState.connectionState !== "connected" ||
-    !view.canEdit ||
-    runtime.pendingIntentId !== null;
-  const options = [
-    ["OWNER", "房主发球", "由创建房间的玩家先发球"],
-    ["NON_OWNER", "对手发球", "由加入房间的玩家先发球"],
-    ["RANDOM", "随机发球", "开始时由权威服务端抽取"],
-  ] as const;
-  return `<main class="setup-surface"><section class="setup-card" aria-labelledby="setup-title">
-    <div class="eyebrow">下一局设置</div><h1 id="setup-title">选择发球方</h1>
-    <p class="setup-summary">${setupStatusLabel(view)}</p>
-    <div class="setup-options" role="group" aria-label="发球规则">
-      ${options
-        .map(
-          ([value, label, description]) =>
-            `<button aria-pressed="${String(
-              view.starter === value,
-            )}" class="setup-option" data-starter="${value}" ${disabled ? "disabled" : ""} type="button"><strong>${label}</strong><span>${description}</span></button>`,
-        )
-        .join("")}
-    </div>
-    <p class="setup-footnote">本阶段比分目标固定为 ${view.config.targetScore} 分。设置后两位玩家仍需分别准备。</p>
-    <div class="surface-meta" aria-live="polite">${renderStatus(hostState)}</div>
-  </section></main>`;
-}
-
 function renderPlay(hostState: HostState, view: PongPlayView): string {
   const status =
     view.outcome === null
@@ -367,11 +354,20 @@ function bindSetupControls(): void {
     .querySelectorAll<HTMLButtonElement>("[data-starter]")
     .forEach((button) => {
       button.addEventListener("click", () => {
+        if (button.getAttribute("aria-pressed") === "true") return;
         const value = button.dataset.starter;
         if (value === "OWNER" || value === "NON_OWNER" || value === "RANDOM") {
           submitIntent(createSetupIntent(value));
         }
       });
+    });
+  surfaceRoot
+    .querySelector<HTMLSelectElement>("select[data-target-score]")
+    ?.addEventListener("change", (event) => {
+      const score = Number((event.currentTarget as HTMLSelectElement).value);
+      if (Number.isInteger(score) && score >= 1 && score <= 9) {
+        submitIntent(createTargetScoreIntent(score));
+      }
     });
 }
 
@@ -398,9 +394,15 @@ function render(): void {
     return;
   }
   if (runtime.mode === "setup") {
-    surfaceRoot.innerHTML = renderSetup(
-      runtime.hostState,
-      runtime.payload as PongSetupView,
+    replaceSetupContents(
+      surfaceRoot,
+      renderSetupView(
+        runtime.payload as PongSetupView,
+        runtime.hostState.readOnly ||
+          runtime.hostState.connectionState !== "connected",
+        runtime.pendingIntentId !== null,
+        renderStatus(runtime.hostState),
+      ),
     );
     bindSetupControls();
   } else if (game === null) {

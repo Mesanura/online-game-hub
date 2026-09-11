@@ -15,6 +15,7 @@ import {
   createDirectionIntent,
   createResignIntent,
   createSetupIntent,
+  createTargetScoreIntent,
   interpolationAlpha,
   lerp,
   resultSummary,
@@ -22,6 +23,12 @@ import {
   setupStatusLabel,
   winnerText,
 } from "../src/model";
+import {
+  setupSummary,
+  setupPreview,
+  renderSetupView,
+} from "../src/setup-presentation";
+import { setupNotice } from "../src/setup-ui";
 
 const playView = pongPlayViewSchema.parse({
   field: { width: 800_000, height: 400_000 },
@@ -134,7 +141,7 @@ describe("Pong Surface model", () => {
       participantSlotIds: ["slot-a", "slot-b"],
       canEdit: true,
     });
-    expect(setupStatusLabel(setup)).toBe("请选择本局发球方");
+    expect(setupStatusLabel(setup)).toBe("请选择本局左右站位");
     expect(pongSetupIntentSchema.parse(createSetupIntent("RANDOM"))).toEqual({
       type: "SELECT_STARTER",
       starter: "RANDOM",
@@ -143,6 +150,61 @@ describe("Pong Surface model", () => {
       pongSetupViewSchema.safeParse({ ...setup, actorSlotId: "slot-a" })
         .success,
     ).toBe(false);
+  });
+
+  it("explains confirmed sides and score without predicting the ball direction", () => {
+    const setup = pongSetupViewSchema.parse({
+      config: { targetScore: 9 },
+      starter: "NON_OWNER",
+      fixedStarterSlotId: null,
+      participantSlotIds: ["owner"],
+      canEdit: true,
+    });
+    expect(setupSummary(setup)).toBe("先到 9 分获胜 · 对手在左，房主在右");
+    const preview = setupPreview(setup);
+    expect(preview).toContain('data-target-score="9"');
+    expect(preview).toContain('data-preview-ball cx="180" cy="67"');
+    expect(preview).toContain("发球方向由游戏随机决定");
+    expect(preview).not.toContain("marker-end");
+    expect(preview).not.toContain("先发球");
+    expect(renderSetupView(setup, false, true, "")).toContain(
+      'aria-disabled="true"',
+    );
+    expect(
+      renderSetupView({ ...setup, canEdit: false }, false, false, ""),
+    ).toContain("由房主修改");
+    expect(
+      setupSummary({ ...setup, starter: "FIXED", fixedStarterSlotId: "owner" }),
+    ).toContain("沿用上一局的实际左右站位");
+    expect(setupSummary({ ...setup, starter: "RANDOM" })).toContain(
+      "开局时随机决定左右站位",
+    );
+  });
+
+  it("submits strict score intents and translates setup rejection codes", () => {
+    for (let score = 1; score <= 9; score++) {
+      expect(
+        pongSetupIntentSchema.parse(createTargetScoreIntent(score)),
+      ).toEqual({ type: "SET_TARGET_SCORE", targetScore: score });
+    }
+    for (const score of [0, 10, 1.5])
+      expect(
+        pongSetupIntentSchema.safeParse(createTargetScoreIntent(score)).success,
+      ).toBe(false);
+    expect(
+      pongSetupIntentSchema.safeParse({
+        ...createTargetScoreIntent(5),
+        actorSlotId: "owner",
+      }).success,
+    ).toBe(false);
+    expect(setupNotice("accepted")).toBeNull();
+    expect(setupNotice("stale")).toContain("设置已被更新");
+    expect(setupNotice("rejected", "NOT_OWNER")).toContain("只有房主");
+    expect(setupNotice("rejected", "SETUP_UNCHANGED")).toContain("没有变化");
+    expect(setupNotice("rejected", "HOST_REJECTED")).toContain("连接");
+    expect(setupNotice("rejected", "private-error-message")).not.toContain(
+      "private-error-message",
+    );
   });
 
   it("creates only direction and resignation gameplay intents", () => {

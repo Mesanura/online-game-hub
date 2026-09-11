@@ -41,16 +41,16 @@ async function activePongRound(
   await expect(pageA.getByTestId("connection-state")).toHaveText("已连接");
   await expect(pageA.getByTestId("game-surface-iframe")).toHaveAttribute(
     "src",
-    "/game-surfaces/pong/1.2.0/setup/index.html",
+    "/game-surfaces/pong/1.2.1/setup/index.html",
   );
-  await pongSurface(pageA).getByRole("button", { name: "房主发球" }).click();
+  await pongSurface(pageA).getByRole("button", { name: "房主在左" }).click();
   const inviteUrl = await pageA.getByTestId("invite-link").getAttribute("href");
   if (inviteUrl === null) throw new Error("Pong invite link was not rendered.");
   await pageB.goto(inviteUrl);
   await expect(pageB.getByTestId("connection-state")).toHaveText("已连接");
   await expect(pageB.getByTestId("game-surface-iframe")).toHaveAttribute(
     "src",
-    "/game-surfaces/pong/1.2.0/setup/index.html",
+    "/game-surfaces/pong/1.2.1/setup/index.html",
   );
   await pageA.getByTestId("toggle-round-ready").click();
   await pageB.getByTestId("toggle-round-ready").click();
@@ -59,7 +59,7 @@ async function activePongRound(
       await expect(page.getByTestId("match-status")).toHaveText("对局进行中");
       await expect(page.getByTestId("game-surface-iframe")).toHaveAttribute(
         "src",
-        "/game-surfaces/pong/1.2.0/play/index.html",
+        "/game-surfaces/pong/1.2.1/play/index.html",
       );
     }),
   );

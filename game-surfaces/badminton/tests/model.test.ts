@@ -14,6 +14,12 @@ import {
   phaseLabel,
   resultSummary,
 } from "../src/model";
+import {
+  renderSetupView,
+  setupSummary,
+  serveRuleLabel,
+} from "../src/setup-presentation";
+import { setupNotice } from "../src/setup-ui";
 
 const fixture = playViewSchema.parse(
   JSON.parse(
@@ -22,6 +28,77 @@ const fixture = playViewSchema.parse(
 );
 
 describe("badminton projected contracts", () => {
+  it.each([
+    [7, 11],
+    [11, 15],
+    [21, 30],
+  ] as const)(
+    "explains target %i, its cap %i and confirmed first server",
+    (targetScore, cap) => {
+      const setup = setupViewSchema.parse({
+        config: { targetScore },
+        starter: "OWNER",
+        fixedStarterSlotId: null,
+        participantSlotIds: ["owner"],
+        canEdit: true,
+      });
+      expect(setupSummary(setup)).toBe(
+        `${targetScore} 分制 · 领先 2 分 · ${cap} 分封顶 · 房主首发（左侧）`,
+      );
+      const markup = renderSetupView(setup, "1.2.0", false, false);
+      expect(markup).toContain(`data-score-cap="${cap}"`);
+      expect(markup).toContain(`至少得到 ${targetScore} 分并领先 2 分获胜`);
+      expect(markup).toContain("达到封顶即获胜");
+      expect(markup).toContain("等待另一位玩家加入");
+      for (const expectedCap of [11, 15, 30])
+        expect(markup).toContain(`${expectedCap} 分封顶`);
+      expect(
+        setupSummary({
+          ...setup,
+          starter: "FIXED",
+          fixedStarterSlotId: "owner",
+        }),
+      ).toContain("沿用上一局");
+      expect(setupSummary({ ...setup, starter: "RANDOM" })).toContain(
+        "开局时随机",
+      );
+    },
+  );
+
+  it("describes automatic serving only for 1.0.0 and keeps 1.1.0 manual", () => {
+    expect(serveRuleLabel("1.0.0")).toContain("准备倒计时结束后开球");
+    for (const version of ["1.1.0", "1.2.0"]) {
+      expect(serveRuleLabel(version)).toContain("发球方按 S");
+      expect(serveRuleLabel(version)).toContain("不会超时失分");
+    }
+    expect(() => serveRuleLabel("1.3.0")).toThrow();
+    const setup = setupViewSchema.parse({
+      config: { targetScore: 7 },
+      starter: "NON_OWNER",
+      fixedStarterSlotId: null,
+      participantSlotIds: ["owner", "guest"],
+      canEdit: false,
+    });
+    const automatic = renderSetupView(setup, "1.0.0", false, false);
+    expect(automatic).toContain('data-serve-mode="automatic"');
+    expect(automatic).not.toContain("<kbd>S</kbd>");
+    expect(automatic).toContain("由房主修改");
+    expect(renderSetupView(setup, "1.1.0", false, false)).toContain(
+      'data-serve-mode="manual"',
+    );
+  });
+
+  it("explains stale, permission and connection failures without leaking errors", () => {
+    expect(setupNotice("accepted")).toBeNull();
+    expect(setupNotice("stale")).toContain("设置已被更新");
+    expect(setupNotice("rejected", "NOT_OWNER")).toContain("只有房主");
+    expect(setupNotice("rejected", "HOST_REJECTED")).toContain("连接");
+    expect(setupNotice("rejected", "SETUP_UNCHANGED")).toContain("没有变化");
+    expect(setupNotice("rejected", "internal-error")).not.toContain(
+      "internal-error",
+    );
+  });
+
   it("accepts the public initial view and excludes simulation state and identity claims", () => {
     expect(fixture.yourSide).toBe("LEFT");
     for (const key of ["rng", "seed", "actorSlotId", "inputSequence", "state"])

@@ -113,6 +113,7 @@ create-game unit tests 使用系统临时目录中的隔离 workspace 和本地 
 
 - initialize/transition/project/readiness/finalize 的 strict schema、不变性、序列化、viewer privacy 与独立 seeded determinism。
 - owner/player 权限由服务端 actor 推导；合法/非法、normalization、stale、duplicate 和保存失败重试。
+- 可配置项覆盖全部合法值、默认值、越界/小数/额外字段与同值提交；单项修改保留其他设置，并验证 finalized Config 实际进入 Core 初始化与 replay header。
 - accepted 设置清空全部 ready，rejected/stale/duplicate 不清；只有 selected participants 可 ready。
 - 参与者不足、人数上限、离线/重连、席位替换、playerOrder 排列、assignment 完整唯一与随机结果重试稳定。
 - 下一局复用完整 Config/participants/order/assignments，生成新 gameplay seed、State、revision/tick、Match/replay，并要求全员重新 ready。
@@ -262,6 +263,7 @@ try {
 - iframe 无 same-origin/form/popup/download/top-navigation 权限，CSP 禁止直接联网；静态 headers 与 session proxy 豁免由实际 Next production build 验证。
 - Web live room/replay 不导入 legacy loader，公共 CSS 不含游戏专属 selector；加载失败不转发 intent。
 - 每个 Surface 与 Workbench 都能脱离 Next/Game Server 完成 test/typecheck/build/contract；公开 fixtures 不含敏感 key。
+- Setup 反馈验证 SDK 的命令关联与 Web 的 accepted/rejected/stale 映射，Bridge 只携带状态和错误码；未知异常安全降级。九款 Surface 的隔离浏览器检查经真实 MessageChannel 注入公开投影与延迟结果，覆盖不相关/迟到确认、过期、权限和连接失败、断线重试、新局与只读状态的 pending 清理。
 
 完整 build 后依次 surface:verify、surface:publish；重复同 digest 必须 no-op，不重写目标。Workbench 覆盖各 mode、connection/read-only/terminal、revision/tick、reduced-motion、viewport 与 fullscreen/focus mode。
 
@@ -270,6 +272,8 @@ try {
 [tooling/e2e/tests](../tooling/e2e/tests) 使用真实 Next production、Colyseus、Chromium 与临时 PostgreSQL，随机 loopback ports 和隔离账户 contexts。除已有 clock/ID/logger 等 ports 外，不 mock 数据库、ticket、matchmaking、WebSocket 或规则管线；结束时清理服务和连接。
 
 公共旅程覆盖目录/邀请、独立 Setup、逐人 ready、独立 Play、合法对局、终局、取消/确认投降、调整设置、完整设置重开、刷新/reconnect、第三方拒绝、关闭/离开、timeout 与跨数据库连接的 replay/history。私有回放验证 exact Replay Surface、逐帧/播放/暂停/slider、只读和无游戏 WebSocket；record-only 验证无播放入口、授权 API 409 和服务器记录仍可验证。
+
+九款 Setup 旅程验证服务器确认前不更新选择摘要与示意、提交中防重复、拒绝后恢复选择、快照更新保留有效键盘焦点，以及手机横竖屏的滚动与 44px 操作目标。五子棋尺寸与 Pong 目标分数覆盖真实开局、重连、replay header 和完整设置重开；随机顺序在下一局保留实际结果。中国跳棋验证营地占用、人数拒绝和指定首位失效，坦克迷战验证颜色占用与超员提示；羽毛球按 exact 规则版本验证发球说明与对应比分封顶。
 
 认证旅程先完成游客局，再注册完成账户局，验证不认领旧比赛、账户隔离、退出失效和跨设备历史。资料菜单覆盖 NFC/grapheme/头像边界、游客 localStorage 与账户隔离、同源 strict PATCH、Escape/外部关闭和 live room 身份变更确认。
 

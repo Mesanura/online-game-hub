@@ -33,7 +33,7 @@ for (const gameId of ["pong", "tank-maze"] as const) {
       if (gameId === "pong")
         await pageA
           .frameLocator('[data-testid="game-surface-iframe"]')
-          .getByRole("button", { name: "房主发球" })
+          .getByRole("button", { name: "房主在左" })
           .click();
       const invite = await pageA
         .getByTestId("invite-link")

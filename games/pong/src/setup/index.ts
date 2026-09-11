@@ -35,12 +35,20 @@ export const pongSetupStateSchema = z
 
 export type PongSetupState = z.infer<typeof pongSetupStateSchema>;
 
-export const pongSetupActionSchema = z
-  .object({
-    type: z.literal("SELECT_STARTER"),
-    starter: z.enum(["OWNER", "NON_OWNER", "RANDOM"]),
-  })
-  .strict();
+export const pongSetupActionSchema = z.discriminatedUnion("type", [
+  z
+    .object({
+      type: z.literal("SELECT_STARTER"),
+      starter: z.enum(["OWNER", "NON_OWNER", "RANDOM"]),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("SET_TARGET_SCORE"),
+      targetScore: z.number().int().min(1).max(9),
+    })
+    .strict(),
+]);
 
 export type PongSetupAction = z.infer<typeof pongSetupActionSchema>;
 
@@ -130,6 +138,21 @@ export const pongSetupDefinition = Object.freeze({
   },
   transition(context) {
     if (!context.isOwner) return { status: "rejected", code: "NOT_OWNER" };
+    if (context.action.type === "SET_TARGET_SCORE") {
+      if (context.state.config.targetScore === context.action.targetScore) {
+        return { status: "rejected", code: "SETUP_UNCHANGED" };
+      }
+      return {
+        status: "accepted",
+        state: Object.freeze({
+          ...context.state,
+          config: Object.freeze({
+            ...context.state.config,
+            targetScore: context.action.targetScore,
+          }),
+        }),
+      };
+    }
     if (
       context.state.starter === context.action.starter &&
       context.state.fixedStarterSlotId === null

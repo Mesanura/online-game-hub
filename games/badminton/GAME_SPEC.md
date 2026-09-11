@@ -36,6 +36,6 @@ V6 Setup 默认房主首发，房主可选自己/对方/随机首发与 7/11/21 
 
 公开 View 包含场地（含两条发球线和前脚偏移）、人物坐标与实际移动状态、挥拍类型/开始 tick/剩余 tick、最近触球 tick/位置/有效球路、球坐标、比分、阶段、发球方、回合击球数、最长回合、上一分原因与 Outcome；不含速度、持续输入、输入租期、seed、原始 State 或 canonical journal。Gameplay 不消费 RNG，相同版本、Config、players 和输入日志逐 tick 得到完全一致的结果。
 
-Surface 按 exact 规则版本解析 View/Input，旧自动发球版本不发送 `serve`；球网和接触动画必须与对应公开几何对齐。人物、球场投影、粒子、音效与布局说明集中在 [Surface README](../../game-surfaces/badminton/README.md)。
+Surface 按 exact 规则版本解析 View/Input 与发球说明：`1.0.0` 在准备倒计时结束后自动发球，输入不含 `serve`；`1.1.0` 和 `1.2.0` 使用手动发球，等待期间不自动出球、不超时失分。球网和接触动画必须与对应公开几何对齐。人物、球场投影、粒子、音效与布局说明集中在 [Surface README](../../game-surfaces/badminton/README.md)。
 
 使用 Realtime Protocol V1、Realtime Replay Format V1 与 Bridge V2。全部支持版本为 `record-only`：服务器保存并验证比赛，账户可查看战绩，不提供玩家回放。只发布 Setup/Play Surface。改变旧日志结果的规则调整须评估新 gameVersion，影响产物的纯视觉修改提升 surfaceVersion。

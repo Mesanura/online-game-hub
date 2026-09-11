@@ -1,11 +1,16 @@
 import { expect, test, type FrameLocator, type Page } from "@playwright/test";
+import {
+  createPostgresDatabaseClient,
+  PostgresRealtimeRoomStore,
+} from "@online-game-hub/database";
 
 import { startE2eHarness, type E2eHarness } from "../src/harness.js";
 import { closeGameHud, openGameHud } from "../src/game-hud.js";
 
 let harness: E2eHarness;
+test.use({ actionTimeout: 15_000, navigationTimeout: 30_000 });
 test.beforeAll(async () => {
-  harness = await startE2eHarness();
+  harness = await startE2eHarness({ manualRealtimeScheduler: true });
 });
 test.afterAll(async () => {
   await harness?.stop();
@@ -36,9 +41,27 @@ test("Chinese Checkers previews camps, restores rejected counts and explains an 
     await surface(owner).getByRole("button", { name: "指定首位" }).click();
     const invite = await owner.getByTestId("invite-link").getAttribute("href");
     if (invite === null) throw new Error("Missing invitation.");
-    for (const page of [second, third]) await page.goto(invite);
+    for (const page of [second, third]) {
+      await page.goto(invite);
+      await expect(page.getByTestId("connection-state")).toHaveText("已连接");
+    }
+    await expect(
+      surface(second).locator('[data-camp-option="S"]'),
+    ).toBeEnabled();
     await surface(second).locator('[data-camp-option="S"]').click();
+    await expect(
+      surface(second).locator('[data-camp-option="S"]'),
+    ).toHaveAttribute("aria-pressed", "true");
+    await expect(
+      surface(third).locator('[data-camp-option="S"]'),
+    ).toBeDisabled();
+    await expect(
+      surface(third).locator('[data-camp-option="NE"]'),
+    ).toBeEnabled();
     await surface(third).locator('[data-camp-option="NE"]').click();
+    await expect(
+      surface(third).locator('[data-camp-option="NE"]'),
+    ).toHaveAttribute("aria-pressed", "true");
     await expect(
       surface(owner).locator('[data-preview-camp="N"]'),
     ).toHaveAttribute("data-self", "true");
@@ -69,6 +92,9 @@ test("Chinese Checkers previews camps, restores rejected counts and explains an 
     await expect(owner.getByTestId("toggle-round-ready")).toBeDisabled();
     await first.selectOption("NE");
     await expect(owner.getByTestId("toggle-round-ready")).toBeEnabled();
+    await expect(
+      surface(third).getByRole("combobox", { name: "首位营地", exact: true }),
+    ).toHaveValue("NE");
     await surface(third).locator('[data-camp-option="NW"]').click();
     await expect(surface(owner).getByLabel("开局前提示")).toContainText(
       "首位营地无人参与",
@@ -159,6 +185,196 @@ test("Tank Maze shows three players' colors and blocks overcapacity without disc
     await Promise.all(contexts.map((context) => context.close()));
   }
 });
+
+for (const [gameId, targetScore, selected, summary] of [
+  ["pong", 9, "房主在右", "对手在左，房主在右"],
+  ["badminton", 21, "对手首发", "30 分封顶"],
+] as const) {
+  test(`${gameId} Setup preserves confirmed scores, focus and actual random sides through a rematch`, async ({
+    browser,
+  }) => {
+    const ownerContext = await browser.newContext();
+    const guestContext = await browser.newContext();
+    const owner = await ownerContext.newPage();
+    const guest = await guestContext.newPage();
+    const errors: string[] = [];
+    for (const page of [owner, guest])
+      page.on("pageerror", (error) => errors.push(error.message));
+    const database = createPostgresDatabaseClient({
+      url: harness.databaseUrl,
+      applicationName: "realtime-setup-e2e",
+      maxConnections: 1,
+    });
+    const roomStore = new PostgresRealtimeRoomStore(database.database);
+    try {
+      await owner.goto(`${harness.webUrl}/games/${gameId}`);
+      await owner.getByTestId("create-room").click();
+      await expect(owner.getByTestId("connection-state")).toHaveText("已连接");
+      await expect(surface(owner).getByTestId("setup-summary")).toContainText(
+        gameId === "pong" ? "3 分" : "7 分",
+      );
+      const starter = surface(owner).getByRole("button", { name: selected });
+      await starter.focus();
+      await starter.press("Enter");
+      await expect(starter).toHaveAttribute("aria-pressed", "true");
+      await expect(starter).toBeFocused();
+      const invite = await owner
+        .getByTestId("invite-link")
+        .getAttribute("href");
+      if (invite === null) throw new Error("Missing invitation.");
+      const roomCode = new URL(invite).pathname.split("/").at(-1) ?? "";
+      await guest.goto(invite);
+      await expect(guest.getByTestId("connection-state")).toHaveText("已连接");
+      await expect(
+        surface(guest).getByRole("button", { name: selected }),
+      ).toBeDisabled();
+      await expect(starter).toBeFocused();
+      await owner.getByTestId("toggle-round-ready").click();
+      await expect(owner.getByTestId("toggle-round-ready")).toHaveText(
+        "取消准备",
+      );
+      if (gameId === "pong") {
+        const score = surface(owner).getByRole("combobox", {
+          name: "获胜分数",
+        });
+        await expect(score.locator("option")).toHaveCount(9);
+        await score.focus();
+        await score.selectOption(String(targetScore));
+        await expect(score).toHaveValue(String(targetScore));
+        await expect(score).toBeFocused();
+        await expect(
+          surface(guest).getByRole("combobox", { name: "获胜分数" }),
+        ).toBeDisabled();
+        await expect(
+          surface(owner).locator("[data-preview-ball]"),
+        ).toHaveAttribute("cx", "180");
+      } else {
+        for (const [score, cap] of [
+          [11, 15],
+          [21, 30],
+        ] as const) {
+          const choice = surface(owner).locator(`[data-score="${score}"]`);
+          await expect(choice).toBeEnabled();
+          await choice.focus();
+          await choice.press("Enter");
+          await expect(choice).toHaveAttribute("aria-pressed", "true");
+          await expect(choice).toBeFocused();
+          await expect(
+            surface(owner).getByTestId("setup-preview"),
+          ).toHaveAttribute("data-score-cap", String(cap));
+        }
+        await expect(surface(owner).getByTestId("serve-rule")).toContainText(
+          "发球方按 S",
+        );
+      }
+      await expect(owner.getByTestId("toggle-round-ready")).toHaveText(
+        "准备开始",
+      );
+      for (const page of [owner, guest]) {
+        await expect(surface(page).getByTestId("setup-summary")).toContainText(
+          summary,
+        );
+        await expect(
+          surface(page).getByTestId("setup-preview"),
+        ).toHaveAttribute("data-target-score", String(targetScore));
+      }
+      const random = surface(owner).getByRole("button", {
+        name: gameId === "pong" ? "随机站位" : "随机首发",
+      });
+      await random.click();
+      await expect(random).toHaveAttribute("aria-pressed", "true");
+      for (const viewport of [
+        { width: 390, height: 844 },
+        { width: 844, height: 390 },
+      ]) {
+        await owner.setViewportSize(viewport);
+        await expectSetupFits(owner);
+      }
+      await owner.reload();
+      await expect(random).toHaveAttribute("aria-pressed", "true");
+      await expect(surface(owner).getByTestId("setup-preview")).toHaveAttribute(
+        "data-target-score",
+        String(targetScore),
+      );
+      await owner.getByTestId("toggle-round-ready").click();
+      await guest.getByTestId("toggle-round-ready").click();
+      await expect(owner).toHaveURL(/\/play$/u);
+      await expect(guest).toHaveURL(/\/play$/u);
+      await expect(
+        surface(owner).locator(
+          gameId === "pong"
+            ? "#pong-canvas canvas"
+            : "#badminton-canvas canvas",
+        ),
+      ).toBeVisible();
+      await expect(
+        surface(guest).locator(
+          gameId === "pong"
+            ? "#pong-canvas canvas"
+            : "#badminton-canvas canvas",
+        ),
+      ).toBeVisible();
+      const started = await roomStore.getByRoomCode(roomCode);
+      expect(started?.previousFinalizedSetup?.config).toEqual({ targetScore });
+      const replayId = started?.currentRound?.replayId;
+      if (replayId === undefined) throw new Error("Missing replay.");
+      const replay = await harness.gameServer.realtimeReplayStore.get(replayId);
+      expect(replay?.header.initialConfig).toEqual({ targetScore });
+      if (gameId === "badminton")
+        await surface(owner).locator("#badminton-canvas").click();
+      await openGameHud(owner);
+      if (gameId === "badminton") {
+        // Opening the HUD releases controls; acknowledge that input before a
+        // platform command while this test's realtime scheduler is paused.
+        await expect
+          .poll(async () => {
+            harness.advanceRealtimeTicks(1);
+            return Number(
+              await owner
+                .getByTestId("acknowledged-input-sequence")
+                .textContent(),
+            );
+          })
+          .toBeGreaterThan(0);
+      }
+      owner.once("dialog", (dialog) => {
+        void dialog.accept();
+      });
+      await owner.getByTestId("resign-game").click();
+      await expect
+        .poll(async () => {
+          harness.advanceRealtimeTicks(1);
+          return owner.getByTestId("match-status").textContent();
+        })
+        .toBe("对局已完成");
+      await closeGameHud(owner);
+      await owner.getByTestId("next-round-settings").click();
+      await expect(surface(owner).getByTestId("setup-summary")).toContainText(
+        "沿用上一局",
+      );
+      await expect(surface(owner).getByTestId("setup-preview")).toHaveAttribute(
+        "data-target-score",
+        String(targetScore),
+      );
+      await guest.getByTestId("next-round-settings").click();
+      await owner.getByTestId("toggle-round-ready").click();
+      await guest.getByTestId("toggle-round-ready").click();
+      await expect(owner).toHaveURL(/\/play$/u);
+      const rematch = await roomStore.getByRoomCode(roomCode);
+      expect(rematch?.currentRound?.roundNumber).toBe(2);
+      expect(rematch?.previousFinalizedSetup).toEqual(
+        started?.previousFinalizedSetup,
+      );
+      await openGameHud(owner);
+      await owner.getByTestId("close-room").click();
+      expect(errors).toEqual([]);
+    } finally {
+      await database.close();
+      await ownerContext.close();
+      await guestContext.close();
+    }
+  });
+}
 
 function surface(page: Page): FrameLocator {
   return page.frameLocator('[data-testid="game-surface-iframe"]');

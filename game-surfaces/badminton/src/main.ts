@@ -23,7 +23,10 @@ import {
 } from "./model";
 import { BadmintonScene } from "./scene";
 import { BadmintonAudio } from "./audio";
+import { setupNotice, replaceSetupContents } from "./setup-ui";
+import { renderSetupView, shuttleIcon } from "./setup-presentation";
 import "./styles.css";
+import "./setup.css";
 
 type HostInit = Extract<HostSurfaceMessage, { type: "host.init" }>;
 type HostState = Extract<HostSurfaceMessage, { type: "host.state" }>;
@@ -45,6 +48,7 @@ let receivedAt = 0;
 let game: Phaser.Game | null = null;
 let sequence = 0;
 let pendingSetup: string | null = null;
+let setupMessage = "";
 let pendingResign: string | null = null;
 let lastControl = "";
 let failed = false;
@@ -58,6 +62,7 @@ function setText(id: string, text: string): void {
 }
 
 function notice(text: string): void {
+  if (mode === "setup") setupMessage = text;
   setText("surface-notice", text);
 }
 
@@ -80,7 +85,14 @@ function sendIntent(
   intent: SetupIntent | PlayIntent,
   requestedId?: string,
 ): string | null {
-  if (failed || disposed || init === null) return null;
+  if (
+    failed ||
+    disposed ||
+    init === null ||
+    (mode === "setup" &&
+      (host?.connectionState !== "connected" || host.readOnly))
+  )
+    return null;
   const clientIntentId = requestedId ?? `badminton-${mode}-${++sequence}`;
   const payload =
     mode === "play"
@@ -115,6 +127,7 @@ function resetControls(send = true): void {
 }
 
 function stop(): void {
+  pendingSetup = null;
   resetControls(false);
   clearInterval(heartbeat);
   pulses.forEach(clearTimeout);
@@ -135,66 +148,18 @@ function fail(code: string, message: string): void {
   bridge.send({ type: "surface.error", code, message });
 }
 
-const shuttleIcon =
-  '<svg viewBox="0 0 48 48" aria-hidden="true"><path d="M20 32 7 14l10-7 16 20-13 5Z" fill="#fcfbeb" stroke="currentColor" stroke-width="2.5"/><path d="m11 12 15 18M18 9l11 19M7 14l24 14" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="29" cy="32" r="8" fill="#edc879" stroke="currentColor" stroke-width="2.5"/></svg>';
-
-function setupMarkup(current: SetupView): string {
-  const disabled =
-    host?.readOnly !== false ||
-    host.connectionState !== "connected" ||
-    !current.canEdit ||
-    pendingSetup !== null;
-  const cap =
-    current.config.targetScore === 7
-      ? 11
-      : current.config.targetScore === 11
-        ? 15
-        : 30;
-  return `<main class="setup-page"><section class="setup-card">
-    <div class="setup-heading"><span class="game-mark">${shuttleIcon}</span><div><p class="eyebrow">一起挥拍，快乐开场</p><h1>火柴人羽毛球</h1></div><span class="two-player">双人对战</span></div>
-    <div class="setup-preview" aria-hidden="true"><span class="preview-player blue">01</span><span class="preview-flight">⌁</span><span class="preview-net"></span><span class="preview-player coral">02</span><div class="preview-line"></div></div>
-    <div class="setup-fields"><section aria-labelledby="score-choice"><div class="field-heading"><h2 id="score-choice">这一局，打几分？</h2><span>领先 2 分获胜</span></div><div class="choice-grid" role="group" aria-label="目标比分">
-      ${(
-        [
-          [7, "轻快短局"],
-          [11, "再战一会"],
-          [21, "标准长局"],
-        ] as const
-      )
-        .map(
-          ([score, label]) =>
-            `<button type="button" data-score="${score}" aria-pressed="${current.config.targetScore === score}" ${disabled ? "disabled" : ""}><strong>${score}<small>分</small></strong><span>${label}</span></button>`,
-        )
-        .join("")}
-    </div></section><section aria-labelledby="serve-choice"><div class="field-heading"><h2 id="serve-choice">谁先发球？</h2><span>首发方在左侧</span></div><div class="starter-grid" role="group" aria-label="首发选择">
-      ${(
-        [
-          ["OWNER", "房主首发"],
-          ["NON_OWNER", "对手首发"],
-          ["RANDOM", "随机首发"],
-        ] as const
-      )
-        .map(
-          ([starter, label]) =>
-            `<button type="button" data-starter="${starter}" aria-pressed="${current.starter === starter}" ${disabled ? "disabled" : ""}>${label}</button>`,
-        )
-        .join("")}
-    </div>${current.starter === "FIXED" ? '<p class="muted">沿用上一局的实际首发方与场地。</p>' : ""}</section></div>
-    <p class="rule-note">先到 ${current.config.targetScore} 分且领先 2 分获胜，${cap} 分封顶。每球得分者发球。</p>
-    <div class="how-to"><span><kbd>A</kbd><kbd>D</kbd> 移动</span><span><kbd>W</kbd> 起跳</span>${init?.gameVersion === "1.1.0" || init?.gameVersion === "1.2.0" ? "<span><kbd>S</kbd> 发球</span>" : ""}<span><kbd>J</kbd> 高远球</span><span><kbd>K</kbd> 扣杀</span><span><kbd>L</kbd> 吊球</span></div>
-    <p class="setup-bottom">${current.canEdit ? "选好后，两位玩家分别点击房间中的准备按钮。" : "房主正在设置。确认规则后，点击房间中的准备按钮。"}手机可使用屏幕按钮。</p>
-    <p class="notice" id="surface-notice" role="status"></p>
-  </section></main>`;
-}
-
 function renderSetup(): void {
-  if (setup === null) return;
-  const focused =
-    document.activeElement instanceof HTMLButtonElement
-      ? (document.activeElement.dataset.score ??
-        document.activeElement.dataset.starter)
-      : undefined;
-  surfaceRoot.innerHTML = setupMarkup(setup);
+  if (setup === null || init === null) return;
+  replaceSetupContents(
+    surfaceRoot,
+    renderSetupView(
+      setup,
+      init.gameVersion,
+      host?.readOnly !== false || host.connectionState !== "connected",
+      pendingSetup !== null,
+    ),
+  );
+  notice(setupMessage);
   surfaceRoot
     .querySelectorAll<HTMLButtonElement>("[data-score], [data-starter]")
     .forEach((button) => {
@@ -206,6 +171,7 @@ function renderSetup(): void {
           host.connectionState !== "connected"
         )
           return;
+        if (button.getAttribute("aria-pressed") === "true") return;
         const score = Number(button.dataset.score);
         const starter = button.dataset.starter;
         const intent: SetupIntent | null =
@@ -217,15 +183,11 @@ function renderSetup(): void {
               ? { type: "SELECT_STARTER", starter }
               : null;
         if (intent !== null) {
+          setupMessage = "";
           pendingSetup = sendIntent(intent);
           renderSetup();
         }
       });
-      if (
-        focused !== undefined &&
-        (button.dataset.score === focused || button.dataset.starter === focused)
-      )
-        button.focus();
     });
 }
 
@@ -237,7 +199,7 @@ function playMarkup(): string {
     <div class="controls" role="group" aria-label="球场操作"><div class="movement-controls">
       <button type="button" data-control="left" aria-label="向左移动" aria-pressed="false"><span class="control-symbol">←</span><kbd>A</kbd></button><button type="button" data-control="right" aria-label="向右移动" aria-pressed="false"><span class="control-symbol">→</span><kbd>D</kbd></button><button class="jump-button" type="button" data-control="jump" aria-label="起跳" aria-pressed="false"><span>起跳</span><kbd>W</kbd></button>
     </div><div class="shot-controls"><button type="button" data-control="serve" aria-label="发球" aria-pressed="false"><span>发球</span><kbd>S</kbd></button><button type="button" data-control="clear" aria-label="高远球" aria-pressed="false"><span>高远球</span><kbd>J</kbd></button><button class="smash-button" type="button" data-control="smash" aria-label="扣杀" aria-pressed="false"><span>扣杀</span><kbd>K</kbd></button><button type="button" data-control="drop" aria-label="吊球" aria-pressed="false"><span>吊球</span><kbd>L</kbd></button></div></div>
-    <footer class="match-footer"><span id="side-label"></span><span class="sr-only" id="control-help">A/D 移动，W 起跳，S 发球，J 高远球，K 扣杀，L 吊球。</span></footer>
+    <footer class="match-footer"><span id="side-label"></span><span class="sr-only" id="control-help">A/D 移动，W 起跳，${init?.gameVersion === "1.0.0" ? "倒计时结束后自动发球" : "S 发球"}，J 高远球，K 扣杀，L 吊球。</span></footer>
     <p class="notice" id="surface-notice" role="status"></p><span class="sr-only" data-testid="badminton-outcome" id="badminton-outcome"></span>
   </section></main>`;
 }
@@ -463,6 +425,17 @@ function handleHost(message: HostSurfaceMessage): void {
         host !== null && host.roundNumber !== message.roundNumber;
       if (newRound) pendingResign = null;
       if (mode === "setup") {
+        if (
+          newRound ||
+          message.connectionState !== "connected" ||
+          message.readOnly
+        ) {
+          setupMessage =
+            pendingSetup !== null && message.connectionState !== "connected"
+              ? "连接已中断，请在重连后检查当前设置。"
+              : "";
+          pendingSetup = null;
+        }
         setup = setupViewSchema.parse(message.payload);
         host = message;
         renderSetup();
@@ -518,9 +491,12 @@ function handleHost(message: HostSurfaceMessage): void {
     return;
   }
   if (message.type === "host.intent-result") {
-    if (message.clientIntentId === pendingSetup) {
+    if (mode === "setup") {
+      if (message.clientIntentId !== pendingSetup) return;
       pendingSetup = null;
+      setupMessage = setupNotice(message.status, message.code) ?? "";
       renderSetup();
+      return;
     }
     if (
       message.clientIntentId === pendingResign &&

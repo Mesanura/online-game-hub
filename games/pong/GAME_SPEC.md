@@ -14,7 +14,7 @@
 
 任一玩家可提交严格 `{ "type": "RESIGN" }` 投降输入。比分达标产生 `SCORE` 胜局，投降产生 `RESIGNATION` 胜局；终局不再推进 simulation。公开 View 只含场地、球拍、球、比分、tick、玩家方位、发球提示与 Outcome，不含 RNG seed 或 authoritative input log。
 
-Round Setup 由 Pong 自己定义：新房间必须由 owner 选择 `OWNER | NON_OWNER | RANDOM` 先手/方位顺序，当前 Setup UI 不开放 `targetScore` 编辑。`RANDOM` 只消费独立 Setup RNG；Gameplay 继续获得新的独立 seed。下一局从上一局完整 finalized setup 初始化，复用实际 LEFT/RIGHT 顺序和 `targetScore`，不重新随机，并由两位玩家分别重新 ready。
+Round Setup 由 Pong 自己定义：新房间必须由 owner 选择 `OWNER | NON_OWNER | RANDOM` 左右站位；`OWNER` 表示房主在左，`NON_OWNER` 表示房主在右，与游戏的随机发球方向无关。房主可提交严格 `{ type: "SET_TARGET_SCORE", targetScore: number }` 选择 1–9 的整数目标分数，默认仍为 3。修改比分保留站位；同值拒绝为 `SETUP_UNCHANGED`，非房主拒绝为 `NOT_OWNER`。接受不同设置清空准备，拒绝不改变 revision、准备或 Setup RNG。`RANDOM` 仅在开局时消费独立 Setup RNG；Gameplay 继续获得新的独立 seed。下一局从上一局完整 finalized setup 初始化，复用实际 LEFT/RIGHT 顺序和 `targetScore`，不重新随机，并由两位玩家分别重新 ready。上述 Setup 适用于全部受支持规则版本，不改变既有 Core 或 replay 重建结果。
 
 独立 Bridge V2 Surface 按 exact gameVersion 解析公开 View，只采集操作意图。场地布局、发球箭头、插值与终局摘要由 [Surface README](../../game-surfaces/pong/README.md) 定义，不影响权威模拟。
 

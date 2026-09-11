@@ -148,12 +148,20 @@ export function parsePlayView(
   throw new Error("Unsupported Pong version.");
 }
 
-export const pongSetupIntentSchema = z
-  .object({
-    type: z.literal("SELECT_STARTER"),
-    starter: z.enum(["OWNER", "NON_OWNER", "RANDOM"]),
-  })
-  .strict();
+export const pongSetupIntentSchema = z.discriminatedUnion("type", [
+  z
+    .object({
+      type: z.literal("SELECT_STARTER"),
+      starter: z.enum(["OWNER", "NON_OWNER", "RANDOM"]),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("SET_TARGET_SCORE"),
+      targetScore: z.number().int().min(1).max(9),
+    })
+    .strict(),
+]);
 export type PongSetupIntent = z.infer<typeof pongSetupIntentSchema>;
 
 export const pongPlayIntentSchema = z.discriminatedUnion("type", [
