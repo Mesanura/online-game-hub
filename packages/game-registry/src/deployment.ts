@@ -263,16 +263,16 @@ const badmintonSurface = (
     platformControls: resignPlatformControls,
     presentation: Object.freeze({
       kind: "surface-v1",
-      publicBasePath: "/game-surfaces/badminton/1.2.3",
+      publicBasePath: "/game-surfaces/badminton/1.2.4",
       artifact: {
         schemaVersion: 1,
         gameId: "badminton",
         supportedGameVersions: ["1.0.0", "1.1.0", "1.2.0"],
-        surfaceVersion: "1.2.3",
+        surfaceVersion: "1.2.4",
         bridgeVersion: 2,
         entrypoints: { setup: "setup/index.html", play: "play/index.html" },
         capabilities: {},
-        contentDigest: "sha256-zrscTisTJ1khypPxD3XjKuc0IEKHZkXsDUhQI8FWz0I=",
+        contentDigest: "sha256-39zjqU2yndwjoSvTiiT0q08gnTbzj23wZFElCNt3oUE=",
       } satisfies SurfaceArtifactManifestV1,
     }),
   });

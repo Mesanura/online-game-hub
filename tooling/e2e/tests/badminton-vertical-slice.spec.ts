@@ -123,6 +123,7 @@ async function expectLayouts(page: Page, info: TestInfo): Promise<void> {
     { width: 1920, height: 1080 },
     { width: 1024, height: 768 },
     { width: 768, height: 1024 },
+    { width: 320, height: 740 },
     { width: 390, height: 844 },
     { width: 412, height: 915 },
     { width: 844, height: 390 },
@@ -141,11 +142,18 @@ async function expectLayouts(page: Page, info: TestInfo): Promise<void> {
           const stage = await surface(page)
             .locator(".court-stage")
             .boundingBox();
-          const buttons = await Promise.all(
-            (await surface(page).locator("[data-control]").all()).map(
-              (button) => button.boundingBox(),
-            ),
-          );
+          const [jump, left, right, serveButton, clear, smash, drop] =
+            await Promise.all(
+              ["jump", "left", "right", "serve", "clear", "smash", "drop"].map(
+                (control) =>
+                  surface(page)
+                    .locator(`[data-control="${control}"]`)
+                    .boundingBox(),
+              ),
+            );
+          const fullscreen = await page
+            .getByTestId("toggle-game-fullscreen")
+            .boundingBox();
           const audioToggle = await surface(page)
             .locator(".audio-toggle")
             .boundingBox();
@@ -156,8 +164,42 @@ async function expectLayouts(page: Page, info: TestInfo): Promise<void> {
               document.documentElement.scrollHeight <=
                 document.documentElement.clientHeight,
           );
-          if (iframe === null || canvas === null || stage === null)
+          if (
+            !iframe ||
+            !canvas ||
+            !stage ||
+            !fullscreen ||
+            !jump ||
+            !left ||
+            !right ||
+            !serveButton ||
+            !clear ||
+            !smash ||
+            !drop
+          )
             return false;
+          const buttons = [jump, left, right, serveButton, clear, smash, drop];
+          const near = (a: number, b: number) => Math.abs(a - b) < 2;
+          const landscape = iframe.width >= 600 && iframe.width > iframe.height;
+          const layout =
+            jump.y + jump.height <= left.y &&
+            near(left.y, right.y) &&
+            near(
+              jump.x + jump.width / 2,
+              (left.x + right.x + right.width) / 2,
+            ) &&
+            left.x + left.width < right.x &&
+            near(serveButton.y, clear.y) &&
+            near(smash.y, drop.y) &&
+            serveButton.y + serveButton.height <= smash.y &&
+            near(serveButton.x, smash.x) &&
+            near(clear.x, drop.x) &&
+            (landscape
+              ? right.x + right.width <= stage.x + 1 &&
+                serveButton.x >= stage.x + stage.width - 1
+              : jump.y >= stage.y + stage.height &&
+                serveButton.y >= stage.y + stage.height &&
+                right.x + right.width < serveButton.x);
           const inside = (box: {
             x: number;
             y: number;
@@ -170,6 +212,7 @@ async function expectLayouts(page: Page, info: TestInfo): Promise<void> {
             box.y + box.height <= iframe.y + iframe.height + 1;
           return (
             fits &&
+            layout &&
             inside(canvas) &&
             canvas.width > 200 &&
             canvas.height > 100 &&
@@ -185,10 +228,13 @@ async function expectLayouts(page: Page, info: TestInfo): Promise<void> {
             inside(audioToggle) &&
             buttons.every(
               (box) =>
-                box !== null &&
-                box.width >= 44 &&
-                box.height >= 44 &&
-                inside(box),
+                box.width >= 48 &&
+                box.height >= 48 &&
+                inside(box) &&
+                (box.x + box.width <= fullscreen.x ||
+                  box.x >= fullscreen.x + fullscreen.width ||
+                  box.y + box.height <= fullscreen.y ||
+                  box.y >= fullscreen.y + fullscreen.height),
             )
           );
         },
@@ -247,7 +293,7 @@ test("two accounts play badminton with keyboard and multitouch, reconnect, finis
     await expect(pageA.getByTestId("connection-state")).toHaveText("已连接");
     await expect(pageA.getByTestId("game-surface-iframe")).toHaveAttribute(
       "src",
-      "/game-surfaces/badminton/1.2.3/setup/index.html",
+      "/game-surfaces/badminton/1.2.4/setup/index.html",
     );
     const inviteUrl = await pageA
       .getByTestId("invite-link")
@@ -282,7 +328,7 @@ test("two accounts play badminton with keyboard and multitouch, reconnect, finis
       await expect(page.getByTestId("match-status")).toHaveText("对局进行中");
       await expect(page.getByTestId("game-surface-iframe")).toHaveAttribute(
         "src",
-        "/game-surfaces/badminton/1.2.3/play/index.html",
+        "/game-surfaces/badminton/1.2.4/play/index.html",
       );
       await expectCourt(page);
     }

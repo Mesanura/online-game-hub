@@ -320,11 +320,15 @@ kbd {
   height: 100%;
   min-width: 0;
   min-height: 0;
-  padding: clamp(8px, 1.6vmin, 18px);
+  padding: max(clamp(8px, 1.6vmin, 18px), env(safe-area-inset-top))
+    max(clamp(8px, 1.6vmin, 18px), env(safe-area-inset-right))
+    max(clamp(8px, 1.6vmin, 18px), env(safe-area-inset-bottom))
+    max(clamp(8px, 1.6vmin, 18px), env(safe-area-inset-left));
   background:
     radial-gradient(ellipse at 2% 2%, #e4ebdd, transparent 60%), #f5f1e5;
 }
 .match-shell {
+  --control-size: 56px;
   display: grid;
   grid-template-rows: auto auto minmax(0, 1fr) auto auto;
   gap: 10px;
@@ -477,18 +481,37 @@ kbd {
 }
 .movement-controls,
 .shot-controls {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(2, var(--control-size));
+  flex: 0 0 auto;
   align-items: center;
-  gap: 9px;
+  gap: 8px;
+}
+.movement-controls .jump-button {
+  grid-column: 1 / -1;
+  justify-self: center;
+}
+.shot-controls [data-control="smash"] {
+  grid-column: 1;
+  grid-row: 2;
+}
+.shot-controls [data-control="drop"] {
+  grid-column: 2;
+  grid-row: 2;
+}
+.shot-controls [data-control="serve"][hidden] + [data-control="clear"] {
+  grid-column: 1 / -1;
+  justify-self: center;
 }
 .controls button {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 14px;
-  min-height: 48px;
-  min-width: 54px;
-  padding: 10px 15px;
+  gap: 2px;
+  height: var(--control-size);
+  width: var(--control-size);
+  padding: 4px;
   border: 1px solid #fffdf5;
   border-radius: 14px;
   background: #fffaf0;
@@ -560,13 +583,16 @@ kbd {
   font-size: 21px;
   line-height: 1;
 }
+.control-caption {
+  font-size: 12px;
+}
 .match-footer {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
   padding: 0 16px 3px;
-  min-height: 22px;
+  min-height: 48px;
   font-size: 11px;
   color: #73816c;
 }
@@ -629,15 +655,7 @@ kbd {
     padding: 6px 0 0;
     gap: 10px;
   }
-  .movement-controls,
-  .shot-controls {
-    gap: 6px;
-  }
   .controls button {
-    min-width: 44px;
-    min-height: 48px;
-    padding: 8px 10px;
-    gap: 6px;
     font-size: 12px;
     border-radius: 12px;
   }
@@ -679,21 +697,6 @@ kbd {
   .score-side {
     gap: 17px;
   }
-  .controls {
-    flex-wrap: wrap;
-    justify-content: center;
-    gap: 10px;
-  }
-  .movement-controls,
-  .shot-controls {
-    flex: 1 1 100%;
-    justify-content: center;
-    gap: 10px;
-  }
-  .controls button {
-    flex: 1;
-    max-width: 100px;
-  }
   .match-footer {
     justify-content: center;
     text-align: center;
@@ -715,12 +718,49 @@ kbd {
     padding: 10px;
   }
 }
+@media (max-width: 360px), (max-height: 360px) {
+  .match-shell {
+    --control-size: 48px;
+  }
+}
+@media (orientation: landscape) and (min-width: 600px) {
+  .match-shell {
+    grid-template-columns:
+      calc(var(--control-size) * 2 + 8px) minmax(0, 1fr)
+      calc(var(--control-size) * 2 + 8px);
+    grid-template-rows: auto auto minmax(0, 1fr) auto;
+  }
+  .match-header,
+  .rally-bar,
+  .match-footer {
+    grid-column: 1 / -1;
+  }
+  .controls {
+    display: contents;
+  }
+  .court-stage {
+    grid-column: 2;
+    grid-row: 3;
+  }
+  .movement-controls,
+  .shot-controls {
+    align-self: center;
+    grid-row: 3;
+  }
+  .movement-controls {
+    grid-column: 1;
+  }
+  .shot-controls {
+    grid-column: 3;
+  }
+}
 @media (max-height: 520px) and (min-width: 600px) {
   .play-page {
-    padding: 6px 10px;
+    padding: max(6px, env(safe-area-inset-top))
+      max(10px, env(safe-area-inset-right))
+      max(6px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left));
   }
   .match-shell {
-    grid-template-columns: 118px minmax(0, 1fr) 134px;
     grid-template-rows: auto minmax(0, 1fr);
     gap: 6px;
   }
@@ -746,37 +786,13 @@ kbd {
   .match-footer {
     display: none;
   }
-  .controls {
-    display: contents;
-  }
   .court-stage {
-    grid-column: 2;
     grid-row: 2;
   }
   .movement-controls,
   .shot-controls {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 8px;
-    align-self: center;
     padding-bottom: 26px;
     grid-row: 2;
-  }
-  .movement-controls {
-    grid-column: 1;
-  }
-  .shot-controls {
-    grid-column: 3;
-  }
-  .movement-controls .jump-button,
-  .shot-controls [data-control="clear"] {
-    grid-column: 1 / -1;
-  }
-  .controls button {
-    min-width: 44px;
-    min-height: 44px;
-    padding: 6px;
-    gap: 0;
   }
   .controls kbd {
     display: none;
