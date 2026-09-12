@@ -109,7 +109,7 @@ describe("tank maze authoritative rules", () => {
     });
     expect(result.state.tanks[0]?.angle).toBe(5);
     expect(tankMazeDefinitionV1_0_0.manifest.gameVersion).toBe("1.0.0");
-    expect(game.manifest.gameVersion).toBe("1.1.0");
+    expect(game.manifest.gameVersion).toBe("1.2.0");
   });
   it("refreshes the independent shield and replaces only the special weapon slot", () => {
     let c = active();
@@ -414,8 +414,8 @@ describe("tank maze authoritative rules", () => {
       );
       expect(arena.cols).toBeGreaterThanOrEqual(6);
       expect(arena.cols).toBeLessThanOrEqual(10);
-      expect(arena.rows).toBeGreaterThanOrEqual(6);
-      expect(arena.rows).toBeLessThanOrEqual(9);
+      expect(arena.rows).toBeGreaterThanOrEqual(5);
+      expect(arena.rows).toBeLessThanOrEqual(7);
       expect(arena.width).toBe(arena.cols * 100000);
       expect(generateArena(createRealtimeRng("map-" + i)).arena).toEqual(arena);
       sizes.add(arena.cols + "x" + arena.rows);

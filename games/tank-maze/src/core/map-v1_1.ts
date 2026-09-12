@@ -13,18 +13,8 @@ export function generateArena(source: RealtimeRngState): {
     rng = pick.next;
     return pick.value;
   };
-  const cols = weightedSize(random(100), [
-      [6, 30],
-      [7, 30],
-      [8, 20],
-      [9, 15],
-      [10, 5],
-    ]),
-    rows = weightedSize(random(100), [
-      [5, 30],
-      [6, 50],
-      [7, 20],
-    ]),
+  const cols = 6 + random(5),
+    rows = 6 + random(4),
     count = cols * rows;
   const edges: {
     a: number;
@@ -114,17 +104,6 @@ export function generateArena(source: RealtimeRngState): {
     },
     rng,
   };
-}
-function weightedSize(
-  roll: number,
-  weights: readonly (readonly [number, number])[],
-): number {
-  let limit = 0;
-  for (const [size, weight] of weights) {
-    limit += weight;
-    if (roll < limit) return size;
-  }
-  throw new Error("Map size weights must cover the integer roll.");
 }
 function largestRegion(cols: number, rows: number, walls: Wall[]): number[] {
   const visited = new Set<number>();

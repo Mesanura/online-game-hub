@@ -277,7 +277,7 @@ const badmintonSurface = (
     }),
   });
 
-const tankMazeSurface = (gameVersion: "1.0.0" | "1.1.0") =>
+const tankMazeSurface = (gameVersion: "1.0.0" | "1.1.0" | "1.2.0") =>
   ({
     gameId: "tank-maze",
     gameVersion,
@@ -302,6 +302,7 @@ const tankMazeSurface = (gameVersion: "1.0.0" | "1.1.0") =>
 const gameDeployments = Object.freeze([
   tankMazeSurface("1.0.0"),
   tankMazeSurface("1.1.0"),
+  tankMazeSurface("1.2.0"),
   ticTacToeSurface("1.0.0", 6),
   ticTacToeSurface("1.1.0", 6),
   connectFourSurface("1.0.0", 6),

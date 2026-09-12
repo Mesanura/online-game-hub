@@ -1060,7 +1060,7 @@ describe.sequential("tank maze multiplayer Protocol V6", () => {
           createRoomCode: () => "TANK2345",
           createReplayId: () => "tank-replay-" + ++replayId,
           createSetupRngSeed: () => "tank-setup",
-          createRngSeed: () => "tank-game",
+          createRngSeed: () => "tank-map-v1.2-2",
           createPlayerSlotId: (i) => ("tank-slot-" + i) as never,
         },
         logger: { write: () => undefined },
@@ -1097,6 +1097,9 @@ describe.sequential("tank maze multiplayer Protocol V6", () => {
           await waitUntil(() => required(inboxes[i]).lifecycle.length > 0);
         }
         expect(required(inboxes[0]).lifecycle.at(-1)?.players).toHaveLength(8);
+        expect(required(inboxes[0]).connected[0]).toMatchObject({
+          gameVersion: "1.2.0",
+        });
         if (count === 8)
           await expect(
             new ColyseusClient(address.httpUrl).join(REALTIME_GAME_ROOM_NAME, {
@@ -1152,12 +1155,18 @@ describe.sequential("tank maze multiplayer Protocol V6", () => {
           () => required(inboxes[0]).snapshots.at(-1)?.tick === 181,
         );
         const record = await replayStore.get("tank-replay-1");
+        expect(record?.header.gameVersion).toBe("1.2.0");
         expect(record?.events).toHaveLength(2);
         const projected = required(required(inboxes[0]).snapshots.at(-1))
           .view as {
+          arena: { width: number; height: number };
           tanks: unknown[];
           bullets: unknown[];
         };
+        expect(projected.arena).toMatchObject({
+          width: 600000,
+          height: 500000,
+        });
         expect(projected.tanks).toHaveLength(count);
         expect(projected).not.toHaveProperty("nextId");
         expect(projected.bullets).toHaveLength(2);
@@ -1213,6 +1222,9 @@ describe.sequential("tank maze multiplayer Protocol V6", () => {
           () => resumed.lifecycle.at(-1)?.currentRound?.roundNumber === 2,
         );
         expect(archive.created).toHaveLength(2);
+        expect(
+          (await replayStore.get("tank-replay-2"))?.header.gameVersion,
+        ).toBe("1.2.0");
         expect(archive.created[1]?.currentRound?.playerOrder).toHaveLength(
           count,
         );

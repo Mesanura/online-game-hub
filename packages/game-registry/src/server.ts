@@ -40,6 +40,7 @@ import { badmintonSetupDefinition } from "@online-game-hub/badminton/setup";
 import {
   tankMazeDefinition,
   tankMazeDefinitionV1_0_0,
+  tankMazeDefinitionV1_1_0,
 } from "@online-game-hub/tank-maze/core";
 import { tankMazeSetupDefinition } from "@online-game-hub/tank-maze/setup";
 import { eraseGameDefinition } from "@online-game-hub/game-sdk";
@@ -94,6 +95,7 @@ export type GameDefinitionResolver = typeof resolveGameDefinition;
 const realtimeServerDefinitions = Object.freeze([
   eraseRealtimeGameDefinition(tankMazeDefinition),
   eraseRealtimeGameDefinition(tankMazeDefinitionV1_0_0),
+  eraseRealtimeGameDefinition(tankMazeDefinitionV1_1_0),
   eraseRealtimeGameDefinition(pongDefinitionV1_0_0),
   eraseRealtimeGameDefinition(pongDefinitionV1_1_0),
   eraseRealtimeGameDefinition(pongDefinition),
@@ -128,6 +130,11 @@ export type RealtimeGameDefinitionResolver =
   typeof resolveRealtimeGameDefinition;
 
 const roundSetupDefinitions = Object.freeze([
+  Object.freeze({
+    gameId: tankMazeDefinitionV1_1_0.manifest.id,
+    gameVersion: tankMazeDefinitionV1_1_0.manifest.gameVersion,
+    definition: eraseRoundSetupDefinition(tankMazeSetupDefinition),
+  }),
   Object.freeze({
     gameId: tankMazeDefinition.manifest.id,
     gameVersion: tankMazeDefinition.manifest.gameVersion,

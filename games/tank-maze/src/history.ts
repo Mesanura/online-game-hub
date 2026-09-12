@@ -19,7 +19,7 @@ const outcomeSchema = z
   })
   .strict();
 
-const gameVersions: readonly string[] = ["1.0.0", "1.1.0"];
+const gameVersions: readonly string[] = ["1.0.0", "1.1.0", "1.2.0"];
 
 /** A pure, viewer-specific projection of archived results; never exposes Outcome. */
 export const tankMazeHistory = {

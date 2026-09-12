@@ -3,10 +3,11 @@ import {
   type RealtimeGameDefinition,
   type RealtimeRngState,
 } from "@online-game-hub/realtime-game-sdk";
-import { tankMazeManifest } from "../manifest.js";
+// Frozen 1.1.0 simulation: historical records retain their movement and maps.
+import { tankMazeManifestV1_1_0 } from "../manifest.js";
 import { DIRECTIONS } from "./directions.js";
 import { clear, RADIUS, sweepCircle, sweepWall } from "./geometry.js";
-import { generateArena } from "./map.js";
+import { generateArena } from "./map-v1_1.js";
 import { createMissileNavigator } from "./navigation.js";
 import {
   configSchema,
@@ -19,10 +20,6 @@ import {
   type Bullet,
   type PickupKind,
 } from "./schemas.js";
-export { configSchema, inputSchema } from "./schemas.js";
-export { tankMazeDefinitionV1_0_0 } from "./v1.js";
-export { tankMazeDefinitionV1_1_0 } from "./v1_1.js";
-export type { State, Config, Input, Outcome } from "./schemas.js";
 const unit = (angle: number) =>
   required(DIRECTIONS[((angle % 720) + 720) % 720]);
 const vector = (angle: number, speed: number) => {
@@ -134,7 +131,7 @@ function moveTanks(s: State): void {
     const rotation =
       Math.floor(((turnPhase + 1) * 48) / 5) - Math.floor((turnPhase * 48) / 5);
     t.angle = (t.angle + t.turn * rotation + 720) % 720;
-    return vector(t.angle, t.move === 1 ? 2000 : t.move === -1 ? -2000 : 0);
+    return vector(t.angle, t.move === 1 ? 2000 : t.move === -1 ? -1083 : 0);
   });
   // Resolve connected contact groups simultaneously; stationary tanks are pushed,
   // opposing drivers cancel. No slot gets first-writer priority.
@@ -490,8 +487,8 @@ function aims(state: Readonly<State>) {
       return { slotId: t.slotId, points };
     });
 }
-export const tankMazeDefinition = {
-  manifest: tankMazeManifest,
+export const tankMazeDefinitionV1_1_0 = {
+  manifest: tankMazeManifestV1_1_0,
   configSchema,
   inputSchema,
   createInitialState({ config, players, rng }) {

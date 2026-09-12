@@ -372,6 +372,7 @@ describe("explicit game registry", () => {
       ["badminton", "1.2.0"],
       ["tank-maze", "1.0.0"],
       ["tank-maze", "1.1.0"],
+      ["tank-maze", "1.2.0"],
       ["connect-four", "1.0.0"],
       ["connect-four", "1.1.0"],
       ["gomoku", "1.0.0"],
@@ -442,10 +443,14 @@ describe("explicit game registry", () => {
   it("resolves current and historical tank maze rules with compatible Surface entrypoints", () => {
     const current = resolveCurrentRealtimeGameDefinition("tank-maze");
     const previous = resolveRealtimeGameDefinition("tank-maze", "1.0.0");
-    expect(current?.manifest.gameVersion).toBe("1.1.0");
+    expect(current?.manifest.gameVersion).toBe("1.2.0");
     expect(previous?.manifest.gameVersion).toBe("1.0.0");
     expect(previous?.step).not.toBe(current?.step);
-    for (const version of ["1.0.0", "1.1.0"]) {
+    const intermediate = resolveRealtimeGameDefinition("tank-maze", "1.1.0");
+    expect(intermediate?.manifest.gameVersion).toBe("1.1.0");
+    expect(intermediate?.step).not.toBe(current?.step);
+    expect(intermediate?.step).not.toBe(previous?.step);
+    for (const version of ["1.0.0", "1.1.0", "1.2.0"]) {
       expect(resolveRoundSetupDefinition("tank-maze", version)).toBeDefined();
       expect(
         resolveGameSurfaceEntrypoint("tank-maze", version, "play")?.url,

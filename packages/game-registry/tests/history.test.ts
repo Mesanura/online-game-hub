@@ -17,7 +17,7 @@ const versions = [
   ["chinese-checkers", ["1.0.0", "1.1.0"]],
   ["pong", ["1.0.0", "1.1.0", "1.2.0"]],
   ["badminton", ["1.0.0", "1.1.0", "1.2.0"]],
-  ["tank-maze", ["1.0.0", "1.1.0"]],
+  ["tank-maze", ["1.0.0", "1.1.0", "1.2.0"]],
 ] as const;
 const context = {
   gameId: "tic-tac-toe",

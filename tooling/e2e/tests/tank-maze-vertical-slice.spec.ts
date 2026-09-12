@@ -72,12 +72,14 @@ test("eight browsers play SVG tanks with keyboard/touch, reconnect and persist a
     if (replayId === undefined)
       throw new Error("Eight-player round missing from PostgreSQL");
     expect(room?.currentRound?.playerOrder).toHaveLength(8);
-    expect(room?.gameVersion).toBe("1.1.0");
+    expect(room?.gameVersion).toBe("1.2.0");
     const fieldWidth = await surface(a)
       .locator("#arena")
       .getAttribute("viewBox");
     expect(Number(fieldWidth?.split(" ")[2])).toBeGreaterThanOrEqual(600);
     expect(Number(fieldWidth?.split(" ")[2])).toBeLessThanOrEqual(1000);
+    expect(Number(fieldWidth?.split(" ")[3])).toBeGreaterThanOrEqual(500);
+    expect(Number(fieldWidth?.split(" ")[3])).toBeLessThanOrEqual(700);
     harness.advanceRealtimeTicks(180);
     await expect
       .poll(() => surface(a).locator("#phase").textContent(), {
@@ -231,7 +233,7 @@ test("eight browsers play SVG tanks with keyboard/touch, reconnect and persist a
       true,
     );
     expect(record?.header.players).toHaveLength(8);
-    expect(record?.header.gameVersion).toBe("1.1.0");
+    expect(record?.header.gameVersion).toBe("1.2.0");
     const fresh = createPostgresDatabaseClient({
       url: harness.databaseUrl,
       applicationName: "tank-maze-reread",
