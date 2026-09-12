@@ -1,0 +1,346 @@
+{
+  "header": {
+    "replayFormatVersion": 1,
+    "runtime": "realtime",
+    "gameId": "air-hockey",
+    "gameVersion": "1.0.0",
+    "tickRate": 60,
+    "rng": {
+      "algorithm": "fnv1a32-counter-v1",
+      "seed": "air-hockey-golden-1"
+    },
+    "initialConfig": {
+      "targetScore": 7
+    },
+    "players": [
+      {
+        "slotId": "owner"
+      },
+      {
+        "slotId": "guest"
+      }
+    ]
+  },
+  "events": [
+    {
+      "sequence": 1,
+      "tick": 0,
+      "actorSlotId": "owner",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 5000,
+          "y": 5000
+        }
+      }
+    },
+    {
+      "sequence": 2,
+      "tick": 0,
+      "actorSlotId": "guest",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 700,
+          "y": 7500
+        }
+      }
+    },
+    {
+      "sequence": 3,
+      "tick": 29,
+      "actorSlotId": "owner",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 700,
+          "y": 7500
+        }
+      }
+    },
+    {
+      "sequence": 4,
+      "tick": 29,
+      "actorSlotId": "guest",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 5000,
+          "y": 5000
+        }
+      }
+    },
+    {
+      "sequence": 5,
+      "tick": 58,
+      "actorSlotId": "owner",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 5000,
+          "y": 5000
+        }
+      }
+    },
+    {
+      "sequence": 6,
+      "tick": 58,
+      "actorSlotId": "guest",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 700,
+          "y": 7500
+        }
+      }
+    },
+    {
+      "sequence": 7,
+      "tick": 87,
+      "actorSlotId": "owner",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 700,
+          "y": 7500
+        }
+      }
+    },
+    {
+      "sequence": 8,
+      "tick": 87,
+      "actorSlotId": "guest",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 5000,
+          "y": 5000
+        }
+      }
+    },
+    {
+      "sequence": 9,
+      "tick": 116,
+      "actorSlotId": "owner",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 5000,
+          "y": 5000
+        }
+      }
+    },
+    {
+      "sequence": 10,
+      "tick": 116,
+      "actorSlotId": "guest",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 700,
+          "y": 7500
+        }
+      }
+    },
+    {
+      "sequence": 11,
+      "tick": 145,
+      "actorSlotId": "owner",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 700,
+          "y": 7500
+        }
+      }
+    },
+    {
+      "sequence": 12,
+      "tick": 145,
+      "actorSlotId": "guest",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 5000,
+          "y": 5000
+        }
+      }
+    },
+    {
+      "sequence": 13,
+      "tick": 174,
+      "actorSlotId": "owner",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 5000,
+          "y": 5000
+        }
+      }
+    },
+    {
+      "sequence": 14,
+      "tick": 174,
+      "actorSlotId": "guest",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 700,
+          "y": 7500
+        }
+      }
+    },
+    {
+      "sequence": 15,
+      "tick": 203,
+      "actorSlotId": "owner",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 700,
+          "y": 7500
+        }
+      }
+    },
+    {
+      "sequence": 16,
+      "tick": 203,
+      "actorSlotId": "guest",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 5000,
+          "y": 5000
+        }
+      }
+    },
+    {
+      "sequence": 17,
+      "tick": 232,
+      "actorSlotId": "owner",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 5000,
+          "y": 5000
+        }
+      }
+    },
+    {
+      "sequence": 18,
+      "tick": 232,
+      "actorSlotId": "guest",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 700,
+          "y": 7500
+        }
+      }
+    },
+    {
+      "sequence": 19,
+      "tick": 261,
+      "actorSlotId": "owner",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 700,
+          "y": 7500
+        }
+      }
+    },
+    {
+      "sequence": 20,
+      "tick": 261,
+      "actorSlotId": "guest",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 5000,
+          "y": 5000
+        }
+      }
+    },
+    {
+      "sequence": 21,
+      "tick": 290,
+      "actorSlotId": "owner",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 5000,
+          "y": 5000
+        }
+      }
+    },
+    {
+      "sequence": 22,
+      "tick": 290,
+      "actorSlotId": "guest",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 700,
+          "y": 7500
+        }
+      }
+    },
+    {
+      "sequence": 23,
+      "tick": 319,
+      "actorSlotId": "owner",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 700,
+          "y": 7500
+        }
+      }
+    },
+    {
+      "sequence": 24,
+      "tick": 319,
+      "actorSlotId": "guest",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 5000,
+          "y": 5000
+        }
+      }
+    },
+    {
+      "sequence": 25,
+      "tick": 348,
+      "actorSlotId": "owner",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 5000,
+          "y": 5000
+        }
+      }
+    },
+    {
+      "sequence": 26,
+      "tick": 348,
+      "actorSlotId": "guest",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 700,
+          "y": 7500
+        }
+      }
+    }
+  ],
+  "finalTick": 377,
+  "recordedRngCursor": 0,
+  "recordedOutcome": {
+    "type": "WIN",
+    "reason": "SCORE",
+    "winnerSlotId": "owner",
+    "scores": [7, 6]
+  }
+}

@@ -1,0 +1,115 @@
+{
+  "header": {
+    "replayFormatVersion": 1,
+    "runtime": "realtime",
+    "gameId": "air-hockey",
+    "gameVersion": "1.0.0",
+    "tickRate": 60,
+    "rng": {
+      "algorithm": "fnv1a32-counter-v1",
+      "seed": "air-hockey-golden-rally"
+    },
+    "initialConfig": {
+      "targetScore": 7
+    },
+    "players": [
+      {
+        "slotId": "owner"
+      },
+      {
+        "slotId": "guest"
+      }
+    ]
+  },
+  "events": [
+    {
+      "sequence": 1,
+      "tick": 0,
+      "actorSlotId": "owner",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 5250,
+          "y": 5000
+        }
+      }
+    },
+    {
+      "sequence": 2,
+      "tick": 0,
+      "actorSlotId": "guest",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 5000,
+          "y": 5000
+        }
+      }
+    },
+    {
+      "sequence": 3,
+      "tick": 60,
+      "actorSlotId": "owner",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 5250,
+          "y": 5000
+        }
+      }
+    },
+    {
+      "sequence": 4,
+      "tick": 60,
+      "actorSlotId": "guest",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 5000,
+          "y": 5000
+        }
+      }
+    },
+    {
+      "sequence": 5,
+      "tick": 120,
+      "actorSlotId": "owner",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 5250,
+          "y": 5000
+        }
+      }
+    },
+    {
+      "sequence": 6,
+      "tick": 120,
+      "actorSlotId": "guest",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 5000,
+          "y": 5000
+        }
+      }
+    },
+    {
+      "sequence": 7,
+      "tick": 180,
+      "actorSlotId": "guest",
+      "input": {
+        "type": "RESIGN"
+      }
+    }
+  ],
+  "finalTick": 181,
+  "recordedRngCursor": 0,
+  "recordedOutcome": {
+    "type": "WIN",
+    "reason": "RESIGNATION",
+    "winnerSlotId": "owner",
+    "resignedSlotId": "guest",
+    "scores": [0, 1]
+  }
+}
