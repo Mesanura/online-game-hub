@@ -285,16 +285,16 @@ const tankMazeSurface = (gameVersion: "1.0.0" | "1.1.0") =>
     platformControls: resignPlatformControls,
     presentation: {
       kind: "surface-v1",
-      publicBasePath: "/game-surfaces/tank-maze/1.1.2",
+      publicBasePath: "/game-surfaces/tank-maze/1.1.3",
       artifact: {
         schemaVersion: 1,
         gameId: "tank-maze",
-        supportedGameVersions: ["1.0.0", "1.1.0"],
-        surfaceVersion: "1.1.2",
+        supportedGameVersions: ["1.0.0", "1.1.0", "1.2.0"],
+        surfaceVersion: "1.1.3",
         bridgeVersion: 2,
         entrypoints: { setup: "setup/index.html", play: "play/index.html" },
         capabilities: {},
-        contentDigest: "sha256-xkLz9ffLoV7SlIkJHqFFnMVaoScjOtAForL5b+SbYhY=",
+        contentDigest: "sha256-DmJbRFQzmeXrwcLuv9HT6mAMs2jtvsKtRROd5QbWYPs=",
       },
     },
   }) as const satisfies GameDeploymentRegistration;

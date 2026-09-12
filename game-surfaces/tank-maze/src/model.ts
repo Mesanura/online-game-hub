@@ -27,7 +27,8 @@ export const WEAPONS = {
   shotgun: "霰弹枪",
   shield: "护盾",
 } as const;
-export const KEYS: Record<string, string> = {
+export type Direction = "up" | "down" | "left" | "right";
+export const KEYS: Record<string, Direction | "fire"> = {
   KeyW: "up",
   ArrowUp: "up",
   KeyS: "down",
@@ -39,15 +40,32 @@ export const KEYS: Record<string, string> = {
   Space: "fire",
 };
 export class Controls {
-  readonly held = new Map<string, string>();
-  press(source: string, control: string) {
+  readonly held = new Map<string, Direction>();
+  readonly #pointers = new Set<number>();
+  press(source: string, control: Direction) {
     this.held.set(source, control);
   }
   release(source: string) {
     this.held.delete(source);
   }
+  startPointer(id: number, control: Direction) {
+    this.#pointers.add(id);
+    this.press(`touch-${id}`, control);
+  }
+  movePointer(id: number, control: Direction | null): boolean {
+    if (!this.#pointers.has(id)) return false;
+    if (control === null) this.release(`touch-${id}`);
+    else this.press(`touch-${id}`, control);
+    return true;
+  }
+  endPointer(id: number): boolean {
+    const tracked = this.#pointers.delete(id);
+    this.release(`touch-${id}`);
+    return tracked;
+  }
   reset() {
     this.held.clear();
+    this.#pointers.clear();
   }
   intent() {
     const values = new Set(this.held.values());

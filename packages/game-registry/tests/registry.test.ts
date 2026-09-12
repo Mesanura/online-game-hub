@@ -449,7 +449,7 @@ describe("explicit game registry", () => {
       expect(resolveRoundSetupDefinition("tank-maze", version)).toBeDefined();
       expect(
         resolveGameSurfaceEntrypoint("tank-maze", version, "play")?.url,
-      ).toBe("/game-surfaces/tank-maze/1.1.2/play/index.html");
+      ).toBe("/game-surfaces/tank-maze/1.1.3/play/index.html");
       expect(resolveGameDeployment("tank-maze", version)?.setupProtocol).toBe(
         6,
       );
@@ -457,9 +457,9 @@ describe("explicit game registry", () => {
         resolveGameDeployment("tank-maze", version)?.presentation,
       ).toMatchObject({
         artifact: {
-          surfaceVersion: "1.1.2",
-          supportedGameVersions: ["1.0.0", "1.1.0"],
-          contentDigest: "sha256-xkLz9ffLoV7SlIkJHqFFnMVaoScjOtAForL5b+SbYhY=",
+          surfaceVersion: "1.1.3",
+          supportedGameVersions: ["1.0.0", "1.1.0", "1.2.0"],
+          contentDigest: "sha256-DmJbRFQzmeXrwcLuv9HT6mAMs2jtvsKtRROd5QbWYPs=",
         },
       });
       expect(

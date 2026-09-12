@@ -139,10 +139,13 @@ kbd {
   font-size: 12px;
 }
 .play {
+  --control-size: 56px;
   height: 100dvh;
   display: flex;
   flex-direction: column;
-  padding: 10px 12px;
+  padding: max(10px, env(safe-area-inset-top))
+    max(12px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom))
+    max(12px, env(safe-area-inset-left));
   gap: 8px;
   overflow: hidden;
 }
@@ -252,33 +255,53 @@ footer {
   display: none;
   justify-content: space-between;
   align-items: center;
-  padding: 0 12px 4px;
+  padding: 0 4px;
+  gap: 16px;
   touch-action: none;
   user-select: none;
 }
-.drive {
-  display: flex;
+.drive,
+.aim-controls {
+  display: grid;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
 }
-.drive > div {
-  display: flex;
-  gap: 6px;
+.aim-controls {
+  grid-template-columns: repeat(2, var(--control-size));
 }
 .touch button {
-  width: 55px;
-  height: 50px;
-  font-size: 23px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  width: var(--control-size);
+  height: var(--control-size);
+  padding: 4px;
+  font-size: 24px;
+  line-height: 1;
+  white-space: nowrap;
   touch-action: none;
   user-select: none;
   -webkit-user-select: none;
   background: #e6eadf;
   border: 1px solid #b8c7b2;
   box-shadow: 0 3px 0 #c2cbbb;
+  -webkit-tap-highlight-color: transparent;
+}
+.touch .control-label {
+  font-size: 11px;
+  line-height: 1.2;
+}
+.touch button[aria-pressed="true"] {
+  background: #31583d;
+  color: #fffdf5;
+  border-color: #24432c;
+  box-shadow: 0 1px 0 #24432c;
 }
 .touch .fire {
-  width: 82px;
-  height: 60px;
+  grid-column: 1 / -1;
+  justify-self: center;
   border-radius: 30px;
   background: #dae9b5;
   font-size: 17px;
@@ -290,20 +313,16 @@ footer {
   height: 100dvh;
   color: #65765f;
 }
-@media (pointer: coarse) {
+@media (any-pointer: coarse) {
+  .play {
+    display: grid;
+    grid-template-rows: auto auto minmax(0, 1fr) auto auto;
+  }
   .touch {
     display: flex;
-    padding: 0 54px 4px 0;
   }
-  .touch button {
-    width: 44px;
-  }
-  .touch .fire {
-    width: 64px;
-  }
-  .drive,
-  .drive > div {
-    gap: 4px;
+  .play footer {
+    min-height: 48px;
   }
   .keyboard-help {
     display: none;
@@ -311,7 +330,9 @@ footer {
 }
 @media (max-width: 600px) {
   .play {
-    padding: 6px;
+    padding: max(6px, env(safe-area-inset-top))
+      max(6px, env(safe-area-inset-right)) max(6px, env(safe-area-inset-bottom))
+      max(6px, env(safe-area-inset-left));
     gap: 5px;
   }
   header {
@@ -350,28 +371,57 @@ footer {
     padding: 20px 16px;
   }
 }
-@media (max-height: 500px) {
+@media (max-width: 360px), (max-height: 360px) {
+  .play {
+    --control-size: 48px;
+  }
+}
+@media (any-pointer: coarse) and (orientation: landscape) {
+  .play {
+    grid-template-columns:
+      calc(var(--control-size) * 2 + 8px) minmax(0, 1fr)
+      calc(var(--control-size) * 2 + 8px);
+    grid-template-rows: auto auto minmax(0, 1fr) auto;
+  }
+  .play header,
+  .scores,
+  .play footer {
+    grid-column: 1 / -1;
+  }
+  .arena-wrap {
+    grid-column: 2;
+    grid-row: 3;
+  }
   .touch {
-    position: absolute;
-    left: 8px;
-    right: 8px;
-    bottom: 12px;
-    pointer-events: none;
+    display: contents;
   }
-  .touch button {
-    pointer-events: auto;
-    opacity: 0.8;
+  .drive,
+  .aim-controls {
+    align-self: center;
+    justify-self: center;
+    grid-row: 3;
   }
+  .drive {
+    grid-column: 1;
+  }
+  .aim-controls {
+    grid-column: 3;
+  }
+}
+@media (max-height: 500px) {
   .scores {
     gap: 2px;
   }
-  .play {
-    padding-bottom: 3px;
-  }
-  .arena-wrap {
-    padding: 0 110px;
-  }
   footer {
     display: none;
+  }
+}
+@media (any-pointer: coarse) and (orientation: landscape) and (max-height: 500px) {
+  .play {
+    grid-template-rows: auto auto minmax(0, 1fr);
+  }
+  .drive,
+  .aim-controls {
+    padding-bottom: 52px;
   }
 }

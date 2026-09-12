@@ -11,6 +11,7 @@ import {
   Controls,
   summary,
   interpolate,
+  type Direction,
 } from "./model";
 import { TankAudio } from "./audio";
 import { hasNewHit, pickupSymbol } from "./presentation";
@@ -47,6 +48,7 @@ let failed = false,
 let pendingSetup: string | null = null;
 let setupMessage = "";
 let arenaKey = "";
+let lastMove = controls.intent();
 let shakeAnimation: Animation | null = null;
 const trails = new Map<number, { x: number; y: number }[]>();
 const explosions = new Map<number, { x: number; y: number; until: number }>();
@@ -84,15 +86,45 @@ function send(intent: Record<string, string | number>, id?: string) {
   }
   return clientIntentId;
 }
-function release() {
-  const held = controls.held.size > 0;
+function refreshControls() {
+  const { move, turn } = controls.intent();
+  const active = {
+    up: move === 1,
+    down: move === -1,
+    left: turn === -1,
+    right: turn === 1,
+  };
+  for (const direction of ["up", "down", "left", "right"] as const)
+    root
+      .querySelector(`[data-control="${direction}"]`)
+      ?.setAttribute("aria-pressed", String(canMove() && active[direction]));
+}
+function sendMove(heartbeat = false) {
+  refreshControls();
+  const intent = controls.intent();
+  if (
+    mode === "play" &&
+    (heartbeat ||
+      intent.move !== lastMove.move ||
+      intent.turn !== lastMove.turn) &&
+    send(intent) !== null
+  )
+    lastMove = intent;
+}
+function resetControls() {
   controls.reset();
-  if (held && connected() && mode === "play") send(controls.intent());
+  lastMove = controls.intent();
+  refreshControls();
+}
+function release() {
+  controls.reset();
+  sendMove();
+  lastMove = controls.intent();
 }
 function fail(code: string, message: string) {
   failed = true;
   pendingSetup = null;
-  controls.reset();
+  resetControls();
   root.textContent = message;
   bridge.send({ type: "surface.error", code, message });
 }
@@ -106,7 +138,7 @@ function renderSetup() {
 }
 function mountPlay() {
   root.innerHTML =
-    '<main class="play"><header><div><span class="eyebrow">TANK MAZE</span><strong>坦克迷战</strong></div><div id="phase" role="status"></div><button id="sound" aria-pressed="false">声音 开</button></header><div id="scores" class="scores"></div><div class="arena-wrap"><div id="countdown" aria-live="polite"></div><svg id="arena" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="坦克迷战实时战场"></svg></div><footer><span id="ammo"></span><span id="notice" role="status"></span><span class="keyboard-help">WASD / 方向键 · 空格按次开火</span></footer><div class="touch"><div class="drive"><button data-control="left" aria-label="向左旋转">↶</button><div><button data-control="up" aria-label="前进">▲</button><button data-control="down" aria-label="后退">▼</button></div><button data-control="right" aria-label="向右旋转">↷</button></div><button class="fire" data-control="fire" aria-label="发射炮弹">开火</button></div></main>';
+    '<main class="play"><header><div><span class="eyebrow">TANK MAZE</span><strong>坦克迷战</strong></div><div id="phase" role="status"></div><button id="sound" aria-pressed="false">声音 开</button></header><div id="scores" class="scores"></div><div class="arena-wrap"><div id="countdown" aria-live="polite"></div><svg id="arena" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="坦克迷战实时战场"></svg></div><div class="touch" role="group" aria-label="坦克操作"><div class="drive"><button data-control="up" aria-label="前进" aria-pressed="false"><span aria-hidden="true">↑</span><span class="control-label">前进</span></button><button data-control="down" aria-label="后退" aria-pressed="false"><span aria-hidden="true">↓</span><span class="control-label">后退</span></button></div><div class="aim-controls"><button class="fire" data-control="fire" aria-label="发射炮弹">发射</button><button data-control="left" aria-label="向左旋转" aria-pressed="false"><span aria-hidden="true">←</span><span class="control-label">左转</span></button><button data-control="right" aria-label="向右旋转" aria-pressed="false"><span aria-hidden="true">→</span><span class="control-label">右转</span></button></div></div><footer><span id="ammo"></span><span id="notice" role="status"></span><span class="keyboard-help">WASD / 方向键 · 空格按次开火</span></footer></main>';
 }
 function renderHud() {
   if (view === null) return;
@@ -162,6 +194,7 @@ function renderHud() {
   root.querySelectorAll<HTMLButtonElement>("[data-control]").forEach((b) => {
     b.disabled = !canMove();
   });
+  refreshControls();
 }
 function draw(now: number) {
   if (disposed) return;
@@ -437,7 +470,7 @@ function handle(message: HostSurfaceMessage) {
           explosions.clear();
           shakeAnimation?.cancel();
           lastEvent = 0;
-          controls.reset();
+          resetControls();
         } else if (next.tick !== view?.tick) previous = view;
         if (next.tick !== view?.tick || reset) received = performance.now();
         view = next;
@@ -506,7 +539,7 @@ function handle(message: HostSurfaceMessage) {
   disposed = true;
   pendingSetup = null;
   shakeAnimation?.cancel();
-  controls.reset();
+  resetControls();
   audio.close();
   clearInterval(heartbeat);
   listeners.abort();
@@ -584,15 +617,47 @@ root.addEventListener(
       e.target instanceof Element
         ? e.target.closest<HTMLButtonElement>("[data-control]")
         : null;
-    if (target === null || !canMove()) return;
+    if (e.button !== 0 || target === null || target.disabled || !canMove())
+      return;
     e.preventDefault();
     audio.unlock();
     target.setPointerCapture(e.pointerId);
     const control = required(target.dataset.control);
     if (control === "fire") send({ type: "FIRE" });
-    else {
-      controls.press("touch-" + e.pointerId, control);
-      send(controls.intent());
+    else if (isDirection(control)) {
+      controls.startPointer(e.pointerId, control);
+      sendMove();
+    }
+  },
+  { signal: listeners.signal },
+);
+function isDirection(control: string | undefined): control is Direction {
+  return (
+    control === "up" ||
+    control === "down" ||
+    control === "left" ||
+    control === "right"
+  );
+}
+root.addEventListener(
+  "pointermove",
+  (e) => {
+    if (!canMove()) return;
+    // Captured events keep their original target; hit-test the actual contact.
+    const target = document
+      .elementFromPoint(e.clientX, e.clientY)
+      ?.closest<HTMLButtonElement>("[data-control]");
+    const control = target?.dataset.control;
+    const direction =
+      target &&
+      root.contains(target) &&
+      !target.disabled &&
+      isDirection(control)
+        ? control
+        : null;
+    if (controls.movePointer(e.pointerId, direction)) {
+      e.preventDefault();
+      sendMove();
     }
   },
   { signal: listeners.signal },
@@ -605,8 +670,7 @@ for (const name of [
   root.addEventListener(
     name,
     (e) => {
-      controls.release("touch-" + e.pointerId);
-      if (canMove()) send(controls.intent());
+      if (controls.endPointer(e.pointerId)) sendMove();
     },
     { signal: listeners.signal },
   );
@@ -629,7 +693,7 @@ window.addEventListener(
     if (c === "fire") send({ type: "FIRE" });
     else {
       controls.press(e.code, c);
-      send(controls.intent());
+      sendMove();
     }
   },
   { signal: listeners.signal },
@@ -640,7 +704,7 @@ window.addEventListener(
     if (KEYS[e.code] !== undefined) {
       e.preventDefault();
       controls.release(e.code);
-      if (canMove()) send(controls.intent());
+      if (canMove()) sendMove();
     }
   },
   { signal: listeners.signal },
@@ -667,7 +731,7 @@ window.addEventListener(
   { signal: listeners.signal },
 );
 const heartbeat = setInterval(() => {
-  if (canMove() && controls.held.size > 0) send(controls.intent());
+  if (canMove() && controls.held.size > 0) sendMove(true);
 }, 150);
 requestAnimationFrame(draw);
 

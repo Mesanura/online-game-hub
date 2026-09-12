@@ -86,6 +86,35 @@ test("eight browsers play SVG tanks with keyboard/touch, reconnect and persist a
       .not.toContain("准备");
     await a.screenshot({ path: info.outputPath("tank-desktop.png") });
     await b.screenshot({ path: info.outputPath("tank-mobile.png") });
+    for (const viewport of [
+      { width: 844, height: 390 },
+      { width: 768, height: 1024 },
+      { width: 1024, height: 768 },
+      { width: 390, height: 844 },
+    ]) {
+      await b.setViewportSize(viewport);
+      const fullscreen = required(
+        await b.getByTestId("toggle-game-fullscreen").boundingBox(),
+      );
+      const arena = required(await surface(b).locator("#arena").boundingBox());
+      for (const control of ["up", "down", "left", "right", "fire"]) {
+        const box = required(
+          await surface(b).locator(`[data-control="${control}"]`).boundingBox(),
+        );
+        expect(box.width).toBeGreaterThanOrEqual(48);
+        expect(box.height).toBeGreaterThanOrEqual(48);
+        const overlaps = (other: typeof box) =>
+          box.x < other.x + other.width &&
+          box.x + box.width > other.x &&
+          box.y < other.y + other.height &&
+          box.y + box.height > other.y;
+        expect(overlaps(fullscreen)).toBe(false);
+        expect(overlaps(arena)).toBe(false);
+      }
+      await b.screenshot({
+        path: info.outputPath(`tank-${viewport.width}x${viewport.height}.png`),
+      });
+    }
     await surface(a).locator("#arena").click();
     await a.keyboard.press("Space");
     await a.keyboard.down("KeyW");
@@ -105,13 +134,14 @@ test("eight browsers play SVG tanks with keyboard/touch, reconnect and persist a
     await a.keyboard.up("KeyW");
     await a.keyboard.up("KeyD");
     const touch = await required(contexts[1]).newCDPSession(b);
+    const slotB = (await b.getByTestId("player-slot").textContent())?.trim();
     const points = await Promise.all(
       ["up", "left", "fire"].map(async (control, i) => {
         const box = await surface(b)
           .locator('[data-control="' + control + '"]')
           .boundingBox();
         if (box === null) throw new Error("Missing touch control");
-        expect(box.width).toBeGreaterThanOrEqual(44);
+        expect(box.width).toBeGreaterThanOrEqual(48);
         return {
           id: i + 1,
           x: box.x + box.width / 2,
@@ -132,6 +162,37 @@ test("eight browsers play SVG tanks with keyboard/touch, reconnect and persist a
         return (await replays.get(replayId))?.events.map((e) => e.input);
       })
       .toContainEqual({ type: "MOVE", move: 1, turn: -1 });
+    const slid = await Promise.all(
+      ["down", "right", "fire"].map(async (control, index) => {
+        const box = required(
+          await surface(b).locator(`[data-control="${control}"]`).boundingBox(),
+        );
+        return {
+          ...required(points[index]),
+          x: box.x + box.width / 2,
+          y: box.y + box.height / 2,
+        };
+      }),
+    );
+    await touch.send("Input.dispatchTouchEvent", {
+      type: "touchMove",
+      touchPoints: slid,
+    });
+    await expect
+      .poll(async () => {
+        harness.advanceRealtimeTicks(1);
+        return (await replays.get(replayId))?.events
+          .filter((event) => event.actorSlotId === slotB)
+          .at(-1)?.input;
+      })
+      .toEqual({ type: "MOVE", move: -1, turn: 1 });
+    expect(
+      (await replays.get(replayId))?.events.filter(
+        (event) =>
+          event.actorSlotId === slotB &&
+          (event.input as { type: string }).type === "FIRE",
+      ),
+    ).toHaveLength(1);
     await touch.send("Input.dispatchTouchEvent", {
       type: "touchCancel",
       touchPoints: [],

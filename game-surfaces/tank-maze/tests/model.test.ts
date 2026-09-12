@@ -61,3 +61,35 @@ it("clamps interpolation to server snapshots", () => {
   expect(interpolate(0, 10, 2)).toBe(10);
   expect(interpolate(0, 10, -1)).toBe(0);
 });
+it("slides one contact between directions and through gaps without adopting other contacts", () => {
+  const c = new Controls();
+  expect(c.movePointer(1, "up")).toBe(false);
+  c.startPointer(1, "up");
+  c.startPointer(2, "left");
+  c.movePointer(1, "down");
+  expect(c.intent()).toEqual({ type: "MOVE", move: -1, turn: -1 });
+  c.movePointer(2, "right");
+  c.movePointer(1, null);
+  expect(c.intent()).toEqual({ type: "MOVE", move: 0, turn: 1 });
+  c.movePointer(1, "up");
+  c.endPointer(2);
+  expect(c.intent()).toEqual({ type: "MOVE", move: 1, turn: 0 });
+  expect(c.movePointer(2, "left")).toBe(false);
+});
+it("keeps same-direction contacts and keyboard input independent, and resets contact ownership", () => {
+  const c = new Controls();
+  c.press("KeyW", "up");
+  c.startPointer(1, "up");
+  c.startPointer(2, "up");
+  c.endPointer(1);
+  c.release("KeyW");
+  expect(c.intent().move).toBe(1);
+  c.press("KeyS", "down");
+  expect(c.intent().move).toBe(0);
+  c.reset();
+  expect(c.movePointer(2, "down")).toBe(false);
+  c.release("KeyS");
+  expect(c.intent()).toEqual({ type: "MOVE", move: 0, turn: 0 });
+  c.startPointer(2, "down");
+  expect(c.intent().move).toBe(-1);
+});
