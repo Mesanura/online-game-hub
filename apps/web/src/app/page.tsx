@@ -9,6 +9,7 @@ import {
 } from "@phosphor-icons/react";
 
 import { gameCatalog } from "@online-game-hub/game-registry/catalog";
+import { GameCard } from "../components/game-card";
 
 export default function HomePage() {
   return (
@@ -56,23 +57,7 @@ export default function HomePage() {
         </div>
         <div className="catalog-grid">
           {gameCatalog.map((game) => (
-            <article className="game-card clay-surface" key={game.id}>
-              <div className="game-card-icon" aria-hidden="true">
-                <GameController size={28} weight="duotone" />
-              </div>
-              <div className="game-card-meta">
-                <span>
-                  {game.minPlayers}–{game.maxPlayers} 位玩家
-                </span>
-                <span>回合制</span>
-              </div>
-              <h3>{game.title}</h3>
-              <p>{game.description}</p>
-              <Link className="card-link" href={`/games/${game.id}`}>
-                进入游戏{" "}
-                <ArrowRight size={18} weight="bold" aria-hidden="true" />
-              </Link>
-            </article>
+            <GameCard game={game} key={game.id} variant="home" />
           ))}
         </div>
       </section>

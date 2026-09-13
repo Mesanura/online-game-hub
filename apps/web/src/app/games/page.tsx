@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowLeft, ArrowRight, GameController } from "@phosphor-icons/react";
+import { ArrowLeft } from "@phosphor-icons/react";
 
 import { gameCatalog } from "@online-game-hub/game-registry/catalog";
+import { GameCard } from "../../components/game-card";
 
 export default function GamesPage() {
   return (
@@ -19,31 +20,12 @@ export default function GamesPage() {
           </Link>
           <p className="eyebrow">游戏目录</p>
           <h1>选择一款游戏</h1>
-          <p>挑一款熟悉的棋盘游戏，创建房间并邀请朋友。</p>
+          <p>从回合制棋类到实时对战，挑一款游戏，邀请朋友一起开局。</p>
         </div>
       </div>
       <div className="catalog-grid">
         {gameCatalog.map((game) => (
-          <article
-            className="game-card catalog-card clay-surface"
-            key={game.id}
-          >
-            <div className="game-card-icon" aria-hidden="true">
-              <GameController size={32} weight="duotone" />
-            </div>
-            <div className="game-card-meta">
-              <span>
-                {game.minPlayers}–{game.maxPlayers} 位玩家
-              </span>
-              <span>回合制</span>
-            </div>
-            <h2>{game.title}</h2>
-            <p>{game.description}</p>
-            <Link className="card-link" href={`/games/${game.id}`}>
-              创建或加入房间{" "}
-              <ArrowRight size={18} weight="bold" aria-hidden="true" />
-            </Link>
-          </article>
+          <GameCard game={game} key={game.id} variant="catalog" />
         ))}
       </div>
     </div>
