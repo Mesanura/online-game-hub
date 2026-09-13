@@ -374,6 +374,7 @@ describe("explicit game registry", () => {
       ["tank-maze", "1.0.0"],
       ["tank-maze", "1.1.0"],
       ["tank-maze", "1.2.0"],
+      ["tank-maze", "1.3.0"],
       ["connect-four", "1.0.0"],
       ["connect-four", "1.1.0"],
       ["gomoku", "1.0.0"],
@@ -444,18 +445,21 @@ describe("explicit game registry", () => {
   it("resolves current and historical tank maze rules with compatible Surface entrypoints", () => {
     const current = resolveCurrentRealtimeGameDefinition("tank-maze");
     const previous = resolveRealtimeGameDefinition("tank-maze", "1.0.0");
-    expect(current?.manifest.gameVersion).toBe("1.2.0");
+    expect(current?.manifest.gameVersion).toBe("1.3.0");
     expect(previous?.manifest.gameVersion).toBe("1.0.0");
     expect(previous?.step).not.toBe(current?.step);
     const intermediate = resolveRealtimeGameDefinition("tank-maze", "1.1.0");
     expect(intermediate?.manifest.gameVersion).toBe("1.1.0");
     expect(intermediate?.step).not.toBe(current?.step);
     expect(intermediate?.step).not.toBe(previous?.step);
-    for (const version of ["1.0.0", "1.1.0", "1.2.0"]) {
+    const frozen = resolveRealtimeGameDefinition("tank-maze", "1.2.0");
+    expect(frozen?.manifest.gameVersion).toBe("1.2.0");
+    expect(frozen?.step).not.toBe(current?.step);
+    for (const version of ["1.0.0", "1.1.0", "1.2.0", "1.3.0"]) {
       expect(resolveRoundSetupDefinition("tank-maze", version)).toBeDefined();
       expect(
         resolveGameSurfaceEntrypoint("tank-maze", version, "play")?.url,
-      ).toBe("/game-surfaces/tank-maze/1.1.3/play/index.html");
+      ).toBe("/game-surfaces/tank-maze/1.2.0/play/index.html");
       expect(resolveGameDeployment("tank-maze", version)?.setupProtocol).toBe(
         6,
       );
@@ -463,9 +467,9 @@ describe("explicit game registry", () => {
         resolveGameDeployment("tank-maze", version)?.presentation,
       ).toMatchObject({
         artifact: {
-          surfaceVersion: "1.1.3",
-          supportedGameVersions: ["1.0.0", "1.1.0", "1.2.0"],
-          contentDigest: "sha256-DmJbRFQzmeXrwcLuv9HT6mAMs2jtvsKtRROd5QbWYPs=",
+          surfaceVersion: "1.2.0",
+          supportedGameVersions: ["1.0.0", "1.1.0", "1.2.0", "1.3.0"],
+          contentDigest: "sha256-SxbEoeDkhZ0+lehfxctkqMdCq7k6cudoigxtsDc2sKI=",
         },
       });
       expect(

@@ -51,6 +51,8 @@ export const viewSchema = z
             weapon,
             ammo: int.nonnegative(),
             shield: int.nonnegative(),
+            shieldRadius: int.positive().optional(),
+            wallContact: z.boolean().optional(),
             normalCount: int.min(0).max(5),
           })
           .strict(),
@@ -138,3 +140,17 @@ export const setupSchema = z
   .strict();
 export type View = z.infer<typeof viewSchema>;
 export type Setup = z.infer<typeof setupSchema>;
+
+export function parseView(payload: unknown, gameVersion: string): View {
+  const view = viewSchema.parse(payload);
+  const current = gameVersion === "1.3.0";
+  if (
+    view.tanks.some((tank) =>
+      current
+        ? tank.shieldRadius === undefined || tank.wallContact === undefined
+        : tank.shieldRadius !== undefined || tank.wallContact !== undefined,
+    )
+  )
+    throw new Error("Tank projection does not match the rule version.");
+  return view;
+}

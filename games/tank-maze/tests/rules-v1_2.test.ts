@@ -5,7 +5,7 @@ import {
   nextRealtimeInt,
 } from "@online-game-hub/realtime-game-sdk";
 import {
-  tankMazeDefinition as game,
+  tankMazeDefinitionV1_2_0 as game,
   tankMazeDefinitionV1_0_0,
   tankMazeDefinitionV1_1_0,
 } from "../src/core/index.js";

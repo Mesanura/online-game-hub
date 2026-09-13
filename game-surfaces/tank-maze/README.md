@@ -18,8 +18,10 @@ W/S 或上下键前进/后退，A/D 或左右键旋转，空格按次开火、�
 
 灰色网格迷宫、彩色矢量坦克和编号辅助识别；五种道具使用居中的 40×40 SVG 图形。墙体缓存、动态节点复用，快照之间仅显示插值，重连或换图重置。
 
+`1.3.0` 按公开 `wallContact` 在车尾两侧生成黑烟，扩散后在 700ms 内消失；松开或离墙停止新增，重复快照不重复发烟。粒子有频率和总量上限，死亡、准备期、断线、重连、只读和 dispose 清理，reduced-motion 不生成。位置与贴墙转向仍完全来自权威快照。护盾按 `shieldRadius` 绘制，新版半径 36 覆盖完整炮管，`1.0.0`–`1.2.0` 保留半径 30；投影按精确规则版本检查，旧版不推断贴墙效果。
+
 准备期在战场中心显示 3、2、1。击毁触发 220ms、最多 2px 的战场轻震，同批击毁合并，重复快照不重复触发；静态 HUD 不震动。Web Audio 在首次交互解锁，可静音并限制密集叠音；reduced-motion 关闭震动、烟尾与插值。
 
 ## 验证
 
-独立 model/presentation/contract 检查严格 View/Input、版本兼容、图标中心、倒计时、轻震复位和 reduced-motion。真实八浏览器流程验证桌面/手机、键盘/多指、刷新重连、重新对局和归档；权威碰撞/寻路与多人日志由 Core/integration/golden 验证。完整门禁见 [TESTING.md](../../docs/TESTING.md)。
+独立 model/presentation/contract 检查严格 View/Input、版本兼容、图标中心、倒计时、轻震复位、黑烟去重/寿命/清理和 reduced-motion。桌面与手机横竖屏通过真实 MessageChannel 验证沿墙快照显示、烟尾、护盾几何和重连清理；真实八浏览器流程验证键盘/多指、刷新重连、重新对局和归档。权威碰撞/寻路与多人日志由 Core/integration/golden 验证。完整门禁见 [TESTING.md](../../docs/TESTING.md)。

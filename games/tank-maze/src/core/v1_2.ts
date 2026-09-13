@@ -3,12 +3,12 @@ import {
   type RealtimeGameDefinition,
   type RealtimeRngState,
 } from "@online-game-hub/realtime-game-sdk";
-import { tankMazeManifest } from "../manifest.js";
+// Frozen 1.2.0 simulation: retain its wall blocking and stationary shield sweeps.
+import { tankMazeManifestV1_2_0 } from "../manifest.js";
 import { DIRECTIONS } from "./directions.js";
-import { RADIUS, sweepCircle, sweepWall } from "./geometry.js";
-import { generateArena } from "./map.js";
+import { clear, RADIUS, sweepCircle, sweepWall } from "./geometry.js";
+import { generateArena } from "./map-v1_2.js";
 import { createMissileNavigator } from "./navigation.js";
-import { isDrivingAgainstWall, moveTanks } from "./movement.js";
 import {
   configSchema,
   inputSchema,
@@ -20,12 +20,6 @@ import {
   type Bullet,
   type PickupKind,
 } from "./schemas.js";
-export { configSchema, inputSchema } from "./schemas.js";
-export { tankMazeDefinitionV1_0_0 } from "./v1.js";
-export { tankMazeDefinitionV1_1_0 } from "./v1_1.js";
-export { tankMazeDefinitionV1_2_0 } from "./v1_2.js";
-export type { State, Config, Input, Outcome } from "./schemas.js";
-const SHIELD_RADIUS = 36000;
 const unit = (angle: number) =>
   required(DIRECTIONS[((angle % 720) + 720) % 720]);
 const vector = (angle: number, speed: number) => {
@@ -123,6 +117,95 @@ function resetBout(s: State, source: RealtimeRngState): RealtimeRngState {
   s.nextPickup = 300;
   s.bout++;
   return rng;
+}
+function moveTanks(s: State): void {
+  const live = s.tanks.filter((t) => t.alive);
+  const desired = live.map((t) => {
+    if (t.lease > 0) t.lease--;
+    else {
+      t.move = 0;
+      t.turn = 0;
+    }
+    // Distribute 48 half-degree steps over five ticks: exactly one turn in 75 ticks.
+    const turnPhase = (s.tick - 1) % 5;
+    const rotation =
+      Math.floor(((turnPhase + 1) * 48) / 5) - Math.floor((turnPhase * 48) / 5);
+    t.angle = (t.angle + t.turn * rotation + 720) % 720;
+    return vector(t.angle, t.move === 1 ? 2000 : t.move === -1 ? -2000 : 0);
+  });
+  // Resolve connected contact groups simultaneously; stationary tanks are pushed,
+  // opposing drivers cancel. No slot gets first-writer priority.
+  const roots = live.map((_, i) => i);
+  const root = (i: number): number => {
+    while (roots[i] !== i) i = required(roots[i]);
+    return i;
+  };
+  for (let pass = 0; pass < live.length; pass++) {
+    const proposals = live.map((_, i) => {
+      const members = live.map((__, j) => j).filter((j) => root(j) === root(i));
+      const drivers = members.filter(
+        (j) => required(desired[j])[0] !== 0 || required(desired[j])[1] !== 0,
+      );
+      return drivers.length === 0
+        ? [0, 0]
+        : [
+            Math.round(
+              drivers.reduce((a, j) => a + required(desired[j])[0], 0) /
+                drivers.length,
+            ),
+            Math.round(
+              drivers.reduce((a, j) => a + required(desired[j])[1], 0) /
+                drivers.length,
+            ),
+          ];
+    });
+    let merged = false;
+    for (let i = 0; i < live.length; i++)
+      for (let j = i + 1; j < live.length; j++) {
+        if (root(i) === root(j)) continue;
+        const a = required(live[i]),
+          b = required(live[j]),
+          da = required(proposals[i]),
+          db = required(proposals[j]);
+        if (
+          (a.x + required(da[0]) - b.x - required(db[0])) ** 2 +
+            (a.y + required(da[1]) - b.y - required(db[1])) ** 2 <
+          (2 * RADIUS) ** 2
+        ) {
+          roots[root(j)] = root(i);
+          merged = true;
+        }
+      }
+    if (!merged) break;
+  }
+  for (const group of new Set(live.map((_, i) => root(i)))) {
+    const members = live.map((_, i) => i).filter((i) => root(i) === group),
+      drivers = members.filter((i) => required(live[i]).move !== 0);
+    if (drivers.length === 0) continue;
+    const dx = Math.round(
+        drivers.reduce((a, i) => a + required(desired[i])[0], 0) /
+          drivers.length,
+      ),
+      dy = Math.round(
+        drivers.reduce((a, i) => a + required(desired[i])[1], 0) /
+          drivers.length,
+      );
+    if (
+      members.every((i) =>
+        clear(
+          required(live[i]).x + dx,
+          required(live[i]).y + dy,
+          RADIUS,
+          s.arena.walls,
+        ),
+      )
+    ) {
+      for (const i of members) {
+        required(live[i]).x += dx;
+        required(live[i]).y += dy;
+      }
+    }
+  }
 }
 function fire(s: State, t: Tank): void {
   const kind = t.weapon;
@@ -237,7 +320,6 @@ function advanceBullet(
   live: Tank[],
   hits: Set<string>,
   navigate: MissileNavigator,
-  origins: ReadonlyMap<string, { x: number; y: number }> | null,
 ): boolean {
   seek(s, b, navigate);
   let remaining = 1;
@@ -260,43 +342,16 @@ function advanceBullet(
       }
     }
     for (const t of live) {
-      // Sweep against the tank's trajectory, not just its already-moved endpoint.
-      // Otherwise an advancing shield can swallow an outside bullet before detection.
-      const origin = origins?.get(t.slotId) ?? t;
-      const tx = t.x - origin.x,
-        ty = t.y - origin.y;
-      const cx = origin.x + tx * (1 - remaining);
-      const cy = origin.y + ty * (1 - remaining);
-      const relativeX = dx - tx * remaining;
-      const relativeY = dy - ty * remaining;
-      const outside =
-        (b.x - cx) ** 2 + (b.y - cy) ** 2 >= (SHIELD_RADIUS + b.radius) ** 2;
-      const approaching = (b.x - cx) * relativeX + (b.y - cy) * relativeY < 0;
-      if (t.shield > 0 && outside && approaching) {
-        const h = sweepCircle(
-          b.x,
-          b.y,
-          relativeX,
-          relativeY,
-          cx,
-          cy,
-          SHIELD_RADIUS + b.radius,
-        );
+      const outside = distance(b, t) > (30000 + b.radius) ** 2;
+      if (t.shield > 0 && outside) {
+        const h = sweepCircle(b.x, b.y, dx, dy, t.x, t.y, 30000 + b.radius);
         if (h !== null && h < nearest) {
           nearest = h;
           shield = t;
           hit = null;
         }
       }
-      const h = sweepCircle(
-        b.x,
-        b.y,
-        relativeX,
-        relativeY,
-        cx,
-        cy,
-        RADIUS + b.radius,
-      );
+      const h = sweepCircle(b.x, b.y, dx, dy, t.x, t.y, RADIUS + b.radius);
       if (h !== null && h < nearest) {
         nearest = h;
         hit = t;
@@ -316,33 +371,14 @@ function advanceBullet(
       return false;
     }
     if (shield !== null) {
-      const origin = origins?.get(shield.slotId) ?? shield;
-      const tx = shield.x - origin.x,
-        ty = shield.y - origin.y;
-      const time = 1 - remaining + remaining * nearest;
-      const cx = origin.x + tx * time,
-        cy = origin.y + ty * time;
-      const length = Math.hypot(b.x - cx, b.y - cy);
-      const sx = (b.x - cx) / length,
-        sy = (b.y - cy) / length;
-      const speed = Math.hypot(b.vx, b.vy);
-      const dot = (b.vx - tx) * sx + (b.vy - ty) * sy;
-      const rx = b.vx - 2 * dot * sx,
-        ry = b.vy - 2 * dot * sy;
-      // Reflect in the shield frame without accelerating the ammunition. The
-      // outgoing normal component must also clear the moving shield surface.
-      const scale = speed / Math.max(1, Math.hypot(rx, ry));
-      const normal = Math.min(
-        speed,
-        Math.max((rx * sx + ry * sy) * scale, tx * sx + ty * sy),
-      );
-      const tangent =
-        Math.sqrt(Math.max(0, speed * speed - normal * normal)) *
-        Math.sign(ry * sx - rx * sy);
-      b.vx = Math.round(normal * sx - tangent * sy);
-      b.vy = Math.round(normal * sy + tangent * sx);
-      b.x = Math.round(cx + sx * (SHIELD_RADIUS + b.radius + 4));
-      b.y = Math.round(cy + sy * (SHIELD_RADIUS + b.radius + 4));
+      const sx = b.x - shield.x,
+        sy = b.y - shield.y,
+        norm = sx * sx + sy * sy;
+      const dot = b.vx * sx + b.vy * sy;
+      b.vx = Math.round(b.vx - (2 * dot * sx) / norm);
+      b.vy = Math.round(b.vy - (2 * dot * sy) / norm);
+      b.x += Math.sign(sx) * 4;
+      b.y += Math.sign(sy) * 4;
     } else {
       if (nx !== 0) b.vx = -b.vx;
       if (ny !== 0) b.vy = -b.vy;
@@ -451,8 +487,8 @@ function aims(state: Readonly<State>) {
       return { slotId: t.slotId, points };
     });
 }
-export const tankMazeDefinition = {
-  manifest: tankMazeManifest,
+export const tankMazeDefinitionV1_2_0 = {
+  manifest: tankMazeManifestV1_2_0,
   configSchema,
   inputSchema,
   createInitialState({ config, players, rng }) {
@@ -535,23 +571,13 @@ export const tankMazeDefinition = {
     }
     s.elapsed++;
     for (const t of s.tanks) if (t.shield > 0) t.shield--;
-    const origins = new Map(s.tanks.map((t) => [t.slotId, { x: t.x, y: t.y }]));
-    const existingBullets = new Set(s.bullets.map((b) => b.id));
     moveTanks(s);
     for (const t of shots) if (t.alive) fire(s, t);
     const live = s.tanks.filter((t) => t.alive),
       hits = new Set<string>();
     const navigate = createMissileNavigator(s.arena);
     s.bullets = s.bullets.filter((b) =>
-      // New shots originate after movement; they retain legitimate shield-inside self-hits.
-      advanceBullet(
-        s,
-        b,
-        live,
-        hits,
-        navigate,
-        existingBullets.has(b.id) ? origins : null,
-      ),
+      advanceBullet(s, b, live, hits, navigate),
     );
     for (const t of live)
       if (hits.has(t.slotId)) {
@@ -624,10 +650,6 @@ export const tankMazeDefinition = {
         weapon: t.weapon,
         ammo: t.ammo,
         shield: t.shield,
-        shieldRadius: SHIELD_RADIUS,
-        wallContact:
-          (state.phase === "ACTIVE" || state.phase === "LAST") &&
-          isDrivingAgainstWall(t, state.arena.walls),
         normalCount: state.bullets.filter(
           (b) => b.owner === t.slotId && b.kind === "normal",
         ).length,
@@ -658,11 +680,7 @@ type View = {
   selfSlotId: string;
   config: Pick<Config, "playerCount" | "targetScore">;
   arena: Pick<State["arena"], "width" | "height" | "walls">;
-  tanks: (Omit<Tank, "move" | "turn" | "lease"> & {
-    normalCount: number;
-    shieldRadius: number;
-    wallContact: boolean;
-  })[];
+  tanks: (Omit<Tank, "move" | "turn" | "lease"> & { normalCount: number })[];
   aims: ReturnType<typeof aims>;
   bullets: Bullet[];
   pickups: State["pickups"];

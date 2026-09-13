@@ -1098,7 +1098,7 @@ describe.sequential("tank maze multiplayer Protocol V6", () => {
         }
         expect(required(inboxes[0]).lifecycle.at(-1)?.players).toHaveLength(8);
         expect(required(inboxes[0]).connected[0]).toMatchObject({
-          gameVersion: "1.2.0",
+          gameVersion: "1.3.0",
         });
         if (count === 8)
           await expect(
@@ -1155,7 +1155,7 @@ describe.sequential("tank maze multiplayer Protocol V6", () => {
           () => required(inboxes[0]).snapshots.at(-1)?.tick === 181,
         );
         const record = await replayStore.get("tank-replay-1");
-        expect(record?.header.gameVersion).toBe("1.2.0");
+        expect(record?.header.gameVersion).toBe("1.3.0");
         expect(record?.events).toHaveLength(2);
         const projected = required(required(inboxes[0]).snapshots.at(-1))
           .view as {
@@ -1224,7 +1224,7 @@ describe.sequential("tank maze multiplayer Protocol V6", () => {
         expect(archive.created).toHaveLength(2);
         expect(
           (await replayStore.get("tank-replay-2"))?.header.gameVersion,
-        ).toBe("1.2.0");
+        ).toBe("1.3.0");
         expect(archive.created[1]?.currentRound?.playerOrder).toHaveLength(
           count,
         );

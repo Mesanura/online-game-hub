@@ -27,7 +27,12 @@ export const tankMazeManifestV1_1_0 = Object.freeze({
   gameVersion: defineRealtimeGameVersion("1.1.0"),
 }) satisfies RealtimeGameManifest;
 
-export const tankMazeManifest = Object.freeze({
+export const tankMazeManifestV1_2_0 = Object.freeze({
   ...tankMazeManifestV1_1_0,
   gameVersion: defineRealtimeGameVersion("1.2.0"),
+}) satisfies RealtimeGameManifest;
+
+export const tankMazeManifest = Object.freeze({
+  ...tankMazeManifestV1_2_0,
+  gameVersion: defineRealtimeGameVersion("1.3.0"),
 }) satisfies RealtimeGameManifest;

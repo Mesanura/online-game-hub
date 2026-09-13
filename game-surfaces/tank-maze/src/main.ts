@@ -2,7 +2,7 @@ import {
   GameSurfaceBridge,
   type HostSurfaceMessage,
 } from "@online-game-hub/game-surface-bridge";
-import { viewSchema, setupSchema, type View, type Setup } from "./contracts";
+import { parseView, setupSchema, type View, type Setup } from "./contracts";
 import {
   COLORS,
   COLOR_NAMES,
@@ -15,6 +15,7 @@ import {
 } from "./model";
 import { TankAudio } from "./audio";
 import { hasNewHit, pickupSymbol } from "./presentation";
+import { WallSmoke } from "./wall-smoke";
 import surfaceConfig from "../surface.config.json";
 import { setupNotice, replaceSetupContents } from "./setup-ui";
 import { renderSetupView } from "./setup-presentation";
@@ -51,6 +52,7 @@ let arenaKey = "";
 let lastMove = controls.intent();
 let shakeAnimation: Animation | null = null;
 const trails = new Map<number, { x: number; y: number }[]>();
+const wallSmoke = new WallSmoke();
 const explosions = new Map<number, { x: number; y: number; until: number }>();
 const p = (n: number) => n / 1000;
 function notice(text: string) {
@@ -225,7 +227,7 @@ function draw(now: number) {
     if (key !== arenaKey) {
       arenaKey = key;
       svg.innerHTML =
-        '<defs><pattern id="floor" width="200" height="200" patternUnits="userSpaceOnUse"><rect width="200" height="200" fill="#e8e8e5"/><path d="M0 0H100V100H0ZM100 100H200V200H100Z" fill="#dededb"/></pattern></defs><rect width="100%" height="100%" fill="url(#floor)"/>' +
+        '<defs><pattern id="floor" width="200" height="200" patternUnits="userSpaceOnUse"><rect width="200" height="200" fill="#e8e8e5"/><path d="M0 0H100V100H0ZM100 100H200V200H100Z" fill="#dededb"/></pattern><radialGradient id="wall-smoke"><stop stop-color="#202321" stop-opacity=".9"/><stop offset=".5" stop-color="#303330" stop-opacity=".65"/><stop offset="1" stop-color="#303330" stop-opacity="0"/></radialGradient></defs><rect width="100%" height="100%" fill="url(#floor)"/>' +
         v.arena.walls
           .map(
             (w) =>
@@ -242,7 +244,7 @@ function draw(now: number) {
           .join("") +
         '<g id="dynamic"></g>';
     }
-    let html = "";
+    let html = init?.reducedMotion ? "" : wallSmoke.render(now);
     const nowTick = v.tick;
     for (const [id, fx] of explosions)
       if (fx.until <= nowTick) explosions.delete(id);
@@ -341,10 +343,19 @@ function draw(now: number) {
       const angle = old
         ? (old.angle + (((t.angle - old.angle + 1080) % 720) - 360) * alpha) / 2
         : t.angle / 2;
-      html += '<g transform="translate(' + x + " " + y + ')">';
+      html +=
+        '<g data-tank="' +
+        v.tanks.indexOf(t) +
+        '" transform="translate(' +
+        x +
+        " " +
+        y +
+        ')">';
       if (t.shield > 0)
         html +=
-          '<circle r="30" fill="#75e5ec" fill-opacity=".23" stroke="#50d6e4" stroke-opacity=".7" stroke-width="2"/>';
+          '<circle data-shield="" r="' +
+          p(t.shieldRadius ?? 30000) +
+          '" fill="#75e5ec" fill-opacity=".23" stroke="#50d6e4" stroke-opacity=".7" stroke-width="2"/>';
       if (t.slotId === v.selfSlotId)
         html +=
           '<circle r="24" fill="none" stroke="#fff" stroke-width="1.6" stroke-dasharray="3 4"/>';
@@ -453,7 +464,7 @@ function handle(message: HostSurfaceMessage) {
         setup = setupSchema.parse(message.payload);
         renderSetup();
       } else {
-        const next = viewSchema.parse(message.payload);
+        const next = parseView(message.payload, init.gameVersion);
         const wasHit =
           oldHost?.roundNumber === message.roundNumber &&
           oldHost.connectionState === "connected" &&
@@ -468,12 +479,21 @@ function handle(message: HostSurfaceMessage) {
           previous = null;
           trails.clear();
           explosions.clear();
+          wallSmoke.reset();
           shakeAnimation?.cancel();
           lastEvent = 0;
           resetControls();
         } else if (next.tick !== view?.tick) previous = view;
         if (next.tick !== view?.tick || reset) received = performance.now();
         view = next;
+        if (
+          reset ||
+          message.connectionState !== "connected" ||
+          message.readOnly ||
+          document.hidden
+        )
+          wallSmoke.reset();
+        else wallSmoke.update(next, performance.now(), !init.reducedMotion);
         if (!document.getElementById("arena")) mountPlay();
         if (!canMove()) release();
         for (const b of next.bullets.filter((b) => b.kind === "missile")) {
@@ -539,6 +559,7 @@ function handle(message: HostSurfaceMessage) {
   disposed = true;
   pendingSetup = null;
   shakeAnimation?.cancel();
+  wallSmoke.reset();
   resetControls();
   audio.close();
   clearInterval(heartbeat);
@@ -713,7 +734,10 @@ window.addEventListener("blur", release, { signal: listeners.signal });
 document.addEventListener(
   "visibilitychange",
   () => {
-    if (document.hidden) release();
+    if (document.hidden) {
+      release();
+      wallSmoke.reset();
+    }
   },
   { signal: listeners.signal },
 );
@@ -723,6 +747,7 @@ window.addEventListener(
     release();
     disposed = true;
     shakeAnimation?.cancel();
+    wallSmoke.reset();
     clearInterval(heartbeat);
     audio.close();
     bridge.dispose();

@@ -109,7 +109,7 @@ describe("tank maze authoritative rules", () => {
     });
     expect(result.state.tanks[0]?.angle).toBe(5);
     expect(tankMazeDefinitionV1_0_0.manifest.gameVersion).toBe("1.0.0");
-    expect(game.manifest.gameVersion).toBe("1.2.0");
+    expect(game.manifest.gameVersion).toBe("1.3.0");
   });
   it("refreshes the independent shield and replaces only the special weapon slot", () => {
     let c = active();
@@ -251,17 +251,22 @@ describe("tank maze authoritative rules", () => {
     c = step(c);
     expect(required(c.state.tanks[0]).x).toBe(x);
   });
-  it("pushes a stationary chain and blocks the whole group at a wall", () => {
+  it("pushes a stationary chain up to wall contact and then blocks the group", () => {
     let c = active(3);
     c.state.tanks.forEach((t, i) => {
       t.x = 100000 + 38000 * i;
     });
     c = step(c, [{ slotId: "p0", input: { type: "MOVE", move: 1, turn: 0 } }]);
     expect(c.state.tanks.map((t) => t.x)).toEqual([102000, 140000, 178000]);
-    c.state.arena.walls.push({ x: 196501, y: 200000, w: 8000, h: 200000 });
+    c.state.arena.walls.push({ x: 197501, y: 200000, w: 8000, h: 200000 });
     const positions = c.state.tanks.map((t) => t.x);
     c = step(c);
-    expect(c.state.tanks.map((t) => t.x)).toEqual(positions);
+    expect(c.state.tanks.map((t) => t.x)).toEqual(
+      positions.map((x) => x + 500),
+    );
+    expect(step(c).state.tanks.map((t) => t.x)).toEqual(
+      c.state.tanks.map((t) => t.x),
+    );
   });
   it("opposing push cancels without slot priority", () => {
     const c = active();
@@ -283,7 +288,7 @@ describe("tank maze authoritative rules", () => {
     ] as const) {
       const c = active();
       required(c.state.tanks[0]).shield = 600;
-      c.state.bullets = [bullet({ kind, x: 135000, y: 300000, vx: -10000 })];
+      c.state.bullets = [bullet({ kind, x: 141000, y: 300000, vx: -10000 })];
       const n = step(c);
       expect(required(n.state.tanks[0]).alive).toBe(true);
       expect(required(n.state.bullets[0]).vx).toBeGreaterThan(0);

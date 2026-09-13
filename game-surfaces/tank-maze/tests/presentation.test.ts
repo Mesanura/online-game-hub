@@ -1,6 +1,7 @@
 import { expect, it } from "vitest";
-import type { View } from "../src/contracts";
+import { parseView, type View } from "../src/contracts";
 import { hasNewHit } from "../src/presentation";
+import { WallSmoke } from "../src/wall-smoke";
 
 const tank = (slotId: string): View["tanks"][number] => ({
   slotId,
@@ -66,4 +67,95 @@ it("detects a skipped final elimination across a bout change without confusing s
   expect(hasNewHit(previous, next, 0)).toBe(true);
   previous.phase = "PREPARE";
   expect(hasNewHit(previous, next, 0)).toBe(false);
+});
+
+it("emits black exhaust only for confirmed contact, once per snapshot, behind both tracks", () => {
+  const smoke = new WallSmoke();
+  const next = frame();
+  smoke.update(next, 0, true);
+  expect(smoke.sample(0)).toEqual([]);
+  next.tick += 3;
+  next.tanks[0] = { ...tank("p0"), x: 100000, y: 100000, wallContact: true };
+  smoke.update(next, 50, true);
+  const emitted = smoke.sample(50);
+  expect(emitted).toHaveLength(2);
+  expect(emitted.every((puff) => puff.x < 100)).toBe(true);
+  expect(emitted[0]?.y).toBeLessThan(100);
+  expect(emitted[1]?.y).toBeGreaterThan(100);
+  smoke.update(next, 60, true);
+  expect(smoke.sample(60)).toHaveLength(2);
+  next.tick += 3;
+  next.tanks = next.tanks.map((value) => ({ ...value, wallContact: false }));
+  smoke.update(next, 100, true);
+  const fading = smoke.sample(400);
+  expect(fading).toHaveLength(2);
+  expect(fading[0]?.radius).toBeGreaterThan(emitted[0]?.radius ?? Infinity);
+  expect(fading[0]?.opacity).toBeLessThan(emitted[0]?.opacity ?? 0);
+  expect(smoke.render(750)).toBe("");
+});
+
+it("bounds exhaust and clears it for death, preparation, reconnect reset and reduced motion", () => {
+  const smoke = new WallSmoke();
+  const next = frame();
+  next.tanks = Array.from({ length: 8 }, (_, i) => ({
+    ...tank(`p${i}`),
+    wallContact: true,
+  }));
+  for (let i = 0; i < 60; i++) {
+    next.tick += 3;
+    smoke.update(next, i, true);
+  }
+  expect(smoke.sample(60).length).toBeLessThanOrEqual(256);
+  next.tanks = next.tanks.map((value) => ({ ...value, alive: false }));
+  smoke.update(next, 60, true);
+  expect(smoke.sample(60)).toEqual([]);
+  next.tanks = next.tanks.map((value) => ({ ...value, alive: true }));
+  for (const reason of ["prepare", "reset", "reduced"]) {
+    next.tick += 3;
+    next.phase = "ACTIVE";
+    smoke.update(next, 100, true);
+    expect(smoke.sample(100).length).toBeGreaterThan(0);
+    if (reason === "reset") smoke.reset();
+    else {
+      if (reason === "prepare") next.phase = "PREPARE";
+      smoke.update(next, 100, reason !== "reduced");
+    }
+    expect(smoke.render(100)).toBe("");
+  }
+});
+
+it("strictly separates legacy projections from the current shield/contact feedback", () => {
+  const legacy = {
+    ...frame(),
+    selfSlotId: "p0",
+    config: { playerCount: 2, targetScore: 5 },
+    arena: { width: 600000, height: 500000, walls: [] },
+    bullets: [],
+    pickups: [],
+    aims: [],
+    phaseTicks: 0,
+    outcome: null,
+  };
+  for (const version of ["1.0.0", "1.1.0", "1.2.0"])
+    expect(parseView(legacy, version)).toEqual(legacy);
+  expect(() => parseView(legacy, "1.3.0")).toThrow();
+  const current = {
+    ...legacy,
+    tanks: legacy.tanks.map((value) => ({
+      ...value,
+      wallContact: true,
+      shieldRadius: 36000,
+    })),
+  };
+  expect(parseView(current, "1.3.0")).toEqual(current);
+  expect(() => parseView(current, "1.2.0")).toThrow();
+  expect(() =>
+    parseView(
+      {
+        ...current,
+        tanks: current.tanks.map((value) => ({ ...value, lease: 30 })),
+      },
+      "1.3.0",
+    ),
+  ).toThrow();
 });
