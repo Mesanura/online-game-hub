@@ -366,7 +366,7 @@ for (const entry of cases) {
   });
 }
 
-for (const gameVersion of ["1.0.0", "1.1.0", "1.2.0"]) {
+for (const gameVersion of ["1.0.0", "1.1.0", "1.2.0", "1.3.0"]) {
   test(`badminton ${gameVersion} Setup explains its exact serving rule`, async ({
     page,
   }) => {

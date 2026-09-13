@@ -179,9 +179,9 @@ export type PlayIntent = z.infer<typeof playIntentSchema>;
 export type ControlIntent = Extract<PlayIntent, { type: "CONTROL" }>;
 
 export function parsePlayView(input: unknown, gameVersion: string): PlayView {
-  if (gameVersion === "1.1.0" || gameVersion === "1.2.0") {
+  if (["1.1.0", "1.2.0", "1.3.0"].includes(gameVersion)) {
     const view = playViewSchema.parse(input);
-    if (view.court.netTop !== (gameVersion === "1.2.0" ? 370_000 : 340_000))
+    if (view.court.netTop !== (gameVersion === "1.1.0" ? 340_000 : 370_000))
       throw new Error("Badminton court does not match the exact version.");
     return view;
   }
@@ -210,7 +210,7 @@ export function encodePlayIntent(
   input: PlayIntent,
   gameVersion: string,
 ): unknown {
-  if (gameVersion === "1.1.0" || gameVersion === "1.2.0")
+  if (["1.1.0", "1.2.0", "1.3.0"].includes(gameVersion))
     return playIntentSchema.parse(input);
   if (gameVersion !== "1.0.0")
     throw new Error("Unsupported badminton version.");

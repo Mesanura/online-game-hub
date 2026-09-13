@@ -254,7 +254,7 @@ const chineseCheckersSurface = (
   });
 
 const badmintonSurface = (
-  gameVersion: "1.0.0" | "1.1.0" | "1.2.0",
+  gameVersion: "1.0.0" | "1.1.0" | "1.2.0" | "1.3.0",
 ): GameDeploymentRegistration =>
   Object.freeze({
     gameId: "badminton",
@@ -263,16 +263,16 @@ const badmintonSurface = (
     platformControls: resignPlatformControls,
     presentation: Object.freeze({
       kind: "surface-v1",
-      publicBasePath: "/game-surfaces/badminton/1.2.6",
+      publicBasePath: "/game-surfaces/badminton/1.3.0",
       artifact: {
         schemaVersion: 1,
         gameId: "badminton",
-        supportedGameVersions: ["1.0.0", "1.1.0", "1.2.0"],
-        surfaceVersion: "1.2.6",
+        supportedGameVersions: ["1.0.0", "1.1.0", "1.2.0", "1.3.0"],
+        surfaceVersion: "1.3.0",
         bridgeVersion: 2,
         entrypoints: { setup: "setup/index.html", play: "play/index.html" },
         capabilities: {},
-        contentDigest: "sha256-56adrib5MXocEiIgOlAD5mr4BfaEsaz5XAu9Naw5sXc=",
+        contentDigest: "sha256-ZxtYAEYKnfCIthqE6I64EFQgh0PkpGYiqNjWiKTFjkw=",
       } satisfies SurfaceArtifactManifestV1,
     }),
   });
@@ -343,6 +343,7 @@ const gameDeployments = Object.freeze([
   badmintonSurface("1.0.0"),
   badmintonSurface("1.1.0"),
   badmintonSurface("1.2.0"),
+  badmintonSurface("1.3.0"),
 ]) satisfies readonly GameDeploymentRegistration[];
 
 export function resolveGameDeployment(

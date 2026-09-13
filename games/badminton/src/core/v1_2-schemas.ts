@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { COURT, PHYSICS, scoreLimit } from "../constants.js";
+import { COURT, PHYSICS, scoreLimit } from "../v1/constants-v1_2.js";
 
 const integer = z.number().int();
 const slot = z.string().min(1).max(128);
@@ -45,7 +45,7 @@ const athlete = z
     serveHeld: z.boolean(),
     moving: z.boolean(),
     swingTicks: integer.min(0).max(PHYSICS.serveSwingDuration),
-    cooldown: integer.min(0).max(PHYSICS.smashRecovery),
+    cooldown: integer.min(0).max(PHYSICS.swingCooldown),
     swingShot: shot,
     hitThisSwing: z.boolean(),
     swingKind: z.enum(["OVERHEAD", "UNDERHAND", "SERVE"]).nullable(),

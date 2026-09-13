@@ -293,7 +293,7 @@ test("two accounts play badminton with keyboard and multitouch, reconnect, finis
     await expect(pageA.getByTestId("connection-state")).toHaveText("已连接");
     await expect(pageA.getByTestId("game-surface-iframe")).toHaveAttribute(
       "src",
-      "/game-surfaces/badminton/1.2.6/setup/index.html",
+      "/game-surfaces/badminton/1.3.0/setup/index.html",
     );
     const inviteUrl = await pageA
       .getByTestId("invite-link")
@@ -304,6 +304,10 @@ test("two accounts play badminton with keyboard and multitouch, reconnect, finis
     await pageB.goto(inviteUrl);
     await expect(pageB.getByTestId("connection-state")).toHaveText("已连接");
     await expect(surface(pageB).locator('[data-score="11"]')).toBeDisabled();
+    for (const page of [pageA, pageB])
+      await expect(surface(page).getByTestId("net-play-rules")).toContainText(
+        "高挑后场迫使回退",
+      );
     await pageA.getByTestId("toggle-round-ready").click();
     await expect(pageA.getByTestId("toggle-round-ready")).toHaveText(
       "取消准备",
@@ -328,7 +332,7 @@ test("two accounts play badminton with keyboard and multitouch, reconnect, finis
       await expect(page.getByTestId("match-status")).toHaveText("对局进行中");
       await expect(page.getByTestId("game-surface-iframe")).toHaveAttribute(
         "src",
-        "/game-surfaces/badminton/1.2.6/play/index.html",
+        "/game-surfaces/badminton/1.3.0/play/index.html",
       );
       await expectCourt(page);
     }
@@ -553,7 +557,7 @@ test("two accounts play badminton with keyboard and multitouch, reconnect, finis
     await sound.click();
     await expect(sound).toHaveAttribute("aria-pressed", "false");
     await sound.click();
-    await advance(pageA, 100);
+    await advance(pageA, 120);
     const firstScore = await score(pageA);
     expect(firstScore[0] + firstScore[1]).toBeGreaterThan(0);
     await expect.poll(() => score(pageB)).toEqual(firstScore);
@@ -579,7 +583,8 @@ test("two accounts play badminton with keyboard and multitouch, reconnect, finis
         .locator("#root")
         .getAttribute("data-phase");
       if (phase === "SERVE") await serve(resumed);
-      await advance(resumed, 176);
+      // Allow the height-dependent clear and the 90-tick point pause to finish.
+      await advance(resumed, 210);
     }
     await expect(resumed.getByTestId("match-status")).toHaveText("对局已完成");
     await expect(pageB.getByTestId("match-status")).toHaveText("对局已完成");
@@ -590,6 +595,7 @@ test("two accounts play badminton with keyboard and multitouch, reconnect, finis
     expect(Math.max(...finalScore)).toBe(7);
     await expect.poll(() => score(pageB)).toEqual(finalScore);
     const completedReplay = await replayStore.get(replayId);
+    expect(completedReplay?.header.gameVersion).toBe("1.3.0");
     expect(completedReplay?.recordedRngCursor).toBe(0);
     expect(
       verifyRealtimeReplay(completedReplay, resolveRealtimeGameDefinition),

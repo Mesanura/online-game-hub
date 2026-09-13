@@ -5,9 +5,8 @@ import type {
   RealtimeRngState,
 } from "@online-game-hub/realtime-game-sdk";
 
-import { COURT, PHYSICS, scoreLimit } from "../constants.js";
-import { badmintonManifest } from "../manifest.js";
-import { hitsNet, planShot, shotDrag, verticalStep } from "./shots.js";
+import { COURT, PHYSICS, scoreLimit } from "../v1/constants-v1_2.js";
+import { badmintonManifest } from "../v1/manifest-v1_2.js";
 import {
   badmintonConfigSchema,
   badmintonInputSchema,
@@ -18,18 +17,17 @@ import {
   type BadmintonOutcome,
   type BadmintonSide,
   type BadmintonState,
-} from "./schemas.js";
+} from "./v1_2-schemas.js";
 
-export { COURT, PHYSICS, scoreLimit } from "../constants.js";
+export { COURT, PHYSICS, scoreLimit } from "../v1/constants-v1_2.js";
 export { badmintonDefinitionV1_0_0 } from "./v1.js";
 export { badmintonDefinitionV1_1_0 } from "./v1_1.js";
-export { badmintonDefinitionV1_2_0 } from "./v1_2.js";
 export {
   badmintonConfigSchema,
   badmintonInputSchema,
   badmintonStateSchema,
   badmintonOutcomeSchema,
-} from "./schemas.js";
+} from "./v1_2-schemas.js";
 export type {
   BadmintonConfig,
   BadmintonControls,
@@ -37,7 +35,7 @@ export type {
   BadmintonOutcome,
   BadmintonState,
   BadmintonSide,
-} from "./schemas.js";
+} from "./v1_2-schemas.js";
 
 function freeze<T>(value: T): T {
   if (value !== null && typeof value === "object") {
@@ -251,6 +249,47 @@ function moveAthletes(state: BadmintonState): void {
   }
 }
 
+// Solve the horizontal launch speed against the exact integer drag steps.
+// The client supplies only a shot choice; it never chooses a trajectory.
+function horizontalVelocity(distance: number, ticks: number): number {
+  let low = 0;
+  let high = 30_000;
+  const target = Math.abs(distance);
+  while (low < high) {
+    const candidate = Math.floor((low + high) / 2);
+    let velocity = candidate;
+    let travel = 0;
+    for (let tick = 0; tick < ticks; tick += 1) {
+      velocity = Math.trunc((velocity * PHYSICS.dragNumerator) / 1000);
+      travel += velocity;
+    }
+    if (travel < target) low = candidate + 1;
+    else high = candidate;
+  }
+  return distance < 0 ? -low : low;
+}
+
+function verticalVelocity(distance: number, ticks: number): number {
+  let low = -30_000;
+  let high: number = PHYSICS.maxFallSpeed;
+  while (low < high) {
+    const candidate = Math.floor((low + high) / 2);
+    let velocity = candidate;
+    let travel = 0;
+    for (let tick = 0; tick < ticks; tick += 1) {
+      velocity = Math.min(
+        PHYSICS.maxFallSpeed,
+        Math.trunc((velocity * PHYSICS.verticalDragNumerator) / 1000) +
+          PHYSICS.shuttleGravity,
+      );
+      travel += velocity;
+    }
+    if (travel < distance) low = candidate + 1;
+    else high = candidate;
+  }
+  return low;
+}
+
 function strike(
   state: BadmintonState,
   side: BadmintonSide,
@@ -262,15 +301,35 @@ function strike(
       state.shuttle.y > player.y - PHYSICS.underhandHeight
         ? "UNDERHAND"
         : "OVERHEAD";
-  const { shot, velocityX, velocityY } = planShot(state, side, serving);
-  state.shuttle.velocityX = velocityX;
-  state.shuttle.velocityY = velocityY;
+  const shot = serving
+    ? "CLEAR"
+    : player.swingShot === "SMASH" &&
+        (player.swingKind === "UNDERHAND" ||
+          player.y > COURT.ground - 45_000 ||
+          state.shuttle.y > COURT.netTop - 30_000)
+      ? "CLEAR"
+      : player.swingShot === "DROP"
+        ? "DROP"
+        : player.swingShot === "SMASH"
+          ? "SMASH"
+          : "CLEAR";
+  const flightTicks = shot === "SMASH" ? 26 : shot === "DROP" ? 68 : 86;
+  const target =
+    shot === "DROP" ? 620_000 : shot === "SMASH" ? 770_000 : 830_000;
+  const targetX = side === 0 ? target : COURT.width - target;
+  state.shuttle.velocityX = horizontalVelocity(
+    targetX - state.shuttle.x,
+    flightTicks,
+  );
+  state.shuttle.velocityY = verticalVelocity(
+    COURT.ground - COURT.shuttleRadius - state.shuttle.y,
+    flightTicks,
+  );
   state.shuttle.lastHit = side;
   state.rallyHits += 1;
   state.bestRally = Math.max(state.bestRally, state.rallyHits);
   player.hitThisSwing = true;
   player.swingShot = shot;
-  if (shot === "SMASH") player.cooldown = PHYSICS.smashRecovery;
   player.lastContact = {
     tick: state.tick,
     x: state.shuttle.x,
@@ -326,16 +385,29 @@ function awardPoint(
   state.phaseTicks = state.phase === "POINT" ? PHYSICS.pointDelay : 0;
 }
 
+function hitsNet(x0: number, y0: number, x1: number, y1: number): boolean {
+  const padding = COURT.shuttleRadius + COURT.netWidth / 2;
+  const left = COURT.netX - padding;
+  const right = COURT.netX + padding;
+  if (Math.max(x0, x1) < left || Math.min(x0, x1) > right) return false;
+  const entryX = x0 < left ? left : x0 > right ? right : x0;
+  const entryY =
+    x1 === x0
+      ? Math.max(y0, y1)
+      : y0 + Math.trunc(((y1 - y0) * (entryX - x0)) / (x1 - x0));
+  return Math.max(entryY, y1) + COURT.shuttleRadius >= COURT.netTop;
+}
+
 function flyShuttle(state: BadmintonState): void {
   const shuttle = state.shuttle;
-  const lastShot =
-    shuttle.lastHit === null
-      ? undefined
-      : state.athletes[shuttle.lastHit].lastContact?.shot;
   shuttle.velocityX = Math.trunc(
-    (shuttle.velocityX * shotDrag(lastShot)) / 1000,
+    (shuttle.velocityX * PHYSICS.dragNumerator) / 1000,
   );
-  shuttle.velocityY = verticalStep(shuttle.velocityY);
+  shuttle.velocityY = Math.min(
+    PHYSICS.maxFallSpeed,
+    Math.trunc((shuttle.velocityY * PHYSICS.verticalDragNumerator) / 1000) +
+      PHYSICS.shuttleGravity,
+  );
   const startX = shuttle.x;
   const startY = shuttle.y;
   // Four swept segments prevent fast smashes tunnelling through the net or racket.
@@ -499,7 +571,7 @@ export function projectView(context: {
 
 export type BadmintonView = ReturnType<typeof projectView>;
 
-export const badmintonDefinition = Object.freeze({
+export const badmintonDefinitionV1_2_0 = Object.freeze({
   manifest: badmintonManifest,
   configSchema: badmintonConfigSchema,
   inputSchema: badmintonInputSchema,

@@ -1,0 +1,1411 @@
+{
+  "header": {
+    "replayFormatVersion": 1,
+    "runtime": "realtime",
+    "gameId": "badminton",
+    "gameVersion": "1.3.0",
+    "tickRate": 60,
+    "rng": {
+      "algorithm": "fnv1a32-counter-v1",
+      "seed": "badminton-1.3.0-rally-golden"
+    },
+    "initialConfig": {
+      "targetScore": 7
+    },
+    "players": [
+      {
+        "slotId": "left-slot"
+      },
+      {
+        "slotId": "right-slot"
+      }
+    ]
+  },
+  "events": [
+    {
+      "sequence": 1,
+      "tick": 0,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": 0,
+        "jump": false,
+        "serve": true,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 2,
+      "tick": 0,
+      "actorSlotId": "right-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": 0,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 3,
+      "tick": 1,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": 0,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 4,
+      "tick": 6,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": 1,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 5,
+      "tick": 6,
+      "actorSlotId": "right-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": 1,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 6,
+      "tick": 8,
+      "actorSlotId": "right-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": 0,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 7,
+      "tick": 24,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": 0,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 8,
+      "tick": 42,
+      "actorSlotId": "right-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": -1,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 9,
+      "tick": 51,
+      "actorSlotId": "right-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": -1,
+        "jump": true,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 10,
+      "tick": 52,
+      "actorSlotId": "right-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": -1,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 11,
+      "tick": 59,
+      "actorSlotId": "right-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": 0,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 12,
+      "tick": 62,
+      "actorSlotId": "right-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": 1,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 13,
+      "tick": 75,
+      "actorSlotId": "right-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": 0,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 14,
+      "tick": 76,
+      "actorSlotId": "right-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": 1,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 15,
+      "tick": 89,
+      "actorSlotId": "right-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": 0,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 16,
+      "tick": 90,
+      "actorSlotId": "right-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": 1,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 17,
+      "tick": 96,
+      "actorSlotId": "right-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": 1,
+        "jump": false,
+        "serve": false,
+        "shot": "SMASH"
+      }
+    },
+    {
+      "sequence": 18,
+      "tick": 97,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": -1,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 19,
+      "tick": 97,
+      "actorSlotId": "right-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": -1,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 20,
+      "tick": 117,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": 0,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 21,
+      "tick": 127,
+      "actorSlotId": "right-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": -1,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 22,
+      "tick": 133,
+      "actorSlotId": "right-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": 0,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 23,
+      "tick": 138,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": 1,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 24,
+      "tick": 146,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": 1,
+        "jump": true,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 25,
+      "tick": 147,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": 1,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 26,
+      "tick": 153,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": 0,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 27,
+      "tick": 155,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": -1,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 28,
+      "tick": 168,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": -1,
+        "jump": false,
+        "serve": false,
+        "shot": "SMASH"
+      }
+    },
+    {
+      "sequence": 29,
+      "tick": 169,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": 1,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 30,
+      "tick": 169,
+      "actorSlotId": "right-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": 1,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 31,
+      "tick": 177,
+      "actorSlotId": "right-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": 0,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 32,
+      "tick": 179,
+      "actorSlotId": "right-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": 1,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 33,
+      "tick": 181,
+      "actorSlotId": "right-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": 1,
+        "jump": false,
+        "serve": false,
+        "shot": "CLEAR"
+      }
+    },
+    {
+      "sequence": 34,
+      "tick": 182,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": -1,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 35,
+      "tick": 182,
+      "actorSlotId": "right-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": -1,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 36,
+      "tick": 193,
+      "actorSlotId": "right-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": 0,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 37,
+      "tick": 196,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": 0,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 38,
+      "tick": 204,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": 1,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 39,
+      "tick": 221,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": 1,
+        "jump": true,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 40,
+      "tick": 222,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": 0,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 41,
+      "tick": 226,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": -1,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 42,
+      "tick": 229,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": 0,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 43,
+      "tick": 230,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": -1,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 44,
+      "tick": 237,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": 0,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 45,
+      "tick": 238,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": -1,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 46,
+      "tick": 244,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": 0,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 47,
+      "tick": 245,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": -1,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 48,
+      "tick": 251,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": 0,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 49,
+      "tick": 252,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": -1,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 50,
+      "tick": 257,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": 0,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 51,
+      "tick": 258,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": -1,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 52,
+      "tick": 262,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": 0,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 53,
+      "tick": 263,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": -1,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 54,
+      "tick": 266,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": -1,
+        "jump": false,
+        "serve": false,
+        "shot": "CLEAR"
+      }
+    },
+    {
+      "sequence": 55,
+      "tick": 267,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": 1,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 56,
+      "tick": 267,
+      "actorSlotId": "right-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": 1,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 57,
+      "tick": 287,
+      "actorSlotId": "right-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": 0,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 58,
+      "tick": 297,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": 1,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 59,
+      "tick": 304,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": 0,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 60,
+      "tick": 308,
+      "actorSlotId": "right-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": -1,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 61,
+      "tick": 316,
+      "actorSlotId": "right-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": -1,
+        "jump": true,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 62,
+      "tick": 317,
+      "actorSlotId": "right-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": -1,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 63,
+      "tick": 323,
+      "actorSlotId": "right-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": 0,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 64,
+      "tick": 326,
+      "actorSlotId": "right-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": 1,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 65,
+      "tick": 338,
+      "actorSlotId": "right-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": 1,
+        "jump": false,
+        "serve": false,
+        "shot": "DROP"
+      }
+    },
+    {
+      "sequence": 66,
+      "tick": 339,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": -1,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 67,
+      "tick": 339,
+      "actorSlotId": "right-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": -1,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 68,
+      "tick": 357,
+      "actorSlotId": "right-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": 0,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 69,
+      "tick": 359,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": 0,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 70,
+      "tick": 361,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": 1,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 71,
+      "tick": 370,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": 1,
+        "jump": false,
+        "serve": false,
+        "shot": "DROP"
+      }
+    },
+    {
+      "sequence": 72,
+      "tick": 373,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": 1,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 73,
+      "tick": 373,
+      "actorSlotId": "right-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": 1,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 74,
+      "tick": 381,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": 0,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 75,
+      "tick": 391,
+      "actorSlotId": "right-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": -1,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 76,
+      "tick": 402,
+      "actorSlotId": "right-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": -1,
+        "jump": false,
+        "serve": false,
+        "shot": "SMASH"
+      }
+    },
+    {
+      "sequence": 77,
+      "tick": 409,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": -1,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 78,
+      "tick": 409,
+      "actorSlotId": "right-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": 0,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 79,
+      "tick": 421,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": 1,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 80,
+      "tick": 436,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": 0,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 81,
+      "tick": 440,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": -1,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 82,
+      "tick": 443,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": 0,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 83,
+      "tick": 444,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": -1,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 84,
+      "tick": 448,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": 0,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 85,
+      "tick": 449,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": -1,
+        "jump": true,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 86,
+      "tick": 450,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": -1,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 87,
+      "tick": 452,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": 0,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 88,
+      "tick": 453,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": -1,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 89,
+      "tick": 456,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": 0,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 90,
+      "tick": 457,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": -1,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 91,
+      "tick": 460,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": 0,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 92,
+      "tick": 461,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": -1,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 93,
+      "tick": 464,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": 0,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 94,
+      "tick": 465,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": -1,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 95,
+      "tick": 468,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": 0,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 96,
+      "tick": 469,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": -1,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 97,
+      "tick": 472,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": 0,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 98,
+      "tick": 473,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": -1,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 99,
+      "tick": 475,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": 0,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 100,
+      "tick": 476,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": -1,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 101,
+      "tick": 479,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": 0,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 102,
+      "tick": 480,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": -1,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 103,
+      "tick": 482,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": 0,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 104,
+      "tick": 483,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": -1,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 105,
+      "tick": 486,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": 0,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 106,
+      "tick": 487,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": -1,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 107,
+      "tick": 489,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": 0,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 108,
+      "tick": 490,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": -1,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 109,
+      "tick": 492,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": 0,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 110,
+      "tick": 493,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": -1,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 111,
+      "tick": 494,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": -1,
+        "jump": false,
+        "serve": false,
+        "shot": "SMASH"
+      }
+    },
+    {
+      "sequence": 112,
+      "tick": 495,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": 1,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 113,
+      "tick": 495,
+      "actorSlotId": "right-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": 1,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    },
+    {
+      "sequence": 114,
+      "tick": 500,
+      "actorSlotId": "left-slot",
+      "input": {
+        "type": "RESIGN"
+      }
+    },
+    {
+      "sequence": 115,
+      "tick": 500,
+      "actorSlotId": "right-slot",
+      "input": {
+        "type": "CONTROL",
+        "move": 0,
+        "jump": false,
+        "serve": false,
+        "shot": "NONE"
+      }
+    }
+  ],
+  "recordedRngCursor": 0,
+  "recordedOutcome": {
+    "type": "WIN",
+    "reason": "RESIGNATION",
+    "winnerSlotId": "right-slot",
+    "resignedSlotId": "left-slot",
+    "scores": [0, 0]
+  },
+  "finalTick": 501
+}

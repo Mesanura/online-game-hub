@@ -1352,7 +1352,7 @@ describe.sequential("realtime badminton Protocol V6", () => {
     expect(await discovery.json()).toEqual({
       roomCode: "BDMN2345",
       gameId: "badminton",
-      gameVersion: "1.2.0",
+      gameVersion: "1.3.0",
       setupProtocol: SETUP_PROTOCOL_VERSION,
       runtime: "realtime",
     });
@@ -1652,17 +1652,18 @@ describe.sequential("realtime badminton Protocol V6", () => {
       });
       await deliveryBarrier(roomB, inboxB);
       const initialTick = resumed.snapshots.at(-1)?.tick ?? 0;
-      for (let tick = 0; tick < 176; tick++) await schedulerTimer.tick();
+      for (let tick = 0; tick < 210; tick++) await schedulerTimer.tick();
       await waitUntil(
         () =>
           resumed.snapshots.at(-1)?.outcome !== null ||
-          (resumed.snapshots.at(-1)?.tick ?? 0) >= initialTick + 176,
+          (resumed.snapshots.at(-1)?.tick ?? 0) >= initialTick + 210,
       );
     }
     await waitUntil(
       () => resumed.lifecycle.at(-1)?.currentRound?.status === "completed",
     );
     const scoredReplay = await replayStore.get("badminton-replay-2");
+    expect(scoredReplay?.header.gameVersion).toBe("1.3.0");
     expect(scoredReplay?.recordedOutcome).toEqual({
       type: "WIN",
       reason: "SCORE",

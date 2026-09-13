@@ -1,6 +1,6 @@
 import { badmintonOutcomeSchema as outcomeSchema } from "./core/schemas.js";
 
-const gameVersions: readonly string[] = ["1.0.0", "1.1.0", "1.2.0"];
+const gameVersions: readonly string[] = ["1.0.0", "1.1.0", "1.2.0", "1.3.0"];
 
 /** A pure, viewer-specific projection of archived results; never exposes Outcome. */
 export const badmintonHistory = {

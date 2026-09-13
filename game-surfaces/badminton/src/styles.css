@@ -599,6 +599,11 @@ kbd {
 .match-footer > span {
   white-space: nowrap;
 }
+.match-footer > .tactics-help {
+  white-space: normal;
+  line-height: 1.6;
+  color: #4d6658;
+}
 .match-shell > .notice {
   position: absolute;
   z-index: 5;

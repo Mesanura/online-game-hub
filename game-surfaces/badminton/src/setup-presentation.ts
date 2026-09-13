@@ -3,9 +3,12 @@ import type { SetupView } from "./contracts";
 export const shuttleIcon =
   '<svg viewBox="0 0 48 48" aria-hidden="true"><path d="M20 32 7 14l10-7 16 20-13 5Z" fill="#fcfbeb" stroke="currentColor" stroke-width="2.5"/><path d="m11 12 15 18M18 9l11 19M7 14l24 14" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="29" cy="32" r="8" fill="#edc879" stroke="currentColor" stroke-width="2.5"/></svg>';
 
+export const netPlayRules =
+  "对手守网时，用 J 高挑后场迫使回退，或用 L 低弧线挡网前。起跳后，等球落到身前高点再按 K 扣杀；条件不足会挑高。扣杀触球时按朝网方向打短、离网方向打深，不按方向打中后场。扣杀后有 0.6 秒收拍，及时回位。";
+
 export function usesManualServe(gameVersion: string): boolean {
   if (gameVersion === "1.0.0") return false;
-  if (gameVersion === "1.1.0" || gameVersion === "1.2.0") return true;
+  if (["1.1.0", "1.2.0", "1.3.0"].includes(gameVersion)) return true;
   throw new Error("Unsupported badminton version.");
 }
 
@@ -77,6 +80,7 @@ export function renderSetupView(
         .join("")}
     </div>${current.starter === "FIXED" && !current.participantSlotIds.includes(current.fixedStarterSlotId ?? "") ? '<p class="muted">上一局首发玩家已离开，请重新选择首发方。</p>' : ""}</section></div>
     <div class="how-to"><span><kbd>A</kbd><kbd>D</kbd> 移动</span><span><kbd>W</kbd> 起跳</span>${manualServe ? "<span><kbd>S</kbd> 发球</span>" : ""}<span><kbd>J</kbd> 高远球</span><span><kbd>K</kbd> 扣杀</span><span><kbd>L</kbd> 吊球</span></div>
+    ${gameVersion === "1.3.0" ? `<p class="rule-note" data-testid="net-play-rules">${netPlayRules}</p>` : ""}
     <p class="setup-bottom">${current.canEdit ? "你是房主，可以修改目标比分和首发方。" : "目标比分和首发方由房主修改。"}${current.participantSlotIds.length < 2 ? "等待另一位玩家加入。" : ""}确认规则后，两位玩家分别点击房间中的准备按钮。手机可使用屏幕按钮。</p>
     <p class="notice" id="surface-notice" role="status"></p>
   </section></main>`;

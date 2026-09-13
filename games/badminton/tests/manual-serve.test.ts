@@ -6,6 +6,8 @@ import { describe, expect, it } from "vitest";
 import {
   COURT,
   PHYSICS,
+  badmintonDefinition,
+  badmintonDefinitionV1_2_0,
   createInitialState,
   step,
   projectView,
@@ -197,44 +199,62 @@ describe("stroke selection and drag", () => {
     expect(state.athletes[0].swingTicks).toBeLessThan(10);
   });
 
-  it("slows horizontal flight and steepens descent while preserving mirrored landings", () => {
-    const landings: number[] = [];
-    for (const side of [0, 1] as const) {
-      let state = initial(side);
-      state.phase = "RALLY";
-      state.athletes[side].x = side === 0 ? 410_000 : 590_000;
-      state.athletes[side].y = 390_000;
-      state.shuttle = {
-        x: side === 0 ? 450_000 : 550_000,
-        y: 280_000,
-        velocityX: side === 0 ? -100 : 100,
-        velocityY: 0,
-        lastHit: side === 0 ? 1 : 0,
-      };
-      state = advance(state, { shot: "CLEAR" });
-      const launchSpeed = Math.abs(state.shuttle.velocityX);
-      let lastSlope = 0;
-      let descent = 0;
-      while (state.phase === "RALLY") {
-        const next = advance(state);
-        if (next.phase === "RALLY" && next.shuttle.velocityY > 0) {
-          const slope =
-            next.shuttle.velocityY / Math.abs(next.shuttle.velocityX);
-          expect(slope).toBeGreaterThan(lastSlope);
-          lastSlope = slope;
-          descent++;
+  it.each([
+    { definition: badmintonDefinitionV1_2_0, target: 830_000, retention: 0.2 },
+    { definition: badmintonDefinition, target: 870_000, retention: 0.8 },
+  ])(
+    "preserves the exact clear drag and mirrored depth of $definition.manifest.gameVersion",
+    ({ definition, target, retention }) => {
+      const landings: number[] = [];
+      for (const side of [0, 1] as const) {
+        let state = initial(side);
+        state.phase = "RALLY";
+        state.athletes[side].x = side === 0 ? 410_000 : 590_000;
+        state.athletes[side].y = 390_000;
+        state.shuttle = {
+          x: side === 0 ? 450_000 : 550_000,
+          y: 280_000,
+          velocityX: side === 0 ? -100 : 100,
+          velocityY: 0,
+          lastHit: side === 0 ? 1 : 0,
+        };
+        const advanceExact = (state: BadmintonState, shot: "CLEAR" | "NONE") =>
+          definition.step({
+            state,
+            tick: state.tick,
+            rng,
+            inputs: [
+              {
+                slotId: players[side],
+                input: { type: "CONTROL", ...neutral, shot },
+              },
+            ],
+          }).state;
+        state = advanceExact(state, "CLEAR");
+        const launchSpeed = Math.abs(state.shuttle.velocityX);
+        let lastSlope = 0;
+        let descent = 0;
+        while (state.phase === "RALLY") {
+          const next = advanceExact(state, "NONE");
+          if (next.phase === "RALLY" && next.shuttle.velocityY > 0) {
+            const slope =
+              next.shuttle.velocityY / Math.abs(next.shuttle.velocityX);
+            expect(slope).toBeGreaterThan(lastSlope);
+            lastSlope = slope;
+            descent++;
+          }
+          if (next.phase !== "RALLY")
+            expect(Math.abs(state.shuttle.velocityX)).toBeLessThan(
+              launchSpeed * retention,
+            );
+          state = next;
         }
-        if (next.phase !== "RALLY")
-          expect(Math.abs(state.shuttle.velocityX)).toBeLessThan(
-            launchSpeed * 0.2,
-          );
-        state = next;
+        expect(descent).toBeGreaterThan(30);
+        expect(state.lastPoint?.reason).toBe("GROUND");
+        landings.push(state.lastPoint?.x ?? 0);
       }
-      expect(descent).toBeGreaterThan(30);
-      expect(state.lastPoint?.reason).toBe("GROUND");
-      landings.push(state.lastPoint?.x ?? 0);
-    }
-    expect(Math.abs((landings[0] ?? 0) - 830_000)).toBeLessThan(2000);
-    expect((landings[0] ?? 0) + (landings[1] ?? 0)).toBe(COURT.width);
-  });
+      expect(Math.abs((landings[0] ?? 0) - target)).toBeLessThan(2000);
+      expect((landings[0] ?? 0) + (landings[1] ?? 0)).toBe(COURT.width);
+    },
+  );
 });
