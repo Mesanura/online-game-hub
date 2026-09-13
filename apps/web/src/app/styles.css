@@ -640,6 +640,51 @@ summary:focus-visible {
 .catalog-card {
   min-height: 18rem;
 }
+.catalog-page .catalog-grid {
+  grid-template-columns: repeat(auto-fill, minmax(min(15.5rem, 100%), 1fr));
+}
+.list-filters {
+  align-items: end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-top: 1.5rem;
+  padding: 1.2rem;
+}
+.list-filter-field {
+  display: grid;
+  flex: 1 1 10rem;
+  font-size: 0.85rem;
+  font-weight: 750;
+  gap: 0.45rem;
+  min-width: 0;
+}
+.list-filter-search {
+  flex-basis: 20rem;
+}
+.list-filter-field input,
+.list-filter-field select {
+  background: var(--clay-light);
+  border: 1px solid var(--line);
+  border-radius: 0.7rem;
+  color: var(--ink);
+  font: inherit;
+  font-size: 1rem;
+  font-weight: 500;
+  min-height: 3rem;
+  min-width: 0;
+  padding: 0.65rem 0.8rem;
+  width: 100%;
+}
+.list-filter-field select:focus-visible {
+  outline: 3px solid var(--teal-deep);
+  outline-offset: 3px;
+}
+.list-result-count {
+  color: var(--muted);
+  font-size: 0.9rem;
+  margin: 1.25rem 0 0.75rem;
+}
 .console-page {
   background: #fff8ef;
   border: 1px solid rgb(255 255 255 / 76%);

@@ -1,10 +1,10 @@
 "use client";
 
 import Link from "next/link";
+import { Suspense } from "react";
 import { ArrowLeft } from "@phosphor-icons/react";
 
-import { gameCatalog } from "@online-game-hub/game-registry/catalog";
-import { GameCard } from "../../components/game-card";
+import { GameCatalog } from "../../components/game-catalog";
 
 export default function GamesPage() {
   return (
@@ -23,11 +23,9 @@ export default function GamesPage() {
           <p>从回合制棋类到实时对战，挑一款游戏，邀请朋友一起开局。</p>
         </div>
       </div>
-      <div className="catalog-grid">
-        {gameCatalog.map((game) => (
-          <GameCard game={game} key={game.id} variant="catalog" />
-        ))}
-      </div>
+      <Suspense fallback={<p role="status">加载游戏目录…</p>}>
+        <GameCatalog />
+      </Suspense>
     </div>
   );
 }
