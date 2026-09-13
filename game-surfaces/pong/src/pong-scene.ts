@@ -36,7 +36,7 @@ interface PongSceneOptions {
 
 export class PongScene extends Phaser.Scene {
   readonly #options: PongSceneOptions;
-  readonly #pressed = new Set<string>();
+  readonly #pressed = new Map<string, -1 | 1>();
   #graphics: Phaser.GameObjects.Graphics | null = null;
   #score: Phaser.GameObjects.Text | null = null;
   #result: Phaser.GameObjects.Text | null = null;
@@ -174,23 +174,42 @@ export class PongScene extends Phaser.Scene {
     this.#recomputeDirection(true);
   }
 
+  get direction(): -1 | 0 | 1 {
+    return this.#lastDirection;
+  }
+
+  setDirectionInput(source: string, direction: -1 | 0 | 1): void {
+    if (direction === 0) this.#pressed.delete(source);
+    else if (this.#options.canControl()) this.#pressed.set(source, direction);
+    else return;
+    this.#recomputeDirection(false);
+  }
+
+  clearDirectionInputs(): void {
+    this.#pressed.clear();
+    this.#recomputeDirection(false);
+  }
+
   readonly #handleKeyDown = (event: KeyboardEvent): void => {
     if (!["ArrowUp", "ArrowDown", "KeyW", "KeyS"].includes(event.code)) return;
     event.preventDefault();
-    this.#pressed.add(event.code);
-    this.#recomputeDirection(false);
+    if (event.repeat) return;
+    this.setDirectionInput(
+      event.code,
+      event.code === "ArrowUp" || event.code === "KeyW" ? -1 : 1,
+    );
   };
 
   readonly #handleKeyUp = (event: KeyboardEvent): void => {
     if (!["ArrowUp", "ArrowDown", "KeyW", "KeyS"].includes(event.code)) return;
     event.preventDefault();
-    this.#pressed.delete(event.code);
-    this.#recomputeDirection(false);
+    this.setDirectionInput(event.code, 0);
   };
 
   #recomputeDirection(force: boolean): void {
-    const up = this.#pressed.has("ArrowUp") || this.#pressed.has("KeyW");
-    const down = this.#pressed.has("ArrowDown") || this.#pressed.has("KeyS");
+    const directions = [...this.#pressed.values()];
+    const up = directions.includes(-1);
+    const down = directions.includes(1);
     const direction: -1 | 0 | 1 = up === down ? 0 : up ? -1 : 1;
     if (!force && direction === this.#lastDirection) return;
     this.#lastDirection = direction;

@@ -28,6 +28,9 @@ for (const version of ["1.0.0", "1.1.0", "1.2.0"]) {
       if (version === "1.2.0") fixture.court.netTop = 370_000;
       await push(fixture);
       await expect(surface.locator("#badminton-canvas canvas")).toBeVisible();
+      await expect(
+        surface.getByRole("button", { name: "起跳", exact: true }),
+      ).toHaveText("↑W");
       const serve = surface.locator('[data-control="serve"]');
       if (version === "1.0.0") await expect(serve).toBeHidden();
       else await expect(serve).toBeVisible();
@@ -40,6 +43,9 @@ for (const version of ["1.0.0", "1.1.0", "1.2.0"]) {
         { width: 1440, height: 900 },
       ]) {
         await page.setViewportSize(viewport);
+        await expect(
+          surface.locator('[data-control="jump"] kbd'),
+        ).toBeVisible();
         await expect
           .poll(() =>
             surface.locator(".match-shell").evaluate((shell) => {

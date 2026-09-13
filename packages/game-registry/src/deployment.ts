@@ -75,14 +75,14 @@ const pongSurfaceArtifactV1 = {
   schemaVersion: 1,
   gameId: "pong",
   supportedGameVersions: ["1.0.0", "1.1.0", "1.2.0"],
-  surfaceVersion: "1.2.1",
+  surfaceVersion: "1.2.2",
   bridgeVersion: 2,
   entrypoints: {
     setup: "setup/index.html",
     play: "play/index.html",
   },
   capabilities: {},
-  contentDigest: "sha256-H+wHnMaAHzvWLk+ylqufNnkxfVQTwifG7Jb4Jvab61o=",
+  contentDigest: "sha256-9Vwhq1f8/tH5Njk5/+8W0C5QHBU7pO9LyOLuq2i3EDk=",
 } satisfies SurfaceArtifactManifestV1;
 
 const pongSurface = (
@@ -95,7 +95,7 @@ const pongSurface = (
     platformControls: resignPlatformControls,
     presentation: Object.freeze({
       kind: "surface-v1",
-      publicBasePath: "/game-surfaces/pong/1.2.1",
+      publicBasePath: "/game-surfaces/pong/1.2.2",
       artifact: pongSurfaceArtifactV1,
     }),
   });
@@ -263,16 +263,16 @@ const badmintonSurface = (
     platformControls: resignPlatformControls,
     presentation: Object.freeze({
       kind: "surface-v1",
-      publicBasePath: "/game-surfaces/badminton/1.2.4",
+      publicBasePath: "/game-surfaces/badminton/1.2.6",
       artifact: {
         schemaVersion: 1,
         gameId: "badminton",
         supportedGameVersions: ["1.0.0", "1.1.0", "1.2.0"],
-        surfaceVersion: "1.2.4",
+        surfaceVersion: "1.2.6",
         bridgeVersion: 2,
         entrypoints: { setup: "setup/index.html", play: "play/index.html" },
         capabilities: {},
-        contentDigest: "sha256-39zjqU2yndwjoSvTiiT0q08gnTbzj23wZFElCNt3oUE=",
+        contentDigest: "sha256-56adrib5MXocEiIgOlAD5mr4BfaEsaz5XAu9Naw5sXc=",
       } satisfies SurfaceArtifactManifestV1,
     }),
   });

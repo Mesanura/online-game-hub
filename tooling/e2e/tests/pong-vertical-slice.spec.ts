@@ -41,7 +41,7 @@ async function activePongRound(
   await expect(pageA.getByTestId("connection-state")).toHaveText("已连接");
   await expect(pageA.getByTestId("game-surface-iframe")).toHaveAttribute(
     "src",
-    "/game-surfaces/pong/1.2.1/setup/index.html",
+    "/game-surfaces/pong/1.2.2/setup/index.html",
   );
   await pongSurface(pageA).getByRole("button", { name: "房主在左" }).click();
   const inviteUrl = await pageA.getByTestId("invite-link").getAttribute("href");
@@ -50,7 +50,7 @@ async function activePongRound(
   await expect(pageB.getByTestId("connection-state")).toHaveText("已连接");
   await expect(pageB.getByTestId("game-surface-iframe")).toHaveAttribute(
     "src",
-    "/game-surfaces/pong/1.2.1/setup/index.html",
+    "/game-surfaces/pong/1.2.2/setup/index.html",
   );
   await pageA.getByTestId("toggle-round-ready").click();
   await pageB.getByTestId("toggle-round-ready").click();
@@ -59,7 +59,7 @@ async function activePongRound(
       await expect(page.getByTestId("match-status")).toHaveText("对局进行中");
       await expect(page.getByTestId("game-surface-iframe")).toHaveAttribute(
         "src",
-        "/game-surfaces/pong/1.2.1/play/index.html",
+        "/game-surfaces/pong/1.2.2/play/index.html",
       );
     }),
   );
@@ -289,7 +289,10 @@ test("two isolated browsers control authoritative Pong, reconnect, and retain re
   browser,
 }) => {
   const contextA = await browser.newContext({ reducedMotion: "reduce" });
-  const contextB = await browser.newContext();
+  const contextB = await browser.newContext({
+    hasTouch: true,
+    viewport: { width: 390, height: 844 },
+  });
   const pageA = await contextA.newPage();
   const pageB = await contextB.newPage();
   const database = createPostgresDatabaseClient({
@@ -367,6 +370,34 @@ test("two isolated browsers control authoritative Pong, reconnect, and retain re
       .boundingBox();
     expect(afterInputCanvasBox).toEqual(initialCanvasBox);
 
+    const touch = await contextB.newCDPSession(pageB);
+    let touchAcknowledgement = 0;
+    for (const name of ["挡板向上", "挡板向下"]) {
+      const button = pongSurface(pageB).getByRole("button", { name });
+      const box = await button.boundingBox();
+      if (box === null) throw new Error(`Missing ${name} control.`);
+      for (const pressed of [true, false]) {
+        await touch.send("Input.dispatchTouchEvent", {
+          type: pressed ? "touchStart" : "touchEnd",
+          touchPoints: pressed
+            ? [{ id: 1, x: box.x + box.width / 2, y: box.y + box.height / 2 }]
+            : [],
+        });
+        touchAcknowledgement += 1;
+        await expect
+          .poll(async () => {
+            harness.advanceRealtimeTicks(1);
+            return Number(
+              await pageB
+                .getByTestId("acknowledged-input-sequence")
+                .textContent(),
+            );
+          })
+          .toBe(touchAcknowledgement);
+      }
+    }
+    await touch.detach();
+
     await expect
       .poll(
         async () => {
@@ -429,6 +460,16 @@ test("two isolated browsers control authoritative Pong, reconnect, and retain re
       { type: "DIRECTION", direction: 1 },
       { type: "DIRECTION", direction: 0 },
     ]);
+    expect(
+      persistedReplay?.events
+        .slice(4, 8)
+        .map((event) => ({ slotId: event.actorSlotId, input: event.input })),
+    ).toEqual(
+      [-1, 0, 1, 0].map((direction) => ({
+        slotId: round.slotB,
+        input: { type: "DIRECTION", direction },
+      })),
+    );
     expect(
       verifyRealtimeReplay(persistedReplay, resolveRealtimeGameDefinition),
     ).toMatchObject({ ok: true });

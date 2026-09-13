@@ -293,7 +293,7 @@ test("two accounts play badminton with keyboard and multitouch, reconnect, finis
     await expect(pageA.getByTestId("connection-state")).toHaveText("已连接");
     await expect(pageA.getByTestId("game-surface-iframe")).toHaveAttribute(
       "src",
-      "/game-surfaces/badminton/1.2.4/setup/index.html",
+      "/game-surfaces/badminton/1.2.6/setup/index.html",
     );
     const inviteUrl = await pageA
       .getByTestId("invite-link")
@@ -328,7 +328,7 @@ test("two accounts play badminton with keyboard and multitouch, reconnect, finis
       await expect(page.getByTestId("match-status")).toHaveText("对局进行中");
       await expect(page.getByTestId("game-surface-iframe")).toHaveAttribute(
         "src",
-        "/game-surfaces/badminton/1.2.4/play/index.html",
+        "/game-surfaces/badminton/1.2.6/play/index.html",
       );
       await expectCourt(page);
     }

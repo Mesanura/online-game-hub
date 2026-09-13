@@ -250,6 +250,35 @@ h1 {
   color: var(--ink-muted);
   font-size: 0.78rem;
 }
+.pong-direction {
+  display: none;
+  width: 4rem;
+  height: 4rem;
+  align-self: center;
+  padding: 0;
+  place-items: center;
+  border: 1px solid rgba(127, 208, 196, 0.4);
+  border-radius: 1.25rem;
+  background: #29484a;
+  box-shadow: 0 5px 0 rgba(4, 15, 18, 0.4);
+  color: #d6f6ef;
+  cursor: pointer;
+  font-size: 2rem;
+  font-weight: 800;
+  line-height: 1;
+  touch-action: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+.pong-direction[aria-pressed="true"] {
+  transform: translateY(3px);
+  background: #39716b;
+  box-shadow: 0 2px 0 rgba(4, 15, 18, 0.4);
+}
+.pong-direction:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
 .surface-meta {
   display: flex;
   min-height: 1.3rem;
@@ -319,6 +348,65 @@ h1 {
   }
   .setup-option {
     min-height: 4.5rem;
+  }
+}
+
+@media (any-pointer: coarse), (max-width: 900px) {
+  .play-surface {
+    padding-top: max(0.6rem, env(safe-area-inset-top));
+    padding-right: max(0.6rem, env(safe-area-inset-right));
+    padding-bottom: max(3.75rem, env(safe-area-inset-bottom));
+    padding-left: max(0.6rem, env(safe-area-inset-left));
+  }
+  .pong-shell {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: auto minmax(0, 1fr) auto auto;
+  }
+  .pong-header,
+  .pong-stage,
+  .pong-footer {
+    grid-column: 1 / -1;
+  }
+  .pong-header {
+    grid-row: 1;
+  }
+  .pong-stage {
+    grid-row: 2;
+  }
+  .pong-direction {
+    display: grid;
+    grid-row: 3;
+  }
+  .pong-up {
+    grid-column: 1;
+    justify-self: start;
+  }
+  .pong-down {
+    grid-column: 2;
+    justify-self: end;
+  }
+  .pong-footer {
+    grid-row: 4;
+  }
+}
+
+@media (any-pointer: coarse) and (orientation: landscape),
+  (max-width: 900px) and (orientation: landscape) {
+  .pong-shell {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+  }
+  .pong-stage {
+    grid-column: 2;
+  }
+  .pong-direction {
+    grid-row: 2;
+  }
+  .pong-down {
+    grid-column: 3;
+  }
+  .pong-footer {
+    grid-row: 3;
   }
 }
 

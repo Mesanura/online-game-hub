@@ -10,7 +10,7 @@ interface PlayTestWindow extends Window {
 // A real sandboxed artifact and MessageChannel, using only public projections.
 export async function openPlaySurface(
   page: Page,
-  gameId: "badminton" | "tank-maze" | "air-hockey",
+  gameId: "pong" | "badminton" | "tank-maze" | "air-hockey",
   gameVersion: string,
   options: { reducedMotion?: boolean } = {},
 ) {

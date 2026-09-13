@@ -491,6 +491,9 @@ kbd {
   grid-column: 1 / -1;
   justify-self: center;
 }
+.controls .jump-button kbd {
+  display: inline-grid;
+}
 .shot-controls [data-control="smash"] {
   grid-column: 1;
   grid-row: 2;
@@ -582,9 +585,6 @@ kbd {
 .control-symbol {
   font-size: 21px;
   line-height: 1;
-}
-.control-caption {
-  font-size: 12px;
 }
 .match-footer {
   display: flex;
@@ -721,6 +721,14 @@ kbd {
 @media (max-width: 360px), (max-height: 360px) {
   .match-shell {
     --control-size: 48px;
+  }
+  .controls .jump-button {
+    gap: 1px;
+  }
+  .controls .jump-button kbd {
+    min-width: 18px;
+    height: 16px;
+    font-size: 10px;
   }
 }
 @media (orientation: landscape) and (min-width: 600px) {

@@ -176,12 +176,12 @@ describe("explicit game registry", () => {
         setupProtocol: 6,
         presentation: {
           kind: "surface-v1",
-          publicBasePath: "/game-surfaces/pong/1.2.1",
+          publicBasePath: "/game-surfaces/pong/1.2.2",
           artifact: {
             supportedGameVersions: ["1.0.0", "1.1.0", "1.2.0"],
-            surfaceVersion: "1.2.1",
+            surfaceVersion: "1.2.2",
             contentDigest:
-              "sha256-H+wHnMaAHzvWLk+ylqufNnkxfVQTwifG7Jb4Jvab61o=",
+              "sha256-9Vwhq1f8/tH5Njk5/+8W0C5QHBU7pO9LyOLuq2i3EDk=",
           },
         },
         platformControls: ["RESIGN"],
@@ -192,10 +192,10 @@ describe("explicit game registry", () => {
         ).toMatchObject({
           gameId: "pong",
           gameVersion,
-          surfaceVersion: "1.2.1",
+          surfaceVersion: "1.2.2",
           mode,
           platformControls: ["RESIGN"],
-          url: `/game-surfaces/pong/1.2.1/${mode}/index.html`,
+          url: `/game-surfaces/pong/1.2.2/${mode}/index.html`,
         });
       }
       expect(
@@ -526,12 +526,12 @@ describe("explicit game registry", () => {
       expect(resolveGameDeployment("badminton", gameVersion)).toMatchObject({
         setupProtocol: 6,
         presentation: {
-          publicBasePath: "/game-surfaces/badminton/1.2.4",
+          publicBasePath: "/game-surfaces/badminton/1.2.6",
           artifact: {
             supportedGameVersions: ["1.0.0", "1.1.0", "1.2.0"],
-            surfaceVersion: "1.2.4",
+            surfaceVersion: "1.2.6",
             contentDigest:
-              "sha256-39zjqU2yndwjoSvTiiT0q08gnTbzj23wZFElCNt3oUE=",
+              "sha256-56adrib5MXocEiIgOlAD5mr4BfaEsaz5XAu9Naw5sXc=",
           },
         },
       });
@@ -540,8 +540,8 @@ describe("explicit game registry", () => {
           resolveGameSurfaceEntrypoint("badminton", gameVersion, mode),
         ).toMatchObject({
           gameVersion,
-          surfaceVersion: "1.2.4",
-          url: `/game-surfaces/badminton/1.2.4/${mode}/index.html`,
+          surfaceVersion: "1.2.6",
+          url: `/game-surfaces/badminton/1.2.6/${mode}/index.html`,
         });
       }
       expect(
@@ -563,7 +563,7 @@ describe("explicit game registry", () => {
       expect(
         resolveGameSurfaceEntrypoint("badminton", "1.0.0", mode),
       ).toMatchObject({
-        url: `/game-surfaces/badminton/1.2.4/${mode}/index.html`,
+        url: `/game-surfaces/badminton/1.2.6/${mode}/index.html`,
         mode,
       });
     }
@@ -580,6 +580,6 @@ describe("explicit game registry", () => {
     expect(previous?.step).not.toBe(current?.step);
     expect(
       resolveGameSurfaceEntrypoint("badminton", "1.1.0", "play")?.url,
-    ).toBe("/game-surfaces/badminton/1.2.4/play/index.html");
+    ).toBe("/game-surfaces/badminton/1.2.6/play/index.html");
   });
 });

@@ -57,6 +57,7 @@ let intentSequence = 0;
 let bridge: GameSurfaceBridge | null = null;
 let game: Phaser.Game | null = null;
 let pongScene: PongScene | null = null;
+let playEvents: AbortController | null = null;
 let runtime: RuntimeState = {
   mode: modeFromLocation(),
   init: null,
@@ -119,9 +120,14 @@ function handleHostMessage(message: HostSurfaceMessage): void {
     try {
       const shouldResyncDirection =
         runtime.hostState !== null &&
-        runtime.hostState.connectionState !== "connected" &&
-        message.connectionState === "connected";
+        (runtime.hostState.connectionState !== "connected" ||
+          runtime.hostState.readOnly) &&
+        message.connectionState === "connected" &&
+        !message.readOnly;
       const payload = parsePayload(message);
+      const roundChanged =
+        runtime.hostState !== null &&
+        message.roundNumber !== runtime.hostState.roundNumber;
       const resetPending =
         runtime.hostState !== null &&
         (message.connectionState !== "connected" ||
@@ -147,6 +153,7 @@ function handleHostMessage(message: HostSurfaceMessage): void {
             : null
           : runtime.notice,
       });
+      if (roundChanged) pongScene?.clearDirectionInputs();
       if (shouldResyncDirection) pongScene?.syncDirection();
       if (runtime.mode === "play") {
         const summary = resultSummary(payload as PongPlayView);
@@ -199,9 +206,7 @@ function handleHostMessage(message: HostSurfaceMessage): void {
     updateRuntime({ pendingIntentId: null, pendingIntentType: null, notice });
     return;
   }
-  game?.destroy(true);
-  game = null;
-  pongScene = null;
+  destroyGame();
   updateRuntime({
     disposed: true,
     pendingIntentId: null,
@@ -242,11 +247,105 @@ function submitIntent(
 
 function canControl(): boolean {
   return (
+    !runtime.disposed &&
+    runtime.error === null &&
     runtime.mode === "play" &&
     runtime.hostState?.connectionState === "connected" &&
     runtime.hostState.readOnly === false &&
     runtime.pendingIntentType !== "RESIGN" &&
     (runtime.payload as PongPlayView | null)?.outcome === null
+  );
+}
+
+function destroyGame(): void {
+  playEvents?.abort();
+  playEvents = null;
+  game?.destroy(true);
+  game = null;
+  pongScene = null;
+}
+
+function updatePlayControls(): void {
+  const enabled = canControl();
+  if (!enabled) pongScene?.clearDirectionInputs();
+  surfaceRoot
+    .querySelectorAll<HTMLButtonElement>("[data-direction]")
+    .forEach((button) => {
+      button.disabled = !enabled;
+      button.setAttribute(
+        "aria-pressed",
+        String(
+          enabled && pongScene?.direction === Number(button.dataset.direction),
+        ),
+      );
+    });
+}
+
+function bindPlayControls(): void {
+  playEvents?.abort();
+  playEvents = new AbortController();
+  const options = { signal: playEvents.signal };
+  surfaceRoot
+    .querySelectorAll<HTMLButtonElement>("[data-direction]")
+    .forEach((button) => {
+      const direction = button.dataset.direction === "-1" ? -1 : 1;
+      button.addEventListener(
+        "pointerdown",
+        (event) => {
+          if (event.button !== 0 || !canControl()) return;
+          event.preventDefault();
+          button.setPointerCapture(event.pointerId);
+          pongScene?.setDirectionInput(`pointer-${event.pointerId}`, direction);
+        },
+        options,
+      );
+      for (const type of [
+        "pointerup",
+        "pointercancel",
+        "lostpointercapture",
+      ] as const) {
+        button.addEventListener(
+          type,
+          (event) =>
+            pongScene?.setDirectionInput(`pointer-${event.pointerId}`, 0),
+          options,
+        );
+      }
+      for (const type of ["keydown", "keyup"] as const) {
+        button.addEventListener(
+          type,
+          (event) => {
+            if (event.code !== "Enter" && event.code !== "Space") return;
+            event.preventDefault();
+            if (event.repeat) return;
+            pongScene?.setDirectionInput(
+              `button-${direction}-${event.code}`,
+              type === "keydown" ? direction : 0,
+            );
+          },
+          options,
+        );
+      }
+      button.addEventListener(
+        "blur",
+        () => {
+          for (const code of ["Enter", "Space"])
+            pongScene?.setDirectionInput(`button-${direction}-${code}`, 0);
+        },
+        options,
+      );
+    });
+  window.addEventListener(
+    "blur",
+    () => pongScene?.clearDirectionInputs(),
+    options,
+  );
+  document.addEventListener(
+    "visibilitychange",
+    () => {
+      if (document.hidden) pongScene?.clearDirectionInputs();
+    },
+    options,
   );
 }
 
@@ -266,7 +365,10 @@ function ensureGame(): void {
       };
     },
     canControl,
-    onDirection: (direction) => submitIntent(createDirectionIntent(direction)),
+    onDirection: (direction) => {
+      updatePlayControls();
+      submitIntent(createDirectionIntent(direction));
+    },
   });
   game = new Phaser.Game({
     type: Phaser.CANVAS,
@@ -283,6 +385,8 @@ function ensureGame(): void {
     },
     scene: pongScene,
   });
+  bindPlayControls();
+  updatePlayControls();
 }
 
 function renderStatus(hostState: HostState): string {
@@ -316,7 +420,9 @@ function renderPlay(hostState: HostState, view: PongPlayView): string {
     <span class="sr-only" data-testid="score-left" id="score-left">${view.scores[0]}</span>
     <span class="sr-only" data-testid="score-right" id="score-right">${view.scores[1]}</span>
     <span class="sr-only" data-testid="pong-outcome" id="pong-outcome">${view.outcome === null ? "" : view.outcome.reason}</span>
+    <button class="pong-direction pong-up" type="button" data-direction="-1" aria-label="挡板向上" aria-pressed="false"><span aria-hidden="true">↑</span></button>
     <div class="pong-stage"><div aria-label="Pong 逻辑场地" class="pong-canvas" id="pong-canvas" tabindex="0"></div></div>
+    <button class="pong-direction pong-down" type="button" data-direction="1" aria-label="挡板向下" aria-pressed="false"><span aria-hidden="true">↓</span></button>
     <div class="pong-footer"><span>方向键或 W / S 控制</span><div class="surface-meta" id="pong-meta" aria-live="polite">${renderStatus(hostState)}</div></div>
   </section></main>`;
 }
@@ -347,6 +453,7 @@ function updatePlayChrome(hostState: HostState, view: PongPlayView): void {
   if (scoreRight !== null) scoreRight.textContent = String(view.scores[1]);
   const outcome = document.getElementById("pong-outcome");
   if (outcome !== null) outcome.textContent = view.outcome?.reason ?? "";
+  updatePlayControls();
 }
 
 function bindSetupControls(): void {
@@ -373,9 +480,7 @@ function bindSetupControls(): void {
 
 function render(): void {
   if (runtime.error !== null) {
-    game?.destroy(true);
-    game = null;
-    pongScene = null;
+    destroyGame();
     surfaceRoot.innerHTML = `<main class="surface-center" role="alert"><div class="message-card"><h1>游戏画面无法继续</h1><p>${runtime.error}</p></div></main>`;
     return;
   }
