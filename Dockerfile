@@ -15,7 +15,19 @@ FROM workspace-base AS dependencies
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
 COPY apps/game-server/package.json apps/game-server/package.json
 COPY apps/web/package.json apps/web/package.json
+COPY game-surfaces/air-hockey/package.json game-surfaces/air-hockey/package.json
+COPY game-surfaces/badminton/package.json game-surfaces/badminton/package.json
+COPY game-surfaces/chinese-checkers/package.json game-surfaces/chinese-checkers/package.json
+COPY game-surfaces/connect-four/package.json game-surfaces/connect-four/package.json
+COPY game-surfaces/gomoku/package.json game-surfaces/gomoku/package.json
+COPY game-surfaces/hex/package.json game-surfaces/hex/package.json
+COPY game-surfaces/pong/package.json game-surfaces/pong/package.json
+COPY game-surfaces/reversi/package.json game-surfaces/reversi/package.json
+COPY game-surfaces/tank-maze/package.json game-surfaces/tank-maze/package.json
+COPY game-surfaces/tic-tac-toe/package.json game-surfaces/tic-tac-toe/package.json
 COPY game-surfaces/workbench/package.json game-surfaces/workbench/package.json
+COPY games/air-hockey/package.json games/air-hockey/package.json
+COPY games/badminton/package.json games/badminton/package.json
 COPY games/chinese-checkers/package.json games/chinese-checkers/package.json
 COPY games/connect-four/package.json games/connect-four/package.json
 COPY games/gomoku/package.json games/gomoku/package.json
@@ -23,6 +35,7 @@ COPY games/hex/package.json games/hex/package.json
 COPY games/pong/package.json games/pong/package.json
 COPY games/reversi/package.json games/reversi/package.json
 COPY games/tic-tac-toe/package.json games/tic-tac-toe/package.json
+COPY games/tank-maze/package.json games/tank-maze/package.json
 COPY packages/database/package.json packages/database/package.json
 COPY packages/game-client-sdk/package.json packages/game-client-sdk/package.json
 COPY packages/game-registry/package.json packages/game-registry/package.json

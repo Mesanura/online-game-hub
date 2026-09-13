@@ -29,6 +29,7 @@ const nextConfig: NextConfig = {
     ];
   },
   transpilePackages: [
+    "@online-game-hub/air-hockey",
     "@online-game-hub/game-client-sdk",
     "@online-game-hub/game-registry",
     "@online-game-hub/game-surface-bridge",

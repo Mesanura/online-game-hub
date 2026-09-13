@@ -1692,6 +1692,367 @@ describe.sequential("realtime badminton Protocol V6", () => {
   }, 30000);
 });
 
+describe("realtime air hockey Protocol V6", () => {
+  it("enforces serving and input authority, preserves slots and settings, and rebuilds both completed rounds", async () => {
+    const clock = new FakeRuntimeClock(4000000);
+    const scheduler = new ManualSchedulerTimer();
+    const authority = new TestTicketAuthority({
+      issuer: "hockey-integration",
+      secret: "hockey-integration-secret",
+      clock,
+      lifetimeSeconds: 600,
+    });
+    const replayStore = new InMemoryRealtimeReplayStore();
+    const roomStore = new InMemoryRealtimeRoomStore();
+    const archive = new RecordingRealtimeArchive();
+    let replayId = 0,
+      seed = 0,
+      setupSeed = 0;
+    const app = createGameServer({
+      ticketVerifier: authority,
+      realtimeTicketVerifier: authority,
+      realtimeReplayStore: replayStore,
+      realtimeRoomStore: roomStore,
+      realtimeMatchArchive: archive,
+      realtimeClock: clock as unknown as RealtimeRuntimeClock,
+      realtimeSchedulerTimer: scheduler,
+      realtimeIds: {
+        createRoomCode: () => "AHCK2345",
+        createReplayId: () => `hockey-replay-${++replayId}`,
+        createRngSeed: () => `hockey-seed-${++seed}`,
+        createSetupRngSeed: () => `hockey-setup-${++setupSeed}`,
+        createPlayerSlotId: (index) => `hockey-p${index + 1}` as never,
+      },
+      logger: { write: () => undefined },
+    });
+    const rooms: ClientRoom[] = [];
+    type HockeyView = {
+      tick: number;
+      rally: number;
+      phase: string;
+      server: 0 | 1;
+      scores: [number, number];
+      puck: { x: number; y: number };
+      paddles: { x: number; y: number }[];
+      events: { kind: string }[];
+      outcome: unknown | null;
+    };
+    const view = (inbox: RoomMessagesV6) =>
+      inbox.snapshots.at(-1)?.view as HockeyView;
+    async function barrier(room: ClientRoom, inbox: RoomMessagesV6) {
+      const count = inbox.realtimeRejections.length;
+      room.send(REALTIME_INPUT_MESSAGE, { barrier: true });
+      await waitUntil(() => inbox.realtimeRejections.length > count);
+    }
+    async function advance(inbox: RoomMessagesV6, count: number) {
+      const target = (inbox.snapshots.at(-1)?.tick ?? 0) + count;
+      for (let i = 0; i < count; i++) await scheduler.tick();
+      await waitUntil(
+        () =>
+          (inbox.snapshots.at(-1)?.tick ?? 0) >= target ||
+          view(inbox).outcome !== null,
+      );
+    }
+    const setup = (
+      commandId: string,
+      revision: number,
+      targetScore: number,
+    ) => ({
+      type: "game.setup",
+      protocolVersion: 6,
+      commandId,
+      roundNumber: 1,
+      expectedSetupRevision: revision,
+      action: { type: "SET_TARGET_SCORE", targetScore },
+    });
+    const ticket = (session: string) =>
+      authority.issue(session, { protocolVersion: 6 });
+    try {
+      const address = await app.start({ port: 0 });
+      const roomA = await new ColyseusClient(address.httpUrl).create(
+        REALTIME_GAME_ROOM_NAME,
+        {
+          type: "room.create",
+          protocolVersion: 6,
+          ticket: ticket("hockey-a"),
+          gameId: "air-hockey",
+          initialConfig: { targetScore: 7 },
+        },
+      );
+      rooms.push(roomA);
+      const inboxA = messagesV6(roomA);
+      await waitUntil(() => inboxA.lifecycle.length > 0);
+      const roomB = await new ColyseusClient(address.httpUrl).join(
+        REALTIME_GAME_ROOM_NAME,
+        {
+          type: "room.join",
+          protocolVersion: 6,
+          ticket: ticket("hockey-b"),
+          roomCode: "AHCK2345",
+        },
+      );
+      rooms.push(roomB);
+      const inboxB = messagesV6(roomB);
+      await waitUntil(() => inboxB.lifecycle.length > 0);
+      expect(await replayStore.get("hockey-replay-1")).toBeNull();
+      expect(inboxB.lifecycle.at(-1)?.nextRound?.setupView).toMatchObject({
+        config: { targetScore: 7 },
+        canEdit: false,
+        ownerSlotId: "hockey-p1",
+      });
+      roomB.send(GAME_SETUP_MESSAGE, setup("guest-setting", 0, 5));
+      await waitUntil(() => inboxB.rejections.length > 0);
+      expect(inboxB.rejections.at(-1)).toMatchObject({
+        code: "SETUP_RULE_REJECTED",
+        gameRuleCode: "NOT_OWNER",
+      });
+      roomA.send(
+        ROOM_CONTROL_MESSAGE,
+        control("ready-before-setting", "READY_FOR_ROUND"),
+      );
+      await waitUntil(
+        () => inboxA.lifecycle.at(-1)?.nextRound?.readiness.selfReady === true,
+      );
+      roomA.send(GAME_SETUP_MESSAGE, setup("eleven-points", 0, 11));
+      await waitUntil(
+        () => inboxA.lifecycle.at(-1)?.nextRound?.setupRevision === 1,
+      );
+      expect(
+        inboxA.lifecycle.at(-1)?.nextRound?.readiness.readySlotIds,
+      ).toEqual([]);
+      roomA.send(GAME_SETUP_MESSAGE, setup("stale-setting", 0, 5));
+      await waitUntil(
+        () => inboxA.rejections.at(-1)?.code === "STALE_SETUP_REVISION",
+      );
+      roomA.send(GAME_SETUP_MESSAGE, setup("five-points", 1, 5));
+      await waitUntil(
+        () => inboxA.lifecycle.at(-1)?.nextRound?.setupRevision === 2,
+      );
+      roomA.send(ROOM_CONTROL_MESSAGE, control("ready-a", "READY_FOR_ROUND"));
+      roomB.send(ROOM_CONTROL_MESSAGE, control("ready-b", "READY_FOR_ROUND"));
+      await waitUntil(
+        () => inboxA.snapshots.length > 0 && inboxB.snapshots.length > 0,
+      );
+      expect(inboxA.snapshots.at(-1)?.view).toMatchObject({
+        yourSide: 0,
+        server: 0,
+        phase: "SERVE",
+        targetScore: 5,
+        scores: [0, 0],
+        players: [
+          { slotId: "hockey-p1", color: "BLUE" },
+          { slotId: "hockey-p2", color: "ORANGE" },
+        ],
+      });
+      expect(inboxB.snapshots.at(-1)?.view).toMatchObject({ yourSide: 1 });
+      expect(JSON.stringify(view(inboxA))).not.toMatch(
+        /velocity|inputAge|target"|seed|session|ticket/iu,
+      );
+      for (const payload of [
+        {
+          ...input("forged-actor", 1, { type: "RESIGN" }),
+          actorSlotId: "hockey-p2",
+        },
+        input("forged-position", 1, {
+          type: "CONTROL",
+          target: { x: 5000, y: 5000 },
+          x: 1,
+          velocityX: 2,
+        }),
+        input("invalid-target", 1, {
+          type: "CONTROL",
+          target: { x: 0.5, y: 10001 },
+        }),
+        input("forged-score", 1, { type: "RESIGN", scores: [5, 0] }),
+      ]) {
+        const rejected = inboxA.realtimeRejections.length;
+        roomA.send(REALTIME_INPUT_MESSAGE, payload);
+        await waitUntil(() => inboxA.realtimeRejections.length > rejected);
+        expect(inboxA.realtimeRejections.at(-1)?.code).toBe(
+          "INVALID_INPUT_PAYLOAD",
+        );
+      }
+      expect(inboxA.snapshots.at(-1)?.tick).toBe(0);
+      expect((await replayStore.get("hockey-replay-1"))?.events).toHaveLength(
+        0,
+      );
+      const movement = input("move-a", 1, {
+        type: "CONTROL",
+        target: { x: 6500, y: 7500 },
+      });
+      roomA.send(REALTIME_INPUT_MESSAGE, movement);
+      roomA.send(REALTIME_INPUT_MESSAGE, movement);
+      await barrier(roomA, inboxA);
+      await advance(inboxA, 1);
+      expect(view(inboxA).paddles[0]?.x).toBeGreaterThan(300000);
+      expect((await replayStore.get("hockey-replay-1"))?.events).toHaveLength(
+        1,
+      );
+      roomB.send(REALTIME_INPUT_MESSAGE, movement);
+      await waitUntil(
+        () => inboxB.realtimeRejections.at(-1)?.code === "DUPLICATE_COMMAND",
+      );
+      roomA.send(
+        REALTIME_INPUT_MESSAGE,
+        input("stale-input", 1, { type: "RESIGN" }),
+      );
+      await waitUntil(
+        () => inboxA.realtimeRejections.at(-1)?.code === "STALE_INPUT_SEQUENCE",
+      );
+      roomA.send(REALTIME_INPUT_MESSAGE, {
+        ...input("wrong-round", 2, { type: "RESIGN" }),
+        roundNumber: 2,
+      });
+      await waitUntil(
+        () => inboxA.realtimeRejections.at(-1)?.code === "ROUND_MISMATCH",
+      );
+      expect((await replayStore.get("hockey-replay-1"))?.events).toHaveLength(
+        1,
+      );
+      roomB.send(
+        REALTIME_INPUT_MESSAGE,
+        input("non-server-touch", 1, {
+          type: "CONTROL",
+          target: { x: 5000, y: 5000 },
+        }),
+      );
+      await barrier(roomB, inboxB);
+      await advance(inboxA, 35);
+      expect(view(inboxA)).toMatchObject({
+        phase: "SERVE",
+        puck: { x: 300000, y: 510000 },
+        scores: [0, 0],
+        events: [],
+      });
+      const takeover = await new ColyseusClient(address.httpUrl).join(
+        REALTIME_GAME_ROOM_NAME,
+        {
+          type: "room.join",
+          protocolVersion: 6,
+          ticket: ticket("hockey-a"),
+          roomCode: "AHCK2345",
+        },
+      );
+      rooms.push(takeover);
+      const resumed = messagesV6(takeover);
+      await waitUntil(() => resumed.snapshots.length > 0);
+      expect(resumed.connected[0]?.playerSlotId).toBe("hockey-p1");
+      expect(view(resumed)).toEqual(view(inboxA));
+      const sequences: [number, number] = [1, 1];
+      let serial = 0;
+      // Move both paddles away before the first serve; each later reset starts
+      // from the Core's home positions. Inputs travel through real WebSockets.
+      for (const [side, room, inbox] of [
+        [0, takeover, resumed],
+        [1, roomB, inboxB],
+      ] as const) {
+        room.send(
+          REALTIME_INPUT_MESSAGE,
+          input(`park-${side}`, ++sequences[side], {
+            type: "CONTROL",
+            target: { x: side === 0 ? 5000 : 700, y: 7500 },
+          }),
+        );
+        await barrier(room, inbox);
+      }
+      await advance(resumed, 25);
+      for (
+        let point = 0;
+        point < 9 && view(resumed).outcome === null;
+        point++
+      ) {
+        const before = view(resumed);
+        for (const [side, room, inbox] of [
+          [0, takeover, resumed],
+          [1, roomB, inboxB],
+        ] as const) {
+          room.send(
+            REALTIME_INPUT_MESSAGE,
+            input(`rally-${++serial}`, ++sequences[side], {
+              type: "CONTROL",
+              target:
+                side === before.server
+                  ? { x: 5000, y: 5000 }
+                  : { x: 700, y: 7500 },
+            }),
+          );
+          await barrier(room, inbox);
+        }
+        for (
+          let batch = 0;
+          batch < 30 &&
+          view(resumed).rally === before.rally &&
+          view(resumed).outcome === null;
+          batch++
+        )
+          await advance(resumed, 12);
+        expect(view(resumed).scores[0] + view(resumed).scores[1]).toBe(
+          before.scores[0] + before.scores[1] + 1,
+        );
+      }
+      expect(Math.max(...view(resumed).scores)).toBe(5);
+      await waitUntil(
+        () => resumed.lifecycle.at(-1)?.currentRound?.status === "completed",
+      );
+      const firstReplay = await replayStore.get("hockey-replay-1");
+      expect(firstReplay?.recordedOutcome).toMatchObject({
+        reason: "SCORE",
+        scores: view(resumed).scores,
+      });
+      expect(firstReplay?.recordedRngCursor).toBe(0);
+      expect(
+        verifyRealtimeReplay(firstReplay, resolveRealtimeGameDefinition),
+      ).toMatchObject({ ok: true });
+      expect(firstReplay?.header.initialConfig).toEqual({ targetScore: 5 });
+      takeover.send(
+        ROOM_CONTROL_MESSAGE,
+        control("again-a", "READY_FOR_ROUND"),
+      );
+      await waitUntil(
+        () => resumed.lifecycle.at(-1)?.nextRound?.readiness.selfReady === true,
+      );
+      expect(resumed.snapshots.at(-1)?.roundNumber).toBe(1);
+      roomB.send(ROOM_CONTROL_MESSAGE, control("again-b", "READY_FOR_ROUND"));
+      await waitUntil(() => resumed.snapshots.at(-1)?.roundNumber === 2);
+      expect(view(resumed)).toMatchObject({
+        tick: 0,
+        phase: "SERVE",
+        server: 0,
+        scores: [0, 0],
+        targetScore: 5,
+        yourSide: 0,
+      });
+      roomB.send(REALTIME_INPUT_MESSAGE, {
+        ...input("second-round-resign", 1, { type: "RESIGN" }),
+        roundNumber: 2,
+      });
+      await barrier(roomB, inboxB);
+      await advance(resumed, 1);
+      const secondReplay = await replayStore.get("hockey-replay-2");
+      expect(secondReplay?.recordedOutcome).toMatchObject({
+        reason: "RESIGNATION",
+        winnerSlotId: "hockey-p1",
+        resignedSlotId: "hockey-p2",
+        scores: [0, 0],
+      });
+      expect(secondReplay?.header.rng.seed).not.toBe(
+        firstReplay?.header.rng.seed,
+      );
+      expect(
+        verifyRealtimeReplay(secondReplay, resolveRealtimeGameDefinition),
+      ).toMatchObject({ ok: true });
+      expect(archive.created).toHaveLength(2);
+    } finally {
+      await Promise.allSettled(
+        rooms
+          .filter((room) => room.connection.isOpen)
+          .map((room) => room.leave(true)),
+      );
+      await app.stop();
+    }
+  }, 30000);
+});
+
 function required<T>(value: T | null | undefined): T {
   if (value === null || value === undefined)
     throw new Error("Required tank value is missing.");

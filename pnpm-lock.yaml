@@ -617,6 +617,9 @@ importers:
 
   packages/game-registry:
     dependencies:
+      '@online-game-hub/air-hockey':
+        specifier: workspace:*
+        version: link:../../games/air-hockey
       '@online-game-hub/badminton':
         specifier: workspace:*
         version: link:../../games/badminton

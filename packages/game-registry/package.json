@@ -35,6 +35,7 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
+    "@online-game-hub/air-hockey": "workspace:*",
     "@online-game-hub/badminton": "workspace:*",
     "@online-game-hub/chinese-checkers": "workspace:*",
     "@online-game-hub/connect-four": "workspace:*",

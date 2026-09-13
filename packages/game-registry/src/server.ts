@@ -43,6 +43,8 @@ import {
   tankMazeDefinitionV1_1_0,
 } from "@online-game-hub/tank-maze/core";
 import { tankMazeSetupDefinition } from "@online-game-hub/tank-maze/setup";
+import { airHockeyDefinition } from "@online-game-hub/air-hockey/core";
+import { airHockeySetupDefinition } from "@online-game-hub/air-hockey/setup";
 import { eraseGameDefinition } from "@online-game-hub/game-sdk";
 import type { UnknownGameDefinition } from "@online-game-hub/game-sdk";
 import {
@@ -93,6 +95,7 @@ export function resolveCurrentGameDefinition(
 export type GameDefinitionResolver = typeof resolveGameDefinition;
 
 const realtimeServerDefinitions = Object.freeze([
+  eraseRealtimeGameDefinition(airHockeyDefinition),
   eraseRealtimeGameDefinition(tankMazeDefinition),
   eraseRealtimeGameDefinition(tankMazeDefinitionV1_0_0),
   eraseRealtimeGameDefinition(tankMazeDefinitionV1_1_0),
@@ -130,6 +133,11 @@ export type RealtimeGameDefinitionResolver =
   typeof resolveRealtimeGameDefinition;
 
 const roundSetupDefinitions = Object.freeze([
+  Object.freeze({
+    gameId: airHockeyDefinition.manifest.id,
+    gameVersion: airHockeyDefinition.manifest.gameVersion,
+    definition: eraseRoundSetupDefinition(airHockeySetupDefinition),
+  }),
   Object.freeze({
     gameId: tankMazeDefinitionV1_1_0.manifest.id,
     gameVersion: tankMazeDefinitionV1_1_0.manifest.gameVersion,

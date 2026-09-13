@@ -7,6 +7,7 @@ import { chineseCheckersHistory } from "@online-game-hub/chinese-checkers/histor
 import { pongHistory } from "@online-game-hub/pong/history";
 import { badmintonHistory } from "@online-game-hub/badminton/history";
 import { tankMazeHistory } from "@online-game-hub/tank-maze/history";
+import { airHockeyHistory } from "@online-game-hub/air-hockey/history";
 import type {
   GameHistoryProjection,
   MatchHistoryResult,
@@ -22,6 +23,7 @@ const histories: readonly GameHistoryProjection[] = [
   pongHistory,
   badmintonHistory,
   tankMazeHistory,
+  airHockeyHistory,
 ];
 
 export function resolveGameHistoryProjection(

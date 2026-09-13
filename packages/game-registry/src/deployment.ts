@@ -299,7 +299,29 @@ const tankMazeSurface = (gameVersion: "1.0.0" | "1.1.0" | "1.2.0") =>
     },
   }) as const satisfies GameDeploymentRegistration;
 
+const airHockeySurface: GameDeploymentRegistration = Object.freeze({
+  gameId: "air-hockey",
+  gameVersion: "1.0.0",
+  setupProtocol: 6,
+  platformControls: resignPlatformControls,
+  presentation: Object.freeze({
+    kind: "surface-v1",
+    publicBasePath: "/game-surfaces/air-hockey/1.0.0",
+    artifact: {
+      schemaVersion: 1,
+      gameId: "air-hockey",
+      supportedGameVersions: ["1.0.0"],
+      surfaceVersion: "1.0.0",
+      bridgeVersion: 2,
+      entrypoints: { setup: "setup/index.html", play: "play/index.html" },
+      capabilities: {},
+      contentDigest: "sha256-q06iz+x2pxmBwSdX3cn4MfomHKOp3VA7RCSmSqrqiaA=",
+    } satisfies SurfaceArtifactManifestV1,
+  }),
+});
+
 const gameDeployments = Object.freeze([
+  airHockeySurface,
   tankMazeSurface("1.0.0"),
   tankMazeSurface("1.1.0"),
   tankMazeSurface("1.2.0"),

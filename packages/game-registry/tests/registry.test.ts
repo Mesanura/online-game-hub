@@ -40,7 +40,7 @@ describe("explicit game registry", () => {
 
     for (const manifest of gameCatalog) {
       expect(manifest.capabilities.replay).toBe(
-        ["pong", "badminton", "tank-maze"].includes(manifest.id)
+        ["pong", "badminton", "tank-maze", "air-hockey"].includes(manifest.id)
           ? "record-only"
           : "player-playback",
       );
@@ -370,6 +370,7 @@ describe("explicit game registry", () => {
       ["badminton", "1.0.0"],
       ["badminton", "1.1.0"],
       ["badminton", "1.2.0"],
+      ["air-hockey", "1.0.0"],
       ["tank-maze", "1.0.0"],
       ["tank-maze", "1.1.0"],
       ["tank-maze", "1.2.0"],
@@ -475,6 +476,44 @@ describe("explicit game registry", () => {
         resolveGameSurfaceEntrypoint("tank-maze", version, "replay"),
       ).toBeUndefined();
     }
+  });
+
+  it("registers air hockey with exact V6 Setup, latest input, history-only replay and Bridge V2", () => {
+    const definition = resolveCurrentRealtimeGameDefinition("air-hockey");
+    expect(definition).toBe(
+      resolveRealtimeGameDefinition("air-hockey", "1.0.0"),
+    );
+    expect(definition?.manifest).toMatchObject({
+      runtime: "realtime",
+      gameVersion: "1.0.0",
+      tickRate: 60,
+      inputDelivery: "latest",
+      minPlayers: 2,
+      maxPlayers: 2,
+      defaultConfig: { targetScore: 7 },
+      capabilities: { replay: "record-only" },
+    });
+    expect(resolveGameDeployment("air-hockey", "1.0.0")).toMatchObject({
+      setupProtocol: 6,
+      platformControls: ["RESIGN"],
+      presentation: {
+        artifact: {
+          bridgeVersion: 2,
+          contentDigest: "sha256-q06iz+x2pxmBwSdX3cn4MfomHKOp3VA7RCSmSqrqiaA=",
+        },
+      },
+    });
+    for (const mode of ["setup", "play"] as const) {
+      expect(
+        resolveGameSurfaceEntrypoint("air-hockey", "1.0.0", mode)?.url,
+      ).toBe(`/game-surfaces/air-hockey/1.0.0/${mode}/index.html`);
+    }
+    expect(
+      resolveGameSurfaceEntrypoint("air-hockey", "1.0.0", "replay"),
+    ).toBeUndefined();
+    expect(
+      resolveRealtimeGameDefinition("air-hockey", "1.1.0"),
+    ).toBeUndefined();
   });
 
   it("registers badminton as an independent V6 Surface with server-only replay", () => {

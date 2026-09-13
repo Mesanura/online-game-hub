@@ -1,6 +1,6 @@
 # Realtime Runtime 设计
 
-本文定义固定 tick simulation、输入交付、实时协议和客户端职责。当前消费者为 Pong、火柴人羽毛球与坦克迷战；游戏规则和版本见 [游戏索引](../games/README.md)。共享房间协议见 [NETWORK_PROTOCOL.md](./NETWORK_PROTOCOL.md)，记录格式见 [REPLAY_DESIGN.md](./REPLAY_DESIGN.md)。
+本文定义固定 tick simulation、输入交付、实时协议和客户端职责。当前消费者为 Pong、火柴人羽毛球、坦克迷战与气垫球；游戏规则和版本见 [游戏索引](../games/README.md)。共享房间协议见 [NETWORK_PROTOCOL.md](./NETWORK_PROTOCOL.md)，记录格式见 [REPLAY_DESIGN.md](./REPLAY_DESIGN.md)。
 
 ## 范围与职责
 
@@ -22,7 +22,7 @@ wall clock 只决定 scheduler 何时执行 tick；系统时间、网络到达�
 - `realtime-game-server-runtime`：输入队列、scheduler、room adapter、snapshot/rejection 和存储 ports；不依赖具体游戏或 `game-server-runtime` 实现。
 - `realtime-game-client-sdk`：与 React/Phaser 无关的 Host、input sender、连接状态、资料同步和显示插值时钟；不依赖回合制 Host、具体游戏或数据库。
 - `games/<id>`：各自的整数 simulation、manifest、Setup 与 golden tests；Pong 的旧 Client 已移除，所有实时表现均在独立 Surface 中实现。
-- `game-surfaces/<id>`：独立画面；Pong/羽毛球使用 Phaser，坦克迷战使用 SVG，均只依赖 Bridge 和自身渲染栈。
+- `game-surfaces/<id>`：独立画面；Pong/羽毛球/气垫球使用 Phaser，坦克迷战使用 SVG，均只依赖 Bridge 和自身渲染栈。
 
 只有 composition layer 同时看到 registry、两个 runtime 和平台 adapters。共享代码先证明实际复用，再提取职责明确的纯契约；不建立泛化 shared 包。完整依赖约束见 [系统架构](./ARCHITECTURE.md)。
 
@@ -56,11 +56,11 @@ interface RealtimeGameDefinition<Config, State, Input, View, Outcome> {
 
 当前 tick rate 固定为 60 Hz。simulation 从 tick `0` 开始，runner 顺序执行到 `finalTick - 1`；无输入的 tick 仍执行 `step`。State、Input、Config 与 RNG 均不可变、JSON-safe。禁止全局随机、时钟和环境 I/O；游戏自行固定整数单位、碰撞顺序和必要的中间量化规则，避免浮点累积漂移。
 
-输入只表达操作意图，不携带 actor、位置、速度、命中、分数、Outcome 或目标 tick。服务器从连接推导 actor，具体输入效果由 exact Core 裁定。持续移动、按键边沿与输入过期时长属于游戏规则，不由 runtime 猜测。
+输入只表达操作意图，不携带 actor、实体实际位置、速度、命中、分数、Outcome 或目标 tick。归一化指针目标坐标属于操作意图；服务器从连接推导 actor，由 exact Core 转换玩家视角、限制半场与移动速度，再决定实体实际位置及碰撞。持续移动、按键边沿与输入过期时长属于游戏规则，不由 runtime 猜测。该约定沿用现有 opaque Input 消息形状，不改变 Realtime V1 或 Bridge V2。
 
 ### 多人参与者
 
-Realtime manifest 的 `minPlayers/maxPlayers` 允许 2–8。runtime 按 manifest 分配 stable slots，由 finalized Setup 固定实际参与者与 playerOrder；V6 lifecycle/readiness 上限为 8。Pong、羽毛球的 manifest 仍限定双人。历史规则版本继续按各自 manifest 和 Core 重建。
+Realtime manifest 的 `minPlayers/maxPlayers` 允许 2–8。runtime 按 manifest 分配 stable slots，由 finalized Setup 固定实际参与者与 playerOrder；V6 lifecycle/readiness 上限为 8。Pong、羽毛球和气垫球的 manifest 仍限定双人。历史规则版本继续按各自 manifest 和 Core 重建。
 
 RoomStore、archive 和 replay reader 同时校验参与者唯一性与 exact manifest 人数范围。扩展使用现有 JSONB/关联表，不把坦克颜色、地图或小局规则加入平台 schema。
 

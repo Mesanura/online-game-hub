@@ -108,6 +108,7 @@ create-game unit tests 使用系统临时目录中的隔离 workspace 和本地 
 | [Pong](../games/pong/GAME_SPEC.md)                 | 准备期、球拍/边界碰撞、两侧连续回球加速与上限、非终局得分重置、投降优先级、RNG 和各历史计分/投降 golden                                                                                                                                                                                                              |
 | [羽毛球](../games/badminton/GAME_SPEC.md)          | 各比分 Config、半场/跳跃、输入有效期、三类击球/冷却/重复触球、球网高速拦截/落地/出界、领先两分与封顶；手动/空中发球、非发球方拒绝、长按不连发、起手时序/前脚对齐、阻力和历史自动发球                                                                                                                                 |
 | [坦克迷战](../games/tank-maze/GAME_SPEC.md)        | 2/3/8 人最小地图分散出生、地图权重边界/全部尺寸/主区域与人数无关的分布、全部朝向前后等速、推挤/墙体；events 同 tick 多次 FIRE，各弹药容量/寿命/反弹/自伤与盾边界、导弹延迟/换目标/绕墙/封闭区域/转向上限/不穿墙；全灭/幸存/超时/目标分/投降、小局清理与各历史八人多小局 golden、各起始 tick 相位整周转向与 JSON 重建 |
+| [气垫球](../games/air-hockey/GAME_SPEC.md)         | 5／7／11 分、房主固定为 P1、指定方及同 tick 发球权限、快慢撞击/速度上限、静止挡球、扫掠球门柱/角落/夹球、完整越线计分、目标租期与换球清理、逐 tick JSON 确定性和全部计分/投降 golden                                                                                                                                 |
 
 ### Setup
 
@@ -163,7 +164,7 @@ Protocol contract 至少验证：
 
 真实双客户端验证 scheduler 单 writer、输入速率/大小限制、sequence/ack、拒绝与重复、快照顺序、输入释放、takeover 和重连收敛。latest 与 events 两种交付均需验证，拒绝命令不能改变输入队列或日志，正常 tick 推进不因此停机。
 
-中国跳棋增加人数、营地权限、playerOrder、排名和 assignment metadata；坦克迷战使用 2/3/8 客户端覆盖容量、输入权限/幂等、多小局和重开。羽毛球覆盖逐球发球到计分终局、两轮 exact record 与旧版本兼容。所有游戏继续验证投降、终局拒绝和历史规则。
+中国跳棋增加人数、营地权限、playerOrder、排名和 assignment metadata；坦克迷战使用 2/3/8 客户端覆盖容量、输入权限/幂等、多小局和重开。羽毛球覆盖逐球发球到计分终局、两轮 exact record 与旧版本兼容。气垫球覆盖指定方开球、同 tick 接触、指针目标隐私、稳定蓝橙席位、逐球终局、重连和保留设置的两轮 exact record。所有游戏继续验证投降、终局拒绝和历史规则。
 
 ## 真实 PostgreSQL
 
@@ -263,7 +264,7 @@ try {
 - iframe 无 same-origin/form/popup/download/top-navigation 权限，CSP 禁止直接联网；静态 headers 与 session proxy 豁免由实际 Next production build 验证。
 - Web live room/replay 不导入 legacy loader，公共 CSS 不含游戏专属 selector；加载失败不转发 intent。
 - 每个 Surface 与 Workbench 都能脱离 Next/Game Server 完成 test/typecheck/build/contract；公开 fixtures 不含敏感 key。
-- Setup 反馈验证 SDK 的命令关联与 Web 的 accepted/rejected/stale 映射，Bridge 只携带状态和错误码；未知异常安全降级。九款 Surface 的隔离浏览器检查经真实 MessageChannel 注入公开投影与延迟结果，覆盖不相关/迟到确认、过期、权限和连接失败、断线重试、新局与只读状态的 pending 清理。
+- Setup 反馈验证 SDK 的命令关联与 Web 的 accepted/rejected/stale 映射，Bridge 只携带状态和错误码；未知异常安全降级。全部 Surface 的隔离浏览器检查经真实 MessageChannel 注入公开投影与延迟结果，覆盖不相关/迟到确认、过期、权限和连接失败、断线重试、新局与只读状态的 pending 清理。
 
 完整 build 后依次 surface:verify、surface:publish；重复同 digest 必须 no-op，不重写目标。Workbench 覆盖各 mode、connection/read-only/terminal、revision/tick、reduced-motion、viewport 与 fullscreen/focus mode。
 
@@ -273,7 +274,7 @@ try {
 
 公共旅程覆盖目录/邀请、独立 Setup、逐人 ready、独立 Play、合法对局、终局、取消/确认投降、调整设置、完整设置重开、刷新/reconnect、第三方拒绝、关闭/离开、timeout 与跨数据库连接的 replay/history。私有回放验证 exact Replay Surface、逐帧/播放/暂停/slider、只读和无游戏 WebSocket；record-only 验证无播放入口、授权 API 409 和服务器记录仍可验证。
 
-九款 Setup 旅程验证服务器确认前不更新选择摘要与示意、提交中防重复、拒绝后恢复选择、快照更新保留有效键盘焦点，以及手机横竖屏的滚动与 44px 操作目标。五子棋尺寸与 Pong 目标分数覆盖真实开局、重连、replay header 和完整设置重开；随机顺序在下一局保留实际结果。中国跳棋验证营地占用、人数拒绝和指定首位失效，坦克迷战验证颜色占用与超员提示；羽毛球按 exact 规则版本验证发球说明与对应比分封顶。
+全部 Setup 旅程验证服务器确认前不更新选择摘要与示意、提交中防重复、拒绝后恢复选择、快照更新保留有效键盘焦点，以及手机横竖屏的滚动与 44px 操作目标。五子棋尺寸与 Pong 目标分数覆盖真实开局、重连、replay header 和完整设置重开；随机顺序在下一局保留实际结果。中国跳棋验证营地占用、人数拒绝和指定首位失效，坦克迷战验证颜色占用与超员提示；羽毛球按 exact 规则版本验证发球说明与对应比分封顶。
 
 认证旅程先完成游客局，再注册完成账户局，验证不认领旧比赛、账户隔离、退出失效和跨设备历史。资料菜单覆盖 NFC/grapheme/头像边界、游客 localStorage 与账户隔离、同源 strict PATCH、Escape/外部关闭和 live room 身份变更确认。
 
@@ -295,6 +296,8 @@ E2E 优先断言可访问 role/test id、用户文本和自然 DOM/SVG 几何，
 - 坦克迷战验证道具图标居中、321 倒计时、击毁轻震幅度/复位、HUD 不震、重复快照不重复触发和 reduced-motion。手机横竖屏、平板、桌面覆盖左右分区、方向说明、56px/窄屏 48px 按钮与八人 HUD/全屏按钮避让；真实触控事件验证前后/左右滑换、滑出释放/重入、多指与键盘共存、实际方向高亮、150ms 续租、取消/失焦/断线/换小局后的旧触点失效。FIRE 仅直接按下一次触发，长按、移动和滑过发射区均不额外开火。
 
 Playwright 保留 only-on-failure 截图用于排障；trace/video 关闭，避免 bearer ticket 进入制品。截图不是通过条件。
+
+气垫球浏览器检查覆盖 P1/P2 同色球拍与球门、仅上下镜像、桌面/平板/手机横竖屏完整等比球场、鼠标与 Chromium 真实单指拖动、半场夹紧/多指忽略/取消释放、换球与重连后旧触点失效、权威插值收敛、音效解锁/静音/事件去重、边框流光与 reduced-motion。账户旅程完成计分终局、投降保留真实比分、设置复用与跨连接重读；record-only 无播放入口且授权播放 API 返回 409。持续生产 tick 下仍须完成准备页到 Play、重连与下一局设置导航。
 
 ## 完成标准
 
