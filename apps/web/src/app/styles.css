@@ -334,6 +334,9 @@ summary:focus-visible {
   display: grid;
   gap: 0.85rem;
 }
+.history-feedback {
+  margin-top: 1.25rem;
+}
 .history-row {
   align-items: center;
   display: flex;
@@ -353,6 +356,8 @@ summary:focus-visible {
 }
 .history-match {
   flex: 1 1 10rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .history-result {
   background: var(--clay-light);
