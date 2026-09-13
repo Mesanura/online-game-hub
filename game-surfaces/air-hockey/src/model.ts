@@ -22,7 +22,7 @@ export function toScreen(point: Point, side: Side): Point {
 export function pointerTarget(
   client: Point,
   rect: { left: number; top: number; width: number; height: number },
-  captured = false,
+  clampOutside = false,
 ): Point | null {
   if (rect.width <= 0 || rect.height <= 0) return null;
   const x =
@@ -30,7 +30,7 @@ export function pointerTarget(
   const y =
     ((client.y - rect.top) / rect.height) * CANVAS.height - CANVAS.padding;
   if (
-    !captured &&
+    !clampOutside &&
     (x < 0 || y < 0 || x > CANVAS.courtWidth || y > CANVAS.courtHeight)
   )
     return null;

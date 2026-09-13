@@ -109,7 +109,7 @@ test("two accounts play air hockey, reconnect, finish by score and rematch with 
       await expect(page.getByTestId("match-status")).toHaveText("对局进行中");
       await expect(page.getByTestId("game-surface-iframe")).toHaveAttribute(
         "src",
-        "/game-surfaces/air-hockey/1.0.0/play/index.html",
+        "/game-surfaces/air-hockey/1.0.1/play/index.html",
       );
       await expect(surface(page).locator("#court-canvas canvas")).toBeVisible();
     }

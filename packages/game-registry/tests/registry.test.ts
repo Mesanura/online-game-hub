@@ -499,14 +499,15 @@ describe("explicit game registry", () => {
       presentation: {
         artifact: {
           bridgeVersion: 2,
-          contentDigest: "sha256-q06iz+x2pxmBwSdX3cn4MfomHKOp3VA7RCSmSqrqiaA=",
+          contentDigest: "sha256-6BnsYkcGLWUnLjZYMjSZcim70iuaPwWXNeasqa163oE=",
+          surfaceVersion: "1.0.1",
         },
       },
     });
     for (const mode of ["setup", "play"] as const) {
       expect(
         resolveGameSurfaceEntrypoint("air-hockey", "1.0.0", mode)?.url,
-      ).toBe(`/game-surfaces/air-hockey/1.0.0/${mode}/index.html`);
+      ).toBe(`/game-surfaces/air-hockey/1.0.1/${mode}/index.html`);
     }
     expect(
       resolveGameSurfaceEntrypoint("air-hockey", "1.0.0", "replay"),

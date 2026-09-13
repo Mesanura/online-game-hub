@@ -141,6 +141,76 @@ for (const side of [0, 1]) {
     }
     expect(errors).toEqual([]);
   });
+
+  test(`air hockey P${side + 1} follows the mouse outside the court and keeps renewing clamped targets`, async ({
+    page,
+  }) => {
+    const { surface, push, intents } = await openPlaySurface(
+      page,
+      "air-hockey",
+      "1.0.0",
+    );
+    const view = await fixture();
+    view.yourSide = side;
+    await push(view);
+    const canvas = surface.locator("#court-canvas canvas");
+    await expect(canvas).toBeVisible();
+    for (const viewport of [
+      { width: 1440, height: 900 },
+      { width: 768, height: 1024 },
+      { width: 390, height: 844 },
+      { width: 844, height: 390 },
+    ]) {
+      await page.setViewportSize(viewport);
+      await renderedFrame(surface);
+      const own = await clientPoint(canvas, 300, 765);
+      const lower = await clientPoint(canvas, 450, 918);
+      const left = await clientPoint(canvas, 150, 765);
+      await page.mouse.move(own.x, own.y);
+      await expect
+        .poll(async () => (await intents()).at(-1))
+        .toEqual({ type: "CONTROL", target: { x: 5000, y: 7500 } });
+      const before = (await intents()).length;
+      for (const { x, y, target } of [
+        { x: 1, y: own.y, target: { x: 0, y: 7500 } },
+        { x: 1, y: lower.y, target: { x: 0, y: 9000 } },
+        {
+          x: viewport.width - 2,
+          y: lower.y,
+          target: { x: 10000, y: 9000 },
+        },
+        {
+          x: left.x,
+          y: viewport.height - 2,
+          target: { x: 2500, y: 10000 },
+        },
+        {
+          x: lower.x,
+          y: viewport.height - 2,
+          target: { x: 7500, y: 10000 },
+        },
+        { x: left.x, y: 1, target: { x: 2500, y: 5000 } },
+        { x: viewport.width - 2, y: 1, target: { x: 10000, y: 5000 } },
+      ]) {
+        await page.mouse.move(x, y);
+        await expect
+          .poll(async () => (await intents()).at(-1))
+          .toEqual({ type: "CONTROL", target });
+      }
+      const stationaryCount = (await intents()).length;
+      await expect
+        .poll(async () => (await intents()).length)
+        .toBeGreaterThan(stationaryCount);
+      expect((await intents()).at(-1)).toEqual({
+        type: "CONTROL",
+        target: { x: 10000, y: 5000 },
+      });
+      expect((await intents()).slice(before)).not.toContainEqual({
+        type: "CONTROL",
+        target: null,
+      });
+    }
+  });
 }
 
 test("air hockey mouse and real single touch release, clamp, reconnect and resign safely", async ({
@@ -169,6 +239,12 @@ test("air hockey mouse and real single touch release, clamp, reconnect and resig
       .poll(async () => (await intents()).at(-1))
       .toEqual({ type: "CONTROL", target: { x: 3000, y: 7500 } });
     await page.mouse.move(0, 0);
+    await expect
+      .poll(async () => (await intents()).at(-1))
+      .toEqual({ type: "CONTROL", target: { x: 0, y: 5000 } });
+    await surface
+      .locator("#root")
+      .evaluate(() => window.dispatchEvent(new Event("blur")));
     await expect
       .poll(async () => (await intents()).at(-1))
       .toEqual({ type: "CONTROL", target: null });

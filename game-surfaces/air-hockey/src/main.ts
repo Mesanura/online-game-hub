@@ -321,17 +321,21 @@ function ensureGame(): void {
     audio: { noAudio: true },
     input: { keyboard: false, mouse: false, touch: false },
   });
-  const point = (event: PointerEvent, captured = false) => {
+  const point = (event: PointerEvent, clampOutside = false) => {
     const rect = game?.canvas.getBoundingClientRect();
     return rect === undefined
       ? null
-      : pointerTarget({ x: event.clientX, y: event.clientY }, rect, captured);
+      : pointerTarget(
+          { x: event.clientX, y: event.clientY },
+          rect,
+          clampOutside,
+        );
   };
-  parent.addEventListener(
+  window.addEventListener(
     "pointermove",
     (event) => {
       if (!canControl()) return;
-      if (event.pointerType === "mouse") controls.mouse(point(event));
+      if (event.pointerType === "mouse") controls.mouse(point(event, true));
       else controls.moveTouch(event.pointerId, point(event, true));
     },
     { signal: listeners.signal },
@@ -361,13 +365,6 @@ function ensureGame(): void {
     "lostpointercapture",
   ] as const)
     parent.addEventListener(name, end, { signal: listeners.signal });
-  parent.addEventListener(
-    "pointerleave",
-    (event) => {
-      if (event.pointerType === "mouse") release(true);
-    },
-    { signal: listeners.signal },
-  );
   resize = new ResizeObserver(() => game?.scale.refresh());
   resize.observe(parent);
 }

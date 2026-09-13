@@ -136,7 +136,7 @@ describe("pointer controls and display coordinates", () => {
       }
     },
   );
-  it("ignores letterboxing and clamps captured touches to the court", () => {
+  it("ignores touch starts in letterboxing and clamps active pointers to the court", () => {
     const rect = {
       left: 0,
       top: 0,
