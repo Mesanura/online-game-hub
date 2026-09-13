@@ -1,0 +1,46 @@
+{
+  "field": {
+    "width": 600000,
+    "height": 1020000,
+    "paddleRadius": 42000,
+    "puckRadius": 18000,
+    "centerRadius": 132000,
+    "goalLeft": 216000,
+    "goalRight": 384000
+  },
+  "players": [
+    {
+      "slotId": "owner",
+      "side": 0,
+      "color": "BLUE"
+    },
+    {
+      "slotId": "guest",
+      "side": 1,
+      "color": "ORANGE"
+    }
+  ],
+  "yourSide": 0,
+  "paddles": [
+    {
+      "x": 300000,
+      "y": 765000
+    },
+    {
+      "x": 300000,
+      "y": 255000
+    }
+  ],
+  "puck": {
+    "x": 300000,
+    "y": 510000
+  },
+  "scores": [0, 0],
+  "targetScore": 7,
+  "phase": "SERVE",
+  "server": 0,
+  "tick": 0,
+  "rally": 1,
+  "events": [],
+  "outcome": null
+}

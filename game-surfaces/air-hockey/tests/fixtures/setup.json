@@ -1,0 +1,8 @@
+{
+  "config": {
+    "targetScore": 7
+  },
+  "participantSlotIds": ["owner", "guest"],
+  "ownerSlotId": "owner",
+  "canEdit": true
+}

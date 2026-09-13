@@ -10,8 +10,9 @@ interface PlayTestWindow extends Window {
 // A real sandboxed artifact and MessageChannel, using only public projections.
 export async function openPlaySurface(
   page: Page,
-  gameId: "badminton" | "tank-maze",
+  gameId: "badminton" | "tank-maze" | "air-hockey",
   gameVersion: string,
+  options: { reducedMotion?: boolean } = {},
 ) {
   const origin = "http://play-surface.test";
   await page.route(`${origin}/**`, async (route) => {
@@ -45,7 +46,7 @@ export async function openPlaySurface(
   const surface = page.frameLocator("iframe");
   await expect(surface.locator("#root > main")).toBeVisible();
   await page.evaluate(
-    async ({ gameId, gameVersion }) => {
+    async ({ gameId, gameVersion, reducedMotion }) => {
       const frame = document.querySelector("iframe");
       if (!frame?.contentWindow) throw new Error("Missing Surface frame.");
       const channel = new MessageChannel();
@@ -65,7 +66,7 @@ export async function openPlaySurface(
             gameVersion,
             mode: "play",
             locale: "zh-CN",
-            reducedMotion: true,
+            reducedMotion,
           });
           resolve();
         };
@@ -81,7 +82,7 @@ export async function openPlaySurface(
         );
       });
     },
-    { gameId, gameVersion },
+    { gameId, gameVersion, reducedMotion: options.reducedMotion ?? true },
   );
   return {
     surface,

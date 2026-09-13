@@ -1,0 +1,16 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "extends": ["//"],
+  "tasks": {
+    "build": {
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "../../tsconfig.base.json",
+        "../../tooling/surface-artifact/src/**"
+      ]
+    },
+    "contract-test": {
+      "inputs": ["$TURBO_DEFAULT$", "../../tooling/surface-artifact/src/**"]
+    }
+  }
+}

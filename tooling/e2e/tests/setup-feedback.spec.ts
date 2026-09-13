@@ -45,6 +45,22 @@ interface SetupCase {
   conflictCode?: string;
 }
 const cases: readonly SetupCase[] = [
+  {
+    gameId: "air-hockey",
+    selector: '[data-score="5"]',
+    payload: {
+      config: { targetScore: 7 },
+      participantSlotIds: ["owner", "guest"],
+      ownerSlotId: "owner",
+      canEdit: true,
+    },
+    accepted: {
+      config: { targetScore: 5 },
+      participantSlotIds: ["owner", "guest"],
+      ownerSlotId: "owner",
+      canEdit: true,
+    },
+  },
   ...[
     "tic-tac-toe",
     "connect-four",
@@ -184,7 +200,7 @@ async function mountSetup(
   );
   await pushState(page, payload);
   await expect(
-    page.frameLocator("iframe").locator(".setup-card"),
+    page.frameLocator("iframe").locator(".setup-card").first(),
   ).toBeVisible();
 }
 
