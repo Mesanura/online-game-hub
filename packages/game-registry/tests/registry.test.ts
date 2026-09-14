@@ -373,6 +373,7 @@ describe("explicit game registry", () => {
       ["badminton", "1.1.0"],
       ["badminton", "1.2.0"],
       ["badminton", "1.3.0"],
+      ["badminton", "1.4.0"],
       ["air-hockey", "1.0.0"],
       ["air-hockey", "1.1.0"],
       ["bomberman", "1.0.0"],
@@ -603,16 +604,28 @@ describe("explicit game registry", () => {
   });
 
   it("registers badminton as an independent V6 Surface with server-only replay", () => {
-    for (const gameVersion of ["1.0.0", "1.1.0", "1.2.0", "1.3.0"] as const) {
+    for (const gameVersion of [
+      "1.0.0",
+      "1.1.0",
+      "1.2.0",
+      "1.3.0",
+      "1.4.0",
+    ] as const) {
       expect(resolveGameDeployment("badminton", gameVersion)).toMatchObject({
         setupProtocol: 6,
         presentation: {
-          publicBasePath: "/game-surfaces/badminton/1.3.0",
+          publicBasePath: "/game-surfaces/badminton/1.3.1",
           artifact: {
-            supportedGameVersions: ["1.0.0", "1.1.0", "1.2.0", "1.3.0"],
-            surfaceVersion: "1.3.0",
+            supportedGameVersions: [
+              "1.0.0",
+              "1.1.0",
+              "1.2.0",
+              "1.3.0",
+              "1.4.0",
+            ],
+            surfaceVersion: "1.3.1",
             contentDigest:
-              "sha256-ZxtYAEYKnfCIthqE6I64EFQgh0PkpGYiqNjWiKTFjkw=",
+              "sha256-PXcLn/PoNHzi18tbGOAZ/zWbQsKr/vNpo+8agnYZuAo=",
           },
         },
       });
@@ -621,15 +634,15 @@ describe("explicit game registry", () => {
           resolveGameSurfaceEntrypoint("badminton", gameVersion, mode),
         ).toMatchObject({
           gameVersion,
-          surfaceVersion: "1.3.0",
-          url: `/game-surfaces/badminton/1.3.0/${mode}/index.html`,
+          surfaceVersion: "1.3.1",
+          url: `/game-surfaces/badminton/1.3.1/${mode}/index.html`,
         });
       }
       expect(
         resolveGameSurfaceEntrypoint("badminton", gameVersion, "replay"),
       ).toBeUndefined();
     }
-    expect(resolveGameManifest("badminton", "1.3.0")).toMatchObject({
+    expect(resolveGameManifest("badminton", "1.4.0")).toMatchObject({
       title: "火柴人羽毛球",
       runtime: "realtime",
       defaultConfig: { targetScore: 7 },
@@ -644,7 +657,7 @@ describe("explicit game registry", () => {
       expect(
         resolveGameSurfaceEntrypoint("badminton", "1.0.0", mode),
       ).toMatchObject({
-        url: `/game-surfaces/badminton/1.3.0/${mode}/index.html`,
+        url: `/game-surfaces/badminton/1.3.1/${mode}/index.html`,
         mode,
       });
     }
@@ -653,7 +666,7 @@ describe("explicit game registry", () => {
     ).toBeUndefined();
     const current = resolveCurrentRealtimeGameDefinition("badminton");
     const legacy = resolveRealtimeGameDefinition("badminton", "1.0.0");
-    expect(current?.manifest.gameVersion).toBe("1.3.0");
+    expect(current?.manifest.gameVersion).toBe("1.4.0");
     expect(current).not.toBe(legacy);
     expect(current?.step).not.toBe(legacy?.step);
     const previous = resolveRealtimeGameDefinition("badminton", "1.1.0");
@@ -662,8 +675,13 @@ describe("explicit game registry", () => {
     const frozen = resolveRealtimeGameDefinition("badminton", "1.2.0");
     expect(frozen?.manifest.gameVersion).toBe("1.2.0");
     expect(frozen?.step).not.toBe(current?.step);
+    const fastDrop = resolveRealtimeGameDefinition("badminton", "1.3.0");
+    expect(fastDrop?.manifest.gameVersion).toBe("1.3.0");
+    expect(fastDrop?.step).not.toBe(current?.step);
+    expect(resolveRoundSetupDefinition("badminton", "1.3.0")).toBeDefined();
+    expect(resolveRoundSetupDefinition("badminton", "1.4.0")).toBeDefined();
     expect(
       resolveGameSurfaceEntrypoint("badminton", "1.1.0", "play")?.url,
-    ).toBe("/game-surfaces/badminton/1.3.0/play/index.html");
+    ).toBe("/game-surfaces/badminton/1.3.1/play/index.html");
   });
 });

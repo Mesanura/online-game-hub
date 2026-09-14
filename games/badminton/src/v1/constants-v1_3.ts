@@ -31,6 +31,7 @@ export const PHYSICS = Object.freeze({
   smashRecovery: 36,
   clearDragNumerator: 997,
   clearApex: 40_000,
+  dropNetClearance: 18_000,
   smashNetClearance: 12_000,
   smashContactHeight: 110_000,
   smashHeightAboveNet: 75_000,

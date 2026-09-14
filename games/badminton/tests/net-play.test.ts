@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import {
   badmintonDefinition,
   badmintonDefinitionV1_2_0,
+  badmintonDefinitionV1_3_0,
   badmintonStateSchema,
   COURT,
   PHYSICS,
@@ -82,8 +83,13 @@ function hit(
   state: BadmintonState,
   side: BadmintonSide,
   controls: Partial<BadmintonControls>,
+  definition: Definition = badmintonDefinition,
 ) {
-  return advance(state, side === 0 ? [controls, {}] : [{}, controls]);
+  return advance(
+    state,
+    side === 0 ? [controls, {}] : [{}, controls],
+    definition,
+  );
 }
 
 function lift(lifter: BadmintonSide, x: number, y: number, jumpPhase: number) {
@@ -218,19 +224,24 @@ describe("forecourt pressure has a playable escape", () => {
 
 describe("height and placement distinguish the three shots", () => {
   it.each([0, 1] as const)(
-    "keeps side %s's drops low over the net and on the forecourt",
+    "preserves side %s's frozen 1.3.0 low drops",
     (side) => {
       for (const [x, y] of [
         [150_000, 280_000],
         [450_000, 280_000],
         [420_000, 435_000],
       ] as const) {
-        let state = hit(contact(side, x, y), side, { shot: "DROP" });
+        let state = hit(
+          contact(side, x, y),
+          side,
+          { shot: "DROP" },
+          badmintonDefinitionV1_3_0,
+        );
         expect(state.athletes[side].lastContact?.shot).toBe("DROP");
         let crossingY: number | null = null;
         const started = state.tick;
         while (state.phase === "RALLY" && state.tick - started < 100) {
-          state = advance(state);
+          state = advance(state, [{}, {}], badmintonDefinitionV1_3_0);
           if (crossingY === null && mirror(state.shuttle.x, side) > COURT.netX)
             crossingY = state.shuttle.y;
         }
@@ -354,4 +365,135 @@ describe("height and placement distinguish the three shots", () => {
     expect(recovered.athletes[0].swingShot).toBe("DROP");
     expect(badmintonStateSchema.safeParse(recovered).success).toBe(true);
   });
+});
+
+describe("drops leave time to move and an opportunity to attack", () => {
+  it.each([0, 1] as const)(
+    "restores side %s's 1.2.0 drop arc and forecourt landing from high and low contacts",
+    (side) => {
+      for (const [x, y] of [
+        [150_000, 280_000],
+        [450_000, 280_000],
+        [450_000, 350_000],
+        [420_000, 435_000],
+      ] as const) {
+        const before = contact(side, x, y);
+        let state = hit(before, side, { shot: "DROP" });
+        const old = hit(
+          before,
+          side,
+          { shot: "DROP" },
+          badmintonDefinitionV1_2_0,
+        );
+        expect(state.shuttle).toEqual(old.shuttle);
+        expect(state.athletes[side].lastContact?.shot).toBe("DROP");
+        const started = state.tick;
+        while (state.phase === "RALLY" && state.tick - started < 100)
+          state = advance(state);
+        expect(state.tick - started).toBe(68);
+        expect(state.lastPoint).toMatchObject({
+          winner: side,
+          reason: "GROUND",
+        });
+        expect(Math.abs(mirror(landingX(state), side) - 620_000)).toBeLessThan(
+          2_000,
+        );
+      }
+    },
+  );
+
+  function receiveDrop(
+    side: BadmintonSide,
+    receiverX: number,
+    reactionTicks: number,
+    definition: Definition,
+  ) {
+    const receiver = other(side);
+    const before = contact(side, 450_000, 350_000);
+    before.athletes[receiver].x = mirror(receiverX, side);
+    let state = hit(before, side, { shot: "DROP" }, definition);
+    for (
+      let tick = 0;
+      tick < 100 && state.phase === "RALLY" && state.rallyHits < 2;
+      tick++
+    ) {
+      const controls: Partial<BadmintonControls> =
+        tick < reactionTicks
+          ? {}
+          : {
+              move:
+                mirror(state.athletes[receiver].x, side) > 650_000
+                  ? side === 0
+                    ? -1
+                    : 1
+                  : 0,
+              shot: "CLEAR",
+            };
+      state = hit(state, receiver, controls, definition);
+    }
+    return state;
+  }
+
+  it.each([0, 1] as const)(
+    "lets side %s's opponent react from midcourt or the backcourt and run forward to return",
+    (side) => {
+      for (const receiverX of [760_000, 870_000]) {
+        for (const reactionTicks of [12, 18]) {
+          const state = receiveDrop(
+            side,
+            receiverX,
+            reactionTicks,
+            badmintonDefinition,
+          );
+          expect(state.phase).toBe("RALLY");
+          expect(state.rallyHits).toBe(2);
+          expect(state.shuttle.lastHit).toBe(other(side));
+          expect(state.athletes[other(side)].lastContact?.shot).toBe("CLEAR");
+        }
+      }
+      const old = receiveDrop(side, 870_000, 18, badmintonDefinitionV1_3_0);
+      expect(old.rallyHits).toBe(1);
+      expect(old.lastPoint).toMatchObject({ winner: side, reason: "GROUND" });
+    },
+  );
+
+  it.each([0, 1] as const)(
+    "allows a timed jumping smash against side %s's forecourt drop",
+    (side) => {
+      const receiver = other(side);
+      for (const jumpTick of [4, 10, 16]) {
+        const before = contact(side, 450_000, 350_000);
+        before.athletes[receiver].x = mirror(590_000, side);
+        let state = hit(before, side, { shot: "DROP" });
+        for (
+          let tick = 0;
+          tick < 80 && state.phase === "RALLY" && state.rallyHits < 2;
+          tick++
+        ) {
+          state = hit(state, receiver, {
+            jump: tick === jumpTick,
+            shot: state.shuttle.velocityY >= 0 ? "SMASH" : "NONE",
+          });
+        }
+        expect(state.rallyHits).toBe(2);
+        expect(state.athletes[receiver].lastContact?.shot).toBe("SMASH");
+        expect(state.shuttle.velocityY).toBeGreaterThanOrEqual(0);
+        expect(state.athletes[receiver].cooldown).toBe(PHYSICS.smashRecovery);
+      }
+    },
+  );
+
+  it.each([0, 1] as const)(
+    "still faults side %s's late low drop into the net",
+    (side) => {
+      let state = hit(contact(side, 490_000, 470_000), side, { shot: "DROP" });
+      expect(state.athletes[side].lastContact?.shot).toBe("DROP");
+      for (let tick = 0; tick < 10 && state.phase === "RALLY"; tick++)
+        state = advance(state);
+      expect(state.lastPoint).toMatchObject({
+        winner: other(side),
+        reason: "NET",
+      });
+    },
+  );
 });

@@ -293,7 +293,7 @@ test("two accounts play badminton with keyboard and multitouch, reconnect, finis
     await expect(pageA.getByTestId("connection-state")).toHaveText("已连接");
     await expect(pageA.getByTestId("game-surface-iframe")).toHaveAttribute(
       "src",
-      "/game-surfaces/badminton/1.3.0/setup/index.html",
+      "/game-surfaces/badminton/1.3.1/setup/index.html",
     );
     const inviteUrl = await pageA
       .getByTestId("invite-link")
@@ -332,7 +332,7 @@ test("two accounts play badminton with keyboard and multitouch, reconnect, finis
       await expect(page.getByTestId("match-status")).toHaveText("对局进行中");
       await expect(page.getByTestId("game-surface-iframe")).toHaveAttribute(
         "src",
-        "/game-surfaces/badminton/1.3.0/play/index.html",
+        "/game-surfaces/badminton/1.3.1/play/index.html",
       );
       await expectCourt(page);
     }
@@ -595,7 +595,7 @@ test("two accounts play badminton with keyboard and multitouch, reconnect, finis
     expect(Math.max(...finalScore)).toBe(7);
     await expect.poll(() => score(pageB)).toEqual(finalScore);
     const completedReplay = await replayStore.get(replayId);
-    expect(completedReplay?.header.gameVersion).toBe("1.3.0");
+    expect(completedReplay?.header.gameVersion).toBe("1.4.0");
     expect(completedReplay?.recordedRngCursor).toBe(0);
     expect(
       verifyRealtimeReplay(completedReplay, resolveRealtimeGameDefinition),

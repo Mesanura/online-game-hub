@@ -390,7 +390,7 @@ for (const entry of cases) {
   });
 }
 
-for (const gameVersion of ["1.0.0", "1.1.0", "1.2.0", "1.3.0"]) {
+for (const gameVersion of ["1.0.0", "1.1.0", "1.2.0", "1.3.0", "1.4.0"]) {
   test(`badminton ${gameVersion} Setup explains its exact serving rule`, async ({
     page,
   }) => {
@@ -415,6 +415,21 @@ for (const gameVersion of ["1.0.0", "1.1.0", "1.2.0", "1.3.0"]) {
     await expect(
       surface.locator(".how-to kbd").filter({ hasText: /^S$/ }),
     ).toHaveCount(gameVersion === "1.0.0" ? 0 : 1);
+    if (gameVersion === "1.4.0") {
+      await expect(surface.getByTestId("net-play-rules")).toContainText(
+        "上前接球的时间",
+      );
+      await expect(surface.getByTestId("net-play-rules")).toContainText(
+        "下落高点扣杀",
+      );
+      await expect(surface.getByTestId("net-play-rules")).not.toContainText(
+        "低弧线",
+      );
+    } else if (gameVersion === "1.3.0") {
+      await expect(surface.getByTestId("net-play-rules")).toContainText(
+        "低弧线",
+      );
+    }
   });
 }
 for (const gameVersion of ["1.0.0", "1.1.0", "1.2.0"]) {

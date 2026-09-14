@@ -1,5 +1,5 @@
-import { COURT, PHYSICS } from "../constants.js";
-import type { BadmintonSide, BadmintonState } from "./schemas.js";
+import { COURT, PHYSICS } from "../v1/constants-v1_3.js";
+import type { BadmintonSide, BadmintonState } from "./v1_3-schemas.js";
 
 type Shot = "CLEAR" | "DROP" | "SMASH";
 type Flight = { shot: Shot; velocityX: number; velocityY: number };
@@ -96,7 +96,7 @@ function flight(
 }
 
 // Use the same integer integration and four swept segments as live collision.
-// A smash must clear the whole net, not just its center line.
+// A short shot must clear the whole net, not just its center line.
 function clearsNet(
   shuttle: BadmintonState["shuttle"],
   launch: Flight,
@@ -157,10 +157,14 @@ export function planShot(
   const facing = side === 0 ? 1 : -1;
   const mirror = (x: number) => (side === 0 ? x : COURT.width - x);
   if (!serving && player.swingShot === "DROP") {
-    // Restore the 1.2.0 arc: receivers can approach from the backcourt,
-    // and a forecourt drop exposes a descending high contact for a smash.
-    const launch = flight(shuttle, "DROP", mirror(620_000), 68);
-    if (launch !== null) return launch;
+    for (let ticks = 18; ticks <= 96; ticks += 1) {
+      const launch = flight(shuttle, "DROP", mirror(600_000), ticks);
+      if (
+        launch !== null &&
+        clearsNet(shuttle, launch, ticks, PHYSICS.dropNetClearance)
+      )
+        return launch;
+    }
   }
   if (
     !serving &&

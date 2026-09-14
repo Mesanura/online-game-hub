@@ -67,11 +67,11 @@ describe("badminton projected contracts", () => {
 
   it("describes automatic serving only for 1.0.0 and keeps 1.1.0 manual", () => {
     expect(serveRuleLabel("1.0.0")).toContain("准备倒计时结束后开球");
-    for (const version of ["1.1.0", "1.2.0", "1.3.0"]) {
+    for (const version of ["1.1.0", "1.2.0", "1.3.0", "1.4.0"]) {
       expect(serveRuleLabel(version)).toContain("发球方按 S");
       expect(serveRuleLabel(version)).toContain("不会超时失分");
     }
-    expect(() => serveRuleLabel("1.4.0")).toThrow();
+    expect(() => serveRuleLabel("1.5.0")).toThrow();
     const setup = setupViewSchema.parse({
       config: { targetScore: 7 },
       starter: "NON_OWNER",
@@ -100,6 +100,17 @@ describe("badminton projected contracts", () => {
       "0.6 秒收拍",
     ])
       expect(current).toContain(rule);
+    const balanced = renderSetupView(setup, "1.4.0", false, false);
+    for (const rule of [
+      "高挑后场",
+      "吊向前场",
+      "上前接球的时间",
+      "下落高点扣杀",
+      "离网方向打深",
+      "0.6 秒收拍",
+    ])
+      expect(balanced).toContain(rule);
+    expect(balanced).not.toContain("低弧线");
   });
 
   it("explains stale, permission and connection failures without leaking errors", () => {

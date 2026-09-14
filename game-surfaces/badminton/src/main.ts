@@ -204,7 +204,7 @@ function playMarkup(): string {
     <div class="controls" role="group" aria-label="球场操作"><div class="movement-controls">
       <button class="jump-button" type="button" data-control="jump" aria-label="起跳" aria-pressed="false"><span class="control-symbol" aria-hidden="true">↑</span><kbd>W</kbd></button><button type="button" data-control="left" aria-label="向左移动" aria-pressed="false"><span class="control-symbol">←</span><kbd>A</kbd></button><button type="button" data-control="right" aria-label="向右移动" aria-pressed="false"><span class="control-symbol">→</span><kbd>D</kbd></button>
     </div><div class="shot-controls"><button type="button" data-control="serve" aria-label="发球" aria-pressed="false"><span>发球</span><kbd>S</kbd></button><button type="button" data-control="clear" aria-label="高远球" aria-pressed="false"><span>高远球</span><kbd>J</kbd></button><button class="smash-button" type="button" data-control="smash" aria-label="扣杀" aria-pressed="false"><span>扣杀</span><kbd>K</kbd></button><button type="button" data-control="drop" aria-label="吊球" aria-pressed="false"><span>吊球</span><kbd>L</kbd></button></div></div>
-    <footer class="match-footer"><span id="side-label"></span>${init?.gameVersion === "1.3.0" ? '<span class="tactics-help" data-testid="tactics-help">J 挑后场 · L 挡网前 · K 高点扣杀（朝网打短 / 离网打深）</span>' : ""}<span class="sr-only" id="control-help">A/D 移动，W 起跳，${init?.gameVersion === "1.0.0" ? "倒计时结束后自动发球" : "S 发球"}，J 高远球，K 扣杀，L 吊球。${init?.gameVersion === "1.3.0" ? netPlayRules : ""}</span></footer>
+    <footer class="match-footer"><span id="side-label"></span>${netPlayRules(init?.gameVersion ?? "") ? `<span class="tactics-help" data-testid="tactics-help">J 挑后场 · L ${init?.gameVersion === "1.3.0" ? "挡网前" : "吊前场"} · K 高点扣杀（朝网打短 / 离网打深）</span>` : ""}<span class="sr-only" id="control-help">A/D 移动，W 起跳，${init?.gameVersion === "1.0.0" ? "倒计时结束后自动发球" : "S 发球"}，J 高远球，K 扣杀，L 吊球。${netPlayRules(init?.gameVersion ?? "")}</span></footer>
     <p class="notice" id="surface-notice" role="status"></p><span class="sr-only" data-testid="badminton-outcome" id="badminton-outcome"></span>
   </section></main>`;
 }
@@ -404,7 +404,9 @@ function handleHost(message: HostSurfaceMessage): void {
   if (message.type === "host.init") {
     if (
       message.gameId !== "badminton" ||
-      !["1.0.0", "1.1.0", "1.2.0", "1.3.0"].includes(message.gameVersion) ||
+      !["1.0.0", "1.1.0", "1.2.0", "1.3.0", "1.4.0"].includes(
+        message.gameVersion,
+      ) ||
       message.mode !== mode
     ) {
       fail("SURFACE_TARGET_MISMATCH", "游戏画面与房间版本不一致。");

@@ -22,7 +22,7 @@ const fixture = () =>
     ),
   );
 describe("exact versions and serve intent", () => {
-  it.each(["1.2.0", "1.3.0"])(
+  it.each(["1.2.0", "1.3.0", "1.4.0"])(
     "accepts the lowered net only for exact compatible version %s",
     (version) => {
       const view = fixture();
@@ -49,8 +49,9 @@ describe("exact versions and serve intent", () => {
     expect(encodePlayIntent(intent, "1.0.0")).not.toHaveProperty("serve");
     expect(encodePlayIntent(intent, "1.1.0")).toEqual(intent);
     expect(encodePlayIntent(intent, "1.3.0")).toEqual(intent);
-    expect(() => parsePlayView(fixture(), "1.4.0")).toThrow();
-    expect(() => encodePlayIntent(intent, "1.4.0")).toThrow();
+    expect(encodePlayIntent(intent, "1.4.0")).toEqual(intent);
+    expect(() => parsePlayView(fixture(), "1.5.0")).toThrow();
+    expect(() => encodePlayIntent(intent, "1.5.0")).toThrow();
   });
   it("latches a quick serve until authoritative start and keeps other held controls", () => {
     const controls = new ControlState(),

@@ -5,9 +5,9 @@ import type {
   RealtimeRngState,
 } from "@online-game-hub/realtime-game-sdk";
 
-import { COURT, PHYSICS, scoreLimit } from "../constants.js";
-import { badmintonManifest } from "../manifest.js";
-import { hitsNet, planShot, shotDrag, verticalStep } from "./shots.js";
+import { COURT, PHYSICS, scoreLimit } from "../v1/constants-v1_3.js";
+import { badmintonManifest } from "../v1/manifest-v1_3.js";
+import { hitsNet, planShot, shotDrag, verticalStep } from "./v1_3-shots.js";
 import {
   badmintonConfigSchema,
   badmintonInputSchema,
@@ -18,27 +18,7 @@ import {
   type BadmintonOutcome,
   type BadmintonSide,
   type BadmintonState,
-} from "./schemas.js";
-
-export { COURT, PHYSICS, scoreLimit } from "../constants.js";
-export { badmintonDefinitionV1_0_0 } from "./v1.js";
-export { badmintonDefinitionV1_1_0 } from "./v1_1.js";
-export { badmintonDefinitionV1_2_0 } from "./v1_2.js";
-export { badmintonDefinitionV1_3_0 } from "./v1_3.js";
-export {
-  badmintonConfigSchema,
-  badmintonInputSchema,
-  badmintonStateSchema,
-  badmintonOutcomeSchema,
-} from "./schemas.js";
-export type {
-  BadmintonConfig,
-  BadmintonControls,
-  BadmintonInput,
-  BadmintonOutcome,
-  BadmintonState,
-  BadmintonSide,
-} from "./schemas.js";
+} from "./v1_3-schemas.js";
 
 function freeze<T>(value: T): T {
   if (value !== null && typeof value === "object") {
@@ -87,7 +67,7 @@ function attachShuttle(state: BadmintonState): void {
   };
 }
 
-export function createInitialState(context: {
+function createInitialState(context: {
   readonly config: Readonly<BadmintonConfig>;
   readonly players: readonly RealtimePlayerSlotId[];
   readonly rng: Readonly<RealtimeRngState>;
@@ -137,9 +117,7 @@ function winningSide(state: Readonly<BadmintonState>): BadmintonSide | null {
   return null;
 }
 
-export function getOutcome(
-  state: Readonly<BadmintonState>,
-): BadmintonOutcome | null {
+function getOutcome(state: Readonly<BadmintonState>): BadmintonOutcome | null {
   const scores: [number, number] = [...state.scores];
   if (state.resignedSlotId !== null) {
     return freeze({
@@ -378,7 +356,7 @@ function flyShuttle(state: BadmintonState): void {
   }
 }
 
-export function step(context: {
+function step(context: {
   readonly state: Readonly<BadmintonState>;
   readonly tick: number;
   readonly inputs: readonly RealtimePlayerInput<BadmintonInput>[];
@@ -454,7 +432,7 @@ function projectAthlete(player: BadmintonState["athletes"][number]) {
   };
 }
 
-export function projectView(context: {
+function projectView(context: {
   readonly state: Readonly<BadmintonState>;
   readonly viewer: {
     readonly kind: "player";
@@ -498,9 +476,9 @@ export function projectView(context: {
   });
 }
 
-export type BadmintonView = ReturnType<typeof projectView>;
+type BadmintonView = ReturnType<typeof projectView>;
 
-export const badmintonDefinition = Object.freeze({
+export const badmintonDefinitionV1_3_0 = Object.freeze({
   manifest: badmintonManifest,
   configSchema: badmintonConfigSchema,
   inputSchema: badmintonInputSchema,

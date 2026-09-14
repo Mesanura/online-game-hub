@@ -14,6 +14,7 @@ import {
   badmintonDefinitionV1_0_0,
   badmintonDefinitionV1_1_0,
   badmintonDefinitionV1_2_0,
+  badmintonDefinitionV1_3_0,
 } from "../src/core/index.js";
 
 const resolve = (gameId: string, gameVersion: string) =>
@@ -24,8 +25,10 @@ const resolve = (gameId: string, gameVersion: string) =>
       : gameId === "badminton" && gameVersion === "1.2.0"
         ? eraseRealtimeGameDefinition(badmintonDefinitionV1_2_0)
         : gameId === "badminton" && gameVersion === "1.3.0"
-          ? eraseRealtimeGameDefinition(badmintonDefinition)
-          : undefined;
+          ? eraseRealtimeGameDefinition(badmintonDefinitionV1_3_0)
+          : gameId === "badminton" && gameVersion === "1.4.0"
+            ? eraseRealtimeGameDefinition(badmintonDefinition)
+            : undefined;
 const fixture = (name: string, version = "1.0.0") =>
   JSON.parse(
     readFileSync(
@@ -37,25 +40,36 @@ const fixture = (name: string, version = "1.0.0") =>
 describe("badminton exact realtime golden records", () => {
   it.each([
     [
+      "1.3.0",
       "score",
       "149d79f5e62bc657c9743265d5c34f6f6335db38a57ababcfa48d5ed546470b9",
     ],
     [
+      "1.3.0",
       "rally",
       "1b96cd54ba0cd2b2688ba4e965e8fdbed4d7b10ca8c5a95b288e5237ccd5bbb6",
     ],
+    [
+      "1.4.0",
+      "score",
+      "149d79f5e62bc657c9743265d5c34f6f6335db38a57ababcfa48d5ed546470b9",
+    ],
+    [
+      "1.4.0",
+      "rally",
+      "90a90f77534bb76e0a2a5775daca120a45153625eaedb2c2b4c3da212d3ba1e2",
+    ],
   ] as const)(
-    "rebuilds the 1.3.0 %s record with a frozen trajectory at every tick",
-    (name, digest) => {
-      const replay = fixture(name, "1.3.0");
+    "rebuilds the %s %s record with a frozen trajectory at every tick",
+    (version, name, digest) => {
+      const definition =
+        version === "1.3.0" ? badmintonDefinitionV1_3_0 : badmintonDefinition;
+      const replay = fixture(name, version);
       const verified = verifyRealtimeReplay(replay, resolve);
       expect(verified.ok).toBe(true);
-      if (!verified.ok)
-        throw new Error("Current badminton golden did not verify.");
-      let current = badmintonDefinition.createInitialState({
-        config: badmintonDefinition.configSchema.parse(
-          replay.header.initialConfig,
-        ),
+      if (!verified.ok) throw new Error("Badminton golden did not verify.");
+      let current = definition.createInitialState({
+        config: definition.configSchema.parse(replay.header.initialConfig),
         players: replay.header.players.map((player) =>
           defineRealtimePlayerSlotId(player.slotId),
         ),
@@ -69,10 +83,10 @@ describe("badminton exact realtime golden records", () => {
           .filter((event) => event.tick === tick)
           .map((event) => ({
             slotId: defineRealtimePlayerSlotId(event.actorSlotId),
-            input: badmintonDefinition.inputSchema.parse(event.input),
+            input: definition.inputSchema.parse(event.input),
           }));
-        current = badmintonDefinition.step({ ...current, tick, inputs });
-        serialized = badmintonDefinition.step({
+        current = definition.step({ ...current, tick, inputs });
+        serialized = definition.step({
           ...JSON.parse(JSON.stringify(serialized)),
           tick,
           inputs,
@@ -88,7 +102,15 @@ describe("badminton exact realtime golden records", () => {
       expect(current.rng.cursor).toBe(0);
       if (name === "rally") {
         expect([...shots].sort()).toEqual(["CLEAR", "DROP", "SMASH"]);
-        expect(current.state.bestRally).toBe(9);
+        expect(current.state.bestRally).toBe(version === "1.3.0" ? 9 : 6);
+        if (version === "1.4.0") {
+          expect(
+            verifyRealtimeReplay(
+              { ...replay, header: { ...replay.header, gameVersion: "1.3.0" } },
+              resolve,
+            ).ok,
+          ).toBe(false);
+        }
       } else {
         expect(current.state.scores).toEqual([7, 0]);
         expect(
