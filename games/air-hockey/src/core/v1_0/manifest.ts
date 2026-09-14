@@ -7,7 +7,7 @@ import {
 export const airHockeyManifest = Object.freeze({
   runtime: "realtime",
   id: defineRealtimeGameId("air-hockey"),
-  gameVersion: defineRealtimeGameVersion("1.1.0"),
+  gameVersion: defineRealtimeGameVersion("1.0.0"),
   title: "气垫球",
   description: "移动球拍，掌握击球速度，将球打入对方球门。",
   defaultConfig: Object.freeze({ targetScore: 7 }),

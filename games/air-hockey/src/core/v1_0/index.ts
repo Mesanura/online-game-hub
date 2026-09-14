@@ -1,7 +1,8 @@
 import type { RealtimeGameDefinition } from "@online-game-hub/realtime-game-sdk";
 
-import { COURT, PHYSICS } from "../constants.js";
-import { airHockeyManifest } from "../manifest.js";
+// Frozen 1.0.0 rules: retain the original speed limit and compressed contacts.
+import { COURT, PHYSICS } from "./constants.js";
+import { airHockeyManifest } from "./manifest.js";
 import { clampPaddle, simulate } from "./physics.js";
 import {
   airHockeyConfigSchema,
@@ -13,8 +14,7 @@ import {
   type Side,
 } from "./schemas.js";
 
-export { COURT, PHYSICS } from "../constants.js";
-export { airHockeyDefinition as airHockeyDefinitionV1_0_0 } from "./v1_0/index.js";
+export { COURT, PHYSICS } from "./constants.js";
 export {
   airHockeyConfigSchema,
   airHockeyInputSchema,

@@ -129,6 +129,24 @@ describe("air hockey authority and input", () => {
     expect(state.paddles[1]).toMatchObject({ x: 42_000, y: 468_000 });
     expect(state.paddles[0].y + state.paddles[1].y).toBe(COURT.height);
   });
+  it("moves at the increased 30-pixel limit on either axis and diagonally", () => {
+    for (const point of [
+      [0, 765_000],
+      [300_000, 0],
+      [0, 0],
+    ] as const) {
+      const state = initial();
+      const next = advance(state, [
+        { side: 0, input: target(point[0], point[1]) },
+      ]);
+      const distance = Math.hypot(
+        next.paddles[0].x - state.paddles[0].x,
+        next.paddles[0].y - state.paddles[0].y,
+      );
+      expect(distance).toBeGreaterThan(29_998);
+      expect(distance).toBeLessThanOrEqual(30_000);
+    }
+  });
   it("releases and expires targets, without resuming them", () => {
     let state = advance(initial(), [
       { side: 0, input: target(42_000, 800_000) },
@@ -231,6 +249,25 @@ describe("manual serves and scores", () => {
     expect(next.scores).toEqual([0, 0]);
     expect(advance(next).scores).toEqual([1, 0]);
   });
+  it.each([0, 1] as const)(
+    "scores a glancing exit past either post at side %i without losing the puck",
+    (side) => {
+      for (const left of [true, false]) {
+        const state = rally();
+        state.puck = {
+          x: left ? 238_248 : COURT.width - 238_248,
+          y: side === 0 ? COURT.height + 14_424 : -14_424,
+          velocityX: left ? -23_601 : 23_601,
+          velocityY: side === 0 ? 15_064 : -15_064,
+        };
+        const next = advance(state);
+        expect(next.scores[side === 0 ? 1 : 0]).toBe(1);
+        expect(next.server).toBe(side);
+        expect(next.phase).toBe("SERVE");
+        expect(airHockeyStateSchema.safeParse(next).success).toBe(true);
+      }
+    },
+  );
   it.each([5, 7, 11] as const)(
     "ends immediately at %i without a two-point lead",
     (targetScore) => {
@@ -299,6 +336,101 @@ describe("swept circle physics", () => {
     expect(next.puck.velocityY).toBeLessThan(0);
     expect(next.puck.y).toBeLessThan(next.paddles[0].y - COURT.paddleRadius);
   });
+  it("lets a speed-capped puck escape a faster paddle chasing it", () => {
+    const state = rally();
+    state.puck = { x: 300_000, y: 650_000, velocityX: 0, velocityY: -28_000 };
+    state.paddles[0].y = 711_000;
+    const next = advance(state, [{ side: 0, input: target(300_000, 0) }]);
+    expect(next.puck.velocityY).toBe(-28_000);
+    expect(next.puck.y).toBeLessThanOrEqual(622_000);
+    expect(next.paddles[0].y - next.puck.y).toBeGreaterThanOrEqual(60_000);
+    expect(next.events.filter((event) => event.kind === "PADDLE")).toHaveLength(
+      1,
+    );
+  });
+  it.each([
+    ["left rail", "x", 42_000, 800_000, 57_000, 741_780, 0, -28_000, 42_000, 0],
+    [
+      "right rail",
+      "x",
+      558_000,
+      800_000,
+      543_000,
+      741_780,
+      0,
+      -28_000,
+      558_000,
+      0,
+    ],
+    [
+      "end rail",
+      "y",
+      300_000,
+      978_000,
+      358_220,
+      963_000,
+      28_000,
+      0,
+      600_000,
+      1_020_000,
+    ],
+    [
+      "halfway line",
+      "y",
+      300_000,
+      552_000,
+      358_220,
+      567_000,
+      28_000,
+      0,
+      600_000,
+      0,
+    ],
+  ] as const)(
+    "keeps speed-limited chases parallel to the %s for both players",
+    (
+      _name,
+      axis,
+      x,
+      y,
+      puckX,
+      puckY,
+      velocityX,
+      velocityY,
+      targetX,
+      targetY,
+    ) => {
+      for (const side of [0, 1] as const) {
+        const state = rally();
+        state.paddles[side] = {
+          x,
+          y: side === 0 ? y : COURT.height - y,
+          target: null,
+          inputAge: 45,
+        };
+        state.puck = {
+          x: puckX,
+          y: side === 0 ? puckY : COURT.height - puckY,
+          velocityX,
+          velocityY: side === 0 ? velocityY : -velocityY,
+        };
+        const next = advance(state, [
+          { side, input: target(targetX, targetY) },
+        ]);
+        expect(next.paddles[side][axis]).toBe(state.paddles[side][axis]);
+        expect(airHockeyStateSchema.safeParse(next).success).toBe(true);
+        expect(
+          next.events.filter((event) => event.kind === "PADDLE"),
+        ).toHaveLength(1);
+        expect(
+          Math.hypot(
+            next.paddles[side].x - next.puck.x,
+            next.paddles[side].y - next.puck.y,
+          ),
+        ).toBeGreaterThanOrEqual(60_000);
+      }
+    },
+  );
   it("resolves both rails in a corner and keeps wall speed", () => {
     const state = rally();
     state.puck = {
@@ -345,6 +477,88 @@ describe("swept circle physics", () => {
     state = advance(state, [{ side: 0, input: target(300_000, 800_000) }]);
     expect(state.paddles[0].x).toBeGreaterThan(trappedX);
   });
+  it.each([
+    ["P1 left", 0, 19_000, 800_000, 79_000, 800_000, 0, 800_000],
+    ["P1 right", 0, 581_000, 800_000, 521_000, 800_000, 600_000, 800_000],
+    ["P2 left", 1, 19_000, 220_000, 79_000, 220_000, 0, 220_000],
+    ["P2 right", 1, 581_000, 220_000, 521_000, 220_000, 600_000, 220_000],
+    ["top", 1, 120_000, 19_000, 120_000, 79_000, 120_000, 0],
+    ["bottom", 0, 120_000, 1_001_000, 120_000, 941_000, 120_000, 1_020_000],
+    ["top left", 1, 19_000, 19_000, 61_500, 61_500, 0, 0],
+    ["top right", 1, 581_000, 19_000, 538_500, 61_500, 600_000, 0],
+    ["bottom left", 0, 19_000, 1_001_000, 61_500, 958_500, 0, 1_020_000],
+    [
+      "bottom right",
+      0,
+      581_000,
+      1_001_000,
+      538_500,
+      958_500,
+      600_000,
+      1_020_000,
+    ],
+  ] as const)(
+    "slides out of sustained squeezing at %s without stopping or crossing solids",
+    (_name, side, x, y, paddleX, paddleY, targetX, targetY) => {
+      let state = rally();
+      state.puck = { x, y, velocityX: 0, velocityY: 0 };
+      state.paddles[side] = {
+        x: paddleX,
+        y: paddleY,
+        target: null,
+        inputAge: 45,
+      };
+      for (let i = 0; i < 30; i++) {
+        const previous = state;
+        const input = target(
+          targetX,
+          side === 0 ? targetY : COURT.height - targetY,
+        );
+        state = advance(state, [{ side, input }]);
+        expect(state).toEqual(advance(mutable(previous), [{ side, input }]));
+        expect(airHockeyStateSchema.safeParse(state).success).toBe(true);
+        expect(state.puck.x).toBeGreaterThanOrEqual(COURT.puckRadius);
+        expect(state.puck.x).toBeLessThanOrEqual(
+          COURT.width - COURT.puckRadius,
+        );
+        expect(state.puck.y).toBeGreaterThanOrEqual(COURT.puckRadius);
+        expect(state.puck.y).toBeLessThanOrEqual(
+          COURT.height - COURT.puckRadius,
+        );
+        expect(
+          Math.hypot(state.puck.velocityX, state.puck.velocityY),
+        ).toBeGreaterThan(0);
+        expect(
+          Math.hypot(state.puck.velocityX, state.puck.velocityY),
+        ).toBeLessThanOrEqual(PHYSICS.puckSpeed);
+        for (const player of [0, 1] as const) {
+          const paddle = state.paddles[player];
+          expect(
+            Math.hypot(
+              paddle.x - previous.paddles[player].x,
+              paddle.y - previous.paddles[player].y,
+            ),
+          ).toBeLessThanOrEqual(PHYSICS.paddleSpeed + 1);
+          expect(
+            Math.hypot(paddle.x - state.puck.x, paddle.y - state.puck.y),
+          ).toBeGreaterThanOrEqual(COURT.paddleRadius + COURT.puckRadius);
+        }
+      }
+      expect(Math.hypot(state.puck.x - x, state.puck.y - y)).toBeGreaterThan(
+        80_000,
+      );
+      const released = advance(state, [
+        { side, input: { type: "CONTROL", target: null } },
+      ]);
+      expect(
+        Math.hypot(
+          released.puck.x - state.puck.x,
+          released.puck.y - state.puck.y,
+        ),
+      ).toBeGreaterThan(0);
+      expect(released.scores).toEqual([0, 0]);
+    },
+  );
   it("prunes old events and maintains bounded unique event ids", () => {
     const state = rally();
     state.tick = 100;
@@ -364,6 +578,37 @@ describe("swept circle physics", () => {
     expect(next.events).toHaveLength(64);
     expect(next.events[0]?.id).toBe(2);
     expect(next.events.at(-1)?.id).toBe(65);
+  });
+  it("escapes two paddles squeezing at the halfway line without crossing either paddle", () => {
+    let state = rally();
+    state.paddles[0].y = 571_000;
+    state.paddles[1].y = 449_000;
+    for (let i = 0; i < 20; i++) {
+      const previous = state;
+      state = advance(
+        state,
+        ([0, 1] as const).map((side) => ({
+          side,
+          input: target(300_000, 510_000),
+        })),
+      );
+      expect(
+        Math.hypot(state.puck.velocityX, state.puck.velocityY),
+      ).toBeGreaterThan(0);
+      for (const side of [0, 1] as const) {
+        const paddle = state.paddles[side];
+        expect(
+          Math.hypot(paddle.x - state.puck.x, paddle.y - state.puck.y),
+        ).toBeGreaterThanOrEqual(60_000);
+        expect(
+          Math.hypot(
+            paddle.x - previous.paddles[side].x,
+            paddle.y - previous.paddles[side].y,
+          ),
+        ).toBeLessThanOrEqual(PHYSICS.paddleSpeed + 1);
+      }
+    }
+    expect(Math.abs(state.puck.x - 300_000)).toBeGreaterThan(60_000);
   });
   it("preserves JSON, half-field and speed invariants through deterministic mixed input", () => {
     let state = initial(11);

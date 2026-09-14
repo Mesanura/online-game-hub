@@ -10,9 +10,8 @@ export const COURT = Object.freeze({
 
 export const PHYSICS = Object.freeze({
   tickRate: 60 as const,
-  paddleSpeed: 30_000,
+  paddleSpeed: 20_000,
   puckSpeed: 28_000,
-  squeezeReleaseSpeed: 6_000,
   inputLease: 45,
   pointerScale: 10_000,
   eventLifetime: 60,

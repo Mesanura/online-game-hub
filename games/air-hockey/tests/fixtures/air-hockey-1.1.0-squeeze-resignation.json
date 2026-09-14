@@ -1,0 +1,907 @@
+{
+  "header": {
+    "replayFormatVersion": 1,
+    "runtime": "realtime",
+    "gameId": "air-hockey",
+    "gameVersion": "1.1.0",
+    "tickRate": 60,
+    "rng": {
+      "algorithm": "fnv1a32-counter-v1",
+      "seed": "air-hockey-1.1.0-squeeze-resignation"
+    },
+    "initialConfig": {
+      "targetScore": 11
+    },
+    "players": [
+      {
+        "slotId": "owner"
+      },
+      {
+        "slotId": "guest"
+      }
+    ]
+  },
+  "events": [
+    {
+      "sequence": 1,
+      "tick": 0,
+      "actorSlotId": "owner",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 4500,
+          "y": 5000
+        }
+      }
+    },
+    {
+      "sequence": 2,
+      "tick": 0,
+      "actorSlotId": "guest",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 700,
+          "y": 7500
+        }
+      }
+    },
+    {
+      "sequence": 3,
+      "tick": 5,
+      "actorSlotId": "owner",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 4500,
+          "y": 5000
+        }
+      }
+    },
+    {
+      "sequence": 4,
+      "tick": 5,
+      "actorSlotId": "guest",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 700,
+          "y": 7500
+        }
+      }
+    },
+    {
+      "sequence": 5,
+      "tick": 10,
+      "actorSlotId": "owner",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 5707,
+          "y": 4228
+        }
+      }
+    },
+    {
+      "sequence": 6,
+      "tick": 10,
+      "actorSlotId": "guest",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 5707,
+          "y": 5772
+        }
+      }
+    },
+    {
+      "sequence": 7,
+      "tick": 15,
+      "actorSlotId": "owner",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 6815,
+          "y": 3020
+        }
+      }
+    },
+    {
+      "sequence": 8,
+      "tick": 15,
+      "actorSlotId": "guest",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 6815,
+          "y": 6980
+        }
+      }
+    },
+    {
+      "sequence": 9,
+      "tick": 20,
+      "actorSlotId": "owner",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 7922,
+          "y": 1812
+        }
+      }
+    },
+    {
+      "sequence": 10,
+      "tick": 20,
+      "actorSlotId": "guest",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 7922,
+          "y": 8188
+        }
+      }
+    },
+    {
+      "sequence": 11,
+      "tick": 25,
+      "actorSlotId": "owner",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 9030,
+          "y": 604
+        }
+      }
+    },
+    {
+      "sequence": 12,
+      "tick": 25,
+      "actorSlotId": "guest",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 9030,
+          "y": 9396
+        }
+      }
+    },
+    {
+      "sequence": 13,
+      "tick": 30,
+      "actorSlotId": "owner",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 9652,
+          "y": 782
+        }
+      }
+    },
+    {
+      "sequence": 14,
+      "tick": 30,
+      "actorSlotId": "guest",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 9652,
+          "y": 9218
+        }
+      }
+    },
+    {
+      "sequence": 15,
+      "tick": 35,
+      "actorSlotId": "owner",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 9454,
+          "y": 189
+        }
+      }
+    },
+    {
+      "sequence": 16,
+      "tick": 35,
+      "actorSlotId": "guest",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 9454,
+          "y": 9811
+        }
+      }
+    },
+    {
+      "sequence": 17,
+      "tick": 40,
+      "actorSlotId": "owner",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 7130,
+          "y": 176
+        }
+      }
+    },
+    {
+      "sequence": 18,
+      "tick": 40,
+      "actorSlotId": "guest",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 7130,
+          "y": 9824
+        }
+      }
+    },
+    {
+      "sequence": 19,
+      "tick": 45,
+      "actorSlotId": "owner",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 4797,
+          "y": 176
+        }
+      }
+    },
+    {
+      "sequence": 20,
+      "tick": 45,
+      "actorSlotId": "guest",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 4797,
+          "y": 9824
+        }
+      }
+    },
+    {
+      "sequence": 21,
+      "tick": 50,
+      "actorSlotId": "owner",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 2464,
+          "y": 176
+        }
+      }
+    },
+    {
+      "sequence": 22,
+      "tick": 50,
+      "actorSlotId": "guest",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 2464,
+          "y": 9824
+        }
+      }
+    },
+    {
+      "sequence": 23,
+      "tick": 55,
+      "actorSlotId": "owner",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 470,
+          "y": 176
+        }
+      }
+    },
+    {
+      "sequence": 24,
+      "tick": 55,
+      "actorSlotId": "guest",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 470,
+          "y": 9824
+        }
+      }
+    },
+    {
+      "sequence": 25,
+      "tick": 60,
+      "actorSlotId": "owner",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 300,
+          "y": 868
+        }
+      }
+    },
+    {
+      "sequence": 26,
+      "tick": 60,
+      "actorSlotId": "guest",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 300,
+          "y": 9132
+        }
+      }
+    },
+    {
+      "sequence": 27,
+      "tick": 65,
+      "actorSlotId": "owner",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 300,
+          "y": 2241
+        }
+      }
+    },
+    {
+      "sequence": 28,
+      "tick": 65,
+      "actorSlotId": "guest",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 300,
+          "y": 7759
+        }
+      }
+    },
+    {
+      "sequence": 29,
+      "tick": 70,
+      "actorSlotId": "owner",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 300,
+          "y": 3613
+        }
+      }
+    },
+    {
+      "sequence": 30,
+      "tick": 70,
+      "actorSlotId": "guest",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 300,
+          "y": 6387
+        }
+      }
+    },
+    {
+      "sequence": 31,
+      "tick": 75,
+      "actorSlotId": "owner",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 441,
+          "y": 4796
+        }
+      }
+    },
+    {
+      "sequence": 32,
+      "tick": 75,
+      "actorSlotId": "guest",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 441,
+          "y": 5205
+        }
+      }
+    },
+    {
+      "sequence": 33,
+      "tick": 80,
+      "actorSlotId": "owner",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 2140,
+          "y": 5201
+        }
+      }
+    },
+    {
+      "sequence": 34,
+      "tick": 80,
+      "actorSlotId": "guest",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 2140,
+          "y": 4799
+        }
+      }
+    },
+    {
+      "sequence": 35,
+      "tick": 85,
+      "actorSlotId": "owner",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 4175,
+          "y": 5872
+        }
+      }
+    },
+    {
+      "sequence": 36,
+      "tick": 85,
+      "actorSlotId": "guest",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 4175,
+          "y": 4128
+        }
+      }
+    },
+    {
+      "sequence": 37,
+      "tick": 90,
+      "actorSlotId": "owner",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 6211,
+          "y": 6543
+        }
+      }
+    },
+    {
+      "sequence": 38,
+      "tick": 90,
+      "actorSlotId": "guest",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 6211,
+          "y": 3457
+        }
+      }
+    },
+    {
+      "sequence": 39,
+      "tick": 95,
+      "actorSlotId": "owner",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 8246,
+          "y": 7214
+        }
+      }
+    },
+    {
+      "sequence": 40,
+      "tick": 95,
+      "actorSlotId": "guest",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 8246,
+          "y": 2786
+        }
+      }
+    },
+    {
+      "sequence": 41,
+      "tick": 100,
+      "actorSlotId": "owner",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 9118,
+          "y": 7885
+        }
+      }
+    },
+    {
+      "sequence": 42,
+      "tick": 100,
+      "actorSlotId": "guest",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 9118,
+          "y": 2115
+        }
+      }
+    },
+    {
+      "sequence": 43,
+      "tick": 105,
+      "actorSlotId": "owner",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 8231,
+          "y": 9085
+        }
+      }
+    },
+    {
+      "sequence": 44,
+      "tick": 105,
+      "actorSlotId": "guest",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 8231,
+          "y": 915
+        }
+      }
+    },
+    {
+      "sequence": 45,
+      "tick": 110,
+      "actorSlotId": "owner",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 7372,
+          "y": 9565
+        }
+      }
+    },
+    {
+      "sequence": 46,
+      "tick": 110,
+      "actorSlotId": "guest",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 7372,
+          "y": 435
+        }
+      }
+    },
+    {
+      "sequence": 47,
+      "tick": 115,
+      "actorSlotId": "owner",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 5301,
+          "y": 9449
+        }
+      }
+    },
+    {
+      "sequence": 48,
+      "tick": 115,
+      "actorSlotId": "guest",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 5301,
+          "y": 551
+        }
+      }
+    },
+    {
+      "sequence": 49,
+      "tick": 120,
+      "actorSlotId": "owner",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 3231,
+          "y": 8816
+        }
+      }
+    },
+    {
+      "sequence": 50,
+      "tick": 120,
+      "actorSlotId": "guest",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 3231,
+          "y": 1184
+        }
+      }
+    },
+    {
+      "sequence": 51,
+      "tick": 125,
+      "actorSlotId": "owner",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 1160,
+          "y": 8184
+        }
+      }
+    },
+    {
+      "sequence": 52,
+      "tick": 125,
+      "actorSlotId": "guest",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 1160,
+          "y": 1816
+        }
+      }
+    },
+    {
+      "sequence": 53,
+      "tick": 130,
+      "actorSlotId": "owner",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 1510,
+          "y": 7551
+        }
+      }
+    },
+    {
+      "sequence": 54,
+      "tick": 130,
+      "actorSlotId": "guest",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 1510,
+          "y": 2449
+        }
+      }
+    },
+    {
+      "sequence": 55,
+      "tick": 135,
+      "actorSlotId": "owner",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 3581,
+          "y": 6918
+        }
+      }
+    },
+    {
+      "sequence": 56,
+      "tick": 135,
+      "actorSlotId": "guest",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 3581,
+          "y": 3082
+        }
+      }
+    },
+    {
+      "sequence": 57,
+      "tick": 140,
+      "actorSlotId": "owner",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 5652,
+          "y": 6286
+        }
+      }
+    },
+    {
+      "sequence": 58,
+      "tick": 140,
+      "actorSlotId": "guest",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 5652,
+          "y": 3714
+        }
+      }
+    },
+    {
+      "sequence": 59,
+      "tick": 145,
+      "actorSlotId": "owner",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 7722,
+          "y": 5653
+        }
+      }
+    },
+    {
+      "sequence": 60,
+      "tick": 145,
+      "actorSlotId": "guest",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 7722,
+          "y": 4347
+        }
+      }
+    },
+    {
+      "sequence": 61,
+      "tick": 150,
+      "actorSlotId": "owner",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 9607,
+          "y": 5020
+        }
+      }
+    },
+    {
+      "sequence": 62,
+      "tick": 150,
+      "actorSlotId": "guest",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 9607,
+          "y": 4980
+        }
+      }
+    },
+    {
+      "sequence": 63,
+      "tick": 155,
+      "actorSlotId": "owner",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 9700,
+          "y": 4946
+        }
+      }
+    },
+    {
+      "sequence": 64,
+      "tick": 155,
+      "actorSlotId": "guest",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 9700,
+          "y": 5054
+        }
+      }
+    },
+    {
+      "sequence": 65,
+      "tick": 160,
+      "actorSlotId": "owner",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 9700,
+          "y": 5221
+        }
+      }
+    },
+    {
+      "sequence": 66,
+      "tick": 160,
+      "actorSlotId": "guest",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 9700,
+          "y": 4779
+        }
+      }
+    },
+    {
+      "sequence": 67,
+      "tick": 165,
+      "actorSlotId": "owner",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 9700,
+          "y": 4946
+        }
+      }
+    },
+    {
+      "sequence": 68,
+      "tick": 165,
+      "actorSlotId": "guest",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 9700,
+          "y": 5054
+        }
+      }
+    },
+    {
+      "sequence": 69,
+      "tick": 170,
+      "actorSlotId": "owner",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 9700,
+          "y": 5221
+        }
+      }
+    },
+    {
+      "sequence": 70,
+      "tick": 170,
+      "actorSlotId": "guest",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 9700,
+          "y": 4779
+        }
+      }
+    },
+    {
+      "sequence": 71,
+      "tick": 175,
+      "actorSlotId": "owner",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 9700,
+          "y": 4947
+        }
+      }
+    },
+    {
+      "sequence": 72,
+      "tick": 175,
+      "actorSlotId": "guest",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 9700,
+          "y": 5053
+        }
+      }
+    },
+    {
+      "sequence": 73,
+      "tick": 180,
+      "actorSlotId": "owner",
+      "input": {
+        "type": "RESIGN"
+      }
+    }
+  ],
+  "finalTick": 181,
+  "recordedOutcome": {
+    "type": "WIN",
+    "reason": "RESIGNATION",
+    "winnerSlotId": "guest",
+    "resignedSlotId": "owner",
+    "scores": [1, 0]
+  },
+  "recordedRngCursor": 0
+}

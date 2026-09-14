@@ -1,4 +1,4 @@
-import { COURT, PHYSICS } from "../constants.js";
+import { COURT, PHYSICS } from "./constants.js";
 import type { AirHockeyImpact, AirHockeyState, Side } from "./schemas.js";
 
 type Vector = { x: number; y: number };
@@ -67,8 +67,8 @@ export function emitImpact(
   state.eventSequence += 1;
   state.events.push({
     ...impact,
-    x: Math.round(impact.x) || 0,
-    y: Math.round(impact.y) || 0,
+    x: Math.round(impact.x),
+    y: Math.round(impact.y),
     id: state.eventSequence,
     tick,
   });
@@ -204,9 +204,11 @@ function nextContact(
         side === 0 ? COURT.height + COURT.puckRadius : -COURT.puckRadius;
       const time = (line - ball.y) / ball.vy;
       const x = ball.x + ball.vx * time;
-      // At this line the entire puck has passed the rail. Post sweeps already
-      // reject blocked entries; clipping its width again misses glancing goals.
-      if (x < COURT.goalLeft || x > COURT.goalRight) continue;
+      if (
+        x - COURT.puckRadius < COURT.goalLeft ||
+        x + COURT.puckRadius > COURT.goalRight
+      )
+        continue;
       add({
         time,
         priority: 3,
@@ -263,92 +265,6 @@ function separatePaddles(
   }
 }
 
-// A compressed puck needs a way out of the contact manifold. Choose a swept,
-// clear escape lane with the least paddle retreat, bounded by this tick's
-// movement limit. Centerward directions win ties, so corners cannot trap it.
-function releaseSqueezedPuck(
-  ball: Body,
-  paddles: [Body, Body],
-  starts: AirHockeyState["paddles"],
-  remaining: number,
-  serverOnly: Side | null,
-  peakSpeed: number,
-): boolean {
-  const speed = Math.min(
-    PHYSICS.puckSpeed,
-    Math.max(PHYSICS.squeezeReleaseSpeed, peakSpeed),
-  );
-  const radius = COURT.paddleRadius + COURT.puckRadius + PHYSICS.separation;
-  const centerX = ball.x < COURT.width / 2 ? 1 : -1;
-  const centerY = ball.y < COURT.height / 2 ? 1 : -1;
-  const directions = [
-    { axis: "y", sign: centerY },
-    { axis: "x", sign: centerX },
-    { axis: "y", sign: -centerY },
-    { axis: "x", sign: -centerX },
-  ] as const;
-  let best: { ball: Body; paddles: [Body, Body]; cost: number } | null = null;
-  for (const { axis, sign } of directions) {
-    const perpendicular = axis === "x" ? "y" : "x";
-    const candidate: Body = {
-      ...ball,
-      vx: axis === "x" ? sign * speed : 0,
-      vy: axis === "y" ? sign * speed : 0,
-    };
-    const end = ball[axis] + sign * speed * remaining;
-    const moved: [Body, Body] = [
-      { ...paddles[0], vx: 0, vy: 0 },
-      { ...paddles[1], vx: 0, vy: 0 },
-    ];
-    let cost = 0;
-    let valid = true;
-    for (const side of SIDES) {
-      if (serverOnly !== null && side !== serverOnly) continue;
-      const paddle = moved[side];
-      const along =
-        paddle[axis] -
-        clamp(
-          paddle[axis],
-          Math.min(ball[axis], end),
-          Math.max(ball[axis], end),
-        );
-      const clearance = Math.sqrt(Math.max(0, radius ** 2 - along ** 2));
-      const offset = paddle[perpendicular] - ball[perpendicular];
-      if (Math.abs(offset) < clearance) {
-        const away =
-          offset === 0
-            ? perpendicular === "y"
-              ? side === 0
-                ? 1
-                : -1
-              : centerX
-            : Math.sign(offset);
-        paddle[perpendicular] = ball[perpendicular] + away * clearance;
-        Object.assign(paddle, clampPaddle(paddle, side));
-      }
-      if (
-        magnitude(paddle.x - starts[side].x, paddle.y - starts[side].y) >
-        PHYSICS.paddleSpeed
-      ) {
-        valid = false;
-        break;
-      }
-      cost +=
-        (paddle.x - paddles[side].x) ** 2 + (paddle.y - paddles[side].y) ** 2;
-    }
-    if (!valid || (best !== null && cost >= best.cost - EPSILON)) continue;
-    // Reuse the same finite rails, posts and paddle sweeps as normal play.
-    // A recovery never teleports the puck across an obstacle or awards a goal.
-    if (nextContact(candidate, moved, remaining, serverOnly) !== null) continue;
-    best = { ball: candidate, paddles: moved, cost };
-  }
-  if (best === null) return false;
-  Object.assign(ball, best.ball);
-  advance(ball, remaining);
-  for (const side of SIDES) Object.assign(paddles[side], best.paddles[side]);
-  return true;
-}
-
 export function simulate(state: AirHockeyState, tick: number): Side | null {
   const paddles: [Body, Body] = [
     movingPaddle(state, 0),
@@ -361,7 +277,6 @@ export function simulate(state: AirHockeyState, tick: number): Side | null {
     vy: state.puck.velocityY,
   };
   const serverOnly = state.phase === "SERVE" ? state.server : null;
-  let peakSpeed = magnitude(ball.vx, ball.vy);
   let remaining = 1;
   let goal: Side | null = null;
   for (
@@ -396,18 +311,6 @@ export function simulate(state: AirHockeyState, tick: number): Side | null {
       ball.vx -= 2 * relativeNormal * normal.x;
       ball.vy -= 2 * relativeNormal * normal.y;
       capSpeed(ball);
-      peakSpeed = Math.max(peakSpeed, magnitude(ball.vx, ball.vy));
-      if (paddle !== null) {
-        // Slow along the requested path when the paddle outruns the capped
-        // puck. Changing direction here could cross a rail or the halfway line.
-        const normalSpeed = paddle.vx * normal.x + paddle.vy * normal.y;
-        const allowedSpeed = ball.vx * normal.x + ball.vy * normal.y;
-        if (normalSpeed > allowedSpeed && normalSpeed > 0) {
-          const scale = Math.max(0, allowedSpeed) / normalSpeed;
-          paddle.vx *= scale;
-          paddle.vy *= scale;
-        }
-      }
       if (contact.kind === "PADDLE") state.phase = "RALLY";
       emitImpact(state, tick, {
         kind: contact.kind,
@@ -430,24 +333,17 @@ export function simulate(state: AirHockeyState, tick: number): Side | null {
     }
   }
   if (remaining > EPSILON && goal === null) {
-    // Preserve momentum when the bounded solver meets a compressed manifold.
+    // Conservatively settle a compressed contact manifold. No remaining
+    // movement or synthetic bounce is invented when the iteration budget ends.
+    ball.vx = 0;
+    ball.vy = 0;
     ball.x = clamp(ball.x, COURT.puckRadius, COURT.width - COURT.puckRadius);
     if (
       ball.x < COURT.goalLeft + COURT.puckRadius ||
       ball.x > COURT.goalRight - COURT.puckRadius
     )
       ball.y = clamp(ball.y, COURT.puckRadius, COURT.height - COURT.puckRadius);
-    if (
-      !releaseSqueezedPuck(
-        ball,
-        paddles,
-        state.paddles,
-        remaining,
-        serverOnly,
-        peakSpeed,
-      )
-    )
-      separatePaddles(ball, paddles, serverOnly);
+    separatePaddles(ball, paddles, serverOnly);
   }
   for (const side of SIDES) {
     state.paddles[side].x = Math.round(paddles[side].x);
@@ -456,8 +352,8 @@ export function simulate(state: AirHockeyState, tick: number): Side | null {
   state.puck = {
     x: Math.round(ball.x),
     y: Math.round(ball.y),
-    velocityX: Math.trunc(ball.vx) || 0,
-    velocityY: Math.trunc(ball.vy) || 0,
+    velocityX: Math.trunc(ball.vx),
+    velocityY: Math.trunc(ball.vy),
   };
   return goal;
 }

@@ -1,0 +1,250 @@
+{
+  "header": {
+    "replayFormatVersion": 1,
+    "runtime": "realtime",
+    "gameId": "air-hockey",
+    "gameVersion": "1.1.0",
+    "tickRate": 60,
+    "rng": {
+      "algorithm": "fnv1a32-counter-v1",
+      "seed": "air-hockey-1.1.0-score-5"
+    },
+    "initialConfig": {
+      "targetScore": 5
+    },
+    "players": [
+      {
+        "slotId": "owner"
+      },
+      {
+        "slotId": "guest"
+      }
+    ]
+  },
+  "events": [
+    {
+      "sequence": 1,
+      "tick": 0,
+      "actorSlotId": "owner",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 5000,
+          "y": 5000
+        }
+      }
+    },
+    {
+      "sequence": 2,
+      "tick": 0,
+      "actorSlotId": "guest",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 700,
+          "y": 7500
+        }
+      }
+    },
+    {
+      "sequence": 3,
+      "tick": 26,
+      "actorSlotId": "owner",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 700,
+          "y": 7500
+        }
+      }
+    },
+    {
+      "sequence": 4,
+      "tick": 26,
+      "actorSlotId": "guest",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 5000,
+          "y": 5000
+        }
+      }
+    },
+    {
+      "sequence": 5,
+      "tick": 52,
+      "actorSlotId": "owner",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 5000,
+          "y": 5000
+        }
+      }
+    },
+    {
+      "sequence": 6,
+      "tick": 52,
+      "actorSlotId": "guest",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 700,
+          "y": 7500
+        }
+      }
+    },
+    {
+      "sequence": 7,
+      "tick": 78,
+      "actorSlotId": "owner",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 700,
+          "y": 7500
+        }
+      }
+    },
+    {
+      "sequence": 8,
+      "tick": 78,
+      "actorSlotId": "guest",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 5000,
+          "y": 5000
+        }
+      }
+    },
+    {
+      "sequence": 9,
+      "tick": 104,
+      "actorSlotId": "owner",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 5000,
+          "y": 5000
+        }
+      }
+    },
+    {
+      "sequence": 10,
+      "tick": 104,
+      "actorSlotId": "guest",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 700,
+          "y": 7500
+        }
+      }
+    },
+    {
+      "sequence": 11,
+      "tick": 130,
+      "actorSlotId": "owner",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 700,
+          "y": 7500
+        }
+      }
+    },
+    {
+      "sequence": 12,
+      "tick": 130,
+      "actorSlotId": "guest",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 5000,
+          "y": 5000
+        }
+      }
+    },
+    {
+      "sequence": 13,
+      "tick": 156,
+      "actorSlotId": "owner",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 5000,
+          "y": 5000
+        }
+      }
+    },
+    {
+      "sequence": 14,
+      "tick": 156,
+      "actorSlotId": "guest",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 700,
+          "y": 7500
+        }
+      }
+    },
+    {
+      "sequence": 15,
+      "tick": 182,
+      "actorSlotId": "owner",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 700,
+          "y": 7500
+        }
+      }
+    },
+    {
+      "sequence": 16,
+      "tick": 182,
+      "actorSlotId": "guest",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 5000,
+          "y": 5000
+        }
+      }
+    },
+    {
+      "sequence": 17,
+      "tick": 208,
+      "actorSlotId": "owner",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 5000,
+          "y": 5000
+        }
+      }
+    },
+    {
+      "sequence": 18,
+      "tick": 208,
+      "actorSlotId": "guest",
+      "input": {
+        "type": "CONTROL",
+        "target": {
+          "x": 700,
+          "y": 7500
+        }
+      }
+    }
+  ],
+  "finalTick": 234,
+  "recordedOutcome": {
+    "type": "WIN",
+    "reason": "SCORE",
+    "winnerSlotId": "owner",
+    "scores": [5, 4]
+  },
+  "recordedRngCursor": 0
+}

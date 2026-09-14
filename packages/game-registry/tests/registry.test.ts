@@ -374,6 +374,7 @@ describe("explicit game registry", () => {
       ["badminton", "1.2.0"],
       ["badminton", "1.3.0"],
       ["air-hockey", "1.0.0"],
+      ["air-hockey", "1.1.0"],
       ["bomberman", "1.0.0"],
       ["bomberman", "1.1.0"],
       ["bomberman", "1.2.0"],
@@ -495,11 +496,11 @@ describe("explicit game registry", () => {
   it("registers air hockey with exact V6 Setup, latest input, history-only replay and Bridge V2", () => {
     const definition = resolveCurrentRealtimeGameDefinition("air-hockey");
     expect(definition).toBe(
-      resolveRealtimeGameDefinition("air-hockey", "1.0.0"),
+      resolveRealtimeGameDefinition("air-hockey", "1.1.0"),
     );
     expect(definition?.manifest).toMatchObject({
       runtime: "realtime",
-      gameVersion: "1.0.0",
+      gameVersion: "1.1.0",
       tickRate: 60,
       inputDelivery: "latest",
       minPlayers: 2,
@@ -507,27 +508,36 @@ describe("explicit game registry", () => {
       defaultConfig: { targetScore: 7 },
       capabilities: { replay: "record-only" },
     });
-    expect(resolveGameDeployment("air-hockey", "1.0.0")).toMatchObject({
-      setupProtocol: 6,
-      platformControls: ["RESIGN"],
-      presentation: {
-        artifact: {
-          bridgeVersion: 2,
-          contentDigest: "sha256-6BnsYkcGLWUnLjZYMjSZcim70iuaPwWXNeasqa163oE=",
-          surfaceVersion: "1.0.1",
-        },
-      },
-    });
-    for (const mode of ["setup", "play"] as const) {
+    for (const version of ["1.0.0", "1.1.0"]) {
       expect(
-        resolveGameSurfaceEntrypoint("air-hockey", "1.0.0", mode)?.url,
-      ).toBe(`/game-surfaces/air-hockey/1.0.1/${mode}/index.html`);
+        resolveRealtimeGameDefinition("air-hockey", version)?.manifest
+          .gameVersion,
+      ).toBe(version);
+      expect(resolveRoundSetupDefinition("air-hockey", version)).toBeDefined();
+      expect(resolveGameDeployment("air-hockey", version)).toMatchObject({
+        setupProtocol: 6,
+        platformControls: ["RESIGN"],
+        presentation: {
+          artifact: {
+            bridgeVersion: 2,
+            contentDigest:
+              "sha256-4ymWzahEKcpx1ph7MvcP9JfZROImr1Fa78foBtR3VUs=",
+            surfaceVersion: "1.0.2",
+            supportedGameVersions: ["1.0.0", "1.1.0"],
+          },
+        },
+      });
+      for (const mode of ["setup", "play"] as const) {
+        expect(
+          resolveGameSurfaceEntrypoint("air-hockey", version, mode)?.url,
+        ).toBe(`/game-surfaces/air-hockey/1.0.2/${mode}/index.html`);
+      }
+      expect(
+        resolveGameSurfaceEntrypoint("air-hockey", version, "replay"),
+      ).toBeUndefined();
     }
     expect(
-      resolveGameSurfaceEntrypoint("air-hockey", "1.0.0", "replay"),
-    ).toBeUndefined();
-    expect(
-      resolveRealtimeGameDefinition("air-hockey", "1.1.0"),
+      resolveRealtimeGameDefinition("air-hockey", "1.2.0"),
     ).toBeUndefined();
   });
 

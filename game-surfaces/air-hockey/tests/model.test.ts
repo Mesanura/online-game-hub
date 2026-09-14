@@ -44,6 +44,12 @@ const impact = (id: number, tick: number): Impact => ({
 });
 
 describe("public projections and intents", () => {
+  it.each(["1.0.0", "1.1.0"])(
+    "accepts the exact public view for %s",
+    (version) => {
+      expect(parsePlayView(fixture, version)).toEqual(fixture);
+    },
+  );
   it("accepts public fixtures through Bridge without private simulation fields", () => {
     const setup = JSON.parse(
       readFileSync(new URL("./fixtures/setup.json", import.meta.url), "utf8"),

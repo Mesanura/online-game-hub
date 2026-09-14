@@ -299,26 +299,29 @@ const tankMazeSurface = (gameVersion: "1.0.0" | "1.1.0" | "1.2.0" | "1.3.0") =>
     },
   }) as const satisfies GameDeploymentRegistration;
 
-const airHockeySurface: GameDeploymentRegistration = Object.freeze({
-  gameId: "air-hockey",
-  gameVersion: "1.0.0",
-  setupProtocol: 6,
-  platformControls: resignPlatformControls,
-  presentation: Object.freeze({
-    kind: "surface-v1",
-    publicBasePath: "/game-surfaces/air-hockey/1.0.1",
-    artifact: {
-      schemaVersion: 1,
-      gameId: "air-hockey",
-      supportedGameVersions: ["1.0.0"],
-      surfaceVersion: "1.0.1",
-      bridgeVersion: 2,
-      entrypoints: { setup: "setup/index.html", play: "play/index.html" },
-      capabilities: {},
-      contentDigest: "sha256-6BnsYkcGLWUnLjZYMjSZcim70iuaPwWXNeasqa163oE=",
-    } satisfies SurfaceArtifactManifestV1,
-  }),
-});
+const airHockeySurface = (
+  gameVersion: "1.0.0" | "1.1.0",
+): GameDeploymentRegistration =>
+  Object.freeze({
+    gameId: "air-hockey",
+    gameVersion,
+    setupProtocol: 6,
+    platformControls: resignPlatformControls,
+    presentation: Object.freeze({
+      kind: "surface-v1",
+      publicBasePath: "/game-surfaces/air-hockey/1.0.2",
+      artifact: {
+        schemaVersion: 1,
+        gameId: "air-hockey",
+        supportedGameVersions: ["1.0.0", "1.1.0"],
+        surfaceVersion: "1.0.2",
+        bridgeVersion: 2,
+        entrypoints: { setup: "setup/index.html", play: "play/index.html" },
+        capabilities: {},
+        contentDigest: "sha256-4ymWzahEKcpx1ph7MvcP9JfZROImr1Fa78foBtR3VUs=",
+      } satisfies SurfaceArtifactManifestV1,
+    }),
+  });
 
 const bombermanSurface = (
   gameVersion: "1.0.0" | "1.1.0" | "1.2.0",
@@ -348,7 +351,8 @@ const gameDeployments = Object.freeze([
   bombermanSurface("1.0.0"),
   bombermanSurface("1.1.0"),
   bombermanSurface("1.2.0"),
-  airHockeySurface,
+  airHockeySurface("1.0.0"),
+  airHockeySurface("1.1.0"),
   tankMazeSurface("1.0.0"),
   tankMazeSurface("1.1.0"),
   tankMazeSurface("1.2.0"),

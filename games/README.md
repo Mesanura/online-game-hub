@@ -13,7 +13,7 @@
 | [乒乓对战（Pong）](./pong/GAME_SPEC.md)     | `pong`             | 2    | realtime   | `1.2.0`          | `1.0.0`、`1.1.0`          | record-only |
 | [火柴人羽毛球](./badminton/GAME_SPEC.md)    | `badminton`        | 2    | realtime   | `1.3.0`          | `1.0.0`、`1.1.0`、`1.2.0` | record-only |
 | [坦克迷战](./tank-maze/GAME_SPEC.md)        | `tank-maze`        | 2–8  | realtime   | `1.3.0`          | `1.0.0`、`1.1.0`、`1.2.0` | record-only |
-| [气垫球](./air-hockey/GAME_SPEC.md)         | `air-hockey`       | 2    | realtime   | `1.0.0`          | —                         | record-only |
+| [气垫球](./air-hockey/GAME_SPEC.md)         | `air-hockey`       | 2    | realtime   | `1.1.0`          | `1.0.0`                   | record-only |
 | [像素炸弹人](./bomberman/GAME_SPEC.md)      | `bomberman`        | 2–4  | realtime   | `1.2.0`          | `1.0.0`、`1.1.0`          | record-only |
 
 回放能力适用于表中各游戏的全部支持版本。支持播放的比赛也只向登录态参赛者开放；`record-only` 仍保存并验证 canonical record，但没有玩家播放入口。旧 Core 与 golden fixtures 必须按 exact 版本重建，不能用当前定义替代。

@@ -1,6 +1,6 @@
 # 气垫球 Surface
 
-独立的 Phaser Canvas 画面，支持 `air-hockey@1.0.0` 的 Setup / Play 与 Bridge V2。规则由 [GAME_SPEC](../../games/air-hockey/GAME_SPEC.md) 定义；开发、Workbench、摘要锁与发布步骤见 [Surface 规范](../../docs/GAME_SURFACE_SPEC.md)，检查范围见 [测试策略](../../docs/TESTING.md)。
+独立的 Phaser Canvas 画面，支持 `air-hockey@1.0.0` 与 `1.1.0` 的 Setup / Play 与 Bridge V2。规则由 [GAME_SPEC](../../games/air-hockey/GAME_SPEC.md) 定义；开发、Workbench、摘要锁与发布步骤见 [Surface 规范](../../docs/GAME_SURFACE_SPEC.md)，检查范围见 [测试策略](../../docs/TESTING.md)。
 
 Setup 展示服务器确认的 5／7／11 分设置，保留提交焦点，等待关联确认后恢复选择。房主固定为蓝色 P1，每局首发；玩家始终在画面下半场，P2 仅上下镜像。
 

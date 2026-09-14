@@ -132,6 +132,7 @@ export type Side = 0 | 1;
 export type Point = { x: number; y: number };
 
 export function parsePlayView(payload: unknown, version: string): PlayView {
-  if (version !== "1.0.0") throw new Error("Unsupported air hockey rules.");
+  if (version !== "1.0.0" && version !== "1.1.0")
+    throw new Error("Unsupported air hockey rules.");
   return playViewSchema.parse(payload);
 }

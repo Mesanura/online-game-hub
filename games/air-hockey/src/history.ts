@@ -2,7 +2,7 @@ import { airHockeyOutcomeSchema } from "./core/schemas.js";
 
 export const airHockeyHistory = {
   gameId: "air-hockey",
-  gameVersions: ["1.0.0"],
+  gameVersions: ["1.0.0", "1.1.0"],
   projectView({
     gameVersion,
     recordedOutcome,
@@ -16,7 +16,7 @@ export const airHockeyHistory = {
   }) {
     const index = players.indexOf(playerSlotId);
     if (
-      gameVersion !== "1.0.0" ||
+      !airHockeyHistory.gameVersions.includes(gameVersion) ||
       players.length !== 2 ||
       new Set(players).size !== 2 ||
       index < 0

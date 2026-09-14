@@ -389,7 +389,7 @@ function handleHost(message: HostSurfaceMessage): void {
   if (message.type === "host.init") {
     if (
       message.gameId !== "air-hockey" ||
-      message.gameVersion !== "1.0.0" ||
+      !["1.0.0", "1.1.0"].includes(message.gameVersion) ||
       message.mode !== mode ||
       message.bridgeVersion !== 2
     ) {

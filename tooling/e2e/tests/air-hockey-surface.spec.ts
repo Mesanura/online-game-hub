@@ -54,8 +54,13 @@ async function renderedFrame(surface: FrameLocator) {
     );
 }
 
-for (const side of [0, 1]) {
-  test(`air hockey P${side + 1} keeps its colored half below and fits every viewport`, async ({
+for (const [version, side] of [
+  ["1.0.0", 0],
+  ["1.0.0", 1],
+  ["1.1.0", 0],
+  ["1.1.0", 1],
+] as const) {
+  test(`air hockey ${version} P${side + 1} keeps its colored half below and fits every viewport`, async ({
     page,
   }, info) => {
     const errors: string[] = [];
@@ -63,7 +68,7 @@ for (const side of [0, 1]) {
     const { surface, push } = await openPlaySurface(
       page,
       "air-hockey",
-      "1.0.0",
+      version,
     );
     const view = await fixture();
     view.yourSide = side;
@@ -142,13 +147,13 @@ for (const side of [0, 1]) {
     expect(errors).toEqual([]);
   });
 
-  test(`air hockey P${side + 1} follows the mouse outside the court and keeps renewing clamped targets`, async ({
+  test(`air hockey ${version} P${side + 1} follows the mouse outside the court and keeps renewing clamped targets`, async ({
     page,
   }) => {
     const { surface, push, intents } = await openPlaySurface(
       page,
       "air-hockey",
-      "1.0.0",
+      version,
     );
     const view = await fixture();
     view.yourSide = side;
@@ -227,7 +232,7 @@ test("air hockey mouse and real single touch release, clamp, reconnect and resig
     const { surface, push, intents, dispose } = await openPlaySurface(
       page,
       "air-hockey",
-      "1.0.0",
+      "1.1.0",
     );
     const view = await fixture();
     await push(view);
@@ -353,7 +358,7 @@ for (const reducedMotion of [false, true]) {
     const { surface, push } = await openPlaySurface(
       page,
       "air-hockey",
-      "1.0.0",
+      "1.1.0",
       { reducedMotion },
     );
     const view = await fixture();

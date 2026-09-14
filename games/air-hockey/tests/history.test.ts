@@ -14,16 +14,25 @@ describe("air hockey private history", () => {
       scores: [3, 2],
     },
   };
-  it("uses actual scores and recorded order, including resignation", () => {
-    expect(airHockeyHistory.projectView(context)).toEqual({
-      kind: "score",
-      own: 3,
-      opponent: 2,
-    });
-    expect(
-      airHockeyHistory.projectView({ ...context, playerSlotId: "guest" }),
-    ).toEqual({ kind: "score", own: 2, opponent: 3 });
-  });
+  it.each(["1.0.0", "1.1.0"])(
+    "uses actual scores and recorded order for %s, including resignation",
+    (gameVersion) => {
+      expect(airHockeyHistory.projectView({ ...context, gameVersion })).toEqual(
+        {
+          kind: "score",
+          own: 3,
+          opponent: 2,
+        },
+      );
+      expect(
+        airHockeyHistory.projectView({
+          ...context,
+          gameVersion,
+          playerSlotId: "guest",
+        }),
+      ).toEqual({ kind: "score", own: 2, opponent: 3 });
+    },
+  );
   it("fails closed for unknown versions, identities and invalid outcomes", () => {
     for (const overrides of [
       { gameVersion: "2.0.0" },

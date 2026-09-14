@@ -2432,7 +2432,7 @@ describe("realtime air hockey Protocol V6", () => {
       roomA.send(REALTIME_INPUT_MESSAGE, movement);
       await barrier(roomA, inboxA);
       await advance(inboxA, 1);
-      expect(view(inboxA).paddles[0]?.x).toBeGreaterThan(300000);
+      expect(view(inboxA).paddles[0]?.x).toBe(330000);
       expect((await replayStore.get("hockey-replay-1"))?.events).toHaveLength(
         1,
       );
@@ -2543,6 +2543,7 @@ describe("realtime air hockey Protocol V6", () => {
         () => resumed.lifecycle.at(-1)?.currentRound?.status === "completed",
       );
       const firstReplay = await replayStore.get("hockey-replay-1");
+      expect(firstReplay?.header.gameVersion).toBe("1.1.0");
       expect(firstReplay?.recordedOutcome).toMatchObject({
         reason: "SCORE",
         scores: view(resumed).scores,

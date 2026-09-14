@@ -15,8 +15,8 @@ describe("air hockey independent artifact", () => {
     expect(manifest).toMatchObject({
       schemaVersion: 1,
       gameId: "air-hockey",
-      supportedGameVersions: ["1.0.0"],
-      surfaceVersion: "1.0.1",
+      supportedGameVersions: ["1.0.0", "1.1.0"],
+      surfaceVersion: "1.0.2",
       bridgeVersion: 2,
       entrypoints: { setup: "setup/index.html", play: "play/index.html" },
       capabilities: {},

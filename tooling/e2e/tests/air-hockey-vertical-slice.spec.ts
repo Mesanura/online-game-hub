@@ -109,7 +109,7 @@ test("two accounts play air hockey, reconnect, finish by score and rematch with 
       await expect(page.getByTestId("match-status")).toHaveText("对局进行中");
       await expect(page.getByTestId("game-surface-iframe")).toHaveAttribute(
         "src",
-        "/game-surfaces/air-hockey/1.0.1/play/index.html",
+        "/game-surfaces/air-hockey/1.0.2/play/index.html",
       );
       await expect(surface(page).locator("#court-canvas canvas")).toBeVisible();
     }
@@ -248,6 +248,7 @@ test("two accounts play air hockey, reconnect, finish by score and rematch with 
     const finalScore = await scores(owner);
     expect(Math.max(...finalScore)).toBe(5);
     const firstRecord = await replayStore.get(firstReplayId);
+    expect(firstRecord?.header.gameVersion).toBe("1.1.0");
     expect(firstRecord?.header.initialConfig).toEqual({ targetScore: 5 });
     expect(firstRecord?.header.players.map((player) => player.slotId)).toEqual([
       slotA,
