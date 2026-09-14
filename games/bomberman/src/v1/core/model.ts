@@ -16,8 +16,7 @@ export type Player = {
   y: number;
   alive: boolean;
   resigned: boolean;
-  lives: number;
-  invulnerableUntil: number;
+  score: number;
   capacity: number;
   range: number;
   speed: number;
@@ -34,19 +33,17 @@ export type Bomb = {
   explodeAt: number;
   passThrough: string[];
 };
-export type Flame = {
-  cell: number;
-  expiresAt: number;
-  centerUntil: number;
-  horizontalUntil: number;
-  verticalUntil: number;
-};
+export type Flame = { cell: number; expiresAt: number };
 export type Effect = {
   id: number;
-  kind: "place" | "explode" | "pickup" | "hit" | "eliminate";
+  kind: "place" | "explode" | "pickup" | "eliminate";
   x: number;
   y: number;
   tick: number;
+};
+export type RoundResult = {
+  winnerSlotId: string | null;
+  reason: "SURVIVOR" | "ALL_ELIMINATED" | "TIMEOUT";
 };
 export type State = {
   tick: number;
@@ -57,10 +54,13 @@ export type State = {
   flames: Flame[];
   pickups: Loot[];
   pendingLoot: Loot[];
-  phase: "PREPARE" | "ACTIVE" | "COMPLETE";
+  phase: "PREPARE" | "ACTIVE" | "RESULT" | "COMPLETE";
   phaseTicks: number;
   elapsed: number;
+  bout: number;
+  spawnRotation: number;
   nextId: number;
   events: Effect[];
+  roundResult: RoundResult | null;
   outcome: Outcome | null;
 };

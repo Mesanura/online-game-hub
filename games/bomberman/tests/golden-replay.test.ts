@@ -6,18 +6,30 @@ import {
   verifyRealtimeReplay,
   type RealtimeCanonicalReplay,
 } from "@online-game-hub/realtime-game-sdk";
-import { bombermanDefinition } from "../src/core/index.js";
-const definition = eraseRealtimeGameDefinition(bombermanDefinition);
+import {
+  bombermanDefinition,
+  bombermanDefinitionV1_0_0,
+} from "../src/core/index.js";
+const definitions = [
+  eraseRealtimeGameDefinition(bombermanDefinition),
+  eraseRealtimeGameDefinition(bombermanDefinitionV1_0_0),
+];
 const resolve = (id: string, version: string) =>
-  id === "bomberman" && version === "1.0.0" ? definition : undefined;
+  definitions.find(
+    (game) => game.manifest.id === id && game.manifest.gameVersion === version,
+  );
 type Fixture = { replay: RealtimeCanonicalReplay; stateHash: string };
-it.each([2, 3, 4])(
-  "rebuilds the frozen %i-player three-bout record and complete state",
-  (count) => {
+it.each(
+  ["1.0.0", "1.1.0"].flatMap((version) =>
+    [2, 3, 4].map((count) => ({ version, count })),
+  ),
+)(
+  "rebuilds the frozen $version $count-player record and complete state",
+  ({ version, count }) => {
     const fixture = JSON.parse(
       readFileSync(
         new URL(
-          "./fixtures/bomberman-1.0.0-" + count + "p.json",
+          "./fixtures/bomberman-" + version + "-" + count + "p.json",
           import.meta.url,
         ),
         "utf8",
@@ -29,9 +41,12 @@ it.each([2, 3, 4])(
     expect(result.result.outcome).toMatchObject({
       type: "WIN",
       winnerSlotId: "p" + (count - 1),
-      reason: "SCORE",
+      reason: version === "1.0.0" ? "SCORE" : "SURVIVOR",
     });
-    expect(result.result.state).toMatchObject({ bout: 3, phase: "COMPLETE" });
+    expect(result.result.state).toMatchObject({ phase: "COMPLETE" });
+    if (version === "1.0.0")
+      expect(result.result.state).toHaveProperty("bout", 3);
+    else expect(result.result.state).not.toHaveProperty("bout");
     expect(
       createHash("sha256")
         .update(JSON.stringify(result.result.state))

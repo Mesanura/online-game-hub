@@ -1,21 +1,20 @@
 import { outcomeSchema } from "./contracts.js";
+import { bombermanHistory as legacyHistory } from "./v1/history.js";
 
 export const bombermanHistory = {
   gameId: "bomberman",
-  gameVersions: ["1.0.0"] as readonly string[],
-  projectView({
-    gameVersion,
-    recordedOutcome,
-    players,
-    playerSlotId,
-  }: {
+  gameVersions: ["1.0.0", "1.1.0"] as readonly string[],
+  projectView(context: {
     readonly gameVersion: string;
     readonly recordedOutcome: unknown;
     readonly players: readonly string[];
     readonly playerSlotId: string;
   }) {
+    if (context.gameVersion === "1.0.0")
+      return legacyHistory.projectView(context);
+    const { gameVersion, recordedOutcome, players, playerSlotId } = context;
     if (
-      gameVersion !== "1.0.0" ||
+      gameVersion !== "1.1.0" ||
       players.length < 2 ||
       players.length > 4 ||
       new Set(players).size !== players.length ||
@@ -27,43 +26,18 @@ export const bombermanHistory = {
     if (!result.success) return null;
     const outcome = result.data;
     if (
-      outcome.scores.length !== players.length ||
-      new Set(outcome.scores.map((score) => score.slotId)).size !==
-        players.length ||
-      outcome.scores.some((score) => !players.includes(score.slotId))
-    )
-      return null;
-    if (outcome.type === "DRAW")
-      return outcome.winnerSlotId === null &&
-        outcome.reason === "RESIGNATION" &&
-        outcome.scores.every((score) => score.score < 3)
-        ? { kind: "win-loss" as const, value: "draw" as const }
-        : null;
-    if (
-      outcome.winnerSlotId === null ||
-      !players.includes(outcome.winnerSlotId)
-    )
-      return null;
-    if (
-      outcome.reason === "SCORE" &&
-      outcome.scores.some((score) =>
-        score.slotId === outcome.winnerSlotId
-          ? score.score !== 3
-          : score.score >= 3,
-      )
-    )
-      return null;
-    if (
-      outcome.reason === "RESIGNATION" &&
-      outcome.scores.some((score) => score.score >= 3)
+      outcome.standings.length !== players.length ||
+      outcome.standings.some((entry) => !players.includes(entry.slotId))
     )
       return null;
     return {
       kind: "win-loss" as const,
       value:
-        outcome.winnerSlotId === playerSlotId
-          ? ("win" as const)
-          : ("loss" as const),
+        outcome.type === "DRAW"
+          ? ("draw" as const)
+          : outcome.winnerSlotId === playerSlotId
+            ? ("win" as const)
+            : ("loss" as const),
     };
   },
 };

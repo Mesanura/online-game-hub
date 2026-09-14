@@ -10,8 +10,8 @@ it("publishes exact independent Setup/Play artifacts with a matching immutable d
   expect(manifest).toMatchObject({
     schemaVersion: 1,
     gameId: "bomberman",
-    supportedGameVersions: ["1.0.0"],
-    surfaceVersion: "1.0.4",
+    supportedGameVersions: ["1.0.0", "1.1.0"],
+    surfaceVersion: "1.1.0",
     bridgeVersion: 2,
     entrypoints: { setup: "setup/index.html", play: "play/index.html" },
     capabilities: {},

@@ -123,40 +123,24 @@ export function movePlayer(
     Math.floor(player[perpendicular] / CELL_SIZE) * CELL_SIZE + CELL_SIZE / 2;
   const correction = center - player[perpendicular];
   if (Math.abs(correction) > TURN_ASSIST) return [];
-  const sign = direction === "left" || direction === "up" ? -1 : 1;
-  // Only assist toward an open turning lane. Pressing before the body's
-  // midpoint clears a corner must not pull it back toward the wall's column.
-  if (correction !== 0) {
-    const col = Math.floor((axis === "x" ? player.x : center) / CELL_SIZE);
-    const row = Math.floor((axis === "y" ? player.y : center) / CELL_SIZE);
-    const nextCol = col + (axis === "x" ? sign : 0);
-    const nextRow = row + (axis === "y" ? sign : 0);
-    const nextCell = nextRow * arena.cols + nextCol;
-    if (
-      nextCol < 0 ||
-      nextCol >= arena.cols ||
-      nextRow < 0 ||
-      nextRow >= arena.rows ||
-      arena.tiles[nextCell] !== "floor" ||
-      bombs.some(
-        (bomb) =>
-          bomb.cell === nextCell && !bomb.passThrough.includes(player.slotId),
-      )
-    )
-      return [];
-  }
   let budget = player.speed;
   const segments: Segment[] = [];
   if (correction !== 0) {
     const amount =
       Math.sign(correction) * Math.min(Math.abs(correction), budget);
-    const segment = moveAxis(player, arena, bombs, perpendicular, amount);
-    segments.push(segment);
-    budget -=
-      Math.abs(segment.x2 - segment.x1) + Math.abs(segment.y2 - segment.y1);
+    segments.push(moveAxis(player, arena, bombs, perpendicular, amount));
+    budget -= Math.abs(amount);
   }
   if (player[perpendicular] === center && budget > 0)
-    segments.push(moveAxis(player, arena, bombs, axis, sign * budget));
+    segments.push(
+      moveAxis(
+        player,
+        arena,
+        bombs,
+        axis,
+        (direction === "left" || direction === "up" ? -1 : 1) * budget,
+      ),
+    );
   player.walking = segments.some(
     (segment) => segment.x1 !== segment.x2 || segment.y1 !== segment.y2,
   );

@@ -1237,7 +1237,7 @@ describe.sequential("tank maze multiplayer Protocol V6", () => {
 });
 describe.sequential("Bomberman multiplayer Protocol V6", () => {
   it.each([2, 3, 4])(
-    "runs %i real clients through three scored bouts, authority checks, takeover and rematches",
+    "runs %i real clients through three lives, authority checks, takeover and rematches",
     async (count) => {
       const clock = new FakeRuntimeClock(5000000);
       const timer = new ManualSchedulerTimer();
@@ -1278,7 +1278,7 @@ describe.sequential("Bomberman multiplayer Protocol V6", () => {
       interface View {
         selfSlotId: string;
         phase: string;
-        bout: number;
+        startingLives: number;
         outcome: unknown;
         arena: { cols: number; rows: number; tiles: string[] };
         players: {
@@ -1286,7 +1286,8 @@ describe.sequential("Bomberman multiplayer Protocol V6", () => {
           index: number;
           alive: boolean;
           resigned: boolean;
-          score: number;
+          lives: number;
+          invulnerableTicks: number;
           capacity: number;
           range: number;
           speed: number;
@@ -1355,7 +1356,7 @@ describe.sequential("Bomberman multiplayer Protocol V6", () => {
         }
         expect(inbox().connected[0]).toMatchObject({
           gameId: "bomberman",
-          gameVersion: "1.0.0",
+          gameVersion: "1.1.0",
         });
         expect(inbox().lifecycle.at(-1)?.players).toHaveLength(4);
         expect(inbox().lifecycle.at(-1)?.nextRound?.setupView).toMatchObject({
@@ -1448,7 +1449,7 @@ describe.sequential("Bomberman multiplayer Protocol V6", () => {
           {
             ...input("forged-actor", 1, { type: "PLACE_BOMB" }),
             actorSlotId: "bomberman-slot-1",
-            state: { score: 3 },
+            state: { lives: 3, invulnerableTicks: 999 },
             tick: 1000,
           },
           input("forged-coordinate", 1, {
@@ -1550,11 +1551,14 @@ describe.sequential("Bomberman multiplayer Protocol V6", () => {
           activeRecord.events,
         );
         await advance(150);
-        expect(view().phase).toBe("RESULT");
+        expect(view().phase).toBe("ACTIVE");
         expect(view().players.map((player) => player.alive)).toEqual(
-          Array.from({ length: count }, (_, i) => i === count - 1),
+          Array.from({ length: count }, () => true),
         );
-        expect(view().players.at(-1)?.score).toBe(1);
+        expect(view().players.map((player) => player.lives)).toEqual(
+          Array.from({ length: count }, (_, i) => (i === count - 1 ? 3 : 2)),
+        );
+        expect(view().players[0]?.invulnerableTicks).toBe(120);
 
         const resumed = await new ColyseusClient(address.httpUrl).join(
           REALTIME_GAME_ROOM_NAME,
@@ -1570,15 +1574,19 @@ describe.sequential("Bomberman multiplayer Protocol V6", () => {
         await waitUntil(() => inbox().snapshots.length > 0);
         expect(inbox().connected[0]?.playerSlotId).toBe("bomberman-slot-0");
         expect(inbox().snapshots.at(-1)?.tick).toBe(331);
-        for (let bout = 2; bout <= 3; bout++) {
-          await advance(300);
-          expect(view()).toMatchObject({ phase: "ACTIVE", bout });
+        expect(view().players[0]).toMatchObject({
+          lives: 2,
+          invulnerableTicks: 120,
+        });
+        for (let hit = 2; hit <= 3; hit++) {
+          await advance(30);
+          expect(view()).toMatchObject({ phase: "ACTIVE", startingLives: 3 });
           for (const player of view().players)
             expect(player).toMatchObject({
               alive: true,
               capacity: 1,
               range: 2,
-              speed: 3,
+              speed: 4,
             });
           for (let i = 0; i < count - 1; i++) {
             room(i).send(
@@ -1588,7 +1596,8 @@ describe.sequential("Bomberman multiplayer Protocol V6", () => {
             await barrier(i);
           }
           await advance(151);
-          expect(view().players.at(-1)?.score).toBe(bout);
+          expect(view().players.at(-1)?.lives).toBe(3);
+          expect(view().players[0]?.lives).toBe(3 - hit);
         }
         await waitUntil(() =>
           inboxes.every(
@@ -1596,10 +1605,10 @@ describe.sequential("Bomberman multiplayer Protocol V6", () => {
           ),
         );
         const completed = required(await replayStore.get("bomberman-replay-1"));
-        expect(completed.finalTick).toBe(1233);
+        expect(completed.finalTick).toBe(693);
         expect(completed.recordedOutcome).toMatchObject({
           type: "WIN",
-          reason: "SCORE",
+          reason: "SURVIVOR",
           winnerSlotId: `bomberman-slot-${count - 1}`,
         });
         expect(

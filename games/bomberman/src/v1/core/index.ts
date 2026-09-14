@@ -29,7 +29,21 @@ import {
 } from "./movement.js";
 import type { Player, State } from "./model.js";
 
-export { bombermanDefinition as bombermanDefinitionV1_0_0 } from "../v1/core/index.js";
+function resetPlayers(players: readonly Player[], rotation: number): Player[] {
+  const cells = spawnCells(classicMap, players.length, rotation);
+  return players.map((player, index) => ({
+    ...player,
+    ...cellCenter(required(cells[index]), classicMap.cols),
+    alive: !player.resigned,
+    capacity: classicMode.initialCapacity,
+    range: classicMode.initialRange,
+    speed: classicMode.initialSpeed,
+    direction: "none",
+    facing: "down",
+    lease: 0,
+    walking: false,
+  }));
+}
 
 function copyState(state: Readonly<State>): State {
   return {
@@ -49,10 +63,11 @@ function copyState(state: Readonly<State>): State {
     pickups: state.pickups.map((loot) => ({ ...loot })),
     pendingLoot: state.pendingLoot.map((loot) => ({ ...loot })),
     events: state.events.map((event) => ({ ...event })),
+    roundResult: state.roundResult ? { ...state.roundResult } : null,
     outcome: state.outcome
       ? {
           ...state.outcome,
-          standings: state.outcome.standings.map((entry) => ({ ...entry })),
+          scores: state.outcome.scores.map((score) => ({ ...score })),
         }
       : null,
   };
@@ -75,11 +90,7 @@ function complete(
     type: winnerSlotId === null ? "DRAW" : "WIN",
     winnerSlotId,
     reason,
-    standings: state.players.map(({ slotId, lives, resigned }) => ({
-      slotId,
-      lives,
-      resigned,
-    })),
+    scores: state.players.map(({ slotId, score }) => ({ slotId, score })),
   };
   clearControls(state);
 }
@@ -91,17 +102,28 @@ function effect(
 ): void {
   state.events.push({ id: state.nextId++, kind, x, y, tick: state.tick });
 }
-function finishMatch(state: State, mode: ModeDefinition): void {
+function finishBout(state: State, mode: ModeDefinition): void {
   const alive = state.players.filter(
     (player) => player.alive && !player.resigned,
   );
   if (alive.length > 1 && state.elapsed < mode.roundTicks) return;
-  const winner = alive.length === 1 ? alive[0] : undefined;
-  complete(
-    state,
-    winner?.slotId ?? null,
-    winner ? "SURVIVOR" : alive.length === 0 ? "ALL_ELIMINATED" : "TIMEOUT",
-  );
+  const winner = alive.length === 1 ? required(alive[0]) : null;
+  state.roundResult = {
+    winnerSlotId: winner?.slotId ?? null,
+    reason: winner
+      ? "SURVIVOR"
+      : alive.length === 0
+        ? "ALL_ELIMINATED"
+        : "TIMEOUT",
+  };
+  if (winner) winner.score += 1;
+  if (winner && winner.score >= mode.targetWins)
+    complete(state, winner.slotId, "SCORE");
+  else {
+    state.phase = "RESULT";
+    state.phaseTicks = mode.resultTicks;
+    clearControls(state);
+  }
 }
 function collectPickups(state: State, mode: ModeDefinition): void {
   state.pickups = state.pickups.filter((pickup) => {
@@ -149,8 +171,9 @@ function projectView({
     },
     phase: state.phase,
     phaseTicks: state.phaseTicks,
+    bout: state.bout,
     remainingTicks: Math.max(0, classicMode.roundTicks - state.elapsed),
-    startingLives: classicMode.startingLives,
+    targetWins: classicMode.targetWins,
     players: state.players.map((player) => ({
       slotId: player.slotId,
       index: player.index,
@@ -158,8 +181,7 @@ function projectView({
       y: player.y,
       alive: player.alive,
       resigned: player.resigned,
-      lives: player.lives,
-      invulnerableTicks: Math.max(0, player.invulnerableUntil - state.tick),
+      score: player.score,
       capacity: player.capacity,
       activeBombs: state.bombs.filter(
         (bomb) => bomb.ownerSlotId === player.slotId,
@@ -178,22 +200,14 @@ function projectView({
     flames: state.flames.map((flame) => ({
       cell: flame.cell,
       remainingTicks: Math.max(0, flame.expiresAt - state.elapsed),
-      shape:
-        flame.centerUntil > state.elapsed
-          ? ("center" as const)
-          : flame.horizontalUntil > state.elapsed &&
-              flame.verticalUntil > state.elapsed
-            ? ("intersection" as const)
-            : flame.horizontalUntil > state.elapsed
-              ? ("horizontal" as const)
-              : ("vertical" as const),
     })),
     pickups: state.pickups.map((pickup) => ({ ...pickup })),
     events: state.events.map(({ id, kind, x, y }) => ({ id, kind, x, y })),
+    roundResult: state.roundResult ? { ...state.roundResult } : null,
     outcome: state.outcome
       ? {
           ...state.outcome,
-          standings: state.outcome.standings.map((entry) => ({ ...entry })),
+          scores: state.outcome.scores.map((score) => ({ ...score })),
         }
       : null,
   };
@@ -214,18 +228,17 @@ export const bombermanDefinition = {
       throw new Error("Invalid Bomberman participants.");
     const rotation = nextRealtimeInt(inputRng, classicMap.spawnCycle.length);
     const generated = generateArena(classicMap, classicMode, rotation.next);
-    const cells = spawnCells(classicMap, players.length, rotation.value);
     const initialPlayers: Player[] = players.map((slotId, index) => ({
       slotId,
       index,
-      ...cellCenter(required(cells[index]), classicMap.cols),
+      x: 0,
+      y: 0,
       alive: true,
       resigned: false,
-      lives: classicMode.startingLives,
-      invulnerableUntil: 0,
-      capacity: classicMode.initialCapacity,
-      range: classicMode.initialRange,
-      speed: classicMode.initialSpeed,
+      score: 0,
+      capacity: 1,
+      range: 2,
+      speed: 60,
       direction: "none",
       facing: "down",
       lease: 0,
@@ -235,7 +248,7 @@ export const bombermanDefinition = {
       tick: 0,
       config,
       arena: generated.arena,
-      players: initialPlayers,
+      players: resetPlayers(initialPlayers, rotation.value),
       bombs: [],
       flames: [],
       pickups: [],
@@ -243,15 +256,18 @@ export const bombermanDefinition = {
       phase: "PREPARE",
       phaseTicks: classicMode.prepareTicks,
       elapsed: 0,
+      bout: 1,
+      spawnRotation: rotation.value,
       nextId: 1,
       events: [],
+      roundResult: null,
       outcome: null,
     };
     return { state, rng: generated.rng };
   },
   step({ state: previous, tick, inputs, rng: previousRng }) {
     const state = copyState(previous);
-    const rng: RealtimeRngState = { ...previousRng };
+    let rng: RealtimeRngState = { ...previousRng };
     if (state.outcome) return { state, rng };
     state.tick = tick + 1;
     state.events = state.events.filter((event) => state.tick - event.tick < 60);
@@ -261,8 +277,6 @@ export const bombermanDefinition = {
       if (input.type === "RESIGN" && player && !player.resigned) {
         player.resigned = true;
         player.alive = false;
-        player.lives = 0;
-        player.invulnerableUntil = 0;
         player.walking = false;
         player.direction = "none";
         player.lease = 0;
@@ -270,9 +284,7 @@ export const bombermanDefinition = {
       }
     }
     if (resigned) {
-      const eligible = state.players.filter(
-        (player) => player.alive && !player.resigned,
-      );
+      const eligible = state.players.filter((player) => !player.resigned);
       if (eligible.length <= 1) {
         complete(state, eligible[0]?.slotId ?? null, "RESIGNATION");
         return { state, rng };
@@ -283,7 +295,28 @@ export const bombermanDefinition = {
       if (state.phaseTicks === 0) state.phase = "ACTIVE";
       return { state, rng };
     }
-    state.elapsed += 1;
+    if (state.phase === "RESULT") {
+      state.phaseTicks -= 1;
+      if (state.phaseTicks === 0) {
+        state.bout += 1;
+        state.spawnRotation =
+          (state.spawnRotation + 1) % classicMap.spawnCycle.length;
+        const generated = generateArena(classicMap, classicMode, rng);
+        rng = generated.rng;
+        state.arena = generated.arena;
+        state.players = resetPlayers(state.players, state.spawnRotation);
+        state.bombs = [];
+        state.flames = [];
+        state.pickups = [];
+        state.pendingLoot = [];
+        state.events = [];
+        state.elapsed = 0;
+        state.roundResult = null;
+        state.phase = "PREPARE";
+        state.phaseTicks = classicMode.prepareTicks;
+      }
+      return { state, rng };
+    }
     state.flames = state.flames.filter(
       (flame) => flame.expiresAt > state.elapsed,
     );
@@ -361,28 +394,21 @@ export const bombermanDefinition = {
     for (const player of state.players) {
       if (
         player.alive &&
-        state.tick >= player.invulnerableUntil &&
         (crossedFlames.has(player.slotId) ||
           state.flames.some((flame) =>
             overlapsCell(player.x, player.y, flame.cell, state.arena.cols),
           ))
       ) {
-        player.lives -= 1;
-        if (player.lives === 0) {
-          player.alive = false;
-          player.invulnerableUntil = 0;
-          player.walking = false;
-          player.direction = "none";
-          player.lease = 0;
-          effect(state, "eliminate", player.x, player.y);
-        } else {
-          player.invulnerableUntil = state.tick + classicMode.invulnerableTicks;
-          effect(state, "hit", player.x, player.y);
-        }
+        player.alive = false;
+        player.walking = false;
+        player.direction = "none";
+        player.lease = 0;
+        effect(state, "eliminate", player.x, player.y);
       }
     }
     collectPickups(state, classicMode);
-    finishMatch(state, classicMode);
+    state.elapsed += 1;
+    finishBout(state, classicMode);
     state.events = state.events.slice(-128);
     return { state, rng };
   },

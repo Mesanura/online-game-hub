@@ -159,6 +159,7 @@ function fail(code: string, message: string): void {
 }
 function renderSetup(): void {
   if (!setup) return;
+  const legacy = init?.gameVersion === "1.0.0";
   if (!setupBuilt) {
     setupBuilt = true;
     root.innerHTML =
@@ -175,8 +176,18 @@ function renderSetup(): void {
         )
         .join("") +
       '</div><p class="confirmed-setting" id="confirmed-setting" role="status"></p><div class="setup-roster" id="setup-roster"></div><div class="setup-notice" id="surface-notice" role="status" aria-live="polite"></div></section>' +
-      '<section class="setup-card map-card" aria-labelledby="map-heading"><span class="section-number">02 / 战场</span><h2 id="map-heading">经典竞技场</h2><div class="preview-frame"><canvas id="setup-preview" width="208" height="176" role="img" aria-label="经典竞技场示意，玩家从不同角落出生"></canvas></div><p>固定地形 · 砖块每局变化 · 出生点轮换</p></section>' +
-      '<section class="setup-card rules-card" aria-labelledby="rules-heading"><span class="section-number">03 / 开炸指南</span><h2 id="rules-heading">先赢三小局，就赢下整场</h2><div class="rules-columns"><ul><li>每小局一条命，最后存活者得 1 分。</li><li>180 秒仍有多人存活，或全员出局，均为平局。</li><li>砖块可以炸毁；石墙会挡住爆炸。</li><li>炸弹会连锁引爆，也会炸到自己。</li></ul><div><div class="item-guide"><span>＋ 炸弹容量</span><span>✦ 爆炸范围</span><span>ϟ 移动速度</span></div><p>炸开砖块寻找道具。出局后观看本小局，下一小局自动复活；所有增强重置。</p><p class="keyboard-help"><kbd>WASD</kbd> / <kbd>方向键</kbd> 移动<br><kbd>空格</kbd> 放炸弹 · 手机摇杆 + 放弹按钮</p></div></div></section></div></main>';
+      '<section class="setup-card map-card" aria-labelledby="map-heading"><span class="section-number">02 / 战场</span><h2 id="map-heading">经典竞技场</h2><div class="preview-frame"><canvas id="setup-preview" width="208" height="176" role="img" aria-label="经典竞技场示意，玩家从不同角落出生"></canvas></div><p>固定地形 · 砖块每场变化 · 安全角落出生</p></section>' +
+      '<section class="setup-card rules-card" aria-labelledby="rules-heading"><span class="section-number">03 / 开炸指南</span><h2 id="rules-heading">' +
+      (legacy ? "先赢三小局，就赢下整场" : "一局三条命，留到最后获胜") +
+      '</h2><div class="rules-columns"><ul><li>' +
+      (legacy
+        ? "每小局一条命，最后存活者得 1 分。"
+        : "受击扣一命，随后无敌 2 秒；生命耗尽才出局。") +
+      '</li><li>180 秒仍有多人存活，或全员出局，均为平局。</li><li>砖块可以炸毁；石墙会挡住爆炸。</li><li>炸弹会连锁引爆，也会炸到自己。</li></ul><div><div class="item-guide"><span>＋ 炸弹容量</span><span>✦ 爆炸范围</span><span>ϟ 移动速度</span></div><p>' +
+      (legacy
+        ? "炸开砖块寻找道具。出局后观看本小局，下一小局自动复活；所有增强重置。"
+        : "炸开砖块寻找道具。受击保留位置和增强，闪烁与光圈表示无敌；趁机移动到安全处。") +
+      '</p><p class="keyboard-help"><kbd>WASD</kbd> / <kbd>方向键</kbd> 移动<br><kbd>空格</kbd> 放炸弹 · 手机摇杆 + 放弹按钮</p></div></div></section></div></main>';
     root.querySelectorAll<HTMLButtonElement>("[data-count]").forEach((button) =>
       button.addEventListener(
         "click",
@@ -214,7 +225,10 @@ function renderSetup(): void {
   });
   text(
     "confirmed-setting",
-    "已确认：" + setup.config.playerCount + " 人 · 自由混战 · 抢 3 胜",
+    "已确认：" +
+      setup.config.playerCount +
+      " 人 · 自由混战 · " +
+      (legacy ? "抢 3 胜" : "一局三命"),
   );
   text(
     "surface-notice",
@@ -265,8 +279,8 @@ function unlock(): void {
 function ensureGame(): void {
   if (game || !view) return;
   root.innerHTML =
-    '<main class="play-shell"><header class="match-header"><div class="brand"><span class="eyebrow">PIXEL ARENA</span><h1>像素炸弹人</h1></div><div class="match-clock"><span id="bout-label"></span><strong id="match-timer" aria-label="小局剩余时间"></strong></div><button id="audio-toggle" class="audio-button" type="button" aria-label="音效" aria-pressed="false">开启音效</button></header>' +
-    '<div class="scoreboard" id="scoreboard" role="group" aria-label="小局胜场"></div><p class="phase-label" id="phase-label" role="status"></p>' +
+    '<main class="play-shell"><header class="match-header"><div class="brand"><span class="eyebrow">PIXEL ARENA</span><h1>像素炸弹人</h1></div><div class="match-clock"><span id="bout-label"></span><strong id="match-timer" aria-label="剩余时间"></strong></div><button id="audio-toggle" class="audio-button" type="button" aria-label="音效" aria-pressed="false">开启音效</button></header>' +
+    '<div class="scoreboard" id="scoreboard" role="group"></div><p class="phase-label" id="phase-label" role="status"></p>' +
     '<div class="battlefield"><div class="touch-control movement-control"><div class="joystick" id="joystick" data-testid="joystick" tabindex="0" role="group" aria-label="四向移动摇杆，支持方向键" aria-describedby="control-help"><span class="joy-arrow up" aria-hidden="true">▲</span><span class="joy-arrow right" aria-hidden="true">▶</span><span class="joy-arrow down" aria-hidden="true">▼</span><span class="joy-arrow left" aria-hidden="true">◀</span><span class="joystick-knob" id="joystick-knob" aria-hidden="true"><i></i></span></div><span class="control-caption">移动</span></div>' +
     '<div class="arena-wrap"><div id="arena-canvas" tabindex="0" role="application" aria-label="像素炸弹人竞技场" aria-describedby="control-help"></div><div id="phase-banner" class="phase-banner" aria-hidden="true"><span id="banner-kicker"></span><strong id="banner-value"></strong><span id="banner-detail"></span></div><div id="connection-cover" class="connection-cover" role="status" hidden>正在恢复连接…</div></div>' +
     '<div class="touch-control bomb-control"><button id="bomb-button" class="bomb-button" data-testid="bomb-button" type="button" aria-label="放炸弹（空格）"><canvas id="bomb-icon" width="32" height="32" aria-hidden="true"></canvas><span>放炸弹</span></button><span class="control-caption">点按放置</span></div></div>' +
@@ -449,9 +463,10 @@ function renderPlay(): void {
   if (!view) return;
   ensureGame();
   root.dataset.phase = view.phase;
-  root.dataset.bout = String(view.bout);
+  root.dataset.bout = String("bout" in view ? view.bout : 1);
   root.dataset.tick = String(host?.tick ?? 0);
   const board = document.getElementById("scoreboard");
+  board?.setAttribute("aria-label", "bout" in view ? "小局胜场" : "剩余生命");
   for (const player of view.players) {
     let card = scoreNodes.get(player.slotId);
     if (!card) {
@@ -475,26 +490,41 @@ function renderPlay(): void {
         (player.index + 1) +
         (player.slotId === view.selfSlotId ? " · 你" : "");
     const score = card.querySelector(".player-score");
-    if (score) score.textContent = String(player.score);
+    const hasLives = "lives" in player;
+    if (score) {
+      score.textContent = hasLives ? "♥ " + player.lives : String(player.score);
+      score.classList.toggle("life-count", hasLives);
+    }
     const status = card.querySelector(".player-state");
     if (status)
       status.textContent = player.resigned
         ? "已投降"
         : player.alive
-          ? "存活"
+          ? "invulnerableTicks" in player && player.invulnerableTicks > 0
+            ? "无敌"
+            : "存活"
           : "出局";
     card.dataset.alive = String(player.alive);
     card.dataset.x = String(player.x);
     card.dataset.y = String(player.y);
     card.dataset.walking = String(player.walking);
+    if (hasLives) {
+      card.dataset.lives = String(player.lives);
+      card.dataset.invulnerable = String(player.invulnerableTicks);
+    }
     card.setAttribute(
       "aria-label",
       "P" +
         (player.index + 1) +
         (player.slotId === view.selfSlotId ? " 你，" : "，") +
-        player.score +
-        " 胜，" +
-        (player.resigned ? "已投降" : player.alive ? "存活" : "出局"),
+        (hasLives ? player.lives + " 条命，" : player.score + " 胜，") +
+        (player.resigned
+          ? "已投降"
+          : player.alive
+            ? hasLives && player.invulnerableTicks > 0
+              ? "无敌"
+              : "存活"
+            : "出局"),
     );
   }
   for (const [slot, card] of scoreNodes)
@@ -509,7 +539,12 @@ function renderPlay(): void {
       ":" +
       String(seconds % 60).padStart(2, "0"),
   );
-  text("bout-label", "第 " + view.bout + " 小局 / 抢 3 胜");
+  text(
+    "bout-label",
+    "bout" in view
+      ? "第 " + view.bout + " 小局 / 抢 3 胜"
+      : "一局三命 · 最后存活者胜",
+  );
   text("phase-label", phaseLabel(view));
   const own = view.players.find((player) => player.slotId === view?.selfSlotId);
   text(
@@ -534,10 +569,16 @@ function renderPlay(): void {
         "banner-value",
         String(Math.max(1, Math.ceil(view.phaseTicks / 60))),
       );
-      text("banner-detail", "第 " + view.bout + " 小局");
+      text(
+        "banner-detail",
+        "bout" in view ? "第 " + view.bout + " 小局" : "每人 3 条命",
+      );
     } else if (view.phase === "RESULT") {
       const winner = view.players.find(
-        (player) => player.slotId === view?.roundResult?.winnerSlotId,
+        (player) =>
+          view &&
+          "roundResult" in view &&
+          player.slotId === view.roundResult?.winnerSlotId,
       );
       text("banner-kicker", winner ? "ROUND WIN" : "DRAW");
       text("banner-value", winner ? "P" + (winner.index + 1) + " +1" : "平局");
@@ -565,7 +606,7 @@ function handleHost(message: HostSurfaceMessage): void {
   if (message.type === "host.init") {
     if (
       message.gameId !== "bomberman" ||
-      message.gameVersion !== "1.0.0" ||
+      !["1.0.0", "1.1.0"].includes(message.gameVersion) ||
       message.mode !== mode ||
       message.bridgeVersion !== 2
     ) {
@@ -618,7 +659,11 @@ function handleHost(message: HostSurfaceMessage): void {
           message.connectionState !== "connected" ||
           message.readOnly ||
           (host?.tick !== undefined && message.tick - host.tick > 12);
-        const newBout = view !== null && next.bout !== view.bout;
+        const newBout =
+          view !== null &&
+          "bout" in next &&
+          "bout" in view &&
+          next.bout !== view.bout;
         const phaseChanged =
           view !== null && (newBout || next.phase !== view.phase);
         const audioReset =
@@ -628,6 +673,7 @@ function handleHost(message: HostSurfaceMessage): void {
           reconnecting ||
           message.connectionState !== "connected" ||
           document.hidden ||
+          !document.hasFocus() ||
           (host?.tick !== undefined && message.tick - host.tick > 12);
         if (!view || host?.tick !== message.tick || reset) {
           previous = shouldInterpolate(
@@ -663,6 +709,7 @@ function handleHost(message: HostSurfaceMessage): void {
           view !== null &&
           (view.arena.cols !== next.arena.cols ||
             view.arena.rows !== next.arena.rows);
+        const freshTick = host?.tick !== message.tick;
         view = next;
         host = message;
         if (dimensionsChanged)
@@ -670,8 +717,14 @@ function handleHost(message: HostSurfaceMessage): void {
             next.arena.cols * TILE_PIXELS,
             next.arena.rows * TILE_PIXELS,
           );
-        for (const event of effects.observe(next.events, audioReset))
-          if (audio.ready) audio.play(event);
+        if (audioReset || next.phase !== "ACTIVE") audio.silence();
+        const freshEffects = effects.observe(next.events, audioReset);
+        for (const event of freshEffects) if (audio.ready) audio.play(event);
+        if (freshTick && !audioReset && next.phase === "ACTIVE")
+          audio.syncFlames(
+            next.flames,
+            freshEffects.some((event) => event.kind === "explode"),
+          );
         renderPlay();
         const summary = resultSummary(next);
         if (summary)
@@ -742,6 +795,7 @@ window.addEventListener(
   () => {
     release(true);
     effects.clear();
+    audio.silence();
     previous = null;
   },
   { signal: listeners.signal },
@@ -751,6 +805,7 @@ document.addEventListener(
   () => {
     release(true);
     effects.clear();
+    audio.silence();
     previous = null;
   },
   { signal: listeners.signal },

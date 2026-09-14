@@ -97,11 +97,22 @@ export function bombSprite(hot = false): PixelSprite {
     },
   };
 }
-export function flameSprite(frame: number): PixelSprite {
+export type FlameShape = "center" | "horizontal" | "vertical" | "intersection";
+export function flameSprite(
+  frame: number,
+  shape: FlameShape = "center",
+): PixelSprite {
   return {
     rows: Array.from({ length: 16 }, (_, y) =>
       Array.from({ length: 16 }, (_, x) => {
-        const edge = Math.min(Math.abs(x - 7.5), Math.abs(y - 7.5));
+        const dx = Math.abs(x - 7.5);
+        const dy = Math.abs(y - 7.5);
+        const edge =
+          shape === "horizontal"
+            ? dy
+            : shape === "vertical"
+              ? dx
+              : Math.min(dx, dy);
         if (edge > 4 || (edge > 3 && (x + y + frame) % 3 === 0)) return ".";
         return edge < 1.6 ? "w" : edge < 3 ? "y" : "o";
       }).join(""),
@@ -182,47 +193,30 @@ export function pickupSprite(
     },
   };
 }
-export function playerSprite(
-  index: number,
-  facing: string,
-  frame: number,
-): PixelSprite {
+export function playerSprite(index: number, frame: number): PixelSprite {
+  // Centered 10×10 footprint in a 16×16 canvas: no offset feet or directional
+  // silhouette changes. Every animation frame is bilaterally symmetric.
   const rows = normalized([
-    ".....000000.....",
-    "....0wwwwww0....",
-    "...0wwwwwwww0...",
-    "...0wwccccww0...",
-    "..0wwwwwwwwww0..",
-    "..0wwffffffww0..",
-    "..0wf0ffff0fw0..",
-    "..0wf0ffff0fw0..",
-    "...0ffffffff0...",
-    "....0ffffff0....",
-    ".....000000.....",
-    "....0cccccc0....",
-    "...0cccccCcc0...",
-    "..0f0cccccc0f0..",
-    "..0f0cccccc0f0..",
-    "...00CCCCCC00...",
-    "....0CCCCCC0....",
-    "....00000000....",
-    "...0cccc00cccc0.",
-    "...00000..00000.",
+    "................",
+    "................",
+    "................",
+    "......0000......",
+    "....00cccc00....",
+    "...0cccccccc0...",
+    "...0cwwwwwwc0...",
+    "...0cw0ww0wc0...",
+    "...0cw0ww0wc0...",
+    "...0cwwwwwwc0...",
+    "...0cccccccc0...",
+    "....00CCCC00....",
+    "......0000......",
+    "................",
+    "................",
+    "................",
   ]);
-  if (facing === "up") {
-    for (let y = 5; y <= 9; y += 1)
-      rows[y] = (rows[y] ?? "").replaceAll("f", "w");
-    rows[6] = "..0wwwwwwwwww0..";
-    rows[7] = "..0wwwwwwwwww0..";
-  }
-  if (facing === "left" || facing === "right") {
-    const eye = facing === "left" ? "..0f0fffffffw0.." : "..0wfffffff0f0..";
-    rows[6] = eye;
-    rows[7] = eye;
-  }
   if (frame === 1) {
-    rows[18] = "....00000cccc0..";
-    rows[19] = "........000000..";
+    rows[4] = "....00CCCC00....";
+    rows[11] = "....00cccc00....";
   }
   const color = index % PLAYER_COLORS.length;
   return {
@@ -230,7 +224,6 @@ export function playerSprite(
     palette: {
       "0": "#2e3d55",
       w: "#fffbea",
-      f: "#f8d1a5",
       c: PLAYER_COLORS[color] ?? PLAYER_COLORS[0],
       C: PLAYER_SHADES[color] ?? PLAYER_SHADES[0],
     },

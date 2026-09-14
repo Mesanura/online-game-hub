@@ -3,7 +3,7 @@ import {
   createRealtimeRng,
   defineRealtimePlayerSlotId,
 } from "@online-game-hub/realtime-game-sdk";
-import { configSchema, inputSchema } from "../src/contracts.js";
+import { configSchema, inputSchema } from "../../src/v1/contracts.js";
 import {
   CELL_SIZE,
   classicMap,
@@ -11,11 +11,11 @@ import {
   spawnCells,
   supportedPlayerCounts,
   type MapDefinition,
-} from "../src/definitions.js";
-import { bombermanDefinition as game } from "../src/core/index.js";
-import { resolveExplosions } from "../src/core/explosions.js";
-import { generateArena } from "../src/core/map.js";
-import { cellCenter, overlapsCell } from "../src/core/movement.js";
+} from "../../src/v1/definitions.js";
+import { bombermanDefinition as game } from "../../src/v1/core/index.js";
+import { resolveExplosions } from "../../src/v1/core/explosions.js";
+import { generateArena } from "../../src/v1/core/map.js";
+import { cellCenter, overlapsCell } from "../../src/v1/core/movement.js";
 import {
   advance,
   bomb,
@@ -135,7 +135,7 @@ describe("movement and input lifetime", () => {
     const moved = advance(frame, 30, [
       intent(0, { type: "MOVE", direction: "right" }),
     ]);
-    expect(player(moved.state).x).toBe(x + 30 * 80);
+    expect(player(moved.state).x).toBe(x + 30 * 60);
     expect(player(advance(moved).state).x).toBe(player(moved.state).x);
     const stopped = advance(moved, 1, [
       intent(0, { type: "PLACE_BOMB" }),
@@ -178,49 +178,23 @@ describe("movement and input lifetime", () => {
       );
     },
   );
-  it("spends the normal movement budget on half-cell corner assistance", () => {
+  it("spends the movement budget on axis-aligned corner assistance and rejects distant turns", () => {
     const frame = openArena();
     player(frame.state).y += 180;
     let result = advance(frame, 3, [
       intent(0, { type: "MOVE", direction: "right" }),
     ]);
-    expect(player(result.state)).toMatchObject({ x: 1860, y: 1800 });
+    expect(player(result.state)).toMatchObject({ x: 1800, y: 1800 });
     result = advance(result);
-    expect(player(result.state)).toMatchObject({ x: 1940, y: 1800 });
-  });
-  it.each([-580, 580])(
-    "assists just after the body midpoint clears a corner, offset %i",
-    (offset) => {
-      let frame = openArena();
-      frame.state.arena.tiles[28] = "wall";
-      frame.state.arena.tiles[30] = "wall";
-      Object.assign(player(frame.state), { x: 4200 + offset, y: 1800 });
-      frame = advance(frame, 8, [
-        intent(0, { type: "MOVE", direction: "down" }),
-      ]);
-      expect(player(frame.state)).toMatchObject({ x: 4200, y: 1860 });
-      expect(frame.state.arena.tiles[28]).toBe("wall");
-      expect(frame.state.arena.tiles[30]).toBe("wall");
-    },
-  );
-  it("does not pull toward a closed turn before halfway or snap through bombs", () => {
-    const frame = openArena();
-    frame.state.arena.tiles[28] = "wall";
-    Object.assign(player(frame.state), { x: 3590, y: 1800 });
+    expect(player(result.state)).toMatchObject({ x: 1860, y: 1800 });
+    const distant = openArena();
+    player(distant.state).y += 300;
     expect(
       player(
-        advance(frame, 8, [intent(0, { type: "MOVE", direction: "down" })])
+        advance(distant, 5, [intent(0, { type: "MOVE", direction: "right" })])
           .state,
       ),
-    ).toMatchObject({ x: 3590, y: 1800 });
-    frame.state.arena.tiles[28] = "floor";
-    frame.state.bombs = [bomb(frame.state, 2, 2, 1, 2, 100)];
-    expect(
-      player(
-        advance(frame, 8, [intent(0, { type: "MOVE", direction: "down" })])
-          .state,
-      ),
-    ).toMatchObject({ x: 3590, y: 1800 });
+    ).toMatchObject({ x: 1800, y: 2100 });
   });
   it("lets players overlap, exit their new bomb and then prevents reentry", () => {
     let frame = openArena(3);
@@ -244,89 +218,6 @@ describe("movement and input lifetime", () => {
 });
 
 describe("bombs, explosions and loot", () => {
-  it("takes only one life per damage batch and grants exactly two seconds of movable immunity", () => {
-    let frame = openArena(3);
-    player(frame.state).capacity = 3;
-    player(frame.state).range = 5;
-    player(frame.state).speed = 100;
-    frame.state.bombs = [bomb(frame.state, 1, 1), bomb(frame.state, 2, 1, 2)];
-    frame = advance(frame);
-    const protectedUntil = frame.state.tick + 120;
-    expect(player(frame.state)).toMatchObject({
-      lives: 2,
-      alive: true,
-      x: 1800,
-      y: 1800,
-      capacity: 3,
-      range: 5,
-      speed: 100,
-      invulnerableUntil: protectedUntil,
-    });
-    expect(
-      frame.state.events.filter((event) => event.kind === "hit"),
-    ).toHaveLength(1);
-    frame = advance(frame, 1, [
-      intent(0, { type: "MOVE", direction: "right" }),
-      intent(0, { type: "PLACE_BOMB" }),
-    ]);
-    expect(player(frame.state)).toMatchObject({
-      lives: 2,
-      x: 1900,
-      walking: true,
-      invulnerableUntil: protectedUntil,
-    });
-    expect(frame.state.events.some((event) => event.kind === "place")).toBe(
-      true,
-    );
-    frame = advance(frame, 118, [
-      intent(0, { type: "MOVE", direction: "none" }),
-    ]);
-    expect(
-      game.projectView({
-        state: frame.state,
-        viewer: { kind: "player", slotId: "p0" },
-      }).players[0]?.invulnerableTicks,
-    ).toBe(1);
-    frame.state.bombs = [bomb(frame.state, 1, 1, 100, 2, frame.state.elapsed)];
-    frame = advance(frame);
-    expect(player(frame.state)).toMatchObject({
-      lives: 1,
-      alive: true,
-      invulnerableUntil: frame.state.tick + 120,
-    });
-  });
-  it("projects straight rays, central crosses and independently expiring intersections", () => {
-    let frame = openArena();
-    frame.state.bombs = [bomb(frame.state, 5, 5, 1, 3)];
-    frame = advance(frame);
-    const project = () =>
-      game.projectView({
-        state: frame.state,
-        viewer: { kind: "player", slotId: "p0" },
-      });
-    expect(project().flames.find((flame) => flame.cell === 70)?.shape).toBe(
-      "center",
-    );
-    expect(project().flames.find((flame) => flame.cell === 71)?.shape).toBe(
-      "horizontal",
-    );
-    expect(project().flames.find((flame) => flame.cell === 57)?.shape).toBe(
-      "vertical",
-    );
-    frame = advance(frame, 15);
-    frame.state.bombs = [bomb(frame.state, 7, 3, 100, 3)];
-    frame = advance(frame);
-    expect(project().flames.find((flame) => flame.cell === 72)?.shape).toBe(
-      "intersection",
-    );
-    frame = advance(frame, 14);
-    expect(project().flames.find((flame) => flame.cell === 72)?.shape).toBe(
-      "vertical",
-    );
-    expect(project().flames.some((flame) => flame.cell === 70)).toBe(false);
-    frame = advance(frame, 16);
-    expect(project().flames).toEqual([]);
-  });
   it("never queues blocked placement and snapshots the range before a pickup", () => {
     let frame = openArena();
     frame.state.pickups.push({ cell: 14, kind: "range" });
@@ -373,20 +264,16 @@ describe("bombs, explosions and loot", () => {
     const frame = openArena();
     Object.assign(player(frame.state), cellCenter(42, 13));
     Object.assign(player(frame.state, 1), cellCenter(44, 13));
-    frame.state.players.forEach((entry) => {
-      entry.lives = 1;
-    });
     frame.state.bombs = [bomb(frame.state, 4, 3)];
     const result = advance(frame);
     expect(
-      result.state.players.every((entry) => !entry.alive && entry.lives === 0),
+      result.state.players.every((entry) => !entry.alive && entry.score === 0),
     ).toBe(true);
-    expect(result.state.outcome).toMatchObject({
-      type: "DRAW",
+    expect(result.state.roundResult).toEqual({
       winnerSlotId: null,
       reason: "ALL_ELIMINATED",
     });
-    expect(result.state.phase).toBe("COMPLETE");
+    expect(result.state.outcome).toBeNull();
   });
   it("keeps loot hidden through the complete flame lifetime and burns exposed loot later", () => {
     let frame = openArena();
@@ -425,65 +312,70 @@ describe("bombs, explosions and loot", () => {
         kind === "capacity" ? 5 : kind === "range" ? 8 : 100,
       );
       expect(player(frame.state, 1)[kind]).toBe(
-        kind === "capacity" ? 1 : kind === "range" ? 2 : 80,
+        kind === "capacity" ? 1 : kind === "range" ? 2 : 60,
       );
     },
   );
-  it("takes one life on entry to a still-active flame even without a new explosion", () => {
+  it("kills on entry to a still-active flame even without a new explosion", () => {
     const frame = openArena(3);
     player(frame.state).x = 2 * 1200 - 360;
-    frame.state.flames = [
-      {
-        cell: 15,
-        expiresAt: 20,
-        centerUntil: 20,
-        horizontalUntil: 0,
-        verticalUntil: 0,
-      },
-    ];
+    frame.state.flames = [{ cell: 15, expiresAt: 20 }];
     expect(
       player(
         advance(frame, 1, [intent(0, { type: "MOVE", direction: "right" })])
           .state,
-      ),
-    ).toMatchObject({ alive: true, lives: 2, invulnerableUntil: 301 });
+      ).alive,
+    ).toBe(false);
   });
 });
 
 describe("match lifecycle and privacy", () => {
-  it("ends the single match in a draw at 180 seconds without comparing remaining lives", () => {
+  it("draws at 180 seconds, freezes the result, rotates spawns and resets per-bout state", () => {
     let frame = openArena(4);
+    const rotation = frame.state.spawnRotation;
     player(frame.state).capacity = 5;
-    player(frame.state).lives = 1;
     player(frame.state, 2).resigned = true;
     player(frame.state, 2).alive = false;
-    player(frame.state, 2).lives = 0;
     frame.state.elapsed = 10799;
     frame = advance(frame);
-    expect(frame.state.outcome).toMatchObject({
-      type: "DRAW",
+    expect(frame.state.roundResult).toEqual({
       winnerSlotId: null,
       reason: "TIMEOUT",
     });
-    expect(frame.state.phase).toBe("COMPLETE");
-    expect(advance(frame, 180)).toEqual(frame);
-    const nextMatch = initial(4);
-    expect(
-      nextMatch.state.players.every(
-        (entry) =>
-          entry.alive &&
-          entry.lives === 3 &&
-          entry.capacity === 1 &&
-          entry.speed === 80 &&
-          entry.invulnerableUntil === 0,
-      ),
-    ).toBe(true);
+    const tiles = frame.state.arena.tiles;
+    frame = advance(frame, 119);
+    expect(frame.state.arena.tiles).toEqual(tiles);
+    expect(frame.state.phase).toBe("RESULT");
+    frame = advance(frame);
+    expect(frame.state).toMatchObject({
+      bout: 2,
+      phase: "PREPARE",
+      phaseTicks: 180,
+      elapsed: 0,
+      spawnRotation: (rotation + 1) % 4,
+      bombs: [],
+      flames: [],
+      pickups: [],
+      pendingLoot: [],
+    });
+    expect(player(frame.state)).toMatchObject({
+      alive: true,
+      capacity: 1,
+      range: 2,
+      speed: 60,
+      lease: 0,
+    });
+    expect(player(frame.state, 2)).toMatchObject({
+      alive: false,
+      resigned: true,
+    });
   });
   it.each([2, 3, 4])(
-    "awards the last survivor a single-match win after three hits with %i participants",
+    "awards a genuine three-bout win with %i participants",
     (count) => {
-      let frame = advance(initial(count), 180);
-      for (let hit = 1; hit <= 3; hit += 1) {
+      let frame = initial(count);
+      for (let bout = 1; bout <= 3; bout += 1) {
+        frame = advance(frame, 180);
         frame = advance(
           frame,
           151,
@@ -491,16 +383,12 @@ describe("match lifecycle and privacy", () => {
             intent(index, { type: "PLACE_BOMB" }),
           ),
         );
-        expect(player(frame.state).lives).toBe(3 - hit);
-        expect(player(frame.state, count - 1).lives).toBe(3);
-        if (hit < 3) {
-          expect(frame.state.outcome).toBeNull();
-          frame = advance(frame, 30);
-        }
+        expect(player(frame.state, count - 1).score).toBe(bout);
+        if (bout < 3) frame = advance(frame, 120);
       }
       expect(game.getOutcome(frame.state)).toMatchObject({
         type: "WIN",
-        reason: "SURVIVOR",
+        reason: "SCORE",
         winnerSlotId: "p" + (count - 1),
       });
       expect(
@@ -526,20 +414,6 @@ describe("match lifecycle and privacy", () => {
       type: "DRAW",
       winnerSlotId: null,
     });
-  });
-  it("never awards a resigned player's lives or revives an eliminated competitor", () => {
-    let frame = openArena(4);
-    Object.assign(player(frame.state, 0), { lives: 0, alive: false });
-    frame = advance(frame, 1, [
-      intent(1, { type: "RESIGN" }),
-      intent(2, { type: "RESIGN" }),
-    ]);
-    expect(frame.state.outcome).toMatchObject({
-      type: "WIN",
-      reason: "RESIGNATION",
-      winnerSlotId: "p3",
-    });
-    expect(player(frame.state, 1)).toMatchObject({ lives: 0, resigned: true });
   });
   it("projects only public fields and produces independent JSON-safe views", () => {
     const frame = advance(openArena(), 1, [

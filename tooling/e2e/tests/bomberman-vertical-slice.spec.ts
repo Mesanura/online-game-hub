@@ -40,7 +40,7 @@ function required<T>(value: T | undefined | null): T {
   return value;
 }
 
-test("four accounts play three scored pixel bouts with real multitouch, reconnect and complete the next match", async ({
+test("four accounts play a three-life match with real multitouch, reconnect and complete the next match", async ({
   browser,
 }, info) => {
   test.setTimeout(180000);
@@ -134,7 +134,7 @@ test("four accounts play three scored pixel bouts with real multitouch, reconnec
       await expect(page.getByTestId("match-status")).toHaveText("对局进行中");
       await expect(page.getByTestId("game-surface-iframe")).toHaveAttribute(
         "src",
-        "/game-surfaces/bomberman/1.0.4/play/index.html",
+        "/game-surfaces/bomberman/1.1.0/play/index.html",
       );
       await expect(surface(page).locator("#arena-canvas canvas")).toBeVisible();
       await expect(surface(page).locator(".score-card")).toHaveCount(4);
@@ -293,13 +293,13 @@ test("four accounts play three scored pixel bouts with real multitouch, reconnec
       .toEqual({ type: "MOVE", direction: "none" });
     await cdp.detach();
 
-    for (let bout = 1; bout <= 3; bout++) {
-      if (bout > 1) {
-        await advance(owner, 300);
+    for (let hit = 1; hit <= 3; hit++) {
+      if (hit > 1) {
+        await advance(owner, 30);
         for (const page of pages) {
           await expect(surface(page).locator("#root")).toHaveAttribute(
             "data-bout",
-            String(bout),
+            "1",
           );
           await expect(surface(page).locator("#root")).toHaveAttribute(
             "data-phase",
@@ -311,7 +311,7 @@ test("four accounts play three scored pixel bouts with real multitouch, reconnec
         }
       }
       for (let i = 0; i < 3; i++) {
-        if (bout === 1 && i === 1) continue;
+        if (hit === 1 && i === 1) continue;
         const page = required(pages[i]);
         await closeGameHud(page);
         if (i === 1) await surface(page).locator("#bomb-button").tap();
@@ -328,19 +328,26 @@ test("four accounts play three scored pixel bouts with real multitouch, reconnec
                 (event.input as { type: string }).type === "PLACE_BOMB",
             ).length;
           })
-          .toBe(bout);
+          .toBe(hit);
       }
       await advance(owner, 160);
       for (const page of pages) {
         await expect(
           surface(page).getByTestId("player-score-3").locator(".player-score"),
-        ).toHaveText(String(bout));
+        ).toHaveText("♥ 3");
+        for (let i = 0; i < 3; i++)
+          await expect(
+            surface(page).getByTestId("player-score-" + i),
+          ).toHaveAttribute("data-lives", String(3 - hit));
         await expect(surface(page).locator("#root")).toHaveAttribute(
           "data-phase",
-          bout === 3 ? "COMPLETE" : "RESULT",
+          hit === 3 ? "COMPLETE" : "ACTIVE",
         );
       }
-      if (bout === 1) {
+      if (hit === 1) {
+        await expect(
+          surface(owner).getByTestId("player-score-0").locator(".player-state"),
+        ).toHaveText("无敌");
         await owner.reload();
         await expect(owner.getByTestId("connection-state")).toHaveText(
           "已连接",
@@ -349,14 +356,17 @@ test("four accounts play three scored pixel bouts with real multitouch, reconnec
           required(slots[0]),
         );
         await expect(
-          surface(owner).getByTestId("player-score-3").locator(".player-score"),
-        ).toHaveText("1");
+          surface(owner).getByTestId("player-score-0").locator(".player-score"),
+        ).toHaveText("♥ 2");
+        await expect(
+          surface(owner).getByTestId("player-score-0").locator(".player-state"),
+        ).toHaveText("无敌");
       }
     }
     const completed = required(await replays.get(replayId));
     expect(completed.recordedOutcome).toMatchObject({
       type: "WIN",
-      reason: "SCORE",
+      reason: "SURVIVOR",
       winnerSlotId: slots[3],
     });
     expect(
@@ -412,10 +422,10 @@ test("four accounts play three scored pixel bouts with real multitouch, reconnec
       await expect(page.getByTestId("round-number")).toHaveText("第 2 局");
       await expect(page.getByTestId("match-status")).toHaveText("对局进行中");
       await expect(surface(page).locator(".player-score")).toHaveText([
-        "0",
-        "0",
-        "0",
-        "0",
+        "♥ 3",
+        "♥ 3",
+        "♥ 3",
+        "♥ 3",
       ]);
     }
     const nextRoom = required(await rooms.getByRoomCode(roomCode));

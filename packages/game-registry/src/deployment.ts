@@ -320,29 +320,33 @@ const airHockeySurface: GameDeploymentRegistration = Object.freeze({
   }),
 });
 
-const bombermanSurface: GameDeploymentRegistration = Object.freeze({
-  gameId: "bomberman",
-  gameVersion: "1.0.0",
-  setupProtocol: 6,
-  platformControls: resignPlatformControls,
-  presentation: Object.freeze({
-    kind: "surface-v1",
-    publicBasePath: "/game-surfaces/bomberman/1.0.4",
-    artifact: {
-      schemaVersion: 1,
-      gameId: "bomberman",
-      supportedGameVersions: ["1.0.0"],
-      surfaceVersion: "1.0.4",
-      bridgeVersion: 2,
-      entrypoints: { setup: "setup/index.html", play: "play/index.html" },
-      capabilities: {},
-      contentDigest: "sha256-Re9oZpL2HpqdgiHHLjsbRDxxSu0GTuMfd22xRWcttGg=",
-    } satisfies SurfaceArtifactManifestV1,
-  }),
-});
+const bombermanSurface = (
+  gameVersion: "1.0.0" | "1.1.0",
+): GameDeploymentRegistration =>
+  Object.freeze({
+    gameId: "bomberman",
+    gameVersion,
+    setupProtocol: 6,
+    platformControls: resignPlatformControls,
+    presentation: Object.freeze({
+      kind: "surface-v1",
+      publicBasePath: "/game-surfaces/bomberman/1.1.0",
+      artifact: {
+        schemaVersion: 1,
+        gameId: "bomberman",
+        supportedGameVersions: ["1.0.0", "1.1.0"],
+        surfaceVersion: "1.1.0",
+        bridgeVersion: 2,
+        entrypoints: { setup: "setup/index.html", play: "play/index.html" },
+        capabilities: {},
+        contentDigest: "sha256-Va7C3grd1l20cf2vlw7e7DYgkHQnlPCN0tBOVBRviPo=",
+      } satisfies SurfaceArtifactManifestV1,
+    }),
+  });
 
 const gameDeployments = Object.freeze([
-  bombermanSurface,
+  bombermanSurface("1.0.0"),
+  bombermanSurface("1.1.0"),
   airHockeySurface,
   tankMazeSurface("1.0.0"),
   tankMazeSurface("1.1.0"),

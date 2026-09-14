@@ -375,6 +375,7 @@ describe("explicit game registry", () => {
       ["badminton", "1.3.0"],
       ["air-hockey", "1.0.0"],
       ["bomberman", "1.0.0"],
+      ["bomberman", "1.1.0"],
       ["tank-maze", "1.0.0"],
       ["tank-maze", "1.1.0"],
       ["tank-maze", "1.2.0"],
@@ -391,7 +392,11 @@ describe("explicit game registry", () => {
     ] as const) {
       const definition = resolveRoundSetupDefinition(gameId, gameVersion);
       expect(definition).toBeDefined();
-      expect(resolveCurrentRoundSetupDefinition(gameId)).toBe(definition);
+      const current = gameCatalog.find((manifest) => manifest.id === gameId);
+      expect(current).toBeDefined();
+      expect(resolveCurrentRoundSetupDefinition(gameId)).toBe(
+        resolveRoundSetupDefinition(gameId, current?.gameVersion ?? ""),
+      );
       expect(
         resolveRoundSetupDefinition(gameId, `${gameVersion}-unknown`),
       ).toBeUndefined();
@@ -528,7 +533,7 @@ describe("explicit game registry", () => {
   it("registers Bomberman with variable participants, ordered events and exact record-only Surface", () => {
     const definition = resolveCurrentRealtimeGameDefinition("bomberman");
     expect(definition).toBe(
-      resolveRealtimeGameDefinition("bomberman", "1.0.0"),
+      resolveRealtimeGameDefinition("bomberman", "1.1.0"),
     );
     expect(definition?.manifest).toMatchObject({
       runtime: "realtime",
@@ -544,28 +549,39 @@ describe("explicit game registry", () => {
       capabilities: { replay: "record-only" },
     });
     expect(resolveCurrentRoundSetupDefinition("bomberman")).toBe(
-      resolveRoundSetupDefinition("bomberman", "1.0.0"),
+      resolveRoundSetupDefinition("bomberman", "1.1.0"),
     );
-    expect(resolveGameDeployment("bomberman", "1.0.0")).toMatchObject({
-      setupProtocol: 6,
-      platformControls: ["RESIGN"],
-      presentation: {
-        artifact: {
-          bridgeVersion: 2,
-          surfaceVersion: "1.0.4",
-          contentDigest: "sha256-Re9oZpL2HpqdgiHHLjsbRDxxSu0GTuMfd22xRWcttGg=",
+    expect(resolveRealtimeGameDefinition("bomberman", "1.0.0")).toBeDefined();
+    expect(resolveRealtimeGameDefinition("bomberman", "1.0.0")).not.toBe(
+      definition,
+    );
+    expect(resolveRoundSetupDefinition("bomberman", "1.0.0")).not.toBe(
+      resolveCurrentRoundSetupDefinition("bomberman"),
+    );
+    for (const version of ["1.0.0", "1.1.0"]) {
+      expect(resolveGameDeployment("bomberman", version)).toMatchObject({
+        setupProtocol: 6,
+        platformControls: ["RESIGN"],
+        presentation: {
+          artifact: {
+            bridgeVersion: 2,
+            surfaceVersion: "1.1.0",
+            supportedGameVersions: ["1.0.0", "1.1.0"],
+            contentDigest:
+              "sha256-Va7C3grd1l20cf2vlw7e7DYgkHQnlPCN0tBOVBRviPo=",
+          },
         },
-      },
-    });
-    for (const mode of ["setup", "play"] as const)
+      });
+      for (const mode of ["setup", "play"] as const)
+        expect(
+          resolveGameSurfaceEntrypoint("bomberman", version, mode)?.url,
+        ).toBe(`/game-surfaces/bomberman/1.1.0/${mode}/index.html`);
       expect(
-        resolveGameSurfaceEntrypoint("bomberman", "1.0.0", mode)?.url,
-      ).toBe(`/game-surfaces/bomberman/1.0.4/${mode}/index.html`);
-    expect(
-      resolveGameSurfaceEntrypoint("bomberman", "1.0.0", "replay"),
-    ).toBeUndefined();
-    expect(resolveRealtimeGameDefinition("bomberman", "1.1.0")).toBeUndefined();
-    expect(resolveRoundSetupDefinition("bomberman", "1.1.0")).toBeUndefined();
+        resolveGameSurfaceEntrypoint("bomberman", version, "replay"),
+      ).toBeUndefined();
+    }
+    expect(resolveRealtimeGameDefinition("bomberman", "2.0.0")).toBeUndefined();
+    expect(resolveRoundSetupDefinition("bomberman", "2.0.0")).toBeUndefined();
     expect(resolveCurrentGameDefinition("bomberman")).toBeUndefined();
   });
 

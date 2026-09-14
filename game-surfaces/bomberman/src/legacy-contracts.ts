@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { playViewSchema as legacyPlayViewSchema } from "./legacy-contracts";
 const integer = z.number().int().safe();
 const slot = z.string().min(1).max(128);
 const config = z
@@ -20,17 +19,9 @@ const outcome = z
   .object({
     type: z.enum(["WIN", "DRAW"]),
     winnerSlotId: slot.nullable(),
-    reason: z.enum(["SURVIVOR", "ALL_ELIMINATED", "TIMEOUT", "RESIGNATION"]),
-    standings: z
-      .array(
-        z
-          .object({
-            slotId: slot,
-            lives: integer.min(0).max(3),
-            resigned: z.boolean(),
-          })
-          .strict(),
-      )
+    reason: z.enum(["SCORE", "RESIGNATION"]),
+    scores: z
+      .array(z.object({ slotId: slot, score: integer.min(0).max(3) }).strict())
       .min(2)
       .max(4),
   })
@@ -84,10 +75,11 @@ export const playViewSchema = z
         tiles: z.array(z.enum(["floor", "wall", "brick"])).max(4096),
       })
       .strict(),
-    phase: z.enum(["PREPARE", "ACTIVE", "COMPLETE"]),
+    phase: z.enum(["PREPARE", "ACTIVE", "RESULT", "COMPLETE"]),
     phaseTicks: integer.min(0).max(180),
+    bout: integer.positive(),
     remainingTicks: integer.min(0).max(10800),
-    startingLives: z.literal(3),
+    targetWins: z.literal(3),
     players: z
       .array(
         z
@@ -98,12 +90,11 @@ export const playViewSchema = z
             y: integer.nonnegative(),
             alive: z.boolean(),
             resigned: z.boolean(),
-            lives: integer.min(0).max(3),
-            invulnerableTicks: integer.min(0).max(120),
+            score: integer.min(0).max(3),
             capacity: integer.min(1).max(5),
             activeBombs: integer.min(0).max(5),
             range: integer.min(2).max(8),
-            speed: z.number().min(4).max(5),
+            speed: z.number().min(3).max(5),
             facing: z.enum(["up", "right", "down", "left"]),
             walking: z.boolean(),
           })
@@ -129,7 +120,6 @@ export const playViewSchema = z
           .object({
             cell: integer.nonnegative(),
             remainingTicks: integer.min(0).max(30),
-            shape: z.enum(["center", "horizontal", "vertical", "intersection"]),
           })
           .strict(),
       )
@@ -140,13 +130,20 @@ export const playViewSchema = z
         z
           .object({
             id: integer.positive(),
-            kind: z.enum(["place", "explode", "pickup", "hit", "eliminate"]),
+            kind: z.enum(["place", "explode", "pickup", "eliminate"]),
             x: integer.nonnegative(),
             y: integer.nonnegative(),
           })
           .strict(),
       )
       .max(128),
+    roundResult: z
+      .object({
+        winnerSlotId: slot.nullable(),
+        reason: z.enum(["SURVIVOR", "ALL_ELIMINATED", "TIMEOUT"]),
+      })
+      .strict()
+      .nullable(),
     outcome: outcome.nullable(),
   })
   .strict()
@@ -172,9 +169,7 @@ export const playViewSchema = z
           player.x >= view.arena.cols * view.arena.cellSize ||
           player.y >= view.arena.rows * view.arena.cellSize ||
           player.activeBombs > player.capacity ||
-          player.alive !== player.lives > 0 ||
-          (player.resigned && player.lives !== 0) ||
-          (!player.alive && player.invulnerableTicks !== 0),
+          (player.resigned && player.alive),
       )
     )
       invalid();
@@ -198,61 +193,30 @@ export const playViewSchema = z
     )
       invalid();
     if (
+      view.roundResult?.winnerSlotId &&
+      !ids.includes(view.roundResult.winnerSlotId)
+    )
+      invalid();
+    if (
       view.outcome &&
-      (view.outcome.standings.length !== ids.length ||
-        new Set(view.outcome.standings.map((entry) => entry.slotId)).size !==
+      (view.outcome.scores.length !== ids.length ||
+        new Set(view.outcome.scores.map((score) => score.slotId)).size !==
           ids.length ||
-        view.outcome.standings.some((entry) => {
-          const player = view.players.find(
-            (player) => player.slotId === entry.slotId,
-          );
-          return (
-            !player ||
-            player.lives !== entry.lives ||
-            player.resigned !== entry.resigned
-          );
-        }) ||
+        view.outcome.scores.some((score) => !ids.includes(score.slotId)) ||
         (view.outcome.type === "DRAW"
           ? view.outcome.winnerSlotId !== null
           : view.outcome.winnerSlotId === null ||
             !ids.includes(view.outcome.winnerSlotId)))
     )
       invalid();
-    if (view.outcome) {
-      const survivors = view.players.filter((player) => player.alive);
-      if (
-        view.outcome.type === "WIN"
-          ? survivors.length !== 1 ||
-            survivors[0]?.slotId !== view.outcome.winnerSlotId ||
-            !["SURVIVOR", "RESIGNATION"].includes(view.outcome.reason)
-          : view.outcome.reason === "TIMEOUT"
-            ? survivors.length < 2
-            : !["ALL_ELIMINATED", "RESIGNATION"].includes(
-                view.outcome.reason,
-              ) || survivors.length !== 0
-      )
-        invalid();
-    }
   });
-export type LivesPlayView = z.infer<typeof playViewSchema>;
-export type LegacyPlayView = z.infer<typeof legacyPlayViewSchema>;
-export type PlayView = LivesPlayView | LegacyPlayView;
+export type PlayView = z.infer<typeof playViewSchema>;
 export type PlayIntent = z.infer<typeof playIntentSchema>;
 export type SetupView = z.infer<typeof setupViewSchema>;
 export type SetupIntent = z.infer<typeof setupIntentSchema>;
 export type Direction = z.infer<typeof direction>;
 export type Effect = PlayView["events"][number];
-export function parsePlayView(
-  payload: unknown,
-  version: "1.0.0",
-): LegacyPlayView;
-export function parsePlayView(
-  payload: unknown,
-  version: "1.1.0",
-): LivesPlayView;
-export function parsePlayView(payload: unknown, version: string): PlayView;
 export function parsePlayView(payload: unknown, version: string): PlayView {
-  if (version === "1.0.0") return legacyPlayViewSchema.parse(payload);
-  if (version !== "1.1.0") throw new Error("Unsupported Bomberman version.");
+  if (version !== "1.0.0") throw new Error("Unsupported Bomberman version.");
   return playViewSchema.parse(payload);
 }

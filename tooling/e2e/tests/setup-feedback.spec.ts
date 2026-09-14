@@ -417,3 +417,19 @@ for (const gameVersion of ["1.0.0", "1.1.0", "1.2.0", "1.3.0"]) {
     ).toHaveCount(gameVersion === "1.0.0" ? 0 : 1);
   });
 }
+for (const gameVersion of ["1.0.0", "1.1.0"]) {
+  test(`bomberman ${gameVersion} Setup explains its exact life or bout rule`, async ({
+    page,
+  }) => {
+    await mountSetup(page, "bomberman", bomberman, gameVersion);
+    const surface = page.frameLocator("iframe");
+    await expect(surface.locator("#rules-heading")).toHaveText(
+      gameVersion === "1.0.0"
+        ? "先赢三小局，就赢下整场"
+        : "一局三条命，留到最后获胜",
+    );
+    await expect(surface.locator("#confirmed-setting")).toContainText(
+      gameVersion === "1.0.0" ? "抢 3 胜" : "一局三命",
+    );
+  });
+}

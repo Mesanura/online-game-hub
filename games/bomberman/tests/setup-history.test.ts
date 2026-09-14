@@ -162,3 +162,55 @@ it("projects personal win/loss/draw and rejects malformed or inconsistent archiv
   expect(project(outcome, "outsider")).toBeNull();
   expect(project(outcome, "p0", "2.0.0")).toBeNull();
 });
+it("validates three-life final standings separately from legacy scores", () => {
+  const result = {
+    type: "WIN",
+    winnerSlotId: "p1",
+    reason: "SURVIVOR",
+    standings: [
+      { slotId: "p0", lives: 0, resigned: false },
+      { slotId: "p1", lives: 2, resigned: false },
+    ],
+  };
+  const project = (
+    recordedOutcome: unknown,
+    playerSlotId = "p0",
+    gameVersion = "1.1.0",
+  ) =>
+    bombermanHistory.projectView({
+      gameVersion,
+      recordedOutcome,
+      players: ["p0", "p1"],
+      playerSlotId,
+    });
+  expect(project(freeze(result))).toEqual({ kind: "win-loss", value: "loss" });
+  expect(project(result, "p1")).toEqual({ kind: "win-loss", value: "win" });
+  expect(
+    project({
+      ...result,
+      type: "DRAW",
+      winnerSlotId: null,
+      reason: "TIMEOUT",
+      standings: [
+        { slotId: "p0", lives: 1, resigned: false },
+        { slotId: "p1", lives: 3, resigned: false },
+      ],
+    }),
+  ).toEqual({ kind: "win-loss", value: "draw" });
+  for (const invalid of [
+    { ...result, winnerSlotId: "p0" },
+    { ...result, type: "DRAW", winnerSlotId: null, reason: "TIMEOUT" },
+    { ...result, reason: "SCORE" },
+    { ...result, standings: [result.standings[1], result.standings[1]] },
+    {
+      ...result,
+      standings: [
+        { slotId: "p0", lives: 0, resigned: false },
+        { slotId: "p1", lives: 2, resigned: true },
+      ],
+    },
+  ])
+    expect(project(invalid)).toBeNull();
+  expect(project(result, "p1", "1.0.0")).toBeNull();
+  expect(project(result, "outsider")).toBeNull();
+});

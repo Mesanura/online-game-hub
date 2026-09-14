@@ -15,9 +15,9 @@ export type ModeDefinition = {
   readonly id: string;
   readonly minPlayers: number;
   readonly maxPlayers: number | null;
-  readonly startingLives: number;
-  readonly invulnerableTicks: number;
+  readonly targetWins: number;
   readonly prepareTicks: number;
+  readonly resultTicks: number;
   readonly roundTicks: number;
   readonly fuseTicks: number;
   readonly flameTicks: number;
@@ -34,7 +34,7 @@ export type ModeDefinition = {
 
 export const CELL_SIZE = 1200;
 export const PLAYER_HALF_SIZE = 360;
-export const TURN_ASSIST = CELL_SIZE / 2;
+export const TURN_ASSIST = 240;
 export const pickupKinds = ["capacity", "range", "speed"] as const;
 export type PickupKind = (typeof pickupKinds)[number];
 
@@ -99,9 +99,9 @@ export const classicMode: ModeDefinition = {
   id: "classic",
   minPlayers: 2,
   maxPlayers: null,
-  startingLives: 3,
-  invulnerableTicks: 120,
+  targetWins: 3,
   prepareTicks: 180,
+  resultTicks: 120,
   roundTicks: 10800,
   fuseTicks: 150,
   flameTicks: 30,
@@ -111,7 +111,7 @@ export const classicMode: ModeDefinition = {
   maxCapacity: 5,
   initialRange: 2,
   maxRange: 8,
-  initialSpeed: 80,
+  initialSpeed: 60,
   speedIncrement: 10,
   maxSpeed: 100,
 };

@@ -303,6 +303,15 @@ kbd {
   grid-column: 3;
   grid-row: 1 / 3;
 }
+.player-score.life-count {
+  font-size: 20px;
+  white-space: nowrap;
+  color: #b75568;
+}
+.score-card[data-invulnerable]:not([data-invulnerable="0"]) .player-state {
+  color: #8c631b;
+  font-weight: 800;
+}
 .player-state {
   font-size: 10px;
   color: #7a876f;
@@ -612,6 +621,10 @@ kbd {
   .player-score {
     grid-column: 2;
     font-size: 23px;
+  }
+  .player-score.life-count {
+    font-size: 17px;
+    letter-spacing: -1px;
   }
   .player-state {
     font-size: 9px;

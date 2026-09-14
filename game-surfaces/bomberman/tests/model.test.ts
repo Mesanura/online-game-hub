@@ -11,6 +11,7 @@ import {
   isControlKey,
   joystickPosition,
   phaseLabel,
+  protectionVisual,
   resultSummary,
   setupNotice,
   shouldInterpolate,
@@ -31,8 +32,55 @@ const fixture = () =>
     ),
     "1.0.0",
   );
+const livesFixture = () =>
+  parsePlayView(
+    JSON.parse(
+      readFileSync(
+        new URL("./fixtures/play-1.1.json", import.meta.url),
+        "utf8",
+      ),
+    ),
+    "1.1.0",
+  );
 
 describe("public contracts", () => {
+  it("parses the new life and directional flame projection while keeping exact legacy schemas", () => {
+    const view = livesFixture();
+    expect(view.startingLives).toBe(3);
+    expect(view.players[0]).toMatchObject({
+      lives: 2,
+      invulnerableTicks: 119,
+      speed: 4,
+    });
+    expect(new Set(view.flames.map((flame) => flame.shape))).toEqual(
+      new Set(["center", "horizontal", "vertical"]),
+    );
+    expect(() => parsePlayView(view, "1.0.0")).toThrow();
+    expect(() => parsePlayView(fixture(), "1.1.0")).toThrow();
+    for (const invalid of [
+      {
+        ...view,
+        players: view.players.map((player) => ({ ...player, lives: 4 })),
+      },
+      {
+        ...view,
+        players: view.players.map((player) => ({
+          ...player,
+          invulnerableUntil: 452,
+        })),
+      },
+      {
+        ...view,
+        players: view.players.map((player) => ({ ...player, lives: 0 })),
+      },
+      {
+        ...view,
+        flames: view.flames.map((flame) => ({ ...flame, shape: "unknown" })),
+      },
+      { ...view, phase: "RESULT" },
+    ])
+      expect(() => parsePlayView(invalid, "1.1.0")).toThrow();
+  });
   it("parses the actual public Core/Setup projections without importing their packages", () => {
     const view = fixture();
     expect(view.config.playerCount).toBe(4);
@@ -164,6 +212,45 @@ describe("keyboard and four-way stick", () => {
   });
 });
 describe("presentation", () => {
+  it("explains three lives, immunity, final elimination, draws and surviving lives in the summary", () => {
+    const view = livesFixture();
+    expect(phaseLabel(view)).toContain("无敌");
+    const players = view.players.map((player) => ({
+      ...player,
+      alive: player.index === 0,
+      lives: player.index === 0 ? 2 : 0,
+      invulnerableTicks: 0,
+    }));
+    const won = parsePlayView(
+      {
+        ...view,
+        players,
+        phase: "COMPLETE",
+        outcome: {
+          type: "WIN",
+          reason: "SURVIVOR",
+          winnerSlotId: "p0",
+          standings: players.map(({ slotId, lives, resigned }) => ({
+            slotId,
+            lives,
+            resigned,
+          })),
+        },
+      },
+      "1.1.0",
+    );
+    expect(resultSummary(won)).toMatchObject({
+      tone: "win",
+      details: expect.arrayContaining(["P1 · 2 条命", "成为最后的幸存者"]),
+    });
+    expect(resultSummary({ ...won, selfSlotId: "p1" })?.tone).toBe("loss");
+    expect(phaseLabel({ ...view, players, selfSlotId: "p1" })).toContain(
+      "生命耗尽",
+    );
+    expect(phaseLabel({ ...view, phase: "PREPARE" })).toBe(
+      "一局三命 · 准备开炸",
+    );
+  });
   it("deduplicates effects and never replays old audio on load, reconnect or resume", () => {
     const feed = new EffectFeed();
     const event = (id: number) => ({
@@ -242,9 +329,7 @@ describe("presentation", () => {
       ...(["capacity", "range", "speed"] as const).map(pickupSprite),
     ];
     for (let index = 0; index < 8; index += 1)
-      for (const facing of ["up", "right", "down", "left"])
-        for (const frame of [0, 1])
-          sprites.push(playerSprite(index, facing, frame));
+      for (const frame of [0, 1]) sprites.push(playerSprite(index, frame));
     for (const sprite of sprites)
       for (const row of sprite.rows) {
         expect(row).toHaveLength(16);
@@ -252,5 +337,46 @@ describe("presentation", () => {
           if (pixel !== ".")
             expect(sprite.palette[pixel]).toMatch(/^#[0-9a-f]{6}$/i);
       }
+  });
+  it("centers symmetric character silhouettes on the collision footprint in every frame", () => {
+    for (let index = 0; index < 8; index += 1) {
+      for (const frame of [0, 1]) {
+        const sprite = playerSprite(index, frame);
+        const occupied = sprite.rows.flatMap((row, y) =>
+          [...row].flatMap((pixel, x) => (pixel === "." ? [] : [{ x, y }])),
+        );
+        expect(Math.min(...occupied.map((p) => p.x))).toBe(3);
+        expect(Math.max(...occupied.map((p) => p.x))).toBe(12);
+        expect(Math.min(...occupied.map((p) => p.y))).toBe(3);
+        expect(Math.max(...occupied.map((p) => p.y))).toBe(12);
+        for (const row of sprite.rows)
+          expect([...row].reverse().join("")).toBe(row);
+      }
+    }
+  });
+  it("draws four exits only at a center or a real intersection, with straight ray edges", () => {
+    for (const frame of [0, 1]) {
+      const horizontal = flameSprite(frame, "horizontal").rows;
+      const vertical = flameSprite(frame, "vertical").rows;
+      const center = flameSprite(frame, "center").rows;
+      expect(horizontal[0]).toBe("................");
+      expect(horizontal[15]).toBe("................");
+      expect(horizontal[7]?.[0]).not.toBe(".");
+      expect(horizontal[7]?.[15]).not.toBe(".");
+      expect(vertical.every((row) => row[0] === "." && row[15] === ".")).toBe(
+        true,
+      );
+      expect(vertical[0]?.[7]).not.toBe(".");
+      expect(vertical[15]?.[7]).not.toBe(".");
+      expect(center[0]?.[7]).not.toBe(".");
+      expect(center[7]?.[0]).not.toBe(".");
+    }
+  });
+  it("blinks without hiding the footprint and uses a steady protection ring with reduced motion", () => {
+    expect(protectionVisual(120, false)).toEqual({ shield: true, alpha: 1 });
+    expect(protectionVisual(108, false)).toEqual({ shield: true, alpha: 0.35 });
+    expect(protectionVisual(96, false)).toEqual({ shield: true, alpha: 1 });
+    expect(protectionVisual(108, true)).toEqual({ shield: true, alpha: 1 });
+    expect(protectionVisual(0, false)).toEqual({ shield: false, alpha: 1 });
   });
 });

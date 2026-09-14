@@ -139,7 +139,10 @@ export function phaseLabel(view: PlayView): string {
   const own = view.players.find((player) => player.slotId === view.selfSlotId);
   if (view.outcome) return resultSummary(view)?.headline ?? "本场结束";
   if (own?.resigned) return "已投降 · 等待本场结束";
-  if (view.phase === "PREPARE") return "第 " + view.bout + " 小局 · 准备开炸";
+  if (view.phase === "PREPARE")
+    return "bout" in view
+      ? "第 " + view.bout + " 小局 · 准备开炸"
+      : "一局三命 · 准备开炸";
   if (view.phase === "RESULT")
     return view.roundResult?.reason === "TIMEOUT"
       ? "时间到 · 本小局平局"
@@ -147,8 +150,12 @@ export function phaseLabel(view: PlayView): string {
         ? "本小局结束 · 胜者 +1"
         : "全员出局 · 本小局平局";
   return own?.alive
-    ? "炸开出路，成为最后的幸存者"
-    : "本小局已出局 · 下一小局自动复活";
+    ? own && "invulnerableTicks" in own && own.invulnerableTicks > 0
+      ? "短暂无敌 · 快找安全位置"
+      : "炸开出路，成为最后的幸存者"
+    : "bout" in view
+      ? "本小局已出局 · 下一小局自动复活"
+      : "生命耗尽 · 观看本场对战";
 }
 export function resultSummary(
   view: PlayView,
@@ -166,19 +173,29 @@ export function resultSummary(
         : "P" + (winner.index + 1) + " 赢得整场"
       : "本场平局",
     details: [
-      ...view.outcome.scores.map(
+      ...("standings" in view.outcome
+        ? view.outcome.standings
+        : view.outcome.scores
+      ).map(
         (score) =>
           "P" +
           ((view.players.find((player) => player.slotId === score.slotId)
             ?.index ?? 0) +
             1) +
           " · " +
-          score.score +
-          " 胜",
+          ("lives" in score
+            ? score.lives + " 条命" + (score.resigned ? " · 已投降" : "")
+            : score.score + " 胜"),
       ),
       view.outcome.reason === "RESIGNATION"
         ? "本场因投降结束"
-        : "率先赢下 3 小局",
+        : "bout" in view
+          ? "率先赢下 3 小局"
+          : view.outcome.reason === "TIMEOUT"
+            ? "时间到，仍有多人存活"
+            : view.outcome.reason === "ALL_ELIMINATED"
+              ? "全员生命耗尽"
+              : "成为最后的幸存者",
     ],
   };
 }
@@ -190,12 +207,29 @@ export function shouldInterpolate(
   return (
     !reset &&
     previous !== null &&
-    previous.bout === current.bout &&
+    ("bout" in previous ? previous.bout : 1) ===
+      ("bout" in current ? current.bout : 1) &&
     previous.phase === "ACTIVE" &&
     current.phase === "ACTIVE" &&
     previous.arena.cols === current.arena.cols &&
     previous.arena.rows === current.arena.rows
   );
+}
+export function protectionVisual(
+  remainingTicks: number,
+  reducedMotion: boolean,
+) {
+  return {
+    shield: remainingTicks > 0,
+    // A partial fade at 2.5 Hz keeps the exact position visible. Reduced
+    // motion uses a steady outline instead of flashing.
+    alpha:
+      remainingTicks > 0 &&
+      !reducedMotion &&
+      Math.floor(remainingTicks / 12) % 2 === 1
+        ? 0.35
+        : 1,
+  };
 }
 export function setupNotice(status: string, code?: string): string {
   if (status === "accepted") return "设置已确认，请所有玩家重新准备。";

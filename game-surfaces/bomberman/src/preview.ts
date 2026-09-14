@@ -43,10 +43,10 @@ export function drawPreview(
     if (point)
       paintPixels(
         context,
-        playerSprite(player, "down", 0),
+        playerSprite(player, 0),
         1,
         point[0] * 16,
-        point[1] * 16 - 5,
+        point[1] * 16,
       );
   });
 }

@@ -1,5 +1,6 @@
 import Phaser from "phaser";
 import type { PlayView } from "./contracts";
+import { protectionVisual } from "./model";
 import {
   TILE_PIXELS,
   PLAYER_COLORS,
@@ -23,7 +24,8 @@ export type RenderFrame = {
 };
 type Character = {
   image: Phaser.GameObjects.Image;
-  shadow: Phaser.GameObjects.Ellipse;
+  footprint: Phaser.GameObjects.Rectangle;
+  shield: Phaser.GameObjects.Arc;
   label: Phaser.GameObjects.Text;
 };
 export class BombermanScene extends Phaser.Scene {
@@ -44,17 +46,25 @@ export class BombermanScene extends Phaser.Scene {
     this.#texture("brick", brickSprite);
     this.#texture("bomb-0", bombSprite());
     this.#texture("bomb-1", bombSprite(true));
-    this.#texture("flame-0", flameSprite(0));
-    this.#texture("flame-1", flameSprite(1));
+    for (const shape of [
+      "center",
+      "horizontal",
+      "vertical",
+      "intersection",
+    ] as const)
+      for (const frame of [0, 1])
+        this.#texture(
+          "flame-" + shape + "-" + frame,
+          flameSprite(frame, shape),
+        );
     for (const kind of ["capacity", "range", "speed"] as const)
       this.#texture("pickup-" + kind, pickupSprite(kind));
     for (let index = 0; index < PLAYER_COLORS.length; index += 1)
-      for (const facing of ["up", "right", "down", "left"])
-        for (const frame of [0, 1])
-          this.#texture(
-            "player-" + index + "-" + facing + "-" + frame,
-            playerSprite(index, facing, frame),
-          );
+      for (const frame of [0, 1])
+        this.#texture(
+          "player-" + index + "-" + frame,
+          playerSprite(index, frame),
+        );
   }
   #texture(key: string, sprite: PixelSprite): void {
     const texture = this.textures.createCanvas(key, 16, sprite.rows.length);
@@ -144,7 +154,8 @@ export class BombermanScene extends Phaser.Scene {
       for (const [slot, character] of this.#players)
         if (!view.players.some((player) => player.slotId === slot)) {
           character.image.destroy();
-          character.shadow.destroy();
+          character.footprint.destroy();
+          character.shield.destroy();
           character.label.destroy();
           this.#players.delete(slot);
         }
@@ -174,7 +185,15 @@ export class BombermanScene extends Phaser.Scene {
     }
     for (const flame of view.flames) {
       const p = position(flame.cell);
-      this.#image(this.#flames, flame.cell, "flame-" + phase, p.x, p.y, 3);
+      const shape = "shape" in flame ? flame.shape : "center";
+      this.#image(
+        this.#flames,
+        flame.cell,
+        "flame-" + shape + "-" + phase,
+        p.x,
+        p.y,
+        3,
+      );
     }
     const alpha = frame.reducedMotion
       ? 1
@@ -182,16 +201,22 @@ export class BombermanScene extends Phaser.Scene {
     for (const player of view.players) {
       const palette = player.index % PLAYER_COLORS.length;
       const animation = player.walking && !frame.reducedMotion ? phase : 0;
-      const texture =
-        "player-" + palette + "-" + player.facing + "-" + animation;
+      const texture = "player-" + palette + "-" + animation;
       let character = this.#players.get(player.slotId);
       if (!character) {
         character = {
-          shadow: this.add.ellipse(0, 0, 21, 8, 0x344d45, 0.25).setDepth(4),
+          footprint: this.add
+            .rectangle(0, 0, 20, 20, 0x344d45, 0.15)
+            .setStrokeStyle(1, 0x344d45, 0.7)
+            .setDepth(4),
+          shield: this.add
+            .circle(0, 0, 14)
+            .setStrokeStyle(2, 0xfff2a2)
+            .setDepth(999),
           image: this.add
             .image(0, 0, texture)
-            .setOrigin(0.5, 0.7)
-            .setDisplaySize(32, 40),
+            .setOrigin(0.5)
+            .setDisplaySize(32, 32),
           label: this.add
             .text(0, 0, "P" + (player.index + 1), {
               fontFamily: "monospace",
@@ -223,16 +248,26 @@ export class BombermanScene extends Phaser.Scene {
         ((interpolate ? before.y + (player.y - before.y) * alpha : player.y) /
           view.arena.cellSize) *
         TILE_PIXELS;
+      const protection = protectionVisual(
+        view.phase === "ACTIVE" && "invulnerableTicks" in player
+          ? player.invulnerableTicks
+          : 0,
+        frame.reducedMotion,
+      );
       character.image
         .setTexture(texture)
         .setPosition(Math.round(x), Math.round(y))
         .setVisible(player.alive)
+        .setAlpha(protection.alpha)
         .setDepth(10 + y);
-      character.shadow
-        .setPosition(Math.round(x), Math.round(y + 8))
+      character.footprint
+        .setPosition(Math.round(x), Math.round(y))
         .setVisible(player.alive);
+      character.shield
+        .setPosition(Math.round(x), Math.round(y))
+        .setVisible(player.alive && protection.shield);
       character.label
-        .setPosition(Math.round(x), Math.round(y - 32))
+        .setPosition(Math.round(x), Math.round(y - 21))
         .setVisible(player.alive);
     }
   }

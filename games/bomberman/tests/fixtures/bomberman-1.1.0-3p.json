@@ -1,0 +1,208 @@
+{
+  "replay": {
+    "header": {
+      "replayFormatVersion": 1,
+      "runtime": "realtime",
+      "gameId": "bomberman",
+      "gameVersion": "1.1.0",
+      "tickRate": 60,
+      "rng": {
+        "algorithm": "fnv1a32-counter-v1",
+        "seed": "bomberman-v1.1-3p"
+      },
+      "initialConfig": {
+        "mapId": "classic-arena",
+        "modeId": "classic",
+        "playerCount": 3
+      },
+      "players": [
+        {
+          "slotId": "p0"
+        },
+        {
+          "slotId": "p1"
+        },
+        {
+          "slotId": "p2"
+        }
+      ]
+    },
+    "events": [
+      {
+        "sequence": 1,
+        "tick": 180,
+        "actorSlotId": "p0",
+        "input": {
+          "type": "PLACE_BOMB"
+        }
+      },
+      {
+        "sequence": 2,
+        "tick": 180,
+        "actorSlotId": "p0",
+        "input": {
+          "type": "PLACE_BOMB"
+        }
+      },
+      {
+        "sequence": 3,
+        "tick": 180,
+        "actorSlotId": "p1",
+        "input": {
+          "type": "PLACE_BOMB"
+        }
+      },
+      {
+        "sequence": 4,
+        "tick": 180,
+        "actorSlotId": "p1",
+        "input": {
+          "type": "PLACE_BOMB"
+        }
+      },
+      {
+        "sequence": 5,
+        "tick": 180,
+        "actorSlotId": "p2",
+        "input": {
+          "type": "MOVE",
+          "direction": "right"
+        }
+      },
+      {
+        "sequence": 6,
+        "tick": 181,
+        "actorSlotId": "p2",
+        "input": {
+          "type": "MOVE",
+          "direction": "none"
+        }
+      },
+      {
+        "sequence": 7,
+        "tick": 361,
+        "actorSlotId": "p0",
+        "input": {
+          "type": "PLACE_BOMB"
+        }
+      },
+      {
+        "sequence": 8,
+        "tick": 361,
+        "actorSlotId": "p0",
+        "input": {
+          "type": "PLACE_BOMB"
+        }
+      },
+      {
+        "sequence": 9,
+        "tick": 361,
+        "actorSlotId": "p1",
+        "input": {
+          "type": "PLACE_BOMB"
+        }
+      },
+      {
+        "sequence": 10,
+        "tick": 361,
+        "actorSlotId": "p1",
+        "input": {
+          "type": "PLACE_BOMB"
+        }
+      },
+      {
+        "sequence": 11,
+        "tick": 361,
+        "actorSlotId": "p2",
+        "input": {
+          "type": "MOVE",
+          "direction": "right"
+        }
+      },
+      {
+        "sequence": 12,
+        "tick": 362,
+        "actorSlotId": "p2",
+        "input": {
+          "type": "MOVE",
+          "direction": "none"
+        }
+      },
+      {
+        "sequence": 13,
+        "tick": 542,
+        "actorSlotId": "p0",
+        "input": {
+          "type": "PLACE_BOMB"
+        }
+      },
+      {
+        "sequence": 14,
+        "tick": 542,
+        "actorSlotId": "p0",
+        "input": {
+          "type": "PLACE_BOMB"
+        }
+      },
+      {
+        "sequence": 15,
+        "tick": 542,
+        "actorSlotId": "p1",
+        "input": {
+          "type": "PLACE_BOMB"
+        }
+      },
+      {
+        "sequence": 16,
+        "tick": 542,
+        "actorSlotId": "p1",
+        "input": {
+          "type": "PLACE_BOMB"
+        }
+      },
+      {
+        "sequence": 17,
+        "tick": 542,
+        "actorSlotId": "p2",
+        "input": {
+          "type": "MOVE",
+          "direction": "right"
+        }
+      },
+      {
+        "sequence": 18,
+        "tick": 543,
+        "actorSlotId": "p2",
+        "input": {
+          "type": "MOVE",
+          "direction": "none"
+        }
+      }
+    ],
+    "recordedRngCursor": 30,
+    "recordedOutcome": {
+      "type": "WIN",
+      "winnerSlotId": "p2",
+      "reason": "SURVIVOR",
+      "standings": [
+        {
+          "slotId": "p0",
+          "lives": 0,
+          "resigned": false
+        },
+        {
+          "slotId": "p1",
+          "lives": 0,
+          "resigned": false
+        },
+        {
+          "slotId": "p2",
+          "lives": 3,
+          "resigned": false
+        }
+      ]
+    },
+    "finalTick": 693
+  },
+  "stateHash": "23dd8d72ad9f116677fc937f6460a960a744b896027f4b5a3fc274a534b2ad73"
+}

@@ -1,0 +1,264 @@
+{
+  "replay": {
+    "header": {
+      "replayFormatVersion": 1,
+      "runtime": "realtime",
+      "gameId": "bomberman",
+      "gameVersion": "1.1.0",
+      "tickRate": 60,
+      "rng": {
+        "algorithm": "fnv1a32-counter-v1",
+        "seed": "bomberman-v1.1-4p"
+      },
+      "initialConfig": {
+        "mapId": "classic-arena",
+        "modeId": "classic",
+        "playerCount": 4
+      },
+      "players": [
+        {
+          "slotId": "p0"
+        },
+        {
+          "slotId": "p1"
+        },
+        {
+          "slotId": "p2"
+        },
+        {
+          "slotId": "p3"
+        }
+      ]
+    },
+    "events": [
+      {
+        "sequence": 1,
+        "tick": 180,
+        "actorSlotId": "p0",
+        "input": {
+          "type": "PLACE_BOMB"
+        }
+      },
+      {
+        "sequence": 2,
+        "tick": 180,
+        "actorSlotId": "p0",
+        "input": {
+          "type": "PLACE_BOMB"
+        }
+      },
+      {
+        "sequence": 3,
+        "tick": 180,
+        "actorSlotId": "p1",
+        "input": {
+          "type": "PLACE_BOMB"
+        }
+      },
+      {
+        "sequence": 4,
+        "tick": 180,
+        "actorSlotId": "p1",
+        "input": {
+          "type": "PLACE_BOMB"
+        }
+      },
+      {
+        "sequence": 5,
+        "tick": 180,
+        "actorSlotId": "p2",
+        "input": {
+          "type": "PLACE_BOMB"
+        }
+      },
+      {
+        "sequence": 6,
+        "tick": 180,
+        "actorSlotId": "p2",
+        "input": {
+          "type": "PLACE_BOMB"
+        }
+      },
+      {
+        "sequence": 7,
+        "tick": 180,
+        "actorSlotId": "p3",
+        "input": {
+          "type": "MOVE",
+          "direction": "right"
+        }
+      },
+      {
+        "sequence": 8,
+        "tick": 181,
+        "actorSlotId": "p3",
+        "input": {
+          "type": "MOVE",
+          "direction": "none"
+        }
+      },
+      {
+        "sequence": 9,
+        "tick": 361,
+        "actorSlotId": "p0",
+        "input": {
+          "type": "PLACE_BOMB"
+        }
+      },
+      {
+        "sequence": 10,
+        "tick": 361,
+        "actorSlotId": "p0",
+        "input": {
+          "type": "PLACE_BOMB"
+        }
+      },
+      {
+        "sequence": 11,
+        "tick": 361,
+        "actorSlotId": "p1",
+        "input": {
+          "type": "PLACE_BOMB"
+        }
+      },
+      {
+        "sequence": 12,
+        "tick": 361,
+        "actorSlotId": "p1",
+        "input": {
+          "type": "PLACE_BOMB"
+        }
+      },
+      {
+        "sequence": 13,
+        "tick": 361,
+        "actorSlotId": "p2",
+        "input": {
+          "type": "PLACE_BOMB"
+        }
+      },
+      {
+        "sequence": 14,
+        "tick": 361,
+        "actorSlotId": "p2",
+        "input": {
+          "type": "PLACE_BOMB"
+        }
+      },
+      {
+        "sequence": 15,
+        "tick": 361,
+        "actorSlotId": "p3",
+        "input": {
+          "type": "MOVE",
+          "direction": "right"
+        }
+      },
+      {
+        "sequence": 16,
+        "tick": 362,
+        "actorSlotId": "p3",
+        "input": {
+          "type": "MOVE",
+          "direction": "none"
+        }
+      },
+      {
+        "sequence": 17,
+        "tick": 542,
+        "actorSlotId": "p0",
+        "input": {
+          "type": "PLACE_BOMB"
+        }
+      },
+      {
+        "sequence": 18,
+        "tick": 542,
+        "actorSlotId": "p0",
+        "input": {
+          "type": "PLACE_BOMB"
+        }
+      },
+      {
+        "sequence": 19,
+        "tick": 542,
+        "actorSlotId": "p1",
+        "input": {
+          "type": "PLACE_BOMB"
+        }
+      },
+      {
+        "sequence": 20,
+        "tick": 542,
+        "actorSlotId": "p1",
+        "input": {
+          "type": "PLACE_BOMB"
+        }
+      },
+      {
+        "sequence": 21,
+        "tick": 542,
+        "actorSlotId": "p2",
+        "input": {
+          "type": "PLACE_BOMB"
+        }
+      },
+      {
+        "sequence": 22,
+        "tick": 542,
+        "actorSlotId": "p2",
+        "input": {
+          "type": "PLACE_BOMB"
+        }
+      },
+      {
+        "sequence": 23,
+        "tick": 542,
+        "actorSlotId": "p3",
+        "input": {
+          "type": "MOVE",
+          "direction": "right"
+        }
+      },
+      {
+        "sequence": 24,
+        "tick": 543,
+        "actorSlotId": "p3",
+        "input": {
+          "type": "MOVE",
+          "direction": "none"
+        }
+      }
+    ],
+    "recordedRngCursor": 34,
+    "recordedOutcome": {
+      "type": "WIN",
+      "winnerSlotId": "p3",
+      "reason": "SURVIVOR",
+      "standings": [
+        {
+          "slotId": "p0",
+          "lives": 0,
+          "resigned": false
+        },
+        {
+          "slotId": "p1",
+          "lives": 0,
+          "resigned": false
+        },
+        {
+          "slotId": "p2",
+          "lives": 0,
+          "resigned": false
+        },
+        {
+          "slotId": "p3",
+          "lives": 3,
+          "resigned": false
+        }
+      ]
+    },
+    "finalTick": 693
+  },
+  "stateHash": "9d1802496ea52652ea86f06a84b7488c6c5a6280cdd471727d12cf9908c96e86"
+}

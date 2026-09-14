@@ -1,5 +1,5 @@
 import type { ModeDefinition } from "../definitions.js";
-import type { Flame, State } from "./model.js";
+import type { State } from "./model.js";
 
 /** Every ray reads the same terrain/bomb snapshot, including already-triggered bombs. */
 export function resolveExplosions(
@@ -16,22 +16,7 @@ export function resolveExplosions(
     .map((bomb) => bomb.id)
     .sort((a, b) => a - b);
   const exploded = new Set<number>();
-  const burned = new Map<number, Flame>();
-  const expiresAt = state.elapsed + mode.flameTicks;
-  function burn(
-    cell: number,
-    part: "centerUntil" | "horizontalUntil" | "verticalUntil",
-  ) {
-    const flame = burned.get(cell) ?? {
-      cell,
-      expiresAt,
-      centerUntil: 0,
-      horizontalUntil: 0,
-      verticalUntil: 0,
-    };
-    flame[part] = expiresAt;
-    burned.set(cell, flame);
-  }
+  const burned = new Set<number>();
   const destroyed = new Set<number>();
   const origins: number[] = [];
   const directions = [
@@ -47,7 +32,7 @@ export function resolveExplosions(
     if (!bomb) continue;
     exploded.add(id);
     origins.push(bomb.cell);
-    burn(bomb.cell, "centerUntil");
+    burned.add(bomb.cell);
     for (const [dx, dy] of directions) {
       for (let distance = 1; distance <= bomb.range; distance += 1) {
         const x = (bomb.cell % state.arena.cols) + dx * distance;
@@ -56,7 +41,7 @@ export function resolveExplosions(
           break;
         const cell = y * state.arena.cols + x;
         if (tiles[cell] === "wall") break;
-        burn(cell, dx === 0 ? "verticalUntil" : "horizontalUntil");
+        burned.add(cell);
         if (tiles[cell] === "brick") {
           destroyed.add(cell);
           break;
@@ -70,24 +55,17 @@ export function resolveExplosions(
     }
   }
   state.bombs = state.bombs.filter((bomb) => !exploded.has(bomb.id));
-  const flames = new Map(state.flames.map((flame) => [flame.cell, flame]));
-  for (const [cell, flame] of burned) {
-    const previous = flames.get(cell);
-    flames.set(cell, {
+  const flameEnds = new Map(
+    state.flames.map((flame) => [flame.cell, flame.expiresAt]),
+  );
+  for (const cell of burned)
+    flameEnds.set(
       cell,
-      expiresAt: Math.max(previous?.expiresAt ?? 0, expiresAt),
-      centerUntil: Math.max(previous?.centerUntil ?? 0, flame.centerUntil),
-      horizontalUntil: Math.max(
-        previous?.horizontalUntil ?? 0,
-        flame.horizontalUntil,
-      ),
-      verticalUntil: Math.max(
-        previous?.verticalUntil ?? 0,
-        flame.verticalUntil,
-      ),
-    });
-  }
-  state.flames = [...flames.values()].sort((a, b) => a.cell - b.cell);
+      Math.max(flameEnds.get(cell) ?? 0, state.elapsed + mode.flameTicks),
+    );
+  state.flames = [...flameEnds]
+    .sort(([a], [b]) => a - b)
+    .map(([cell, expiresAt]) => ({ cell, expiresAt }));
   state.arena.tiles = tiles.map((tile, cell) =>
     destroyed.has(cell) ? "floor" : tile,
   );
