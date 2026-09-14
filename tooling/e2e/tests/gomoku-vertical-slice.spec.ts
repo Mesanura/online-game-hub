@@ -192,7 +192,7 @@ test("two accounts create, join, synchronize, and complete authoritative Gomoku"
 
   await pageA.goto(`${harness.webUrl}/games`);
   const gomokuCard = pageA.getByRole("article").filter({ hasText: "五子棋" });
-  await expect(gomokuCard).toContainText("2–2");
+  await expect(gomokuCard).toContainText("2 人");
   await gomokuCard.getByRole("link", { name: "创建或加入房间" }).click();
   await expect(pageA).toHaveURL(/\/games\/gomoku$/u);
   await expect(pageA.getByRole("heading", { level: 1 })).toHaveText(

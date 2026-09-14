@@ -135,7 +135,7 @@ test("two accounts complete Hex by connection, then use the shared HUD to cancel
 
   await pageA.goto(`${harness.webUrl}/games`);
   const hexCard = pageA.getByRole("article").filter({ hasText: "六贯棋" });
-  await expect(hexCard).toContainText("2–2");
+  await expect(hexCard).toContainText("2 人");
   await expect(hexCard).toContainText(
     "两名玩家轮流在六边形格落子，率先用己方棋子连接对应两条边者获胜。",
   );

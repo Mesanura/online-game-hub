@@ -40,7 +40,9 @@ describe("explicit game registry", () => {
 
     for (const manifest of gameCatalog) {
       expect(manifest.capabilities.replay).toBe(
-        ["pong", "badminton", "tank-maze", "air-hockey"].includes(manifest.id)
+        ["pong", "badminton", "tank-maze", "air-hockey", "bomberman"].includes(
+          manifest.id,
+        )
           ? "record-only"
           : "player-playback",
       );
@@ -372,6 +374,7 @@ describe("explicit game registry", () => {
       ["badminton", "1.2.0"],
       ["badminton", "1.3.0"],
       ["air-hockey", "1.0.0"],
+      ["bomberman", "1.0.0"],
       ["tank-maze", "1.0.0"],
       ["tank-maze", "1.1.0"],
       ["tank-maze", "1.2.0"],
@@ -520,6 +523,50 @@ describe("explicit game registry", () => {
     expect(
       resolveRealtimeGameDefinition("air-hockey", "1.1.0"),
     ).toBeUndefined();
+  });
+
+  it("registers Bomberman with variable participants, ordered events and exact record-only Surface", () => {
+    const definition = resolveCurrentRealtimeGameDefinition("bomberman");
+    expect(definition).toBe(
+      resolveRealtimeGameDefinition("bomberman", "1.0.0"),
+    );
+    expect(definition?.manifest).toMatchObject({
+      runtime: "realtime",
+      tickRate: 60,
+      inputDelivery: "events",
+      minPlayers: 2,
+      maxPlayers: 4,
+      defaultConfig: {
+        mapId: "classic-arena",
+        modeId: "classic",
+        playerCount: 2,
+      },
+      capabilities: { replay: "record-only" },
+    });
+    expect(resolveCurrentRoundSetupDefinition("bomberman")).toBe(
+      resolveRoundSetupDefinition("bomberman", "1.0.0"),
+    );
+    expect(resolveGameDeployment("bomberman", "1.0.0")).toMatchObject({
+      setupProtocol: 6,
+      platformControls: ["RESIGN"],
+      presentation: {
+        artifact: {
+          bridgeVersion: 2,
+          surfaceVersion: "1.0.4",
+          contentDigest: "sha256-Re9oZpL2HpqdgiHHLjsbRDxxSu0GTuMfd22xRWcttGg=",
+        },
+      },
+    });
+    for (const mode of ["setup", "play"] as const)
+      expect(
+        resolveGameSurfaceEntrypoint("bomberman", "1.0.0", mode)?.url,
+      ).toBe(`/game-surfaces/bomberman/1.0.4/${mode}/index.html`);
+    expect(
+      resolveGameSurfaceEntrypoint("bomberman", "1.0.0", "replay"),
+    ).toBeUndefined();
+    expect(resolveRealtimeGameDefinition("bomberman", "1.1.0")).toBeUndefined();
+    expect(resolveRoundSetupDefinition("bomberman", "1.1.0")).toBeUndefined();
+    expect(resolveCurrentGameDefinition("bomberman")).toBeUndefined();
   });
 
   it("registers badminton as an independent V6 Surface with server-only replay", () => {

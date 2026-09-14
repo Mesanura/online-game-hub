@@ -11,7 +11,7 @@ test.afterAll(async () => {
   await harness?.stop();
 });
 
-test("home and catalog show the same ten games with accurate types and player counts", async ({
+test("home and catalog show the same eleven games with accurate types and player counts", async ({
   page,
 }) => {
   let homeTitles: string[] = [];
@@ -19,15 +19,16 @@ test("home and catalog show the same ten games with accurate types and player co
   for (const path of ["/", "/games"]) {
     await page.goto(harness.webUrl + path);
     const cards = page.locator(".game-card");
-    await expect(cards).toHaveCount(10);
+    await expect(cards).toHaveCount(11);
     const metadata = cards.locator(".game-card-meta");
     await expect(metadata.getByText("回合制", { exact: true })).toHaveCount(6);
     await expect(metadata.getByText("实时对战", { exact: true })).toHaveCount(
-      4,
+      5,
     );
     await expect(metadata.getByText("2 人", { exact: true })).toHaveCount(8);
     await expect(metadata.getByText("2–6 人", { exact: true })).toHaveCount(1);
     await expect(metadata.getByText("2–8 人", { exact: true })).toHaveCount(1);
+    await expect(metadata.getByText("2–4 人", { exact: true })).toHaveCount(1);
     const pong = cards.filter({
       has: page.getByRole("heading", { name: "乒乓对战", exact: true }),
     });
@@ -50,7 +51,7 @@ test("home and catalog show the same ten games with accurate types and player co
       await expect(page.getByTestId("create-room")).toBeVisible();
       await page.goBack();
       await expect(page).toHaveURL(harness.webUrl + "/games");
-      await expect(cards).toHaveCount(10);
+      await expect(cards).toHaveCount(11);
     }
   }
 });
@@ -70,7 +71,7 @@ test("catalog combines filters and restores them after refresh and browser back 
   await expect(page.locator(".game-card")).toHaveCount(1);
   await expect(
     page.getByRole("status").filter({ hasText: "款游戏" }),
-  ).toHaveText("找到 1 / 10 款游戏");
+  ).toHaveText("找到 1 / 11 款游戏");
   await expect(search).toHaveValue("  坦克  ");
   expect(new URL(page.url()).searchParams.get("q")).toBe("  坦克  ");
   expect(new URL(page.url()).searchParams.get("runtime")).toBe("realtime");
@@ -95,7 +96,7 @@ test("catalog combines filters and restores them after refresh and browser back 
   ).toBeVisible();
   await expect(page.locator(".game-card")).toHaveCount(0);
   await page.getByRole("button", { name: "查看全部游戏" }).click();
-  await expect(page.locator(".game-card")).toHaveCount(10);
+  await expect(page.locator(".game-card")).toHaveCount(11);
   await expect(search).toHaveValue("");
   await expect(runtime).toHaveValue("");
   await expect(players).toHaveValue("");
@@ -109,13 +110,13 @@ test("catalog respects inclusive player counts and safely ignores invalid query 
   const runtime = page.getByRole("combobox", { name: "游戏类型" });
   const players = page.getByRole("combobox", { name: "游玩人数" });
   const cards = page.locator(".game-card");
-  await expect(cards).toHaveCount(10);
+  await expect(cards).toHaveCount(11);
   await expect(runtime).toHaveValue("");
   await expect(players).toHaveValue("");
   for (const [count, expected] of [
-    [2, 10],
-    [3, 2],
-    [4, 2],
+    [2, 11],
+    [3, 3],
+    [4, 3],
     [5, 2],
     [6, 2],
     [7, 1],
@@ -131,7 +132,7 @@ test("catalog respects inclusive player counts and safely ignores invalid query 
   await runtime.selectOption("realtime");
   await expect(cards.getByRole("heading")).toHaveText(["坦克迷战"]);
   await page.getByRole("button", { name: "清空筛选", exact: true }).click();
-  await expect(cards).toHaveCount(10);
+  await expect(cards).toHaveCount(11);
   await expect(page).toHaveURL(harness.webUrl + "/games");
 });
 

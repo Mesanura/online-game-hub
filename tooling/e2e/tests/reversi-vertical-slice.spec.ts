@@ -233,7 +233,7 @@ test("two accounts complete authoritative Reversi with flips and a non-full term
 
   await pageA.goto(`${harness.webUrl}/games`);
   const reversiCard = pageA.getByRole("article").filter({ hasText: "黑白棋" });
-  await expect(reversiCard).toContainText("2–2");
+  await expect(reversiCard).toContainText("2 人");
   await expect(reversiCard).toContainText(
     "两名玩家轮流落子并翻转夹住的对方棋子，终局时棋子更多者获胜。",
   );

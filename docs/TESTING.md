@@ -110,6 +110,8 @@ create-game unit tests 使用系统临时目录中的隔离 workspace 和本地 
 | [坦克迷战](../games/tank-maze/GAME_SPEC.md)        | 2/3/8 人最小地图分散出生、地图权重边界/全部尺寸/主区域与人数无关的分布、全部朝向前后等速、推挤/墙体；events 同 tick 多次 FIRE，各弹药容量/寿命/反弹/自伤与盾边界、导弹延迟/换目标/绕墙/封闭区域/转向上限/不穿墙；全灭/幸存/超时/目标分/投降、小局清理与各历史八人多小局 golden、各起始 tick 相位整周转向与 JSON 重建 |
 | [气垫球](../games/air-hockey/GAME_SPEC.md)         | 5／7／11 分、房主固定为 P1、指定方及同 tick 发球权限、快慢撞击/速度上限、静止挡球、扫掠球门柱/角落/夹球、完整越线计分、目标租期与换球清理、逐 tick JSON 确定性和全部计分/投降 golden                                                                                                                                 |
 
+像素炸弹人额外覆盖 2／3／4 人、镜像砖块/隐藏道具与安全出生、轮换出生、转弯预算、玩家与炸弹碰撞、道具上限、阻挡快照与连锁爆炸、同 tick 全灭/自伤/拾取争抢、180 秒超时、抢三胜和永久投降。每个人数保留多小局 golden，较大测试地图与额外席位验证内部集合及容量扩展；公开投影不得包含隐藏/待显现道具、RNG 或控制租期。规则见 [GAME_SPEC](../games/bomberman/GAME_SPEC.md)。
+
 ### Setup
 
 - initialize/transition/project/readiness/finalize 的 strict schema、不变性、序列化、viewer privacy 与独立 seeded determinism。
@@ -165,6 +167,8 @@ Protocol contract 至少验证：
 真实双客户端验证 scheduler 单 writer、输入速率/大小限制、sequence/ack、拒绝与重复、快照顺序、输入释放、takeover 和重连收敛。latest 与 events 两种交付均需验证，拒绝命令不能改变输入队列或日志，正常 tick 推进不因此停机。
 
 中国跳棋增加人数、营地权限、playerOrder、排名和 assignment metadata；坦克迷战使用 2/3/8 客户端覆盖容量、输入权限/幂等、多小局和重开。羽毛球覆盖逐球发球到计分终局、两轮 exact record 与旧版本兼容。气垫球覆盖指定方开球、同 tick 接触、指针目标隐私、稳定蓝橙席位、逐球终局、重连和保留设置的两轮 exact record。所有游戏继续验证投降、终局拒绝和历史规则。
+
+像素炸弹人使用真实 2／3／4 客户端验证人数设置/准备、权限与 schema 拒绝、同 tick 有序 MOVE/PLACE_BOMB、容量不足不补放、duplicate/stale/错轮不入 record、投影隐私、稳定席位重连、三小局计分终局、投降及完整设置重开。临时 PostgreSQL 验证多小局归档、跨连接 exact record 重建、账户隔离及胜/负/平战绩。
 
 ## 真实 PostgreSQL
 
@@ -304,6 +308,8 @@ E2E 优先断言可访问 role/test id、用户文本和自然 DOM/SVG 几何，
 Playwright 保留 only-on-failure 截图用于排障；trace/video 关闭，避免 bearer ticket 进入制品。截图不是通过条件。
 
 气垫球浏览器检查覆盖 P1/P2 同色球拍与球门、仅上下镜像、桌面/平板/手机横竖屏完整等比球场、鼠标场外持续追踪/沿边移动/静止续租与 Chromium 真实单指拖动、半场夹紧/多指忽略/取消释放、换球与重连后旧触点失效、权威插值收敛、音效解锁/静音/事件去重、边框流光与 reduced-motion。账户旅程完成计分终局、投降保留真实比分、设置复用与跨连接重读；record-only 无播放入口且授权播放 API 返回 409。持续生产 tick 下仍须完成准备页到 Play、重连与下一局设置导航。
+
+像素炸弹人的独立浏览器契约验证完整 13×11 像素地图、最近邻缩放、四人比分/倒计时/结果摘要，键盘最后按下方向、Space 边沿和 150ms 续租。Chromium 真实多指覆盖摇杆死区/主轴、与放弹同时按下、滑入按钮不触发、释放/取消/失焦/断线/换小局/销毁清理；横竖屏检查自然几何、实际点击命中、焦点框不覆盖状态/能力栏、44px 目标和平台全屏按钮避让。四浏览器账户旅程完成计分终局、刷新恢复、下一场与私有历史，record-only 没有播放入口。
 
 ## 完成标准
 

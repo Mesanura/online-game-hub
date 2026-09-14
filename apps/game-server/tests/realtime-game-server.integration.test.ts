@@ -1235,6 +1235,446 @@ describe.sequential("tank maze multiplayer Protocol V6", () => {
     20000,
   );
 });
+describe.sequential("Bomberman multiplayer Protocol V6", () => {
+  it.each([2, 3, 4])(
+    "runs %i real clients through three scored bouts, authority checks, takeover and rematches",
+    async (count) => {
+      const clock = new FakeRuntimeClock(5000000);
+      const timer = new ManualSchedulerTimer();
+      const authority = new TestTicketAuthority({
+        issuer: "bomberman-integration",
+        secret: "bomberman-integration-secret",
+        clock,
+        lifetimeSeconds: 600,
+      });
+      const replayStore = new InMemoryRealtimeReplayStore();
+      const roomStore = new InMemoryRealtimeRoomStore();
+      const archive = new RecordingRealtimeArchive();
+      let replaySerial = 0,
+        seedSerial = 0;
+      const app = createGameServer({
+        ticketVerifier: authority,
+        realtimeTicketVerifier: authority,
+        realtimeReplayStore: replayStore,
+        realtimeRoomStore: roomStore,
+        realtimeMatchArchive: archive,
+        realtimeClock: clock as unknown as RealtimeRuntimeClock,
+        realtimeSchedulerTimer: timer,
+        realtimeIds: {
+          createRoomCode: () => "BMBR2345",
+          createReplayId: () => `bomberman-replay-${++replaySerial}`,
+          createSetupRngSeed: () => "bomberman-setup",
+          createRngSeed: () => `bomberman-game-${++seedSerial}`,
+          createPlayerSlotId: (i) => `bomberman-slot-${i}` as never,
+        },
+        logger: { write: () => undefined },
+      });
+      const clients: ClientRoom[] = [],
+        inboxes: RoomMessagesV6[] = [];
+      const ticket = (i: number) =>
+        authority.issue(`bomberman-user-${i}`, { protocolVersion: 6 });
+      const inbox = (i = 0) => required(inboxes[i]);
+      const room = (i = 0) => required(clients[i]);
+      interface View {
+        selfSlotId: string;
+        phase: string;
+        bout: number;
+        outcome: unknown;
+        arena: { cols: number; rows: number; tiles: string[] };
+        players: {
+          slotId: string;
+          index: number;
+          alive: boolean;
+          resigned: boolean;
+          score: number;
+          capacity: number;
+          range: number;
+          speed: number;
+        }[];
+        bombs: unknown[];
+      }
+      const view = (i = 0) => required(inbox(i).snapshots.at(-1)).view as View;
+      const setup = (
+        commandId: string,
+        revision: number,
+        playerCount: number,
+      ) => ({
+        type: "game.setup",
+        protocolVersion: 6,
+        commandId,
+        roundNumber: 1,
+        expectedSetupRevision: revision,
+        action: { type: "SET_PLAYER_COUNT", playerCount },
+      });
+      const barrier = async (i: number) => {
+        const before = inbox(i).realtimeRejections.length;
+        room(i).send(REALTIME_INPUT_MESSAGE, { deliveryBarrier: true });
+        await waitUntil(() => inbox(i).realtimeRejections.length > before);
+      };
+      const advance = async (ticks: number) => {
+        const target = (inbox().snapshots.at(-1)?.tick ?? 0) + ticks;
+        for (let n = 0; n < ticks; n++) await timer.tick();
+        await waitUntil(() =>
+          inboxes.every((box) => box.snapshots.at(-1)?.tick === target),
+        );
+      };
+      const nextInput = (i: number, data: unknown, roundNumber = 1) => {
+        const sequence =
+          (inbox(i).snapshots.at(-1)?.acknowledgedInputSequence ?? 0) + 1;
+        return {
+          ...input(`bomberman-${roundNumber}-${i}-${sequence}`, sequence, data),
+          roundNumber,
+        };
+      };
+      try {
+        const address = await app.start({ port: 0 });
+        for (let i = 0; i < count; i++) {
+          const client = new ColyseusClient(address.httpUrl);
+          const connected =
+            i === 0
+              ? await client.create(REALTIME_GAME_ROOM_NAME, {
+                  type: "room.create",
+                  protocolVersion: 6,
+                  ticket: ticket(i),
+                  gameId: "bomberman",
+                  initialConfig: {
+                    mapId: "classic-arena",
+                    modeId: "classic",
+                    playerCount: 2,
+                  },
+                })
+              : await client.join(REALTIME_GAME_ROOM_NAME, {
+                  type: "room.join",
+                  protocolVersion: 6,
+                  ticket: ticket(i),
+                  roomCode: "BMBR2345",
+                });
+          clients.push(connected);
+          inboxes.push(messagesV6(connected));
+          await waitUntil(() => inbox(i).lifecycle.length > 0);
+        }
+        expect(inbox().connected[0]).toMatchObject({
+          gameId: "bomberman",
+          gameVersion: "1.0.0",
+        });
+        expect(inbox().lifecycle.at(-1)?.players).toHaveLength(4);
+        expect(inbox().lifecycle.at(-1)?.nextRound?.setupView).toMatchObject({
+          config: { playerCount: 2 },
+        });
+        expect(archive.created).toHaveLength(0);
+        expect(await replayStore.get("bomberman-replay-1")).toBeNull();
+        if (count === 4)
+          await expect(
+            new ColyseusClient(address.httpUrl).join(REALTIME_GAME_ROOM_NAME, {
+              type: "room.join",
+              protocolVersion: 6,
+              ticket: ticket(9),
+              roomCode: "BMBR2345",
+            }),
+          ).rejects.toThrow();
+
+        room(1).send(GAME_SETUP_MESSAGE, setup("guest-setting", 0, 3));
+        await waitUntil(() => inbox(1).rejections.length > 0);
+        expect(inbox(1).rejections.at(-1)).toMatchObject({
+          code: "SETUP_RULE_REJECTED",
+          gameRuleCode: "NOT_OWNER",
+        });
+        for (const invalid of [1, 5, 2.5]) {
+          const before = inbox().rejections.length;
+          room().send(
+            GAME_SETUP_MESSAGE,
+            setup(`invalid-${invalid}`, 0, invalid),
+          );
+          await waitUntil(() => inbox().rejections.length > before);
+          expect(inbox().lifecycle.at(-1)?.nextRound?.setupRevision).toBe(0);
+        }
+        let revision = 0;
+        if (count !== 2) {
+          room().send(
+            GAME_SETUP_MESSAGE,
+            setup("initial-count", revision++, count),
+          );
+          await waitUntil(
+            () =>
+              inbox().lifecycle.at(-1)?.nextRound?.setupRevision === revision,
+          );
+        }
+        room().send(
+          ROOM_CONTROL_MESSAGE,
+          control("ready-before-edit", "READY_FOR_ROUND"),
+        );
+        await waitUntil(
+          () =>
+            inbox().lifecycle.at(-1)?.nextRound?.readiness.readySlotIds
+              .length === 1,
+        );
+        const change = setup("change-count", revision, count === 4 ? 3 : 4);
+        room().send(GAME_SETUP_MESSAGE, change);
+        revision++;
+        await waitUntil(
+          () => inbox().lifecycle.at(-1)?.nextRound?.setupRevision === revision,
+        );
+        expect(inbox().lifecycle.at(-1)?.nextRound?.readiness).toMatchObject({
+          canReady: false,
+          readySlotIds: [],
+        });
+        room().send(
+          GAME_SETUP_MESSAGE,
+          setup("stale-count", revision - 1, count),
+        );
+        await waitUntil(
+          () => inbox().rejections.at(-1)?.code === "STALE_SETUP_REVISION",
+        );
+        room().send(GAME_SETUP_MESSAGE, change);
+        room().send(
+          GAME_SETUP_MESSAGE,
+          setup("restore-count", revision++, count),
+        );
+        await waitUntil(
+          () => inbox().lifecycle.at(-1)?.nextRound?.setupRevision === revision,
+        );
+        for (let i = 0; i < count; i++)
+          room(i).send(
+            ROOM_CONTROL_MESSAGE,
+            control(`ready-${i}`, "READY_FOR_ROUND"),
+          );
+        await waitUntil(() => inboxes.every((box) => box.snapshots.length > 0));
+        expect(archive.created[0]?.currentRound?.playerOrder).toHaveLength(
+          count,
+        );
+
+        const beforeInvalid = await roomStore.getByRoomCode("BMBR2345");
+        for (const payload of [
+          {
+            ...input("forged-actor", 1, { type: "PLACE_BOMB" }),
+            actorSlotId: "bomberman-slot-1",
+            state: { score: 3 },
+            tick: 1000,
+          },
+          input("forged-coordinate", 1, {
+            type: "MOVE",
+            direction: "up",
+            x: 0,
+          }),
+          input("invalid-direction", 1, {
+            type: "MOVE",
+            direction: "diagonal",
+          }),
+          input("forged-outcome", 1, {
+            type: "RESIGN",
+            winnerSlotId: "bomberman-slot-0",
+          }),
+        ]) {
+          const before = inbox().realtimeRejections.length;
+          room().send(REALTIME_INPUT_MESSAGE, payload);
+          await waitUntil(() => inbox().realtimeRejections.length > before);
+          expect(inbox().realtimeRejections.at(-1)?.code).toBe(
+            "INVALID_INPUT_PAYLOAD",
+          );
+        }
+        expect(await roomStore.getByRoomCode("BMBR2345")).toEqual(
+          beforeInvalid,
+        );
+        expect((await replayStore.get("bomberman-replay-1"))?.events).toEqual(
+          [],
+        );
+        await advance(180);
+        expect(view().phase).toBe("ACTIVE");
+        const burst = [
+          { type: "MOVE", direction: "right" },
+          { type: "MOVE", direction: "left" },
+          { type: "PLACE_BOMB" },
+          { type: "PLACE_BOMB" },
+          { type: "MOVE", direction: "none" },
+        ].map((value, index) => input(`ordered-${index}`, index + 1, value));
+        for (const command of burst)
+          room().send(REALTIME_INPUT_MESSAGE, command);
+        room().send(REALTIME_INPUT_MESSAGE, required(burst[3]));
+        await barrier(0);
+        for (let i = 1; i < count - 1; i++) {
+          room(i).send(
+            REALTIME_INPUT_MESSAGE,
+            nextInput(i, { type: "PLACE_BOMB" }),
+          );
+          await barrier(i);
+        }
+        await advance(1);
+        const activeRecord = required(
+          await replayStore.get("bomberman-replay-1"),
+        );
+        expect(
+          activeRecord.events
+            .filter((event) => event.actorSlotId === "bomberman-slot-0")
+            .map((event) => event.input),
+        ).toEqual(burst.map((command) => command.input));
+        expect(activeRecord.events).toHaveLength(5 + count - 2);
+        expect(view().bombs).toHaveLength(count - 1);
+        expect(inbox().snapshots.at(-1)?.acknowledgedInputSequence).toBe(5);
+        for (let i = 0; i < count; i++) {
+          expect(view(i).selfSlotId).toBe(`bomberman-slot-${i}`);
+          expect(view(i).arena).toMatchObject({ cols: 13, rows: 11 });
+          expect(view(i).players).toHaveLength(count);
+          const serialized = JSON.stringify(view(i));
+          for (const secret of [
+            "hiddenPickups",
+            "pendingPickups",
+            "lease",
+            "rng",
+            "passThrough",
+            "seed",
+          ])
+            expect(serialized).not.toContain(`"${secret}"`);
+          expect(view(i).players.map((player) => player.index)).toEqual(
+            Array.from({ length: count }, (_, n) => n),
+          );
+        }
+        for (const [clientIndex, command, code] of [
+          [1, required(burst[0]), "DUPLICATE_COMMAND"],
+          [
+            0,
+            input("stale-sequence", 5, { type: "PLACE_BOMB" }),
+            "STALE_INPUT_SEQUENCE",
+          ],
+          [
+            0,
+            { ...input("wrong-round", 6, { type: "RESIGN" }), roundNumber: 2 },
+            "ROUND_MISMATCH",
+          ],
+        ] as const) {
+          room(clientIndex).send(REALTIME_INPUT_MESSAGE, command);
+          await waitUntil(
+            () => inbox(clientIndex).realtimeRejections.at(-1)?.code === code,
+          );
+        }
+        expect((await replayStore.get("bomberman-replay-1"))?.events).toEqual(
+          activeRecord.events,
+        );
+        await advance(150);
+        expect(view().phase).toBe("RESULT");
+        expect(view().players.map((player) => player.alive)).toEqual(
+          Array.from({ length: count }, (_, i) => i === count - 1),
+        );
+        expect(view().players.at(-1)?.score).toBe(1);
+
+        const resumed = await new ColyseusClient(address.httpUrl).join(
+          REALTIME_GAME_ROOM_NAME,
+          {
+            type: "room.join",
+            protocolVersion: 6,
+            ticket: ticket(0),
+            roomCode: "BMBR2345",
+          },
+        );
+        clients[0] = resumed;
+        inboxes[0] = messagesV6(resumed);
+        await waitUntil(() => inbox().snapshots.length > 0);
+        expect(inbox().connected[0]?.playerSlotId).toBe("bomberman-slot-0");
+        expect(inbox().snapshots.at(-1)?.tick).toBe(331);
+        for (let bout = 2; bout <= 3; bout++) {
+          await advance(300);
+          expect(view()).toMatchObject({ phase: "ACTIVE", bout });
+          for (const player of view().players)
+            expect(player).toMatchObject({
+              alive: true,
+              capacity: 1,
+              range: 2,
+              speed: 3,
+            });
+          for (let i = 0; i < count - 1; i++) {
+            room(i).send(
+              REALTIME_INPUT_MESSAGE,
+              nextInput(i, { type: "PLACE_BOMB" }),
+            );
+            await barrier(i);
+          }
+          await advance(151);
+          expect(view().players.at(-1)?.score).toBe(bout);
+        }
+        await waitUntil(() =>
+          inboxes.every(
+            (box) => box.lifecycle.at(-1)?.currentRound?.status === "completed",
+          ),
+        );
+        const completed = required(await replayStore.get("bomberman-replay-1"));
+        expect(completed.finalTick).toBe(1233);
+        expect(completed.recordedOutcome).toMatchObject({
+          type: "WIN",
+          reason: "SCORE",
+          winnerSlotId: `bomberman-slot-${count - 1}`,
+        });
+        expect(
+          verifyRealtimeReplay(completed, resolveRealtimeGameDefinition).ok,
+        ).toBe(true);
+        room().send(
+          REALTIME_INPUT_MESSAGE,
+          nextInput(0, { type: "PLACE_BOMB" }),
+        );
+        await barrier(0);
+        expect(await replayStore.get("bomberman-replay-1")).toEqual(completed);
+        for (let i = 0; i < count - 1; i++)
+          room(i).send(
+            ROOM_CONTROL_MESSAGE,
+            control(`again-${i}`, "READY_FOR_ROUND"),
+          );
+        await waitUntil(
+          () =>
+            inbox().lifecycle.at(-1)?.nextRound?.readiness.readySlotIds
+              .length ===
+            count - 1,
+        );
+        expect(inbox().lifecycle.at(-1)?.currentRound?.roundNumber).toBe(1);
+        room(count - 1).send(
+          ROOM_CONTROL_MESSAGE,
+          control("again-last", "READY_FOR_ROUND"),
+        );
+        await waitUntil(() =>
+          inboxes.every((box) => box.snapshots.at(-1)?.roundNumber === 2),
+        );
+        expect(inbox().snapshots.at(-1)?.tick).toBe(0);
+        const nextRecord = required(
+          await replayStore.get("bomberman-replay-2"),
+        );
+        expect(nextRecord.header.initialConfig).toEqual(
+          completed.header.initialConfig,
+        );
+        expect(nextRecord.header.players).toEqual(completed.header.players);
+        expect(nextRecord.header.rng.seed).not.toBe(completed.header.rng.seed);
+        expect(nextRecord.events).toEqual([]);
+        for (let i = 0; i < count - 1; i++) {
+          room(i).send(
+            REALTIME_INPUT_MESSAGE,
+            nextInput(i, { type: "RESIGN" }, 2),
+          );
+          await barrier(i);
+        }
+        await advance(1);
+        expect(view().outcome).toMatchObject({
+          type: "WIN",
+          reason: "RESIGNATION",
+          winnerSlotId: `bomberman-slot-${count - 1}`,
+        });
+        expect(
+          verifyRealtimeReplay(
+            await replayStore.get("bomberman-replay-2"),
+            resolveRealtimeGameDefinition,
+          ).ok,
+        ).toBe(true);
+        expect(archive.created).toHaveLength(2);
+        room().send(
+          ROOM_CONTROL_MESSAGE,
+          control("close-bomberman", "CLOSE_ROOM"),
+        );
+        await waitUntil(
+          async () =>
+            (await roomStore.getByRoomCode("BMBR2345"))?.closeReason != null,
+        );
+      } finally {
+        await app.stop();
+      }
+    },
+    30000,
+  );
+});
 describe.sequential("realtime badminton Protocol V6", () => {
   const clock = new FakeRuntimeClock(3000000);
   const schedulerTimer = new ManualSchedulerTimer();

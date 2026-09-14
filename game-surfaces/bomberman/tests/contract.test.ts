@@ -11,7 +11,7 @@ it("publishes exact independent Setup/Play artifacts with a matching immutable d
     schemaVersion: 1,
     gameId: "bomberman",
     supportedGameVersions: ["1.0.0"],
-    surfaceVersion: "1.0.1",
+    surfaceVersion: "1.0.4",
     bridgeVersion: 2,
     entrypoints: { setup: "setup/index.html", play: "play/index.html" },
     capabilities: {},

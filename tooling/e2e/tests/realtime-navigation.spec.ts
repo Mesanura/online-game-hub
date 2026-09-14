@@ -21,7 +21,12 @@ test.afterAll(async () => {
   await harness?.stop();
 });
 
-for (const gameId of ["pong", "badminton", "air-hockey"] as const) {
+for (const gameId of [
+  "pong",
+  "badminton",
+  "air-hockey",
+  "bomberman",
+] as const) {
   test(`${gameId} enters play before the running round ends, including reconnect and next-round setup`, async ({
     browser,
   }, info) => {
@@ -42,7 +47,7 @@ for (const gameId of ["pong", "badminton", "air-hockey"] as const) {
       await pageA.goto(`${harness.webUrl}/games/${gameId}`);
       await pageA.getByTestId("create-room").click();
       await expect(pageA.getByTestId("connection-state")).toHaveText("已连接");
-      if (gameId !== "air-hockey")
+      if (gameId === "pong" || gameId === "badminton")
         await surface(pageA).locator('[data-starter="OWNER"]').click();
       const inviteUrl = await pageA
         .getByTestId("invite-link")
@@ -94,7 +99,11 @@ for (const gameId of ["pong", "badminton", "air-hockey"] as const) {
           "src",
           new RegExp(`/game-surfaces/${gameId}/[^/]+/play/index\\.html$`),
         );
-        await expect(surface(page).locator("canvas")).toBeVisible();
+        await expect(
+          surface(page).locator(
+            gameId === "bomberman" ? "#arena-canvas canvas" : "canvas",
+          ),
+        ).toBeVisible();
         await expect
           .poll(async () =>
             Number(await page.getByTestId("server-tick").textContent()),

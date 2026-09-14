@@ -664,6 +664,9 @@ importers:
       '@online-game-hub/badminton':
         specifier: workspace:*
         version: link:../../games/badminton
+      '@online-game-hub/bomberman':
+        specifier: workspace:*
+        version: link:../../games/bomberman
       '@online-game-hub/chinese-checkers':
         specifier: workspace:*
         version: link:../../games/chinese-checkers

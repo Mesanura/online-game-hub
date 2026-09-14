@@ -301,7 +301,7 @@ test("two accounts play two authoritative Connect Four rounds with independent r
   const connectFourCard = pageA
     .getByRole("article")
     .filter({ hasText: "四子棋" });
-  await expect(connectFourCard).toContainText("2–2");
+  await expect(connectFourCard).toContainText("2 人");
   await connectFourCard.getByRole("link", { name: "创建或加入房间" }).click();
   await expect(pageA).toHaveURL(/\/games\/connect-four$/u);
   await expect(pageA.getByTestId("game-stage")).toHaveCount(0);

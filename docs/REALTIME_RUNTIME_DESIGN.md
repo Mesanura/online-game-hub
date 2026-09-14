@@ -1,6 +1,6 @@
 # Realtime Runtime 设计
 
-本文定义固定 tick simulation、输入交付、实时协议和客户端职责。当前消费者为 Pong、火柴人羽毛球、坦克迷战与气垫球；游戏规则和版本见 [游戏索引](../games/README.md)。共享房间协议见 [NETWORK_PROTOCOL.md](./NETWORK_PROTOCOL.md)，记录格式见 [REPLAY_DESIGN.md](./REPLAY_DESIGN.md)。
+本文定义固定 tick simulation、输入交付、实时协议和客户端职责。当前消费者为 Pong、火柴人羽毛球、坦克迷战、气垫球与像素炸弹人；游戏规则和版本见 [游戏索引](../games/README.md)。共享房间协议见 [NETWORK_PROTOCOL.md](./NETWORK_PROTOCOL.md)，记录格式见 [REPLAY_DESIGN.md](./REPLAY_DESIGN.md)。
 
 ## 范围与职责
 
@@ -22,7 +22,7 @@ wall clock 只决定 scheduler 何时执行 tick；系统时间、网络到达�
 - `realtime-game-server-runtime`：输入队列、scheduler、room adapter、snapshot/rejection 和存储 ports；不依赖具体游戏或 `game-server-runtime` 实现。
 - `realtime-game-client-sdk`：与 React/Phaser 无关的 Host、input sender、连接状态、资料同步和显示插值时钟；不依赖回合制 Host、具体游戏或数据库。
 - `games/<id>`：各自的整数 simulation、manifest、Setup 与 golden tests；Pong 的旧 Client 已移除，所有实时表现均在独立 Surface 中实现。
-- `game-surfaces/<id>`：独立画面；Pong/羽毛球/气垫球使用 Phaser，坦克迷战使用 SVG，均只依赖 Bridge 和自身渲染栈。
+- `game-surfaces/<id>`：独立画面；Pong/羽毛球/气垫球/像素炸弹人使用 Phaser，坦克迷战使用 SVG，均只依赖 Bridge 和自身渲染栈。
 
 只有 composition layer 同时看到 registry、两个 runtime 和平台 adapters。共享代码先证明实际复用，再提取职责明确的纯契约；不建立泛化 shared 包。完整依赖约束见 [系统架构](./ARCHITECTURE.md)。
 

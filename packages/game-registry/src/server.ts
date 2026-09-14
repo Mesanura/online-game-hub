@@ -47,6 +47,8 @@ import {
 import { tankMazeSetupDefinition } from "@online-game-hub/tank-maze/setup";
 import { airHockeyDefinition } from "@online-game-hub/air-hockey/core";
 import { airHockeySetupDefinition } from "@online-game-hub/air-hockey/setup";
+import { bombermanDefinition } from "@online-game-hub/bomberman/core";
+import { bombermanSetupDefinition } from "@online-game-hub/bomberman/setup";
 import { eraseGameDefinition } from "@online-game-hub/game-sdk";
 import type { UnknownGameDefinition } from "@online-game-hub/game-sdk";
 import {
@@ -97,6 +99,7 @@ export function resolveCurrentGameDefinition(
 export type GameDefinitionResolver = typeof resolveGameDefinition;
 
 const realtimeServerDefinitions = Object.freeze([
+  eraseRealtimeGameDefinition(bombermanDefinition),
   eraseRealtimeGameDefinition(airHockeyDefinition),
   eraseRealtimeGameDefinition(tankMazeDefinition),
   eraseRealtimeGameDefinition(tankMazeDefinitionV1_0_0),
@@ -137,6 +140,11 @@ export type RealtimeGameDefinitionResolver =
   typeof resolveRealtimeGameDefinition;
 
 const roundSetupDefinitions = Object.freeze([
+  Object.freeze({
+    gameId: bombermanDefinition.manifest.id,
+    gameVersion: bombermanDefinition.manifest.gameVersion,
+    definition: eraseRoundSetupDefinition(bombermanSetupDefinition),
+  }),
   Object.freeze({
     gameId: tankMazeDefinitionV1_2_0.manifest.id,
     gameVersion: tankMazeDefinitionV1_2_0.manifest.gameVersion,

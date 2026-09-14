@@ -60,53 +60,82 @@ test("bomberman renders the complete pixel arena, four scores and accessible con
       { width: 2560, height: 1440 },
     ]) {
       await page.setViewportSize(viewport);
+      await surface.locator("#arena-canvas").focus();
       await expect
-        .poll(() =>
-          surface.locator(".play-shell").evaluate((play) => {
-            const canvas = play.querySelector<HTMLCanvasElement>(
-              "#arena-canvas canvas",
-            );
-            const stick = play.querySelector("#joystick");
-            const bomb = play.querySelector("#bomb-button");
-            if (!canvas || !stick || !bomb) return false;
-            const arena = canvas.getBoundingClientRect();
-            const left = stick.getBoundingClientRect(),
-              right = bomb.getBoundingClientRect();
-            const fits = (rect: DOMRect) =>
-              rect.left >= 0 &&
-              rect.top >= 0 &&
-              rect.right <= innerWidth + 1 &&
-              rect.bottom <= innerHeight + 1;
-            const controlsFit = [left, right].every(
-              (rect) => rect.width >= 44 && rect.height >= 44 && fits(rect),
-            );
-            return (
-              canvas.width === 416 &&
-              canvas.height === 352 &&
-              Math.abs(arena.width / arena.height - 13 / 11) < 0.01 &&
-              arena.width >= 130 &&
-              arena.height >= 100 &&
-              fits(arena) &&
-              controlsFit &&
-              (innerWidth <= 640 && innerHeight > innerWidth
-                ? left.top >= arena.bottom && right.top >= arena.bottom
-                : left.right <= arena.left && right.left >= arena.right) &&
-              document.documentElement.scrollWidth <= innerWidth &&
-              stick.contains(
-                document.elementFromPoint(
-                  left.x + left.width / 2,
-                  left.y + left.height / 2,
-                ),
-              ) &&
-              bomb.contains(
-                document.elementFromPoint(
-                  right.x + right.width / 2,
-                  right.y + right.height / 2,
-                ),
-              ) &&
-              getComputedStyle(canvas).imageRendering === "pixelated"
-            );
-          }),
+        .poll(
+          () =>
+            surface.locator(".play-shell").evaluate((play) => {
+              const canvas = play.querySelector<HTMLCanvasElement>(
+                "#arena-canvas canvas",
+              );
+              const stick = play.querySelector("#joystick");
+              const bomb = play.querySelector("#bomb-button");
+              const arenaHost = play.querySelector("#arena-canvas");
+              const inventory = play.querySelector("#inventory");
+              const phase = play.querySelector("#phase-label");
+              if (
+                !canvas ||
+                !stick ||
+                !bomb ||
+                !arenaHost ||
+                !inventory ||
+                !phase
+              )
+                return false;
+              const arena = canvas.getBoundingClientRect();
+              const hostRect = arenaHost.getBoundingClientRect();
+              const inventoryRect = inventory.getBoundingClientRect();
+              const focusStyle = getComputedStyle(arenaHost);
+              const focusExtent = Math.max(
+                0,
+                Number.parseFloat(focusStyle.outlineWidth) +
+                  Number.parseFloat(focusStyle.outlineOffset),
+              );
+              const left = stick.getBoundingClientRect(),
+                right = bomb.getBoundingClientRect();
+              const fits = (rect: DOMRect) =>
+                rect.left >= 0 &&
+                rect.top >= 0 &&
+                rect.right <= innerWidth + 1 &&
+                rect.bottom <= innerHeight + 1;
+              const controlsFit = [left, right].every(
+                (rect) => rect.width >= 44 && rect.height >= 44 && fits(rect),
+              );
+              return (
+                canvas.width === 416 &&
+                canvas.height === 352 &&
+                Math.abs(arena.width / arena.height - 13 / 11) < 0.01 &&
+                arena.width >= 130 &&
+                arena.height >= 100 &&
+                fits(arena) &&
+                fits(inventoryRect) &&
+                Number.parseFloat(focusStyle.outlineWidth) > 0 &&
+                hostRect.top - focusExtent >=
+                  phase.getBoundingClientRect().bottom &&
+                hostRect.bottom + focusExtent <= inventoryRect.top &&
+                controlsFit &&
+                (innerWidth <= 640 && innerHeight > innerWidth
+                  ? left.top >= arena.bottom && right.top >= arena.bottom
+                  : left.right <= arena.left && right.left >= arena.right) &&
+                document.documentElement.scrollWidth <= innerWidth &&
+                stick.contains(
+                  document.elementFromPoint(
+                    left.x + left.width / 2,
+                    left.y + left.height / 2,
+                  ),
+                ) &&
+                bomb.contains(
+                  document.elementFromPoint(
+                    right.x + right.width / 2,
+                    right.y + right.height / 2,
+                  ),
+                ) &&
+                getComputedStyle(canvas).imageRendering === "pixelated"
+              );
+            }),
+          {
+            message: `Arena and controls fit ${viewport.width}×${viewport.height}`,
+          },
         )
         .toBe(true);
       await page.screenshot({

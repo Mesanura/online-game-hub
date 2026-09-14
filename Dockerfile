@@ -17,6 +17,7 @@ COPY apps/game-server/package.json apps/game-server/package.json
 COPY apps/web/package.json apps/web/package.json
 COPY game-surfaces/air-hockey/package.json game-surfaces/air-hockey/package.json
 COPY game-surfaces/badminton/package.json game-surfaces/badminton/package.json
+COPY game-surfaces/bomberman/package.json game-surfaces/bomberman/package.json
 COPY game-surfaces/chinese-checkers/package.json game-surfaces/chinese-checkers/package.json
 COPY game-surfaces/connect-four/package.json game-surfaces/connect-four/package.json
 COPY game-surfaces/gomoku/package.json game-surfaces/gomoku/package.json
@@ -28,6 +29,7 @@ COPY game-surfaces/tic-tac-toe/package.json game-surfaces/tic-tac-toe/package.js
 COPY game-surfaces/workbench/package.json game-surfaces/workbench/package.json
 COPY games/air-hockey/package.json games/air-hockey/package.json
 COPY games/badminton/package.json games/badminton/package.json
+COPY games/bomberman/package.json games/bomberman/package.json
 COPY games/chinese-checkers/package.json games/chinese-checkers/package.json
 COPY games/connect-four/package.json games/connect-four/package.json
 COPY games/gomoku/package.json games/gomoku/package.json

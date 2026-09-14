@@ -326,6 +326,7 @@ kbd {
   min-width: 0;
   display: grid;
   grid-template-columns: minmax(108px, 1fr) minmax(0, 740px) minmax(108px, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   align-items: center;
   gap: 16px;
   padding: 12px 0;
@@ -343,6 +344,9 @@ kbd {
   width: 100%;
   min-height: 0;
   min-width: 0;
+}
+#arena-canvas:focus-visible {
+  outline-offset: 0;
 }
 #arena-canvas canvas {
   display: block;
@@ -724,6 +728,17 @@ kbd {
   }
   .phase-banner strong {
     font-size: 28px;
+  }
+}
+@media (max-height: 320px) and (orientation: landscape) {
+  .battlefield {
+    grid-template-columns: 120px minmax(0, 1fr) 164px;
+  }
+  .bomb-control {
+    justify-self: start;
+  }
+  .control-caption {
+    display: none;
   }
 }
 @media (prefers-reduced-motion: reduce) {

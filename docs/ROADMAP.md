@@ -8,11 +8,11 @@ M1–M8 与 M9-A–G 已完成。独立 Surface、V6 Setup、全量游戏画面�
 
 目录与历史体验完善已完成，范围与退出条件见下文对应章节。
 
-- 十款当前游戏都注册为 V6 Setup 与独立 Bridge V2 Surface。
+- 十一款当前游戏都注册为 V6 Setup 与独立 Bridge V2 Surface。
 - 所有受支持历史规则版本都有精确 Surface 映射；七款旧 Client 源码、渲染契约与 registry loader 已移除。
 - 所有受支持规则版本已登记 V6 Setup；两类 runtime、连接 SDK 与 Web 只接受 V6，历史 Core、golden、精确 Surface/replay 映射与旧数据库 metadata 读取继续保留。
 - create-game 已支持可通过全仓检查的 V6/Bridge V2 双目录草稿；草稿不自动进入 catalog 或生产制品。
-- Pong、羽毛球、坦克迷战、气垫球的全部支持版本为 `record-only`；服务端记录与验证继续保留。
+- Pong、羽毛球、坦克迷战、气垫球、像素炸弹人的全部支持版本为 `record-only`；服务端记录与验证继续保留。
 
 ## 工作原则
 
@@ -71,12 +71,13 @@ M9 不包含真正 `replay:none` 的数据库语义、外部仓库发布、独�
 
 这些扩展复用已建立的能力，不改写 M8 当时的双人 Pong 验收范围。
 
-| 内容                                               | 当前边界                                                                                                         |
-| -------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| [中国跳棋](../games/chinese-checkers/GAME_SPEC.md) | V6 Setup、2–6 人营地/顺序与新版棋盘几何；旧拓扑和回放独立冻结                                                    |
-| [火柴人羽毛球](../games/badminton/GAME_SPEC.md)    | 60 Hz 整数模拟、手动发球和键盘/多指操作，独立 Phaser Setup/Play 与双手触屏布局，record-only                      |
-| [坦克迷战](../games/tank-maze/GAME_SPEC.md)        | 2–8 人、偏向小地图的随机迷宫、前后等速、方向滑动换键和按次射击，多小局 SVG Surface；历史规则独立冻结             |
-| [气垫球](../games/air-hockey/GAME_SPEC.md)         | 双人 60 Hz 权威扫掠碰撞、指定方开球、鼠标/单指目标控制、蓝橙上下镜像与边框流光，独立 Phaser Surface；record-only |
+| 内容                                               | 当前边界                                                                                                                                          |
+| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [中国跳棋](../games/chinese-checkers/GAME_SPEC.md) | V6 Setup、2–6 人营地/顺序与新版棋盘几何；旧拓扑和回放独立冻结                                                                                     |
+| [火柴人羽毛球](../games/badminton/GAME_SPEC.md)    | 60 Hz 整数模拟、手动发球和键盘/多指操作，独立 Phaser Setup/Play 与双手触屏布局，record-only                                                       |
+| [坦克迷战](../games/tank-maze/GAME_SPEC.md)        | 2–8 人、偏向小地图的随机迷宫、前后等速、方向滑动换键和按次射击，多小局 SVG Surface；历史规则独立冻结                                              |
+| [气垫球](../games/air-hockey/GAME_SPEC.md)         | 双人 60 Hz 权威扫掠碰撞、指定方开球、鼠标/单指目标控制、蓝橙上下镜像与边框流光，独立 Phaser Surface；record-only                                  |
+| [像素炸弹人](../games/bomberman/GAME_SPEC.md)      | 2–4 人、固定竞技场与对称随机砖块、60 Hz 整数碰撞/连锁爆炸、道具与抢三胜，独立 Phaser Surface 和双指摇杆/放弹；地图与玩法容量独立扩展，record-only |
 
 内容维护沿用各游戏规则版本与 Surface 版本边界，并运行 Core/Setup/golden、Surface contract、真实多人 integration 和临时 PostgreSQL 浏览器验证；详细要求集中在测试策略。
 
