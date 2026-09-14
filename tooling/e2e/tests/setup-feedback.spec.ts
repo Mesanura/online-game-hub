@@ -37,14 +37,38 @@ const tank = {
   canEdit: true,
   selfSlotId: "owner",
 };
+const bomberman = {
+  config: { mapId: "classic-arena", modeId: "classic", playerCount: 2 },
+  playerCounts: [2, 3, 4],
+  players: [
+    { slotId: "owner", index: 0 },
+    { slotId: "guest", index: 1 },
+  ],
+  participantSlotIds: ["owner", "guest"],
+  canEdit: true,
+  selfSlotId: "owner",
+};
 interface SetupCase {
   gameId: string;
   selector: string;
   payload: Record<string, unknown>;
   accepted: Record<string, unknown>;
   conflictCode?: string;
+  connectionFailureText?: string;
+  rejectionText?: string;
 }
 const cases: readonly SetupCase[] = [
+  {
+    gameId: "bomberman",
+    selector: '[data-count="3"]',
+    connectionFailureText: "设置未保存",
+    rejectionText: "设置未保存",
+    payload: bomberman,
+    accepted: {
+      ...bomberman,
+      config: { ...bomberman.config, playerCount: 3 },
+    },
+  },
   {
     gameId: "air-hockey",
     selector: '[data-score="5"]',
@@ -317,12 +341,12 @@ for (const entry of cases) {
       {
         status: "rejected" as const,
         code: "HOST_REJECTED",
-        text: "连接未能确认设置",
+        text: entry.connectionFailureText ?? "连接未能确认设置",
       },
       {
         status: "rejected" as const,
         code: "UNKNOWN_INTERNAL_ERROR",
-        text: "未被接受",
+        text: entry.rejectionText ?? "未被接受",
       },
       ...(entry.conflictCode === undefined
         ? []

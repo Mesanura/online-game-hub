@@ -1,0 +1,29 @@
+{
+  "config": {
+    "mapId": "classic-arena",
+    "modeId": "classic",
+    "playerCount": 4
+  },
+  "playerCounts": [2, 3, 4],
+  "players": [
+    {
+      "slotId": "p0",
+      "index": 0
+    },
+    {
+      "slotId": "p1",
+      "index": 1
+    },
+    {
+      "slotId": "p2",
+      "index": 2
+    },
+    {
+      "slotId": "p3",
+      "index": 3
+    }
+  ],
+  "participantSlotIds": ["p0", "p1", "p2", "p3"],
+  "canEdit": true,
+  "selfSlotId": "p0"
+}

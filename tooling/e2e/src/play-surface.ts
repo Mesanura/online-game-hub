@@ -5,12 +5,13 @@ interface PlayTestWindow extends Window {
   playTestPort: MessagePort;
   playTestSequence: number;
   playTestIntents: unknown[];
+  playTestMessages: unknown[];
 }
 
 // A real sandboxed artifact and MessageChannel, using only public projections.
 export async function openPlaySurface(
   page: Page,
-  gameId: "pong" | "badminton" | "tank-maze" | "air-hockey",
+  gameId: "pong" | "badminton" | "tank-maze" | "air-hockey" | "bomberman",
   gameVersion: string,
   options: { reducedMotion?: boolean } = {},
 ) {
@@ -54,8 +55,10 @@ export async function openPlaySurface(
       host.playTestPort = channel.port1;
       host.playTestSequence = 0;
       host.playTestIntents = [];
+      host.playTestMessages = [];
       await new Promise<void>((resolve) => {
         channel.port1.onmessage = (event) => {
+          host.playTestMessages.push(event.data);
           if (event.data.type === "surface.intent")
             host.playTestIntents.push(event.data.intent);
           if (event.data.type !== "surface.ready") return;
@@ -92,6 +95,7 @@ export async function openPlaySurface(
         connectionState?: "connected" | "reconnecting";
         roundNumber?: number;
         readOnly?: boolean;
+        tick?: number;
       } = {},
     ) {
       await page.evaluate(
@@ -113,6 +117,11 @@ export async function openPlaySurface(
     async intents(): Promise<unknown[]> {
       return page.evaluate(
         () => (window as unknown as PlayTestWindow).playTestIntents,
+      );
+    },
+    async messages(): Promise<unknown[]> {
+      return page.evaluate(
+        () => (window as unknown as PlayTestWindow).playTestMessages,
       );
     },
     async dispose() {
