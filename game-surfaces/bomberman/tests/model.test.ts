@@ -32,18 +32,64 @@ const fixture = () =>
     ),
     "1.0.0",
   );
-const livesFixture = () =>
+const livesFixture = (version: "1.1.0" | "1.2.0" = "1.1.0") =>
   parsePlayView(
     JSON.parse(
       readFileSync(
-        new URL("./fixtures/play-1.1.json", import.meta.url),
+        new URL(
+          "./fixtures/play-" + version.slice(0, 3) + ".json",
+          import.meta.url,
+        ),
         "utf8",
       ),
     ),
-    "1.1.0",
+    version,
   );
 
 describe("public contracts", () => {
+  it("accepts exact new starting stats and excess active bombs after a capacity drop", () => {
+    const view = livesFixture("1.2.0");
+    expect(
+      view.players.every(
+        (player) => player.capacity === 2 && player.range === 1,
+      ),
+    ).toBe(true);
+    expect(() => parsePlayView(view, "1.1.0")).toThrow();
+    expect(() => parsePlayView(livesFixture(), "1.2.0")).toThrow();
+    const actor = view.players[0];
+    if (!actor) throw new Error("Missing fixture player");
+    actor.capacity = 3;
+    actor.activeBombs = 4;
+    view.bombs = [14, 16, 18, 20].map((cell, index) => ({
+      id: index + 1,
+      cell,
+      ownerSlotId: actor.slotId,
+      fuseTicks: 100,
+    }));
+    expect(parsePlayView(view, "1.2.0").players[0]).toMatchObject({
+      capacity: 3,
+      activeBombs: 4,
+    });
+    const previous = livesFixture();
+    Object.assign(previous.players[0] ?? {}, { capacity: 3, activeBombs: 4 });
+    expect(() => parsePlayView(previous, "1.1.0")).toThrow();
+    for (const [key, value] of [
+      ["capacity", 1],
+      ["range", 0],
+    ] as const)
+      expect(() =>
+        parsePlayView(
+          {
+            ...view,
+            players: view.players.map((player) => ({
+              ...player,
+              [key]: value,
+            })),
+          },
+          "1.2.0",
+        ),
+      ).toThrow();
+  });
   it("parses the new life and directional flame projection while keeping exact legacy schemas", () => {
     const view = livesFixture();
     expect(view.startingLives).toBe(3);

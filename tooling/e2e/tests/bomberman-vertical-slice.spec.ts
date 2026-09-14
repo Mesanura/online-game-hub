@@ -134,7 +134,7 @@ test("four accounts play a three-life match with real multitouch, reconnect and 
       await expect(page.getByTestId("match-status")).toHaveText("对局进行中");
       await expect(page.getByTestId("game-surface-iframe")).toHaveAttribute(
         "src",
-        "/game-surfaces/bomberman/1.1.0/play/index.html",
+        "/game-surfaces/bomberman/1.2.0/play/index.html",
       );
       await expect(surface(page).locator("#arena-canvas canvas")).toBeVisible();
       await expect(surface(page).locator(".score-card")).toHaveCount(4);

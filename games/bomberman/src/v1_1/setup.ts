@@ -10,9 +10,6 @@ import {
   supportedPlayerCounts,
 } from "./definitions.js";
 
-export { bombermanSetupDefinition as bombermanSetupDefinitionV1_0_0 } from "./v1/setup.js";
-export { bombermanSetupDefinition as bombermanSetupDefinitionV1_1_0 } from "./v1_1/setup.js";
-
 const counts = supportedPlayerCounts(classicMap, classicMode);
 const setupStateSchema = z.object({ config: configSchema }).strict();
 const setupActionSchema = z

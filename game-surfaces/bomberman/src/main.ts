@@ -160,6 +160,7 @@ function fail(code: string, message: string): void {
 function renderSetup(): void {
   if (!setup) return;
   const legacy = init?.gameVersion === "1.0.0";
+  const drops = init?.gameVersion === "1.2.0";
   if (!setupBuilt) {
     setupBuilt = true;
     root.innerHTML =
@@ -183,10 +184,16 @@ function renderSetup(): void {
       (legacy
         ? "每小局一条命，最后存活者得 1 分。"
         : "受击扣一命，随后无敌 2 秒；生命耗尽才出局。") +
+      "</li><li>" +
+      (drops
+        ? "初始可放 2 枚炸弹，爆炸向每侧延伸 1 格。"
+        : "初始可放 1 枚炸弹，爆炸向每侧延伸 2 格。") +
       '</li><li>180 秒仍有多人存活，或全员出局，均为平局。</li><li>砖块可以炸毁；石墙会挡住爆炸。</li><li>炸弹会连锁引爆，也会炸到自己。</li></ul><div><div class="item-guide"><span>＋ 炸弹容量</span><span>✦ 爆炸范围</span><span>ϟ 移动速度</span></div><p>' +
       (legacy
         ? "炸开砖块寻找道具。出局后观看本小局，下一小局自动复活；所有增强重置。"
-        : "炸开砖块寻找道具。受击保留位置和增强，闪烁与光圈表示无敌；趁机移动到安全处。") +
+        : drops
+          ? "受击随机掉落一半已有加成（向下取整），散落在空闲格，可重新拾取。闪烁与光圈表示无敌；趁机移动到安全处。"
+          : "炸开砖块寻找道具。受击保留位置和增强，闪烁与光圈表示无敌；趁机移动到安全处。") +
       '</p><p class="keyboard-help"><kbd>WASD</kbd> / <kbd>方向键</kbd> 移动<br><kbd>空格</kbd> 放炸弹 · 手机摇杆 + 放弹按钮</p></div></div></section></div></main>';
     root.querySelectorAll<HTMLButtonElement>("[data-count]").forEach((button) =>
       button.addEventListener(
@@ -606,7 +613,7 @@ function handleHost(message: HostSurfaceMessage): void {
   if (message.type === "host.init") {
     if (
       message.gameId !== "bomberman" ||
-      !["1.0.0", "1.1.0"].includes(message.gameVersion) ||
+      !["1.0.0", "1.1.0", "1.2.0"].includes(message.gameVersion) ||
       message.mode !== mode ||
       message.bridgeVersion !== 2
     ) {

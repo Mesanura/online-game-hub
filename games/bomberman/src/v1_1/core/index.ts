@@ -20,7 +20,6 @@ import {
 import { bombermanManifest } from "../manifest.js";
 import { generateArena } from "./map.js";
 import { resolveExplosions } from "./explosions.js";
-import { dropHitUpgrades } from "./drops.js";
 import {
   cellCenter,
   movePlayer,
@@ -29,9 +28,6 @@ import {
   playerCell,
 } from "./movement.js";
 import type { Player, State } from "./model.js";
-
-export { bombermanDefinition as bombermanDefinitionV1_0_0 } from "../v1/core/index.js";
-export { bombermanDefinition as bombermanDefinitionV1_1_0 } from "../v1_1/core/index.js";
 
 function copyState(state: Readonly<State>): State {
   return {
@@ -253,7 +249,7 @@ export const bombermanDefinition = {
   },
   step({ state: previous, tick, inputs, rng: previousRng }) {
     const state = copyState(previous);
-    let rng: RealtimeRngState = { ...previousRng };
+    const rng: RealtimeRngState = { ...previousRng };
     if (state.outcome) return { state, rng };
     state.tick = tick + 1;
     state.events = state.events.filter((event) => state.tick - event.tick < 60);
@@ -360,7 +356,6 @@ export const bombermanDefinition = {
       const center = cellCenter(cell, state.arena.cols);
       effect(state, "explode", center.x, center.y);
     }
-    const hitPlayers: Player[] = [];
     for (const player of state.players) {
       if (
         player.alive &&
@@ -371,7 +366,6 @@ export const bombermanDefinition = {
           ))
       ) {
         player.lives -= 1;
-        hitPlayers.push(player);
         if (player.lives === 0) {
           player.alive = false;
           player.invulnerableUntil = 0;
@@ -385,7 +379,6 @@ export const bombermanDefinition = {
         }
       }
     }
-    rng = dropHitUpgrades(state, hitPlayers, classicMode, rng);
     collectPickups(state, classicMode);
     finishMatch(state, classicMode);
     state.events = state.events.slice(-128);

@@ -23,7 +23,6 @@ export type ModeDefinition = {
   readonly flameTicks: number;
   readonly leaseTicks: number;
   readonly lootPercent: number;
-  readonly damageDropPercent: number;
   readonly initialCapacity: number;
   readonly maxCapacity: number;
   readonly initialRange: number;
@@ -108,10 +107,9 @@ export const classicMode: ModeDefinition = {
   flameTicks: 30,
   leaseTicks: 30,
   lootPercent: 30,
-  damageDropPercent: 50,
-  initialCapacity: 2,
+  initialCapacity: 1,
   maxCapacity: 5,
-  initialRange: 1,
+  initialRange: 2,
   maxRange: 8,
   initialSpeed: 80,
   speedIncrement: 10,

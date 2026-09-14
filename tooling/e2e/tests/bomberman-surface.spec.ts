@@ -32,7 +32,7 @@ async function publicView(version = "1.0.0"): Promise<PublicView> {
     await readFile(
       new URL(
         "../../../game-surfaces/bomberman/tests/fixtures/play" +
-          (version === "1.1.0" ? "-1.1" : "") +
+          (version === "1.0.0" ? "" : "-" + version.slice(0, 3)) +
           ".json",
         import.meta.url,
       ),
@@ -41,7 +41,7 @@ async function publicView(version = "1.0.0"): Promise<PublicView> {
   ) as PublicView;
 }
 
-for (const version of ["1.0.0", "1.1.0"]) {
+for (const version of ["1.0.0", "1.1.0", "1.2.0"]) {
   test(`bomberman ${version} renders the complete pixel arena, four player cards and accessible controls across viewports`, async ({
     browser,
   }, info) => {
@@ -399,14 +399,14 @@ for (const version of ["1.0.0", "1.1.0"]) {
             });
           } else if (reset === "death") {
             required(view.players[0]).alive = false;
-            if (version === "1.1.0") {
+            if (version !== "1.0.0") {
               required(view.players[0]).lives = 0;
               required(view.players[0]).invulnerableTicks = 0;
             }
             await harness.push(view, { tick: ++tick, roundNumber });
             await expect(surface.locator("#bomb-button")).toBeDisabled();
             required(view.players[0]).alive = true;
-            if (version === "1.1.0") required(view.players[0]).lives = 3;
+            if (version !== "1.0.0") required(view.players[0]).lives = 3;
           } else {
             await harness.push(view, { tick, roundNumber, readOnly: true });
             await expect(surface.locator("#bomb-button")).toBeDisabled();

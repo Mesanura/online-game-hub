@@ -3,7 +3,7 @@ import {
   createRealtimeRng,
   defineRealtimePlayerSlotId,
 } from "@online-game-hub/realtime-game-sdk";
-import { configSchema, inputSchema } from "../src/contracts.js";
+import { configSchema, inputSchema } from "../../src/v1_1/contracts.js";
 import {
   CELL_SIZE,
   classicMap,
@@ -11,11 +11,11 @@ import {
   spawnCells,
   supportedPlayerCounts,
   type MapDefinition,
-} from "../src/definitions.js";
-import { bombermanDefinition as game } from "../src/core/index.js";
-import { resolveExplosions } from "../src/core/explosions.js";
-import { generateArena } from "../src/core/map.js";
-import { cellCenter, overlapsCell } from "../src/core/movement.js";
+} from "../../src/v1_1/definitions.js";
+import { bombermanDefinition as game } from "../../src/v1_1/core/index.js";
+import { resolveExplosions } from "../../src/v1_1/core/explosions.js";
+import { generateArena } from "../../src/v1_1/core/map.js";
+import { cellCenter, overlapsCell } from "../../src/v1_1/core/movement.js";
 import {
   advance,
   bomb,
@@ -102,16 +102,7 @@ describe("arena and deterministic setup", () => {
     expect(
       inputSchema.safeParse({ type: "MOVE", direction: "diagonal" }).success,
     ).toBe(false);
-    for (const field of [
-      "actor",
-      "slotId",
-      "x",
-      "state",
-      "tick",
-      "capacity",
-      "range",
-      "pickups",
-    ])
+    for (const field of ["actor", "slotId", "x", "state", "tick"])
       expect(
         inputSchema.safeParse({ type: "PLACE_BOMB", [field]: "forged" })
           .success,
@@ -255,6 +246,9 @@ describe("movement and input lifetime", () => {
 describe("bombs, explosions and loot", () => {
   it("takes only one life per damage batch and grants exactly two seconds of movable immunity", () => {
     let frame = openArena(3);
+    player(frame.state).capacity = 3;
+    player(frame.state).range = 5;
+    player(frame.state).speed = 100;
     frame.state.bombs = [bomb(frame.state, 1, 1), bomb(frame.state, 2, 1, 2)];
     frame = advance(frame);
     const protectedUntil = frame.state.tick + 120;
@@ -263,9 +257,9 @@ describe("bombs, explosions and loot", () => {
       alive: true,
       x: 1800,
       y: 1800,
-      capacity: 2,
-      range: 1,
-      speed: 80,
+      capacity: 3,
+      range: 5,
+      speed: 100,
       invulnerableUntil: protectedUntil,
     });
     expect(
@@ -277,7 +271,7 @@ describe("bombs, explosions and loot", () => {
     ]);
     expect(player(frame.state)).toMatchObject({
       lives: 2,
-      x: 1880,
+      x: 1900,
       walking: true,
       invulnerableUntil: protectedUntil,
     });
@@ -341,14 +335,11 @@ describe("bombs, explosions and loot", () => {
       intent(0, { type: "PLACE_BOMB" }),
     ]);
     expect(frame.state.bombs).toHaveLength(1);
-    expect(frame.state.bombs[0]?.range).toBe(1);
-    expect(player(frame.state).range).toBe(2);
+    expect(frame.state.bombs[0]?.range).toBe(2);
+    expect(player(frame.state).range).toBe(3);
     Object.assign(player(frame.state), cellCenter(18, 13));
     frame = advance(frame, 1, [intent(0, { type: "PLACE_BOMB" })]);
-    expect(frame.state.bombs.map((entry) => entry.range)).toEqual([1, 2]);
-    Object.assign(player(frame.state), cellCenter(22, 13));
-    frame = advance(frame, 1, [intent(0, { type: "PLACE_BOMB" })]);
-    expect(frame.state.bombs).toHaveLength(2);
+    expect(frame.state.bombs).toHaveLength(1);
     frame = advance(frame, 160);
     expect(frame.state.phase).toBe("ACTIVE");
     expect(frame.state.bombs).toEqual([]);
@@ -434,7 +425,7 @@ describe("bombs, explosions and loot", () => {
         kind === "capacity" ? 5 : kind === "range" ? 8 : 100,
       );
       expect(player(frame.state, 1)[kind]).toBe(
-        kind === "capacity" ? 2 : kind === "range" ? 1 : 80,
+        kind === "capacity" ? 1 : kind === "range" ? 2 : 80,
       );
     },
   );
@@ -482,8 +473,7 @@ describe("match lifecycle and privacy", () => {
         (entry) =>
           entry.alive &&
           entry.lives === 3 &&
-          entry.capacity === 2 &&
-          entry.range === 1 &&
+          entry.capacity === 1 &&
           entry.speed === 80 &&
           entry.invulnerableUntil === 0,
       ),

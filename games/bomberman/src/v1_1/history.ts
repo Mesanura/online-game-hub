@@ -1,10 +1,9 @@
 import { outcomeSchema } from "./contracts.js";
-import { bombermanHistory as legacyHistory } from "./v1/history.js";
-import { bombermanHistory as threeLifeHistory } from "./v1_1/history.js";
+import { bombermanHistory as legacyHistory } from "../v1/history.js";
 
 export const bombermanHistory = {
   gameId: "bomberman",
-  gameVersions: ["1.0.0", "1.1.0", "1.2.0"] as readonly string[],
+  gameVersions: ["1.0.0", "1.1.0"] as readonly string[],
   projectView(context: {
     readonly gameVersion: string;
     readonly recordedOutcome: unknown;
@@ -13,11 +12,9 @@ export const bombermanHistory = {
   }) {
     if (context.gameVersion === "1.0.0")
       return legacyHistory.projectView(context);
-    if (context.gameVersion === "1.1.0")
-      return threeLifeHistory.projectView(context);
     const { gameVersion, recordedOutcome, players, playerSlotId } = context;
     if (
-      gameVersion !== "1.2.0" ||
+      gameVersion !== "1.1.0" ||
       players.length < 2 ||
       players.length > 4 ||
       new Set(players).size !== players.length ||

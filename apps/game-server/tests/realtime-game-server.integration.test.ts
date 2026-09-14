@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { Client as ColyseusClient } from "@colyseus/sdk";
 import type { Room as ClientRoom } from "@colyseus/sdk";
 import {
@@ -34,7 +35,10 @@ import type {
   RealtimeSchedulerTimer,
   RealtimeStoredRoom,
 } from "@online-game-hub/realtime-game-server-runtime";
-import { verifyRealtimeReplay } from "@online-game-hub/realtime-game-sdk";
+import {
+  verifyRealtimeReplay,
+  type RealtimeCanonicalReplay,
+} from "@online-game-hub/realtime-game-sdk";
 import { resolveRealtimeGameDefinition } from "@online-game-hub/game-registry/server";
 import {
   FakeRuntimeClock,
@@ -1236,6 +1240,18 @@ describe.sequential("tank maze multiplayer Protocol V6", () => {
   );
 });
 describe.sequential("Bomberman multiplayer Protocol V6", () => {
+  const dropFixture = JSON.parse(
+    readFileSync(
+      new URL(
+        "../../../games/bomberman/tests/fixtures/bomberman-1.2.0-drops.json",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  ) as {
+    replay: RealtimeCanonicalReplay;
+    dropCheckpoint: { tick: number; players: unknown[]; pickups: unknown[] };
+  };
   it.each([2, 3, 4])(
     "runs %i real clients through three lives, authority checks, takeover and rematches",
     async (count) => {
@@ -1264,7 +1280,12 @@ describe.sequential("Bomberman multiplayer Protocol V6", () => {
           createRoomCode: () => "BMBR2345",
           createReplayId: () => `bomberman-replay-${++replaySerial}`,
           createSetupRngSeed: () => "bomberman-setup",
-          createRngSeed: () => `bomberman-game-${++seedSerial}`,
+          createRngSeed: () => {
+            seedSerial += 1;
+            return seedSerial === 3
+              ? dropFixture.replay.header.rng.seed
+              : `bomberman-game-${seedSerial}`;
+          },
           createPlayerSlotId: (i) => `bomberman-slot-${i}` as never,
         },
         logger: { write: () => undefined },
@@ -1293,6 +1314,7 @@ describe.sequential("Bomberman multiplayer Protocol V6", () => {
           speed: number;
         }[];
         bombs: unknown[];
+        pickups: unknown[];
       }
       const view = (i = 0) => required(inbox(i).snapshots.at(-1)).view as View;
       const setup = (
@@ -1356,7 +1378,7 @@ describe.sequential("Bomberman multiplayer Protocol V6", () => {
         }
         expect(inbox().connected[0]).toMatchObject({
           gameId: "bomberman",
-          gameVersion: "1.1.0",
+          gameVersion: "1.2.0",
         });
         expect(inbox().lifecycle.at(-1)?.players).toHaveLength(4);
         expect(inbox().lifecycle.at(-1)?.nextRound?.setupView).toMatchObject({
@@ -1584,8 +1606,8 @@ describe.sequential("Bomberman multiplayer Protocol V6", () => {
           for (const player of view().players)
             expect(player).toMatchObject({
               alive: true,
-              capacity: 1,
-              range: 2,
+              capacity: 2,
+              range: 1,
               speed: 4,
             });
           for (let i = 0; i < count - 1; i++) {
@@ -1669,6 +1691,82 @@ describe.sequential("Bomberman multiplayer Protocol V6", () => {
           ).ok,
         ).toBe(true);
         expect(archive.created).toHaveLength(2);
+        if (count === 2) {
+          for (let i = 0; i < count; i++)
+            room(i).send(
+              ROOM_CONTROL_MESSAGE,
+              control(`drop-ready-${i}`, "READY_FOR_ROUND"),
+            );
+          await waitUntil(() =>
+            inboxes.every((box) => box.snapshots.at(-1)?.roundNumber === 3),
+          );
+          const milestones = [
+            ...new Set([
+              ...dropFixture.replay.events.map((event) => event.tick),
+              dropFixture.dropCheckpoint.tick,
+              dropFixture.replay.finalTick,
+            ]),
+          ].sort((a, b) => a - b);
+          for (const tick of milestones) {
+            const now = inbox().snapshots.at(-1)?.tick ?? 0;
+            if (tick > now) await advance(tick - now);
+            if (tick === dropFixture.dropCheckpoint.tick) {
+              for (let i = 0; i < count; i++) {
+                expect(view(i).players).toMatchObject(
+                  dropFixture.dropCheckpoint.players,
+                );
+                expect(view(i).pickups).toEqual(
+                  dropFixture.dropCheckpoint.pickups,
+                );
+              }
+              const restored = await new ColyseusClient(address.httpUrl).join(
+                REALTIME_GAME_ROOM_NAME,
+                {
+                  type: "room.join",
+                  protocolVersion: 6,
+                  ticket: ticket(0),
+                  roomCode: "BMBR2345",
+                },
+              );
+              clients[0] = restored;
+              inboxes[0] = messagesV6(restored);
+              await waitUntil(() => inbox().snapshots.length > 0);
+              expect(view().pickups).toEqual(
+                dropFixture.dropCheckpoint.pickups,
+              );
+              expect(view().players).toMatchObject(
+                dropFixture.dropCheckpoint.players,
+              );
+            }
+            clock.advanceBy(1000);
+            for (const event of dropFixture.replay.events.filter(
+              (entry) => entry.tick === tick,
+            )) {
+              const actor = Number(event.actorSlotId.slice(1));
+              room(actor).send(
+                REALTIME_INPUT_MESSAGE,
+                nextInput(actor, event.input, 3),
+              );
+              await barrier(actor);
+            }
+          }
+          const dropped = required(await replayStore.get("bomberman-replay-3"));
+          expect(
+            dropped.events.map(({ tick, input }) => ({ tick, input })),
+          ).toEqual(
+            dropFixture.replay.events.map(({ tick, input }) => ({
+              tick,
+              input,
+            })),
+          );
+          expect(dropped.recordedRngCursor).toBe(
+            dropFixture.replay.recordedRngCursor,
+          );
+          expect(
+            verifyRealtimeReplay(dropped, resolveRealtimeGameDefinition).ok,
+          ).toBe(true);
+          expect(archive.created).toHaveLength(3);
+        }
         room().send(
           ROOM_CONTROL_MESSAGE,
           control("close-bomberman", "CLOSE_ROOM"),

@@ -417,7 +417,7 @@ for (const gameVersion of ["1.0.0", "1.1.0", "1.2.0", "1.3.0"]) {
     ).toHaveCount(gameVersion === "1.0.0" ? 0 : 1);
   });
 }
-for (const gameVersion of ["1.0.0", "1.1.0"]) {
+for (const gameVersion of ["1.0.0", "1.1.0", "1.2.0"]) {
   test(`bomberman ${gameVersion} Setup explains its exact life or bout rule`, async ({
     page,
   }) => {
@@ -431,5 +431,16 @@ for (const gameVersion of ["1.0.0", "1.1.0"]) {
     await expect(surface.locator("#confirmed-setting")).toContainText(
       gameVersion === "1.0.0" ? "抢 3 胜" : "一局三命",
     );
+    await expect(surface.locator(".rules-card")).toContainText(
+      gameVersion === "1.2.0" ? "初始可放 2 枚炸弹" : "初始可放 1 枚炸弹",
+    );
+    if (gameVersion === "1.2.0")
+      await expect(surface.locator(".rules-card")).toContainText(
+        "随机掉落一半已有加成（向下取整）",
+      );
+    else
+      await expect(surface.locator(".rules-card")).not.toContainText(
+        "随机掉落",
+      );
   });
 }

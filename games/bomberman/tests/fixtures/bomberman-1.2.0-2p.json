@@ -1,0 +1,152 @@
+{
+  "replay": {
+    "header": {
+      "replayFormatVersion": 1,
+      "runtime": "realtime",
+      "gameId": "bomberman",
+      "gameVersion": "1.2.0",
+      "tickRate": 60,
+      "rng": {
+        "algorithm": "fnv1a32-counter-v1",
+        "seed": "bomberman-v1.2-2p"
+      },
+      "initialConfig": {
+        "mapId": "classic-arena",
+        "modeId": "classic",
+        "playerCount": 2
+      },
+      "players": [
+        {
+          "slotId": "p0"
+        },
+        {
+          "slotId": "p1"
+        }
+      ]
+    },
+    "events": [
+      {
+        "sequence": 1,
+        "tick": 180,
+        "actorSlotId": "p0",
+        "input": {
+          "type": "PLACE_BOMB"
+        }
+      },
+      {
+        "sequence": 2,
+        "tick": 180,
+        "actorSlotId": "p0",
+        "input": {
+          "type": "PLACE_BOMB"
+        }
+      },
+      {
+        "sequence": 3,
+        "tick": 180,
+        "actorSlotId": "p1",
+        "input": {
+          "type": "MOVE",
+          "direction": "right"
+        }
+      },
+      {
+        "sequence": 4,
+        "tick": 181,
+        "actorSlotId": "p1",
+        "input": {
+          "type": "MOVE",
+          "direction": "none"
+        }
+      },
+      {
+        "sequence": 5,
+        "tick": 361,
+        "actorSlotId": "p0",
+        "input": {
+          "type": "PLACE_BOMB"
+        }
+      },
+      {
+        "sequence": 6,
+        "tick": 361,
+        "actorSlotId": "p0",
+        "input": {
+          "type": "PLACE_BOMB"
+        }
+      },
+      {
+        "sequence": 7,
+        "tick": 361,
+        "actorSlotId": "p1",
+        "input": {
+          "type": "MOVE",
+          "direction": "right"
+        }
+      },
+      {
+        "sequence": 8,
+        "tick": 362,
+        "actorSlotId": "p1",
+        "input": {
+          "type": "MOVE",
+          "direction": "none"
+        }
+      },
+      {
+        "sequence": 9,
+        "tick": 542,
+        "actorSlotId": "p0",
+        "input": {
+          "type": "PLACE_BOMB"
+        }
+      },
+      {
+        "sequence": 10,
+        "tick": 542,
+        "actorSlotId": "p0",
+        "input": {
+          "type": "PLACE_BOMB"
+        }
+      },
+      {
+        "sequence": 11,
+        "tick": 542,
+        "actorSlotId": "p1",
+        "input": {
+          "type": "MOVE",
+          "direction": "right"
+        }
+      },
+      {
+        "sequence": 12,
+        "tick": 543,
+        "actorSlotId": "p1",
+        "input": {
+          "type": "MOVE",
+          "direction": "none"
+        }
+      }
+    ],
+    "recordedRngCursor": 32,
+    "recordedOutcome": {
+      "type": "WIN",
+      "winnerSlotId": "p1",
+      "reason": "SURVIVOR",
+      "standings": [
+        {
+          "slotId": "p0",
+          "lives": 0,
+          "resigned": false
+        },
+        {
+          "slotId": "p1",
+          "lives": 3,
+          "resigned": false
+        }
+      ]
+    },
+    "finalTick": 693
+  },
+  "stateHash": "6723c51b960daad4ac7fcc5666f0b7949c18aa9ef81461b7a0da87a39199cdca"
+}

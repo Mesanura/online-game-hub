@@ -1,0 +1,304 @@
+{
+  "replay": {
+    "header": {
+      "replayFormatVersion": 1,
+      "runtime": "realtime",
+      "gameId": "bomberman",
+      "gameVersion": "1.2.0",
+      "tickRate": 60,
+      "rng": {
+        "algorithm": "fnv1a32-counter-v1",
+        "seed": "bomberman-drop-golden-1"
+      },
+      "initialConfig": {
+        "mapId": "classic-arena",
+        "modeId": "classic",
+        "playerCount": 2
+      },
+      "players": [
+        {
+          "slotId": "p0"
+        },
+        {
+          "slotId": "p1"
+        }
+      ]
+    },
+    "events": [
+      {
+        "sequence": 1,
+        "tick": 180,
+        "actorSlotId": "p0",
+        "input": {
+          "type": "MOVE",
+          "direction": "down"
+        }
+      },
+      {
+        "sequence": 2,
+        "tick": 195,
+        "actorSlotId": "p0",
+        "input": {
+          "type": "MOVE",
+          "direction": "down"
+        }
+      },
+      {
+        "sequence": 3,
+        "tick": 210,
+        "actorSlotId": "p0",
+        "input": {
+          "type": "MOVE",
+          "direction": "none"
+        }
+      },
+      {
+        "sequence": 4,
+        "tick": 211,
+        "actorSlotId": "p0",
+        "input": {
+          "type": "PLACE_BOMB"
+        }
+      },
+      {
+        "sequence": 5,
+        "tick": 212,
+        "actorSlotId": "p0",
+        "input": {
+          "type": "MOVE",
+          "direction": "up"
+        }
+      },
+      {
+        "sequence": 6,
+        "tick": 227,
+        "actorSlotId": "p0",
+        "input": {
+          "type": "MOVE",
+          "direction": "up"
+        }
+      },
+      {
+        "sequence": 7,
+        "tick": 242,
+        "actorSlotId": "p0",
+        "input": {
+          "type": "MOVE",
+          "direction": "none"
+        }
+      },
+      {
+        "sequence": 8,
+        "tick": 392,
+        "actorSlotId": "p0",
+        "input": {
+          "type": "MOVE",
+          "direction": "down"
+        }
+      },
+      {
+        "sequence": 9,
+        "tick": 407,
+        "actorSlotId": "p0",
+        "input": {
+          "type": "MOVE",
+          "direction": "down"
+        }
+      },
+      {
+        "sequence": 10,
+        "tick": 422,
+        "actorSlotId": "p0",
+        "input": {
+          "type": "MOVE",
+          "direction": "down"
+        }
+      },
+      {
+        "sequence": 11,
+        "tick": 437,
+        "actorSlotId": "p0",
+        "input": {
+          "type": "MOVE",
+          "direction": "none"
+        }
+      },
+      {
+        "sequence": 12,
+        "tick": 438,
+        "actorSlotId": "p0",
+        "input": {
+          "type": "MOVE",
+          "direction": "down"
+        }
+      },
+      {
+        "sequence": 13,
+        "tick": 453,
+        "actorSlotId": "p0",
+        "input": {
+          "type": "MOVE",
+          "direction": "none"
+        }
+      },
+      {
+        "sequence": 14,
+        "tick": 454,
+        "actorSlotId": "p0",
+        "input": {
+          "type": "PLACE_BOMB"
+        }
+      },
+      {
+        "sequence": 15,
+        "tick": 455,
+        "actorSlotId": "p0",
+        "input": {
+          "type": "MOVE",
+          "direction": "up"
+        }
+      },
+      {
+        "sequence": 16,
+        "tick": 470,
+        "actorSlotId": "p0",
+        "input": {
+          "type": "MOVE",
+          "direction": "up"
+        }
+      },
+      {
+        "sequence": 17,
+        "tick": 485,
+        "actorSlotId": "p0",
+        "input": {
+          "type": "MOVE",
+          "direction": "up"
+        }
+      },
+      {
+        "sequence": 18,
+        "tick": 500,
+        "actorSlotId": "p0",
+        "input": {
+          "type": "MOVE",
+          "direction": "none"
+        }
+      },
+      {
+        "sequence": 19,
+        "tick": 635,
+        "actorSlotId": "p0",
+        "input": {
+          "type": "MOVE",
+          "direction": "down"
+        }
+      },
+      {
+        "sequence": 20,
+        "tick": 650,
+        "actorSlotId": "p0",
+        "input": {
+          "type": "MOVE",
+          "direction": "down"
+        }
+      },
+      {
+        "sequence": 21,
+        "tick": 665,
+        "actorSlotId": "p0",
+        "input": {
+          "type": "MOVE",
+          "direction": "down"
+        }
+      },
+      {
+        "sequence": 22,
+        "tick": 680,
+        "actorSlotId": "p0",
+        "input": {
+          "type": "MOVE",
+          "direction": "down"
+        }
+      },
+      {
+        "sequence": 23,
+        "tick": 695,
+        "actorSlotId": "p0",
+        "input": {
+          "type": "MOVE",
+          "direction": "none"
+        }
+      },
+      {
+        "sequence": 24,
+        "tick": 696,
+        "actorSlotId": "p0",
+        "input": {
+          "type": "PLACE_BOMB"
+        }
+      },
+      {
+        "sequence": 25,
+        "tick": 877,
+        "actorSlotId": "p0",
+        "input": {
+          "type": "PLACE_BOMB"
+        }
+      },
+      {
+        "sequence": 26,
+        "tick": 1058,
+        "actorSlotId": "p0",
+        "input": {
+          "type": "PLACE_BOMB"
+        }
+      }
+    ],
+    "finalTick": 1209,
+    "recordedRngCursor": 33,
+    "recordedOutcome": {
+      "type": "WIN",
+      "winnerSlotId": "p1",
+      "reason": "SURVIVOR",
+      "standings": [
+        {
+          "slotId": "p0",
+          "lives": 0,
+          "resigned": false
+        },
+        {
+          "slotId": "p1",
+          "lives": 3,
+          "resigned": false
+        }
+      ]
+    }
+  },
+  "stateHash": "c924a645b395808f2da3d46fd234509d1a472f706341a57106ad51c216b9d1b0",
+  "dropCheckpoint": {
+    "tick": 847,
+    "players": [
+      {
+        "index": 0,
+        "capacity": 2,
+        "range": 2,
+        "speed": 4,
+        "lives": 2
+      },
+      {
+        "index": 1,
+        "capacity": 2,
+        "range": 1,
+        "speed": 4,
+        "lives": 3
+      }
+    ],
+    "pickups": [
+      {
+        "cell": 93,
+        "kind": "range"
+      }
+    ]
+  }
+}

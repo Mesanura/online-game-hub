@@ -15,6 +15,9 @@ interface View {
     lives: number;
     invulnerableTicks: number;
     resigned: boolean;
+    capacity: number;
+    activeBombs: number;
+    range: number;
   }[];
   flames: { cell: number; shape: string; remainingTicks: number }[];
   bombs: unknown[];
@@ -22,11 +25,13 @@ interface View {
   events: { id: number; kind: string; x: number; y: number }[];
   outcome: unknown;
 }
-async function fixture(): Promise<View> {
+async function fixture(version = "1.1.0"): Promise<View> {
   return JSON.parse(
     await readFile(
       new URL(
-        "../../../game-surfaces/bomberman/tests/fixtures/play-1.1.json",
+        "../../../game-surfaces/bomberman/tests/fixtures/play-" +
+          version.slice(0, 3) +
+          ".json",
         import.meta.url,
       ),
       "utf8",
@@ -164,6 +169,63 @@ for (const reducedMotion of [false, true]) {
       ]);
   });
 }
+
+test("bomberman 1.2.0 renders dropped upgrades and reduced capacity without clearing held movement", async ({
+  page,
+}) => {
+  await page.clock.install({ time: new Date("2030-01-01T00:00:00Z") });
+  await page.clock.pauseAt(new Date("2030-01-01T00:00:01Z"));
+  const { surface, push } = await openPlaySurface(page, "bomberman", "1.2.0");
+  const view = await fixture("1.2.0");
+  const actor = required(view.players[0]);
+  Object.assign(actor, {
+    capacity: 4,
+    activeBombs: 4,
+    lives: 3,
+    invulnerableTicks: 0,
+  });
+  view.bombs = [14, 16, 22, 126].map((cell, index) => ({
+    id: index + 1,
+    cell,
+    ownerSlotId: actor.slotId,
+    fuseTicks: 100,
+  }));
+  view.arena.tiles[70] = "floor";
+  view.flames = [];
+  view.pickups = [];
+  view.events = [];
+  await push(view, { tick: 180 });
+  await expect(surface.locator("#inventory")).toContainText("炸弹 4/4");
+  await surface.locator("#arena-canvas").focus();
+  await page.keyboard.down("KeyD");
+  Object.assign(actor, { capacity: 3, lives: 2, invulnerableTicks: 120 });
+  view.pickups = [{ cell: 70, kind: "capacity" }];
+  await push(view, { tick: 183 });
+  await expect(surface.locator("#inventory")).toContainText("炸弹 4/3");
+  await expect(surface.locator("#joystick")).toHaveAttribute(
+    "data-direction",
+    "right",
+  );
+  await expect(surface.getByTestId("player-score-0")).toHaveAttribute(
+    "data-lives",
+    "2",
+  );
+  await page.clock.runFor(60);
+  const sample = () =>
+    surface.locator("#arena-canvas canvas").evaluate((element) => {
+      const context = (element as HTMLCanvasElement).getContext("2d");
+      if (!context) throw new Error("Missing pixel canvas");
+      return [...context.getImageData(176, 176, 1, 1).data].slice(0, 3);
+    });
+  expect(await sample()).toEqual([54, 90, 137]);
+  Object.assign(actor, { capacity: 4, invulnerableTicks: 117 });
+  view.pickups = [];
+  await push(view, { tick: 186 });
+  await expect(surface.locator("#inventory")).toContainText("炸弹 4/4");
+  await page.clock.runFor(60);
+  expect(await sample()).not.toEqual([54, 90, 137]);
+  await page.keyboard.up("KeyD");
+});
 
 interface AudioProbe {
   tones: string[];

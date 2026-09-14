@@ -31,19 +31,19 @@ function required<T>(value: T | null | undefined): T {
 }
 async function fixture(
   count: number,
-  kind: "score" | "draw",
+  kind: "score" | "draw" | "drops",
   version: string,
 ): Promise<RealtimeCanonicalReplay> {
   const { replay } = JSON.parse(
     await readFile(
       new URL(
-        `../../../games/bomberman/tests/fixtures/bomberman-${version}-${count}p.json`,
+        `../../../games/bomberman/tests/fixtures/bomberman-${version}-${kind === "drops" ? "drops" : count + "p"}.json`,
         import.meta.url,
       ),
       "utf8",
     ),
   ) as { replay: RealtimeCanonicalReplay };
-  if (kind === "score") return replay;
+  if (kind !== "draw") return replay;
   const definition = required(
     resolveRealtimeGameDefinition("bomberman", version),
   );
@@ -92,9 +92,11 @@ describe.sequential("Bomberman PostgreSQL archives and private results", () => {
   afterAll(async () => {
     await isolated?.close();
   });
-  for (const version of ["1.0.0", "1.1.0"])
+  for (const version of ["1.0.0", "1.1.0", "1.2.0"])
     for (const count of [2, 3, 4])
-      for (const kind of ["score", "draw"] as const) {
+      for (const kind of (version === "1.2.0" && count === 2
+        ? ["score", "draw", "drops"]
+        : ["score", "draw"]) as ("score" | "draw" | "drops")[]) {
         it(`rereads an exact ${version} ${count}-player ${kind} record and account-isolated outcomes`, async () => {
           const replay = await fixture(count, kind, version);
           expect(
@@ -130,7 +132,7 @@ describe.sequential("Bomberman PostgreSQL archives and private results", () => {
           };
           const active: RealtimeStoredRoom = {
             roomId,
-            roomCode: `BMB${version === "1.0.0" ? "R" : "N"}23${count}${kind === "score" ? 4 : 5}`,
+            roomCode: `BMB${version === "1.0.0" ? "R" : version === "1.1.0" ? "N" : "D"}23${count}${kind === "score" ? 4 : kind === "draw" ? 5 : 6}`,
             gameId: "bomberman",
             gameVersion: version,
             setupProtocol: 6,

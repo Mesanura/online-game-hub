@@ -321,7 +321,7 @@ const airHockeySurface: GameDeploymentRegistration = Object.freeze({
 });
 
 const bombermanSurface = (
-  gameVersion: "1.0.0" | "1.1.0",
+  gameVersion: "1.0.0" | "1.1.0" | "1.2.0",
 ): GameDeploymentRegistration =>
   Object.freeze({
     gameId: "bomberman",
@@ -330,16 +330,16 @@ const bombermanSurface = (
     platformControls: resignPlatformControls,
     presentation: Object.freeze({
       kind: "surface-v1",
-      publicBasePath: "/game-surfaces/bomberman/1.1.0",
+      publicBasePath: "/game-surfaces/bomberman/1.2.0",
       artifact: {
         schemaVersion: 1,
         gameId: "bomberman",
-        supportedGameVersions: ["1.0.0", "1.1.0"],
-        surfaceVersion: "1.1.0",
+        supportedGameVersions: ["1.0.0", "1.1.0", "1.2.0"],
+        surfaceVersion: "1.2.0",
         bridgeVersion: 2,
         entrypoints: { setup: "setup/index.html", play: "play/index.html" },
         capabilities: {},
-        contentDigest: "sha256-Va7C3grd1l20cf2vlw7e7DYgkHQnlPCN0tBOVBRviPo=",
+        contentDigest: "sha256-4W2B5zD4Ldk89fl72Kt+tHlmx9rrnMHSzu2mNRK40bk=",
       } satisfies SurfaceArtifactManifestV1,
     }),
   });
@@ -347,6 +347,7 @@ const bombermanSurface = (
 const gameDeployments = Object.freeze([
   bombermanSurface("1.0.0"),
   bombermanSurface("1.1.0"),
+  bombermanSurface("1.2.0"),
   airHockeySurface,
   tankMazeSurface("1.0.0"),
   tankMazeSurface("1.1.0"),
