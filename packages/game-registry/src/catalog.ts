@@ -9,6 +9,7 @@ import { badmintonManifest } from "@online-game-hub/badminton/manifest";
 import { tankMazeManifest } from "@online-game-hub/tank-maze/manifest";
 import { airHockeyManifest } from "@online-game-hub/air-hockey/manifest";
 import { bombermanManifest } from "@online-game-hub/bomberman/manifest";
+import { ninjaClashManifest } from "@online-game-hub/ninja-clash/manifest";
 import type { GameManifest } from "@online-game-hub/game-sdk";
 import type { RealtimeGameManifest } from "@online-game-hub/realtime-game-sdk";
 
@@ -26,6 +27,7 @@ export const gameCatalog = Object.freeze([
   tankMazeManifest,
   airHockeyManifest,
   bombermanManifest,
+  ninjaClashManifest,
 ]) satisfies readonly CatalogGameManifest[];
 
 export function resolveGameManifest(

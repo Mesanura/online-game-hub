@@ -9,6 +9,7 @@ import { badmintonHistory } from "@online-game-hub/badminton/history";
 import { tankMazeHistory } from "@online-game-hub/tank-maze/history";
 import { airHockeyHistory } from "@online-game-hub/air-hockey/history";
 import { bombermanHistory } from "@online-game-hub/bomberman/history";
+import { ninjaClashHistory } from "@online-game-hub/ninja-clash/history";
 import type {
   GameHistoryProjection,
   MatchHistoryResult,
@@ -26,6 +27,7 @@ const histories: readonly GameHistoryProjection[] = [
   tankMazeHistory,
   airHockeyHistory,
   bombermanHistory,
+  ninjaClashHistory,
 ];
 
 export function resolveGameHistoryProjection(

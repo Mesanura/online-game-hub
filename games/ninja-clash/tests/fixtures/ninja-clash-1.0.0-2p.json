@@ -1,0 +1,618 @@
+{
+  "replay": {
+    "header": {
+      "replayFormatVersion": 1,
+      "runtime": "realtime",
+      "gameId": "ninja-clash",
+      "gameVersion": "1.0.0",
+      "tickRate": 60,
+      "rng": {
+        "algorithm": "fnv1a32-counter-v1",
+        "seed": "ninja-clash-1.0.0-2p"
+      },
+      "initialConfig": {
+        "playerCount": 2,
+        "targetScore": 3
+      },
+      "players": [
+        {
+          "slotId": "p0"
+        },
+        {
+          "slotId": "p1"
+        }
+      ]
+    },
+    "events": [
+      {
+        "sequence": 1,
+        "tick": 180,
+        "actorSlotId": "p0",
+        "input": {
+          "type": "MOVE",
+          "direction": 1
+        }
+      },
+      {
+        "sequence": 2,
+        "tick": 180,
+        "actorSlotId": "p1",
+        "input": {
+          "type": "MOVE",
+          "direction": -1
+        }
+      },
+      {
+        "sequence": 3,
+        "tick": 195,
+        "actorSlotId": "p0",
+        "input": {
+          "type": "MOVE",
+          "direction": 1
+        }
+      },
+      {
+        "sequence": 4,
+        "tick": 195,
+        "actorSlotId": "p1",
+        "input": {
+          "type": "MOVE",
+          "direction": -1
+        }
+      },
+      {
+        "sequence": 5,
+        "tick": 210,
+        "actorSlotId": "p0",
+        "input": {
+          "type": "MOVE",
+          "direction": 1
+        }
+      },
+      {
+        "sequence": 6,
+        "tick": 210,
+        "actorSlotId": "p1",
+        "input": {
+          "type": "MOVE",
+          "direction": -1
+        }
+      },
+      {
+        "sequence": 7,
+        "tick": 225,
+        "actorSlotId": "p0",
+        "input": {
+          "type": "MOVE",
+          "direction": 1
+        }
+      },
+      {
+        "sequence": 8,
+        "tick": 225,
+        "actorSlotId": "p1",
+        "input": {
+          "type": "MOVE",
+          "direction": -1
+        }
+      },
+      {
+        "sequence": 9,
+        "tick": 240,
+        "actorSlotId": "p0",
+        "input": {
+          "type": "MOVE",
+          "direction": 1
+        }
+      },
+      {
+        "sequence": 10,
+        "tick": 240,
+        "actorSlotId": "p1",
+        "input": {
+          "type": "MOVE",
+          "direction": -1
+        }
+      },
+      {
+        "sequence": 11,
+        "tick": 255,
+        "actorSlotId": "p0",
+        "input": {
+          "type": "MOVE",
+          "direction": 1
+        }
+      },
+      {
+        "sequence": 12,
+        "tick": 255,
+        "actorSlotId": "p1",
+        "input": {
+          "type": "MOVE",
+          "direction": -1
+        }
+      },
+      {
+        "sequence": 13,
+        "tick": 259,
+        "actorSlotId": "p0",
+        "input": {
+          "type": "MOVE",
+          "direction": 0
+        }
+      },
+      {
+        "sequence": 14,
+        "tick": 267,
+        "actorSlotId": "p1",
+        "input": {
+          "type": "MOVE",
+          "direction": 0
+        }
+      },
+      {
+        "sequence": 15,
+        "tick": 267,
+        "actorSlotId": "p0",
+        "input": {
+          "type": "MOVE",
+          "direction": 1
+        }
+      },
+      {
+        "sequence": 16,
+        "tick": 267,
+        "actorSlotId": "p1",
+        "input": {
+          "type": "MOVE",
+          "direction": -1
+        }
+      },
+      {
+        "sequence": 17,
+        "tick": 267,
+        "actorSlotId": "p0",
+        "input": {
+          "type": "ATTACK"
+        }
+      },
+      {
+        "sequence": 18,
+        "tick": 267,
+        "actorSlotId": "p1",
+        "input": {
+          "type": "ATTACK"
+        }
+      },
+      {
+        "sequence": 19,
+        "tick": 268,
+        "actorSlotId": "p1",
+        "input": {
+          "type": "MOVE",
+          "direction": 1
+        }
+      },
+      {
+        "sequence": 20,
+        "tick": 269,
+        "actorSlotId": "p1",
+        "input": {
+          "type": "MOVE",
+          "direction": 0
+        }
+      },
+      {
+        "sequence": 21,
+        "tick": 270,
+        "actorSlotId": "p0",
+        "input": {
+          "type": "MOVE",
+          "direction": 1
+        }
+      },
+      {
+        "sequence": 22,
+        "tick": 270,
+        "actorSlotId": "p1",
+        "input": {
+          "type": "MOVE",
+          "direction": 0
+        }
+      },
+      {
+        "sequence": 23,
+        "tick": 273,
+        "actorSlotId": "p0",
+        "input": {
+          "type": "MOVE",
+          "direction": 0
+        }
+      },
+      {
+        "sequence": 24,
+        "tick": 273,
+        "actorSlotId": "p0",
+        "input": {
+          "type": "ATTACK"
+        }
+      },
+      {
+        "sequence": 25,
+        "tick": 276,
+        "actorSlotId": "p0",
+        "input": {
+          "type": "SLIDE"
+        }
+      },
+      {
+        "sequence": 26,
+        "tick": 277,
+        "actorSlotId": "p0",
+        "input": {
+          "type": "MOVE",
+          "direction": -1
+        }
+      },
+      {
+        "sequence": 27,
+        "tick": 277,
+        "actorSlotId": "p0",
+        "input": {
+          "type": "ATTACK"
+        }
+      },
+      {
+        "sequence": 28,
+        "tick": 279,
+        "actorSlotId": "p0",
+        "input": {
+          "type": "MOVE",
+          "direction": 0
+        }
+      },
+      {
+        "sequence": 29,
+        "tick": 461,
+        "actorSlotId": "p0",
+        "input": {
+          "type": "MOVE",
+          "direction": -1
+        }
+      },
+      {
+        "sequence": 30,
+        "tick": 461,
+        "actorSlotId": "p1",
+        "input": {
+          "type": "MOVE",
+          "direction": 1
+        }
+      },
+      {
+        "sequence": 31,
+        "tick": 465,
+        "actorSlotId": "p0",
+        "input": {
+          "type": "MOVE",
+          "direction": -1
+        }
+      },
+      {
+        "sequence": 32,
+        "tick": 465,
+        "actorSlotId": "p1",
+        "input": {
+          "type": "MOVE",
+          "direction": 1
+        }
+      },
+      {
+        "sequence": 33,
+        "tick": 480,
+        "actorSlotId": "p0",
+        "input": {
+          "type": "MOVE",
+          "direction": -1
+        }
+      },
+      {
+        "sequence": 34,
+        "tick": 480,
+        "actorSlotId": "p1",
+        "input": {
+          "type": "MOVE",
+          "direction": 1
+        }
+      },
+      {
+        "sequence": 35,
+        "tick": 495,
+        "actorSlotId": "p0",
+        "input": {
+          "type": "MOVE",
+          "direction": -1
+        }
+      },
+      {
+        "sequence": 36,
+        "tick": 495,
+        "actorSlotId": "p1",
+        "input": {
+          "type": "MOVE",
+          "direction": 1
+        }
+      },
+      {
+        "sequence": 37,
+        "tick": 510,
+        "actorSlotId": "p0",
+        "input": {
+          "type": "MOVE",
+          "direction": -1
+        }
+      },
+      {
+        "sequence": 38,
+        "tick": 510,
+        "actorSlotId": "p1",
+        "input": {
+          "type": "MOVE",
+          "direction": 1
+        }
+      },
+      {
+        "sequence": 39,
+        "tick": 525,
+        "actorSlotId": "p0",
+        "input": {
+          "type": "MOVE",
+          "direction": -1
+        }
+      },
+      {
+        "sequence": 40,
+        "tick": 525,
+        "actorSlotId": "p1",
+        "input": {
+          "type": "MOVE",
+          "direction": 1
+        }
+      },
+      {
+        "sequence": 41,
+        "tick": 540,
+        "actorSlotId": "p0",
+        "input": {
+          "type": "MOVE",
+          "direction": -1
+        }
+      },
+      {
+        "sequence": 42,
+        "tick": 540,
+        "actorSlotId": "p1",
+        "input": {
+          "type": "MOVE",
+          "direction": 1
+        }
+      },
+      {
+        "sequence": 43,
+        "tick": 547,
+        "actorSlotId": "p0",
+        "input": {
+          "type": "MOVE",
+          "direction": -1
+        }
+      },
+      {
+        "sequence": 44,
+        "tick": 547,
+        "actorSlotId": "p0",
+        "input": {
+          "type": "ATTACK"
+        }
+      },
+      {
+        "sequence": 45,
+        "tick": 731,
+        "actorSlotId": "p0",
+        "input": {
+          "type": "MOVE",
+          "direction": 1
+        }
+      },
+      {
+        "sequence": 46,
+        "tick": 731,
+        "actorSlotId": "p1",
+        "input": {
+          "type": "MOVE",
+          "direction": -1
+        }
+      },
+      {
+        "sequence": 47,
+        "tick": 735,
+        "actorSlotId": "p0",
+        "input": {
+          "type": "MOVE",
+          "direction": 1
+        }
+      },
+      {
+        "sequence": 48,
+        "tick": 735,
+        "actorSlotId": "p1",
+        "input": {
+          "type": "MOVE",
+          "direction": -1
+        }
+      },
+      {
+        "sequence": 49,
+        "tick": 750,
+        "actorSlotId": "p0",
+        "input": {
+          "type": "MOVE",
+          "direction": 1
+        }
+      },
+      {
+        "sequence": 50,
+        "tick": 750,
+        "actorSlotId": "p1",
+        "input": {
+          "type": "MOVE",
+          "direction": -1
+        }
+      },
+      {
+        "sequence": 51,
+        "tick": 765,
+        "actorSlotId": "p0",
+        "input": {
+          "type": "MOVE",
+          "direction": 1
+        }
+      },
+      {
+        "sequence": 52,
+        "tick": 765,
+        "actorSlotId": "p1",
+        "input": {
+          "type": "MOVE",
+          "direction": -1
+        }
+      },
+      {
+        "sequence": 53,
+        "tick": 780,
+        "actorSlotId": "p0",
+        "input": {
+          "type": "MOVE",
+          "direction": 1
+        }
+      },
+      {
+        "sequence": 54,
+        "tick": 780,
+        "actorSlotId": "p1",
+        "input": {
+          "type": "MOVE",
+          "direction": -1
+        }
+      },
+      {
+        "sequence": 55,
+        "tick": 795,
+        "actorSlotId": "p0",
+        "input": {
+          "type": "MOVE",
+          "direction": 1
+        }
+      },
+      {
+        "sequence": 56,
+        "tick": 795,
+        "actorSlotId": "p1",
+        "input": {
+          "type": "MOVE",
+          "direction": -1
+        }
+      },
+      {
+        "sequence": 57,
+        "tick": 810,
+        "actorSlotId": "p0",
+        "input": {
+          "type": "MOVE",
+          "direction": 1
+        }
+      },
+      {
+        "sequence": 58,
+        "tick": 810,
+        "actorSlotId": "p1",
+        "input": {
+          "type": "MOVE",
+          "direction": -1
+        }
+      },
+      {
+        "sequence": 59,
+        "tick": 817,
+        "actorSlotId": "p0",
+        "input": {
+          "type": "MOVE",
+          "direction": 0
+        }
+      },
+      {
+        "sequence": 60,
+        "tick": 817,
+        "actorSlotId": "p0",
+        "input": {
+          "type": "MOVE",
+          "direction": 1
+        }
+      },
+      {
+        "sequence": 61,
+        "tick": 817,
+        "actorSlotId": "p0",
+        "input": {
+          "type": "ATTACK"
+        }
+      },
+      {
+        "sequence": 62,
+        "tick": 818,
+        "actorSlotId": "p0",
+        "input": {
+          "type": "MOVE",
+          "direction": -1
+        }
+      },
+      {
+        "sequence": 63,
+        "tick": 818,
+        "actorSlotId": "p1",
+        "input": {
+          "type": "MOVE",
+          "direction": 0
+        }
+      },
+      {
+        "sequence": 64,
+        "tick": 820,
+        "actorSlotId": "p0",
+        "input": {
+          "type": "MOVE",
+          "direction": 0
+        }
+      }
+    ],
+    "finalTick": 821,
+    "recordedRngCursor": 0,
+    "recordedOutcome": {
+      "type": "WIN",
+      "winnerSlotId": "p0",
+      "reason": "TARGET_SCORE",
+      "standings": [
+        {
+          "slotId": "p0",
+          "score": 3,
+          "resigned": false
+        },
+        {
+          "slotId": "p1",
+          "score": 0,
+          "resigned": false
+        }
+      ]
+    }
+  },
+  "stateHash": "5da055429aa4516fd127378be6ff72f3a8e8864904495df512799d72df19b452"
+}

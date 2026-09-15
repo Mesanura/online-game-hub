@@ -18,6 +18,24 @@ import {
 } from "../src/server.js";
 
 describe("explicit game registry", () => {
+  it("registers Ninja Clash as an exact V6 four-player record-only game", () => {
+    expect(
+      resolveCurrentRealtimeGameDefinition("ninja-clash")?.manifest,
+    ).toMatchObject({
+      title: "像素忍战",
+      minPlayers: 2,
+      maxPlayers: 4,
+      inputDelivery: "events",
+      capabilities: { replay: "record-only" },
+    });
+    expect(resolveRoundSetupDefinition("ninja-clash", "1.0.0")).toBeDefined();
+    expect(
+      resolveGameSurfaceEntrypoint("ninja-clash", "1.0.0", "play")?.url,
+    ).toBe("/game-surfaces/ninja-clash/1.0.2/play/index.html");
+    expect(
+      resolveGameSurfaceEntrypoint("ninja-clash", "1.0.0", "replay"),
+    ).toBeUndefined();
+  });
   it("uses each game's single manifest source in the catalog and server", () => {
     expect(Object.isFrozen(gameCatalog)).toBe(true);
     expect(gameCatalog).not.toHaveLength(0);
@@ -40,9 +58,14 @@ describe("explicit game registry", () => {
 
     for (const manifest of gameCatalog) {
       expect(manifest.capabilities.replay).toBe(
-        ["pong", "badminton", "tank-maze", "air-hockey", "bomberman"].includes(
-          manifest.id,
-        )
+        [
+          "pong",
+          "badminton",
+          "tank-maze",
+          "air-hockey",
+          "bomberman",
+          "ninja-clash",
+        ].includes(manifest.id)
           ? "record-only"
           : "player-playback",
       );

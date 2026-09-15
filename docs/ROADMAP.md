@@ -8,7 +8,7 @@ M1–M8 与 M9-A–G 已完成。独立 Surface、V6 Setup、全量游戏画面�
 
 目录与历史体验完善已完成，范围与退出条件见下文对应章节。
 
-- 十一款当前游戏都注册为 V6 Setup 与独立 Bridge V2 Surface。
+- 十二款当前游戏都注册为 V6 Setup 与独立 Bridge V2 Surface。
 - 所有受支持历史规则版本都有精确 Surface 映射；七款旧 Client 源码、渲染契约与 registry loader 已移除。
 - 所有受支持规则版本已登记 V6 Setup；两类 runtime、连接 SDK 与 Web 只接受 V6，历史 Core、golden、精确 Surface/replay 映射与旧数据库 metadata 读取继续保留。
 - create-game 已支持可通过全仓检查的 V6/Bridge V2 双目录草稿；草稿不自动进入 catalog 或生产制品。
@@ -82,6 +82,8 @@ M9 不包含真正 `replay:none` 的数据库语义、外部仓库发布、独�
 内容维护沿用各游戏规则版本与 Surface 版本边界，并运行 Core/Setup/golden、Surface contract、真实多人 integration 和临时 PostgreSQL 浏览器验证；详细要求集中在测试策略。
 
 ## 目录与历史体验完善
+
+[像素忍战](../games/ninja-clash/GAME_SPEC.md) 已接入：2–4 人生存计分、连续蹬墙跳、滑行无敌与动作取消、统一拼刀，独立像素 Surface 与键盘/多指操作，record-only。
 
 沿用现有 Clay 样式，以目录发现和最近 50 条账户历史为范围，复用既有 manifest 与私有历史接口。
 

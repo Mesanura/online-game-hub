@@ -156,6 +156,285 @@ function messages(room: ClientRoom): RoomMessages {
   });
   return value;
 }
+
+describe.sequential("Ninja Clash multiplayer Protocol V6", () => {
+  it.each([2, 3, 4])(
+    "runs %i clients through exact combat, authority, takeover and rematch",
+    async (count) => {
+      const fixture = JSON.parse(
+        readFileSync(
+          new URL(
+            `../../../games/ninja-clash/tests/fixtures/ninja-clash-1.0.0-${count}p.json`,
+            import.meta.url,
+          ),
+          "utf8",
+        ),
+      ) as { replay: RealtimeCanonicalReplay };
+      const clock = new FakeRuntimeClock(9000000),
+        timer = new ManualSchedulerTimer();
+      const authority = new TestTicketAuthority({
+        issuer: "ninja-integration",
+        secret: "ninja-integration-secret",
+        clock,
+        lifetimeSeconds: 6000,
+      });
+      const replayStore = new InMemoryRealtimeReplayStore(),
+        roomStore = new InMemoryRealtimeRoomStore();
+      let serial = 0;
+      const app = createGameServer({
+        ticketVerifier: authority,
+        realtimeTicketVerifier: authority,
+        realtimeReplayStore: replayStore,
+        realtimeRoomStore: roomStore,
+        realtimeClock: clock as unknown as RealtimeRuntimeClock,
+        realtimeSchedulerTimer: timer,
+        realtimeIds: {
+          createRoomCode: () => "NNJA2345",
+          createReplayId: () => "ninja-replay-" + ++serial,
+          createSetupRngSeed: () => "ninja-setup",
+          createRngSeed: () => fixture.replay.header.rng.seed + serial,
+          createPlayerSlotId: (i) => `p${i}` as never,
+        },
+        logger: { write: () => undefined },
+      });
+      const clients: ClientRoom[] = [],
+        boxes: RoomMessagesV6[] = [];
+      const sequences = Array.from({ length: count }, () => 0);
+      const ticket = (i: number) =>
+        authority.issue("ninja-user-" + i, { protocolVersion: 6 });
+      const box = (i = 0) => required(boxes[i]);
+      const room = (i = 0) => required(clients[i]);
+      const barrier = async (i: number) => {
+        const n = box(i).realtimeRejections.length;
+        room(i).send(REALTIME_INPUT_MESSAGE, { barrier: true });
+        await waitUntil(() => box(i).realtimeRejections.length > n);
+      };
+      let tick = 0;
+      const advance = async (n: number) => {
+        for (let i = 0; i < n; i++) {
+          clock.advanceBy(17);
+          await timer.tick();
+        }
+        tick += n;
+        await waitUntil(() =>
+          boxes.every((b) => b.snapshots.at(-1)?.tick === tick),
+        );
+      };
+      try {
+        const address = await app.start({ port: 0 });
+        for (let i = 0; i < count; i++) {
+          const client = new ColyseusClient(address.httpUrl);
+          clients.push(
+            i === 0
+              ? await client.create(REALTIME_GAME_ROOM_NAME, {
+                  type: "room.create",
+                  protocolVersion: 6,
+                  ticket: ticket(i),
+                  gameId: "ninja-clash",
+                  initialConfig: { playerCount: count, targetScore: 5 },
+                })
+              : await client.join(REALTIME_GAME_ROOM_NAME, {
+                  type: "room.join",
+                  protocolVersion: 6,
+                  ticket: ticket(i),
+                  roomCode: "NNJA2345",
+                }),
+          );
+          boxes.push(messagesV6(room(i)));
+          await waitUntil(() => box(i).lifecycle.length > 0);
+        }
+        const setting = {
+          type: "game.setup",
+          protocolVersion: 6,
+          commandId: "set-target",
+          roundNumber: 1,
+          expectedSetupRevision: 0,
+          action: { type: "SET_TARGET_SCORE", targetScore: 3 },
+        };
+        room(1).send(GAME_SETUP_MESSAGE, {
+          ...setting,
+          commandId: "guest-target",
+        });
+        await waitUntil(() => box(1).rejections.length > 0);
+        expect(box(1).rejections.at(-1)?.gameRuleCode).toBe("NOT_OWNER");
+        room().send(
+          ROOM_CONTROL_MESSAGE,
+          control("early-ready", "READY_FOR_ROUND"),
+        );
+        await waitUntil(
+          () =>
+            box().lifecycle.at(-1)?.nextRound?.readiness.readySlotIds.length ===
+            1,
+        );
+        room().send(GAME_SETUP_MESSAGE, setting);
+        await waitUntil(
+          () => box().lifecycle.at(-1)?.nextRound?.setupRevision === 1,
+        );
+        expect(
+          box().lifecycle.at(-1)?.nextRound?.readiness.readySlotIds,
+        ).toEqual([]);
+        room().send(GAME_SETUP_MESSAGE, {
+          ...setting,
+          commandId: "stale-target",
+        });
+        await waitUntil(
+          () => box().rejections.at(-1)?.code === "STALE_SETUP_REVISION",
+        );
+        for (let i = 0; i < count; i++)
+          room(i).send(
+            ROOM_CONTROL_MESSAGE,
+            control("ready-" + i, "READY_FOR_ROUND"),
+          );
+        await waitUntil(() => boxes.every((b) => b.snapshots.length > 0));
+        for (const payload of [
+          { ...input("forged", 1, { type: "ATTACK" }), actorSlotId: "p1" },
+          input("position", 1, { type: "MOVE", direction: 1, x: 0 }),
+          input("direction", 1, { type: "MOVE", direction: 2 }),
+        ]) {
+          const before = box().realtimeRejections.length;
+          room().send(REALTIME_INPUT_MESSAGE, payload);
+          await waitUntil(() => box().realtimeRejections.length > before);
+          expect(box().realtimeRejections.at(-1)?.code).toBe(
+            "INVALID_INPUT_PAYLOAD",
+          );
+        }
+        expect((await replayStore.get("ninja-replay-1"))?.events).toEqual([]);
+        let resumed = false,
+          duplicated = false,
+          checkedInputRejections = false;
+        for (let index = 0; index < fixture.replay.events.length;) {
+          const target = required(fixture.replay.events[index]).tick;
+          await advance(target - tick);
+          const delivered = new Set<number>();
+          let first: ReturnType<typeof input> | null = null;
+          while (
+            index < fixture.replay.events.length &&
+            required(fixture.replay.events[index]).tick === target
+          ) {
+            const e = required(fixture.replay.events[index++]),
+              i = Number(e.actorSlotId.slice(1));
+            const command = input(
+              "combat-" + index,
+              (sequences[i] = (sequences[i] ?? 0) + 1),
+              e.input,
+            );
+            room(i).send(REALTIME_INPUT_MESSAGE, command);
+            delivered.add(i);
+            first ??= command;
+          }
+          if (!duplicated && first) {
+            const ownerIndex = Number(
+              required(fixture.replay.events[0]).actorSlotId.slice(1),
+            );
+            room(ownerIndex).send(REALTIME_INPUT_MESSAGE, first);
+            duplicated = true;
+          }
+          for (const i of delivered) await barrier(i);
+          await advance(1);
+          if (!checkedInputRejections) {
+            for (const [command, code] of [
+              [
+                input("ninja-stale", required(sequences[0]), {
+                  type: "ATTACK",
+                }),
+                "STALE_INPUT_SEQUENCE",
+              ],
+              [
+                {
+                  ...input("ninja-wrong-round", required(sequences[0]) + 1, {
+                    type: "ATTACK",
+                  }),
+                  roundNumber: 2,
+                },
+                "ROUND_MISMATCH",
+              ],
+            ] as const) {
+              room().send(REALTIME_INPUT_MESSAGE, command);
+              await waitUntil(
+                () => box().realtimeRejections.at(-1)?.code === code,
+              );
+            }
+            checkedInputRejections = true;
+          }
+          if (!resumed && tick > 300) {
+            const replacement = await new ColyseusClient(address.httpUrl).join(
+              REALTIME_GAME_ROOM_NAME,
+              {
+                type: "room.join",
+                protocolVersion: 6,
+                ticket: ticket(0),
+                roomCode: "NNJA2345",
+              },
+            );
+            clients[0] = replacement;
+            boxes[0] = messagesV6(replacement);
+            await waitUntil(() => box().snapshots.length > 0);
+            expect(box().connected[0]?.playerSlotId).toBe("p0");
+            expect(box().snapshots.at(-1)?.tick).toBe(tick);
+            resumed = true;
+          }
+        }
+        await advance(fixture.replay.finalTick - tick);
+        await waitUntil(() =>
+          boxes.every(
+            (b) => b.lifecycle.at(-1)?.currentRound?.status === "completed",
+          ),
+        );
+        const replay = required(await replayStore.get("ninja-replay-1"));
+        expect(replay.recordedOutcome).toEqual(fixture.replay.recordedOutcome);
+        expect(replay.events).toHaveLength(fixture.replay.events.length);
+        expect(
+          verifyRealtimeReplay(replay, resolveRealtimeGameDefinition).ok,
+        ).toBe(true);
+        const firstView = required(box().snapshots.at(-1)).view as {
+          players: unknown[];
+        };
+        for (const p of firstView.players) {
+          expect(p).not.toHaveProperty("leaseUntil");
+          expect(p).not.toHaveProperty("move");
+        }
+        room().send(
+          REALTIME_INPUT_MESSAGE,
+          input("after-finish", (sequences[0] = (sequences[0] ?? 0) + 1), {
+            type: "ATTACK",
+          }),
+        );
+        await barrier(0);
+        expect(await replayStore.get("ninja-replay-1")).toEqual(replay);
+        for (let i = 0; i < count; i++)
+          room(i).send(
+            ROOM_CONTROL_MESSAGE,
+            control("again-" + i, "READY_FOR_ROUND"),
+          );
+        await waitUntil(() =>
+          boxes.every((b) => b.snapshots.at(-1)?.roundNumber === 2),
+        );
+        tick = 0;
+        expect(
+          (await replayStore.get("ninja-replay-2"))?.header.initialConfig,
+        ).toEqual({ playerCount: count, targetScore: 3 });
+        for (let i = 1; i < count; i++) {
+          room(i).send(REALTIME_INPUT_MESSAGE, {
+            ...input("resign-" + i, 1, { type: "RESIGN" }),
+            roundNumber: 2,
+          });
+          await barrier(i);
+        }
+        await advance(1);
+        expect(
+          verifyRealtimeReplay(
+            await replayStore.get("ninja-replay-2"),
+            resolveRealtimeGameDefinition,
+          ).ok,
+        ).toBe(true);
+      } finally {
+        await Promise.all(clients.map((c) => c.leave().catch(() => undefined)));
+        await app.stop();
+      }
+    },
+    60000,
+  );
+});
 async function waitUntil(
   predicate: () => boolean | Promise<boolean>,
   timeoutMilliseconds = 3000,
