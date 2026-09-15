@@ -1,6 +1,7 @@
 import Phaser from "phaser";
 import type { PlayView } from "./contracts";
 import { colors } from "./model";
+import type { FeedbackTimeline } from "./feedback";
 const ninjaAssets = import.meta.glob("../assets/ninja/*.png", {
   eager: true,
   query: "?url",
@@ -16,6 +17,7 @@ export const backgroundUrl = required(
 );
 export class NinjaScene extends Phaser.Scene {
   private ink: Phaser.GameObjects.Graphics | null = null;
+  private effectsInk: Phaser.GameObjects.Graphics | null = null;
   private fighters = new Map<
     string,
     { sprite: Phaser.GameObjects.Sprite; label: Phaser.GameObjects.Text }
@@ -29,6 +31,7 @@ export class NinjaScene extends Phaser.Scene {
       interval: number;
       reduced: boolean;
     },
+    private readonly feedback: FeedbackTimeline,
   ) {
     super("ninja-arena");
   }
@@ -67,10 +70,14 @@ export class NinjaScene extends Phaser.Scene {
     for (let x = 0; x < 640; x += 32) g.lineBetween(x, 0, x, 360);
     for (let y = 0; y < 360; y += 32) g.lineBetween(0, y, 640, y);
     this.ink = this.add.graphics().setDepth(3);
+    this.effectsInk = this.add
+      .graphics()
+      .setDepth(8)
+      .setBlendMode(Phaser.BlendModes.ADD);
   }
   override update() {
     const { view, previous, receivedAt, interval, reduced } = this.read();
-    if (!view || !this.ink) return;
+    if (!view || !this.ink || !this.effectsInk) return;
     if (!this.mapBuilt) {
       this.mapBuilt = true;
       for (const r of view.arena.platforms) {
@@ -110,9 +117,10 @@ export class NinjaScene extends Phaser.Scene {
         .setOrigin(0.5)
         .setAlpha(0.55);
     }
-    const blend = reduced
-      ? 1
-      : Phaser.Math.Clamp((performance.now() - receivedAt) / interval, 0, 1);
+    const blend =
+      reduced || view.hitstopTicks > 0
+        ? 1
+        : Phaser.Math.Clamp((performance.now() - receivedAt) / interval, 0, 1);
     this.ink.clear();
     for (const p of view.players) {
       let entity = this.fighters.get(p.slotId);
@@ -151,19 +159,27 @@ export class NinjaScene extends Phaser.Scene {
         FALL: "p_descend",
         WALL: "p_wallgrab",
         ATTACK: "p_hit1",
+        CLASH: "p_hit1",
         SLIDE: "p_slide",
       }[p.motion];
       const frame =
-        p.motion === "WALL"
-          ? 0
-          : p.motion === "ATTACK"
-            ? Math.min(2, Math.floor(p.attackAge / 2))
-            : Math.floor(view.tick / (p.motion === "RUN" ? 5 : 10)) % 4;
+        p.motion === "CLASH"
+          ? 2
+          : p.motion === "WALL"
+            ? 0
+            : p.motion === "ATTACK"
+              ? Math.min(2, Math.floor(p.attackAge / 2))
+              : Math.floor(view.animationTick / (p.motion === "RUN" ? 5 : 10)) %
+                4;
       entity.sprite
         .setTexture(texture, frame)
         .setOrigin(texture === "p_hit1" ? 18 / 40 : 11 / 26, 1)
         .setPosition(x, y)
-        .setFlipX((p.motion === "ATTACK" ? p.attackFacing : p.facing) === -1)
+        .setFlipX(
+          (["ATTACK", "CLASH"].includes(p.motion)
+            ? p.attackFacing
+            : p.facing) === -1,
+        )
         .setTint(
           Phaser.Display.Color.HexStringToColor(required(colors[p.index]))
             .color,
@@ -205,29 +221,47 @@ export class NinjaScene extends Phaser.Scene {
           );
       }
     }
-    for (const effect of view.effects) {
-      const remaining = effect.until - view.tick;
-      if (
-        remaining <= 0 ||
-        (effect.kind !== "CLASH" && effect.kind !== "DEATH")
-      )
-        continue;
-      const x = effect.x / 100,
-        y = effect.y / 100,
-        r = reduced ? 6 : 6 + (18 - remaining) * 0.8;
-      this.ink.lineStyle(
-        2,
-        effect.kind === "CLASH" ? 0xffe7a0 : 0xff7899,
-        remaining / 18,
-      );
-      for (let i = 0; i < 8; i++) {
-        const a = (i * Math.PI) / 4;
-        this.ink.lineBetween(
-          x + (Math.cos(a) * r) / 2,
-          y + (Math.sin(a) * r) / 2,
-          x + Math.cos(a) * r,
-          y + Math.sin(a) * r,
-        );
+    const ink = this.effectsInk;
+    ink.clear();
+    for (const effect of this.feedback.frames(performance.now(), reduced)) {
+      ink
+        .lineStyle(
+          1,
+          effect.kind === "CLASH" ? 0xffdc8b : 0xffffff,
+          effect.alpha * 0.8,
+        )
+        .strokeCircle(effect.x, effect.y, effect.radius);
+      if (effect.flash > 0) {
+        const length = effect.flash * (effect.kind === "CLASH" ? 25 : 16);
+        ink
+          .lineStyle(3, 0xffffff, effect.flash)
+          .lineBetween(
+            effect.x - length,
+            effect.y,
+            effect.x + length,
+            effect.y,
+          );
+        ink
+          .lineStyle(2, 0xffffff, effect.flash)
+          .lineBetween(
+            effect.x,
+            effect.y - length,
+            effect.x,
+            effect.y + length,
+          );
+        ink
+          .fillStyle(0xffffff, effect.flash)
+          .fillRect(effect.x - 3, effect.y - 3, 6, 6);
+      }
+      for (const p of effect.particles) {
+        if (effect.kind === "CLASH")
+          ink
+            .lineStyle(p.size, p.color, p.alpha)
+            .lineBetween(p.tailX, p.tailY, p.x, p.y);
+        else
+          ink
+            .fillStyle(p.color, p.alpha)
+            .fillRect(Math.round(p.x), Math.round(p.y), p.size, p.size);
       }
     }
   }

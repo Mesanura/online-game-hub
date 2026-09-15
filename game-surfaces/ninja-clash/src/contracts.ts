@@ -73,7 +73,7 @@ export const playIntentSchema = z.discriminatedUnion("type", [
     z.object({ type: z.literal(type) }).strict(),
   ),
 ]);
-export const playViewSchema = z
+const legacyPlayViewSchema = z
   .object({
     tick: integer.nonnegative(),
     round: integer.positive(),
@@ -139,7 +139,62 @@ export const playViewSchema = z
     outcome: outcome.nullable(),
   })
   .strict();
+export const effectSchema = z
+  .object({
+    id: integer.positive(),
+    kind: z.enum(["ATTACK", "CLASH", "DEATH", "SLIDE", "JUMP", "WALL_JUMP"]),
+    x: integer,
+    y: integer,
+    until: integer.nonnegative(),
+    startedAt: integer.nonnegative(),
+    sourceSlotId: z.string().nullable(),
+    targetSlotId: z.string().nullable(),
+    facing,
+  })
+  .strict();
+export const playViewSchema = legacyPlayViewSchema
+  .extend({
+    animationTick: integer.nonnegative(),
+    hitstopTicks: integer.min(0).max(6),
+    players: z
+      .array(
+        legacyPlayViewSchema.shape.players.element.extend({
+          motion: z.enum([
+            "SLIDE",
+            "ATTACK",
+            "CLASH",
+            "WALL",
+            "RISE",
+            "FALL",
+            "RUN",
+            "IDLE",
+          ]),
+        }),
+      )
+      .min(2)
+      .max(4),
+    effects: z.array(effectSchema).max(128),
+  })
+  .strict();
+export function parsePlayView(payload: unknown, version: string): PlayView {
+  if (version === "1.1.0") return playViewSchema.parse(payload);
+  if (version !== "1.0.0") throw new Error("Unsupported game version");
+  const legacy = legacyPlayViewSchema.parse(payload);
+  return {
+    ...legacy,
+    animationTick: legacy.tick,
+    hitstopTicks: 0,
+    effects: legacy.effects.map((e) => ({
+      ...e,
+      startedAt: Math.max(0, e.until - 18),
+      sourceSlotId: null,
+      targetSlotId: null,
+      facing: 1 as const,
+    })),
+  };
+}
 export type PlayView = z.infer<typeof playViewSchema>;
+export type Effect = z.infer<typeof effectSchema>;
 export type SetupView = z.infer<typeof setupViewSchema>;
 export type PlayIntent = z.infer<typeof playIntentSchema>;
 export type SetupIntent = z.infer<typeof setupIntentSchema>;

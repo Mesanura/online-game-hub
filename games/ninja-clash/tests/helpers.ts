@@ -6,7 +6,7 @@ import {
   ninjaClashDefinition as game,
   type State,
   type Input,
-} from "../src/core/index.js";
+} from "../src/v1/core/index.js";
 export const rng = createRealtimeRng("ninja-test");
 export function initial(count = 2): State {
   return game.createInitialState({

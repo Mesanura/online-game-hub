@@ -9,7 +9,7 @@ import {
 } from "../src/server.js";
 
 const versions = [
-  ["ninja-clash", ["1.0.0"]],
+  ["ninja-clash", ["1.0.0", "1.1.0"]],
   ["tic-tac-toe", ["1.0.0", "1.1.0"]],
   ["connect-four", ["1.0.0", "1.1.0"]],
   ["gomoku", ["1.0.0", "1.1.0"]],

@@ -114,7 +114,7 @@ create-game unit tests 使用系统临时目录中的隔离 workspace 和本地 
 
 ### Setup
 
-像素忍战覆盖 2/3/4 人与所有目标分、180 ticks 倒计时、无回合限时、跳跃容错/预输入/连续蹬墙、扫掠碰撞、空中禁滑、完整滑行无敌/冷却边界、攻击与滑行互取消、两/三人拼刀、全灭与同 tick 计分、投降及完整设置重开。各人数保留包含拼刀/取消和完整多回合终局的 golden；真实客户端重放合法战斗并验证权限、幂等、接管及 record 重建。独立 Surface 验证像素资源、桌面/手机布局、键盘/多指释放和重连；临时 PostgreSQL 验证跨连接重读、账户私有结果及真实双浏览器抢分终局。规则见 [GAME_SPEC](../games/ninja-clash/GAME_SPEC.md)。
+像素忍战覆盖 2/3/4 人与所有目标分、180 ticks 倒计时、无回合限时、跳跃容错/预输入/连续蹬墙、扫掠碰撞、空中禁滑、完整滑行无敌/冷却边界、攻击与滑行互取消、两/三人拼刀、全灭与同 tick 计分、投降及完整设置重开。各人数及全部支持版本保留包含拼刀/取消和完整多回合终局的 golden；新版覆盖刀刃接触点、100ms 全局冻结、不叠加停顿、冻结期输入缓冲与计时器暂停。真实客户端重放合法战斗并验证权限、幂等、接管、各端冻结投影及 record 重建。独立 Surface 验证像素资源、桌面/手机布局、键盘/多指释放和重连，以及采样音效去重/静音、拼刀火花、跨回合与终局击杀粒子和本地过期；临时 PostgreSQL 验证跨连接重读、账户私有结果及真实双浏览器抢分终局。规则见 [GAME_SPEC](../games/ninja-clash/GAME_SPEC.md)。
 
 - initialize/transition/project/readiness/finalize 的 strict schema、不变性、序列化、viewer privacy 与独立 seeded determinism。
 - owner/player 权限由服务端 actor 推导；合法/非法、normalization、stale、duplicate 和保存失败重试。

@@ -1,0 +1,216 @@
+{
+  "tick": 856,
+  "animationTick": 850,
+  "hitstopTicks": 0,
+  "round": 3,
+  "phase": "FINISHED",
+  "countdown": 0,
+  "targetScore": 3,
+  "lastWinner": "p0",
+  "selfSlotId": "p0",
+  "arena": {
+    "width": 64000,
+    "height": 36000,
+    "platforms": [
+      {
+        "x": 0,
+        "y": 0,
+        "w": 1600,
+        "h": 36000
+      },
+      {
+        "x": 62400,
+        "y": 0,
+        "w": 1600,
+        "h": 36000
+      },
+      {
+        "x": 0,
+        "y": 0,
+        "w": 64000,
+        "h": 1600
+      },
+      {
+        "x": 0,
+        "y": 33600,
+        "w": 64000,
+        "h": 2400
+      },
+      {
+        "x": 8000,
+        "y": 27200,
+        "w": 11200,
+        "h": 1600
+      },
+      {
+        "x": 44800,
+        "y": 27200,
+        "w": 11200,
+        "h": 1600
+      },
+      {
+        "x": 17600,
+        "y": 20800,
+        "w": 9600,
+        "h": 1600
+      },
+      {
+        "x": 36800,
+        "y": 20800,
+        "w": 9600,
+        "h": 1600
+      },
+      {
+        "x": 27200,
+        "y": 14400,
+        "w": 9600,
+        "h": 1600
+      }
+    ]
+  },
+  "players": [
+    {
+      "slotId": "p0",
+      "index": 0,
+      "x": 32300,
+      "y": 33600,
+      "facing": 1,
+      "grounded": true,
+      "wall": 0,
+      "alive": true,
+      "resigned": false,
+      "score": 3,
+      "motion": "ATTACK",
+      "invulnerable": false,
+      "attackAge": 4,
+      "attackFacing": 1,
+      "attackCooldown": 14,
+      "slideCooldown": 0,
+      "blade": {
+        "x": 32900,
+        "y": 31200,
+        "w": 2800,
+        "h": 2400
+      }
+    },
+    {
+      "slotId": "p1",
+      "index": 1,
+      "x": 32900,
+      "y": 24305,
+      "facing": -1,
+      "grounded": false,
+      "wall": 0,
+      "alive": false,
+      "resigned": false,
+      "score": 0,
+      "motion": "FALL",
+      "invulnerable": false,
+      "attackAge": 18,
+      "attackFacing": 1,
+      "attackCooldown": 0,
+      "slideCooldown": 0,
+      "blade": null
+    },
+    {
+      "slotId": "p2",
+      "index": 2,
+      "x": 21900,
+      "y": 33600,
+      "facing": 1,
+      "grounded": true,
+      "wall": 0,
+      "alive": false,
+      "resigned": false,
+      "score": 0,
+      "motion": "RUN",
+      "invulnerable": false,
+      "attackAge": 18,
+      "attackFacing": 1,
+      "attackCooldown": 0,
+      "slideCooldown": 0,
+      "blade": null
+    },
+    {
+      "slotId": "p3",
+      "index": 3,
+      "x": 34900,
+      "y": 33600,
+      "facing": -1,
+      "grounded": true,
+      "wall": 0,
+      "alive": false,
+      "resigned": false,
+      "score": 0,
+      "motion": "IDLE",
+      "invulnerable": false,
+      "attackAge": 18,
+      "attackFacing": 1,
+      "attackCooldown": 0,
+      "slideCooldown": 0,
+      "blade": null
+    }
+  ],
+  "effects": [
+    {
+      "id": 19,
+      "kind": "DEATH",
+      "x": 21900,
+      "y": 32400,
+      "startedAt": 820,
+      "sourceSlotId": "p0",
+      "targetSlotId": "p2",
+      "facing": -1,
+      "until": 862
+    },
+    {
+      "id": 20,
+      "kind": "ATTACK",
+      "x": 31700,
+      "y": 32400,
+      "startedAt": 852,
+      "sourceSlotId": "p0",
+      "targetSlotId": null,
+      "facing": 1,
+      "until": 870
+    },
+    {
+      "id": 21,
+      "kind": "DEATH",
+      "x": 34900,
+      "y": 32400,
+      "startedAt": 855,
+      "sourceSlotId": "p0",
+      "targetSlotId": "p3",
+      "facing": 1,
+      "until": 897
+    }
+  ],
+  "outcome": {
+    "type": "WIN",
+    "winnerSlotId": "p0",
+    "reason": "TARGET_SCORE",
+    "standings": [
+      {
+        "slotId": "p0",
+        "score": 3,
+        "resigned": false
+      },
+      {
+        "slotId": "p1",
+        "score": 0,
+        "resigned": false
+      },
+      {
+        "slotId": "p2",
+        "score": 0,
+        "resigned": false
+      },
+      {
+        "slotId": "p3",
+        "score": 0,
+        "resigned": false
+      }
+    ]
+  }
+}

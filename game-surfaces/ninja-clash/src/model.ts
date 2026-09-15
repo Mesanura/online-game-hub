@@ -46,14 +46,16 @@ export function summary(view: PlayView) {
   };
 }
 export class EffectFeed {
-  private seen = new Set<number>();
+  private latestId = 0;
   observe(view: PlayView, reset: boolean) {
     if (reset) {
-      this.seen = new Set(view.effects.map((e) => e.id));
+      this.latestId = Math.max(0, ...view.effects.map((e) => e.id));
       return [];
     }
-    const fresh = view.effects.filter((e) => !this.seen.has(e.id));
-    this.seen = new Set(view.effects.map((e) => e.id));
+    const fresh = view.effects.filter(
+      (e) => e.id > this.latestId && e.until > view.tick,
+    );
+    this.latestId = Math.max(this.latestId, ...view.effects.map((e) => e.id));
     return fresh;
   }
 }

@@ -20,7 +20,6 @@ import {
 } from "./geometry.js";
 export { configSchema, inputSchema, outcomeSchema } from "../contracts.js";
 export type { Config, Input, State, Outcome } from "../contracts.js";
-export { ninjaClashDefinition as ninjaClashDefinitionV1_0_0 } from "../v1/core/index.js";
 function resetPlayer(
   p: Pick<Fighter, "slotId" | "index" | "score" | "resigned">,
   round: number,
@@ -57,27 +56,15 @@ function resetPlayer(
     slideUntil: 0,
     slideReady: 0,
     slideFacing: 1,
-    clashPoseUntil: 0,
-    bufferedAction: null,
-    bufferedUntil: 0,
   };
 }
-function effect(
-  s: State,
-  kind: Effect["kind"],
-  p: Fighter,
-  targetSlotId: string | null = null,
-  point = { x: p.x, y: p.y - 1200 },
-): void {
+function effect(s: State, kind: Effect["kind"], p: Fighter): void {
   s.effects.push({
     id: s.nextEffect++,
     kind,
-    ...point,
-    startedAt: s.tick,
-    sourceSlotId: p.slotId,
-    targetSlotId,
-    facing: p.attackFacing,
-    until: s.tick + (kind === "DEATH" ? 42 : kind === "CLASH" ? 30 : 18),
+    x: p.x,
+    y: p.y - 1200,
+    until: s.tick + 18,
   });
 }
 function sliding(p: Fighter, t: number): boolean {
@@ -93,7 +80,6 @@ function finish(
   reason: Outcome["reason"],
 ): void {
   s.phase = "FINISHED";
-  s.hitstopTicks = 0;
   s.outcome = {
     type: winner === null ? "DRAW" : "WIN",
     winnerSlotId: winner,
@@ -110,8 +96,7 @@ function nextRound(s: State, winner: string | null): void {
   s.round++;
   s.phase = "COUNTDOWN";
   s.countdown = 180;
-  s.hitstopTicks = 0;
-  s.effects = s.effects.filter((e) => e.kind === "DEATH" || e.kind === "CLASH");
+  s.effects = s.effects.filter((e) => e.kind === "DEATH");
   s.players = s.players.map((p) => resetPlayer(p, s.round, s.players.length));
 }
 function strikeActive(p: Fighter, t: number): boolean {
@@ -119,12 +104,12 @@ function strikeActive(p: Fighter, t: number): boolean {
   return p.alive && age >= 3 && age < 6;
 }
 function handle(p: Fighter, input: Input, s: State): void {
-  const t = s.actionTick;
+  const t = s.tick;
   if (!p.alive || p.resigned) return;
   switch (input.type) {
     case "MOVE":
       p.move = input.direction;
-      p.leaseUntil = s.tick + 30;
+      p.leaseUntil = t + 30;
       if (p.move !== 0 && !sliding(p, t) && t >= p.wallLockUntil)
         p.facing = p.move;
       break;
@@ -159,10 +144,9 @@ function handle(p: Fighter, input: Input, s: State): void {
       break;
   }
 }
-function physics(p: Fighter, s: State): void {
-  const t = s.actionTick;
+function physics(p: Fighter, t: number): void {
   if (!p.alive) return;
-  if (s.tick >= p.leaseUntil) p.move = 0;
+  if (t >= p.leaseUntil) p.move = 0;
   contacts(p);
   if (p.grounded) p.coyoteUntil = t + 6;
   if (p.jumpUntil > t && !sliding(p, t)) {
@@ -174,13 +158,11 @@ function physics(p: Fighter, s: State): void {
       p.gravityRemainder = 0;
       p.jumpUntil = -1;
       p.coyoteUntil = 0;
-      effect(s, "WALL_JUMP", p);
     } else if (p.grounded || p.coyoteUntil > t) {
       p.vy = -600;
       p.gravityRemainder = 0;
       p.jumpUntil = -1;
       p.coyoteUntil = 0;
-      effect(s, "JUMP", p);
     }
   }
   if (sliding(p, t)) p.vx = p.slideFacing * 600;
@@ -196,11 +178,8 @@ function physics(p: Fighter, s: State): void {
   if (sliding(p, t) && (blocked || !p.grounded)) endSlide(p, t);
 }
 function project(state: State, selfSlotId: string) {
-  const t = state.actionTick;
   return {
     tick: state.tick,
-    animationTick: t,
-    hitstopTicks: state.hitstopTicks,
     round: state.round,
     phase: state.phase,
     countdown: state.countdown,
@@ -223,28 +202,25 @@ function project(state: State, selfSlotId: string) {
       alive: p.alive,
       resigned: p.resigned,
       score: p.score,
-      motion:
-        p.clashPoseUntil > t
-          ? "CLASH"
-          : sliding(p, t)
-            ? "SLIDE"
-            : t - p.attackStart < 6
-              ? "ATTACK"
-              : !p.grounded
-                ? p.wall !== 0 && p.vy > 0
-                  ? "WALL"
-                  : p.vy < 0
-                    ? "RISE"
-                    : "FALL"
-                : p.vx !== 0
-                  ? "RUN"
-                  : "IDLE",
-      invulnerable: sliding(p, t),
-      attackAge: Math.min(18, Math.max(0, t - p.attackStart)),
+      motion: sliding(p, state.tick)
+        ? "SLIDE"
+        : state.tick - p.attackStart < 6
+          ? "ATTACK"
+          : !p.grounded
+            ? p.wall !== 0 && p.vy > 0
+              ? "WALL"
+              : p.vy < 0
+                ? "RISE"
+                : "FALL"
+            : p.vx !== 0
+              ? "RUN"
+              : "IDLE",
+      invulnerable: sliding(p, state.tick),
+      attackAge: Math.min(18, Math.max(0, state.tick - p.attackStart)),
       attackFacing: p.attackFacing,
-      attackCooldown: Math.max(0, p.attackReady - t),
-      slideCooldown: Math.max(0, p.slideReady - t),
-      blade: strikeActive(p, t) ? blade(p) : null,
+      attackCooldown: Math.max(0, p.attackReady - state.tick),
+      slideCooldown: Math.max(0, p.slideReady - state.tick),
+      blade: strikeActive(p, state.tick) ? blade(p) : null,
     })),
     effects: state.effects.map((e) => ({ ...e })),
     outcome: state.outcome,
@@ -273,8 +249,6 @@ export const ninjaClashDefinition = {
       state: {
         config: { ...parsed },
         tick: 0,
-        actionTick: 0,
-        hitstopTicks: 0,
         round: 1,
         phase: "COUNTDOWN",
         countdown: 180,
@@ -298,7 +272,6 @@ export const ninjaClashDefinition = {
         .filter((e) => e.until > tick)
         .map((e) => ({ ...e })),
     };
-    const frozen = s.hitstopTicks > 0;
     for (const event of inputs)
       if (event.input.type === "RESIGN") {
         const p = s.players.find((p) => p.slotId === event.slotId);
@@ -306,7 +279,6 @@ export const ninjaClashDefinition = {
           p.resigned = true;
           p.alive = false;
           p.move = 0;
-          p.bufferedAction = null;
         }
       }
     const remaining = s.players.filter((p) => !p.resigned);
@@ -315,44 +287,13 @@ export const ninjaClashDefinition = {
     else if (s.phase === "COUNTDOWN") {
       s.countdown--;
       if (s.countdown === 0) s.phase = "ACTIVE";
-    } else if (frozen) {
-      s.hitstopTicks--;
-      for (const event of inputs) {
-        const p = s.players.find((p) => p.slotId === event.slotId);
-        if (!p?.alive || p.resigned) continue;
-        if (event.input.type === "MOVE") {
-          p.move = event.input.direction;
-          p.leaseUntil = tick + 30;
-        } else if (event.input.type !== "RESIGN") {
-          p.bufferedAction = event.input.type;
-          p.bufferedUntil = s.actionTick + 6;
-        }
-      }
     } else {
-      for (const p of s.players) {
-        if (s.actionTick >= p.bufferedUntil) p.bufferedAction = null;
-        if (
-          p.bufferedAction &&
-          (p.bufferedAction === "JUMP" ||
-            (p.bufferedAction === "ATTACK" && s.actionTick >= p.attackReady) ||
-            (p.bufferedAction === "SLIDE" &&
-              p.grounded &&
-              s.actionTick >= p.slideReady &&
-              s.actionTick - p.attackStart >= 3))
-        ) {
-          handle(p, { type: p.bufferedAction }, s);
-          p.bufferedAction = null;
-        }
-      }
       for (const event of inputs) {
         const p = s.players.find((p) => p.slotId === event.slotId);
-        if (p) {
-          if (event.input.type !== "MOVE") p.bufferedAction = null;
-          handle(p, event.input, s);
-        }
+        if (p) handle(p, event.input, s);
       }
-      for (const p of s.players) physics(p, s);
-      const attackers = s.players.filter((p) => strikeActive(p, s.actionTick));
+      for (const p of s.players) physics(p, tick);
+      const attackers = s.players.filter((p) => strikeActive(p, tick));
       const clashed = new Set<string>();
       for (let i = 0; i < attackers.length; i++)
         for (let j = i + 1; j < attackers.length; j++) {
@@ -361,49 +302,30 @@ export const ninjaClashDefinition = {
           if (overlaps(blade(a), blade(b))) {
             clashed.add(a.slotId);
             clashed.add(b.slotId);
-            const aa = blade(a),
-              bb = blade(b);
-            effect(s, "CLASH", a, b.slotId, {
-              x: Math.floor(
-                (Math.max(aa.x, bb.x) + Math.min(aa.x + aa.w, bb.x + bb.w)) / 2,
-              ),
-              y: Math.floor(
-                (Math.max(aa.y, bb.y) + Math.min(aa.y + aa.h, bb.y + bb.h)) / 2,
-              ),
-            });
           }
         }
       for (const p of attackers)
         if (clashed.has(p.slotId)) {
           p.attackStart = -100;
-          p.attackReady = s.actionTick + 3;
-          p.clashPoseUntil = s.actionTick + 2;
+          p.attackReady = tick + 3;
+          effect(s, "CLASH", p);
         }
-      if (clashed.size > 0) s.hitstopTicks = 6;
-      const dead = new Map<string, Fighter>();
+      const dead = new Set<string>();
       for (const a of attackers)
         if (!clashed.has(a.slotId))
           for (const b of s.players)
             if (
               b.alive &&
               a.slotId !== b.slotId &&
-              !sliding(b, s.actionTick) &&
+              !sliding(b, tick) &&
               overlaps(blade(a), body(b))
             )
-              if (
-                !dead.has(b.slotId) ||
-                a.index < required(dead.get(b.slotId)).index
-              )
-                dead.set(b.slotId, a);
+              dead.add(b.slotId);
       for (const p of s.players)
         if (dead.has(p.slotId)) {
           p.alive = false;
           p.move = 0;
-          p.bufferedAction = null;
-          effect(s, "DEATH", required(dead.get(p.slotId)), p.slotId, {
-            x: p.x,
-            y: p.y - 1200,
-          });
+          effect(s, "DEATH", p);
         }
       const alive = s.players.filter((p) => p.alive);
       if (alive.length <= 1) {
@@ -414,7 +336,6 @@ export const ninjaClashDefinition = {
         else nextRound(s, winner?.slotId ?? null);
       }
     }
-    if (!frozen) s.actionTick++;
     s.tick = tick + 1;
     return { state: s, rng: { ...rng } };
   },

@@ -164,12 +164,18 @@ describe.sequential("Ninja Clash multiplayer Protocol V6", () => {
       const fixture = JSON.parse(
         readFileSync(
           new URL(
-            `../../../games/ninja-clash/tests/fixtures/ninja-clash-1.0.0-${count}p.json`,
+            `../../../games/ninja-clash/tests/fixtures/ninja-clash-1.1.0-${count}p.json`,
             import.meta.url,
           ),
           "utf8",
         ),
-      ) as { replay: RealtimeCanonicalReplay };
+      ) as {
+        replay: RealtimeCanonicalReplay;
+        clashCheckpoint: {
+          tick: number;
+          view: { animationTick: number; players: unknown[] };
+        };
+      };
       const clock = new FakeRuntimeClock(9000000),
         timer = new ManualSchedulerTimer();
       const authority = new TestTicketAuthority({
@@ -211,11 +217,29 @@ describe.sequential("Ninja Clash multiplayer Protocol V6", () => {
       };
       let tick = 0;
       const advance = async (n: number) => {
-        for (let i = 0; i < n; i++) {
-          clock.advanceBy(17);
-          await timer.tick();
+        const target = tick + n;
+        const checkpoint = fixture.clashCheckpoint;
+        const stops = [checkpoint.tick, checkpoint.tick + 3, target]
+          .filter((t) => t > tick && t <= target)
+          .sort((a, b) => a - b);
+        for (const stop of [...new Set(stops)]) {
+          while (tick < stop) {
+            clock.advanceBy(17);
+            await timer.tick();
+            tick++;
+          }
+          await waitUntil(() =>
+            boxes.every((b) => b.snapshots.at(-1)?.tick === tick),
+          );
+          if (stop === checkpoint.tick || stop === checkpoint.tick + 3) {
+            for (const inbox of boxes)
+              expect(inbox.snapshots.at(-1)?.view).toMatchObject({
+                hitstopTicks: stop === checkpoint.tick ? 6 : 3,
+                animationTick: checkpoint.view.animationTick,
+                players: checkpoint.view.players,
+              });
+          }
         }
-        tick += n;
         await waitUntil(() =>
           boxes.every((b) => b.snapshots.at(-1)?.tick === tick),
         );

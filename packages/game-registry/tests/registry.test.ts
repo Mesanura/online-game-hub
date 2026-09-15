@@ -22,6 +22,7 @@ describe("explicit game registry", () => {
     expect(
       resolveCurrentRealtimeGameDefinition("ninja-clash")?.manifest,
     ).toMatchObject({
+      gameVersion: "1.1.0",
       title: "像素忍战",
       minPlayers: 2,
       maxPlayers: 4,
@@ -29,9 +30,14 @@ describe("explicit game registry", () => {
       capabilities: { replay: "record-only" },
     });
     expect(resolveRoundSetupDefinition("ninja-clash", "1.0.0")).toBeDefined();
+    expect(resolveRoundSetupDefinition("ninja-clash", "1.1.0")).toBeDefined();
+    expect(
+      resolveRealtimeGameDefinition("ninja-clash", "1.0.0")?.manifest
+        .gameVersion,
+    ).toBe("1.0.0");
     expect(
       resolveGameSurfaceEntrypoint("ninja-clash", "1.0.0", "play")?.url,
-    ).toBe("/game-surfaces/ninja-clash/1.0.2/play/index.html");
+    ).toBe("/game-surfaces/ninja-clash/1.1.0/play/index.html");
     expect(
       resolveGameSurfaceEntrypoint("ninja-clash", "1.0.0", "replay"),
     ).toBeUndefined();

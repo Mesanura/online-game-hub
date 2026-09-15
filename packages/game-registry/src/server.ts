@@ -71,7 +71,10 @@ import { eraseRealtimeGameDefinition } from "@online-game-hub/realtime-game-sdk"
 import type { UnknownRealtimeGameDefinition } from "@online-game-hub/realtime-game-sdk";
 
 import { resolveCurrentGameManifest } from "./catalog.js";
-import { ninjaClashDefinition } from "@online-game-hub/ninja-clash/core";
+import {
+  ninjaClashDefinition,
+  ninjaClashDefinitionV1_0_0,
+} from "@online-game-hub/ninja-clash/core";
 import { ninjaClashSetupDefinition } from "@online-game-hub/ninja-clash/setup";
 
 const serverDefinitions = Object.freeze([
@@ -114,6 +117,7 @@ export type GameDefinitionResolver = typeof resolveGameDefinition;
 
 const realtimeServerDefinitions = Object.freeze([
   eraseRealtimeGameDefinition(ninjaClashDefinition),
+  eraseRealtimeGameDefinition(ninjaClashDefinitionV1_0_0),
   eraseRealtimeGameDefinition(bombermanDefinition),
   eraseRealtimeGameDefinition(bombermanDefinitionV1_0_0),
   eraseRealtimeGameDefinition(bombermanDefinitionV1_1_0),
@@ -159,6 +163,11 @@ export type RealtimeGameDefinitionResolver =
   typeof resolveRealtimeGameDefinition;
 
 const roundSetupDefinitions = Object.freeze([
+  Object.freeze({
+    gameId: "ninja-clash",
+    gameVersion: "1.1.0",
+    definition: eraseRoundSetupDefinition(ninjaClashSetupDefinition),
+  }),
   Object.freeze({
     gameId: "ninja-clash",
     gameVersion: "1.0.0",

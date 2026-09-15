@@ -4,7 +4,7 @@ import {
   type HostSurfaceMessage,
 } from "@online-game-hub/game-surface-bridge";
 import {
-  playViewSchema,
+  parsePlayView,
   setupViewSchema,
   playIntentSchema,
   setupIntentSchema,
@@ -16,6 +16,7 @@ import {
 import { actionKey, movement, colors, summary, EffectFeed } from "./model";
 import { NinjaScene, backgroundUrl } from "./scene";
 import { NinjaAudio } from "./audio";
+import { FeedbackTimeline } from "./feedback";
 import "./styles.css";
 type HostInit = Extract<HostSurfaceMessage, { type: "host.init" }>;
 type HostState = Extract<HostSurfaceMessage, { type: "host.state" }>;
@@ -44,6 +45,7 @@ const keys = new Set<string>(),
   actions = new Map<number, string>();
 const audio = new NinjaAudio(),
   feed = new EffectFeed(),
+  feedback = new FeedbackTimeline(),
   listeners = new AbortController();
 const text = (id: string, value: string) => {
   const node = document.getElementById(id);
@@ -93,7 +95,7 @@ function flush(force = false) {
   }
   renderHeld();
 }
-function clear(sendStop: boolean) {
+function clear(sendStop: boolean, resetFeedback = true) {
   const active = lastDirection !== 0 || keys.size > 0 || touch.size > 0;
   keys.clear();
   touch.clear();
@@ -104,7 +106,10 @@ function clear(sendStop: boolean) {
   document
     .querySelectorAll<HTMLElement>("[data-held]")
     .forEach((node) => (node.dataset.held = "false"));
-  audio.silence();
+  if (resetFeedback) {
+    audio.silence();
+    feedback.clear();
+  }
   previous = null;
 }
 function renderHeld() {
@@ -139,7 +144,7 @@ function renderSetup() {
   if (!built) {
     built = true;
     root.innerHTML =
-      '<main class="setup"><header><span class="eyebrow">NEON DOJO / MULTIPLAYER</span><h1>像素<span>忍战</span></h1><p>一刀定胜负。下一回合，再来。</p></header><div class="setup-grid"><section class="card settings"><span class="eyebrow">01 / 集合</span><h2>召集你的对手</h2><p id="permission"></p><label>对战人数</label><div class="choices" id="counts"></div><label>获胜分数</label><div class="choices" id="targets"></div><p id="confirmed" class="confirmed"></p><div id="roster" class="roster"></div><p id="notice" role="status" aria-live="polite"></p></section><section class="card map-card"><span class="eyebrow">02 / 训练设施</span><h2>霓虹道场</h2><div class="map-preview" role="img" aria-label="对称平台竞技场，左右阶梯通往中央高台"><span class="preview-title">NEON DOJO</span><i style="left:12.5%;top:75.5%;width:17.5%"></i><i style="left:70%;top:75.5%;width:17.5%"></i><i style="left:27.5%;top:57.7%;width:15%"></i><i style="left:57.5%;top:57.7%;width:15%"></i><i style="left:42.5%;top:40%;width:15%"></i><b class="spawn one">P1</b><b class="spawn two">P2</b></div><p>固定全场视野 · 自由混战 · 无回合限时</p></section><section class="card rules"><span class="eyebrow">03 / 刀锋指南</span><h2>进攻，闪避，再反击。</h2><div class="rule-grid"><p><strong>最后存活者 +1</strong>一击毙命，阵亡后旁观；全灭不计分。每回合倒数三秒，达到目标分获胜。</p><p><strong>滑行全程无敌</strong>仅地面可用。攻击可截断滑行；前摇后滑行可取消攻击冷却。</p><p><strong>拼刀接反击</strong>刀刃相交抵消，约 50ms 后可再斩。空中能攻击，也能连续蹬墙跳。</p></div><div class="key-guide"><span><kbd>A D</kbd> 移动</span><span><kbd>Space</kbd> 跳跃</span><span><kbd>J</kbd> 攻击</span><span><kbd>K / Shift</kbd> 滑行</span></div><p>手机使用左侧方向区与右侧三个动作按钮。设置确认后，在房间中准备。</p></section></div></main>';
+      '<main class="setup"><header><span class="eyebrow">NEON DOJO / MULTIPLAYER</span><h1>像素<span>忍战</span></h1><p>一刀定胜负。下一回合，再来。</p></header><div class="setup-grid"><section class="card settings"><span class="eyebrow">01 / 集合</span><h2>召集你的对手</h2><p id="permission"></p><label>对战人数</label><div class="choices" id="counts"></div><label>获胜分数</label><div class="choices" id="targets"></div><p id="confirmed" class="confirmed"></p><div id="roster" class="roster"></div><p id="notice" role="status" aria-live="polite"></p></section><section class="card map-card"><span class="eyebrow">02 / 训练设施</span><h2>霓虹道场</h2><div class="map-preview" role="img" aria-label="对称平台竞技场，左右阶梯通往中央高台"><span class="preview-title">NEON DOJO</span><i style="left:12.5%;top:75.5%;width:17.5%"></i><i style="left:70%;top:75.5%;width:17.5%"></i><i style="left:27.5%;top:57.7%;width:15%"></i><i style="left:57.5%;top:57.7%;width:15%"></i><i style="left:42.5%;top:40%;width:15%"></i><b class="spawn one">P1</b><b class="spawn two">P2</b></div><p>固定全场视野 · 自由混战 · 无回合限时</p></section><section class="card rules"><span class="eyebrow">03 / 刀锋指南</span><h2>进攻，闪避，再反击。</h2><div class="rule-grid"><p><strong>最后存活者 +1</strong>一击毙命，阵亡后旁观；全灭不计分。每回合倒数三秒，达到目标分获胜。</p><p><strong>滑行全程无敌</strong>仅地面可用。攻击可截断滑行；前摇后滑行可取消攻击冷却。</p><p><strong>拼刀接反击</strong>刀刃相交抵消；短暂停顿后快速反击。空中能攻击，也能连续蹬墙跳。</p></div><div class="key-guide"><span><kbd>A D</kbd> 移动</span><span><kbd>Space</kbd> 跳跃</span><span><kbd>J</kbd> 攻击</span><span><kbd>K / Shift</kbd> 滑行</span></div><p>手机使用左侧方向区与右侧三个动作按钮。设置确认后，在房间中准备。</p></section></div></main>';
     required(
       document.querySelector<HTMLElement>(".map-preview"),
     ).style.backgroundImage =
@@ -216,7 +221,7 @@ function buildPlay() {
   if (built) return;
   built = true;
   root.innerHTML =
-    '<main class="play"><header class="hud"><div><span class="eyebrow">NEON DOJO</span><h1>像素忍战</h1></div><div id="scores" class="scores"></div><button id="sound" type="button" aria-pressed="false" aria-label="开启音效">音效关</button></header><div class="stage-wrap"><div id="stage" role="img" aria-label="忍者对战竞技场"></div><div id="banner" class="banner" aria-live="polite"><span id="banner-kicker"></span><strong id="banner-title"></strong><span id="banner-detail"></span></div><div id="connection" class="connection" hidden>正在恢复连接…</div></div><div class="statusbar"><span id="round-status"></span><span id="own-status"></span><span id="notice" role="status"></span></div><div class="control-deck"><div class="direction-pad" role="group" aria-label="移动方向"><button type="button" data-direction="-1" aria-label="向左移动">◀<small>A</small></button><button type="button" data-direction="1" aria-label="向右移动">▶<small>D</small></button></div><div class="keyboard-note">Space 跳跃 · J 攻击<br>K / Shift 滑行</div><div class="action-pad"><button type="button" data-action="JUMP" aria-label="跳跃">跳跃<small>SPACE</small></button><button type="button" data-action="SLIDE" aria-label="滑行">滑行<small id="slide-cd">K / SHIFT</small></button><button type="button" data-action="ATTACK" class="attack" aria-label="攻击">斩击<small id="attack-cd">J</small></button></div></div></main>';
+    '<main class="play"><header class="hud"><div><span class="eyebrow">NEON DOJO</span><h1>像素忍战</h1></div><div id="scores" class="scores"></div><button id="sound" type="button" aria-pressed="true" aria-label="关闭音效">音效开</button></header><div class="stage-wrap"><div id="stage" role="img" aria-label="忍者对战竞技场"></div><div id="banner" class="banner" aria-live="polite"><span id="banner-kicker"></span><strong id="banner-title"></strong><span id="banner-detail"></span></div><div id="connection" class="connection" hidden>正在恢复连接…</div></div><div class="statusbar"><span id="round-status"></span><span id="own-status"></span><span id="notice" role="status"></span></div><div class="control-deck"><div class="direction-pad" role="group" aria-label="移动方向"><button type="button" data-direction="-1" aria-label="向左移动">◀<small>A</small></button><button type="button" data-direction="1" aria-label="向右移动">▶<small>D</small></button></div><div class="keyboard-note">Space 跳跃 · J 攻击<br>K / Shift 滑行</div><div class="action-pad"><button type="button" data-action="JUMP" aria-label="跳跃">跳跃<small>SPACE</small></button><button type="button" data-action="SLIDE" aria-label="滑行">滑行<small id="slide-cd">K / SHIFT</small></button><button type="button" data-action="ATTACK" class="attack" aria-label="攻击">斩击<small id="attack-cd">J</small></button></div></div></main>';
   game = new Phaser.Game({
     type: Phaser.AUTO,
     parent: "stage",
@@ -227,20 +232,31 @@ function buildPlay() {
     backgroundColor: "#141725",
     audio: { noAudio: true },
     scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
-    scene: new NinjaScene(() => ({
-      view,
-      previous,
-      receivedAt,
-      interval,
-      reduced: init?.reducedMotion ?? false,
-    })),
+    scene: new NinjaScene(
+      () => ({
+        view,
+        previous,
+        receivedAt,
+        interval,
+        reduced: init?.reducedMotion ?? false,
+      }),
+      feedback,
+    ),
   });
   observer = new ResizeObserver(() => game?.scale.refresh());
   observer.observe(required(document.getElementById("stage")));
+  required(document.getElementById("stage")).addEventListener(
+    "pointerdown",
+    () => {
+      void audio.unlock();
+    },
+    { signal: listeners.signal },
+  );
   required(document.getElementById("sound")).addEventListener(
     "click",
     () => {
       void audio.toggle().then(() => {
+        if (disposed) return;
         text("sound", audio.muted ? "音效关" : "音效开");
         required(document.getElementById("sound")).setAttribute(
           "aria-pressed",
@@ -296,6 +312,7 @@ function buildPlay() {
 function renderPlay() {
   if (!view) return;
   root.dataset.phase = view.phase;
+  root.dataset.hitstop = String(view.hitstopTicks);
   buildPlay();
   const scores = required(document.getElementById("scores"));
   for (const p of view.players) {
@@ -333,15 +350,17 @@ function renderPlay() {
   );
   text(
     "own-status",
-    own?.resigned
-      ? "已投降"
-      : !own?.alive
-        ? "已阵亡 · 正在旁观"
-        : own.invulnerable
-          ? "滑行无敌"
-          : view.phase === "ACTIVE"
-            ? "刀锋就绪"
-            : "准备对决",
+    view.hitstopTicks > 0
+      ? "拼刀！"
+      : own?.resigned
+        ? "已投降"
+        : !own?.alive
+          ? "已阵亡 · 正在旁观"
+          : own.invulnerable
+            ? "滑行无敌"
+            : view.phase === "ACTIVE"
+              ? "刀锋就绪"
+              : "准备对决",
   );
   text(
     "attack-cd",
@@ -384,7 +403,7 @@ function receive(message: HostSurfaceMessage) {
   if (message.type === "host.init") {
     if (
       message.gameId !== "ninja-clash" ||
-      message.gameVersion !== "1.0.0" ||
+      !["1.0.0", "1.1.0"].includes(message.gameVersion) ||
       message.mode !== mode ||
       message.bridgeVersion !== 2
     ) {
@@ -417,7 +436,7 @@ function receive(message: HostSurfaceMessage) {
         host = message;
         renderSetup();
       } else {
-        const next = playViewSchema.parse(message.payload);
+        const next = parsePlayView(message.payload, init.gameVersion);
         if (message.tick === undefined) throw new Error("Missing tick");
         if (!reset && host?.tick !== undefined && message.tick < host.tick)
           return;
@@ -427,12 +446,20 @@ function receive(message: HostSurfaceMessage) {
           view.round !== next.round ||
           view.phase !== next.phase ||
           next.tick - (view?.tick ?? next.tick) > 12;
+        const feedbackReset =
+          reset ||
+          next.tick - (view?.tick ?? next.tick) > 12 ||
+          document.hidden;
         if (
           changed ||
           !next.players.find((p) => p.slotId === next.selfSlotId)?.alive
         )
-          clear(false);
-        previous = changed ? null : view;
+          clear(false, feedbackReset);
+        if (feedbackReset) {
+          audio.silence();
+          feedback.clear();
+        }
+        previous = changed || next.hitstopTicks > 0 ? null : view;
         receivedAt = performance.now();
         interval = Math.min(
           100,
@@ -444,8 +471,23 @@ function receive(message: HostSurfaceMessage) {
         view = next;
         host = message;
         if (reset || view.outcome) pendingResign = null;
-        for (const effect of feed.observe(view, changed || document.hidden))
-          audio.play(effect.kind);
+        const fresh = feed.observe(view, feedbackReset);
+        feedback.add(fresh, receivedAt, (e) => {
+          const index =
+            view?.players.find((p) => p.slotId === e.targetSlotId)?.index ?? 3;
+          return Phaser.Display.Color.HexStringToColor(
+            colors[index] ?? colors[3],
+          ).color;
+        });
+        const impacts = new Set<string>();
+        for (const effect of fresh) {
+          if (!document.hasFocus()) continue;
+          if (effect.kind === "CLASH" || effect.kind === "DEATH") {
+            if (impacts.has(effect.kind)) continue;
+            impacts.add(effect.kind);
+          }
+          audio.play(effect.kind, (effect.x / view.arena.width - 0.5) * 1.3);
+        }
         renderPlay();
         const result = summary(view);
         if (result)

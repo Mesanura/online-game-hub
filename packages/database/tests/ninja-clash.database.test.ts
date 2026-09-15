@@ -31,13 +31,17 @@ describe.sequential("Ninja Clash PostgreSQL archives", () => {
   afterAll(async () => {
     await isolated?.close();
   });
-  it.each([2, 3, 4])(
-    "rereads exact %i-player combat and private history",
-    async (count) => {
+  it.each(
+    ["1.0.0", "1.1.0"].flatMap((version) =>
+      [2, 3, 4].map((count) => ({ version, count })),
+    ),
+  )(
+    "rereads exact $version $count-player combat and private history",
+    async ({ version, count }) => {
       const { replay } = JSON.parse(
         readFileSync(
           new URL(
-            `../../../games/ninja-clash/tests/fixtures/ninja-clash-1.0.0-${count}p.json`,
+            `../../../games/ninja-clash/tests/fixtures/ninja-clash-${version}-${count}p.json`,
             import.meta.url,
           ),
           "utf8",
@@ -62,9 +66,9 @@ describe.sequential("Ninja Clash PostgreSQL archives", () => {
         config = replay.header.initialConfig;
       const active: RealtimeStoredRoom = {
         roomId: randomUUID(),
-        roomCode: `NNJA234${count}`,
+        roomCode: `NNJA${version === "1.0.0" ? "2" : "3"}34${count}`,
         gameId: "ninja-clash",
-        gameVersion: "1.0.0",
+        gameVersion: version,
         setupProtocol: 6,
         initialConfig: config,
         players: Array.from({ length: 4 }, (_, i) => ({

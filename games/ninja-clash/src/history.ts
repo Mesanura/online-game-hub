@@ -1,7 +1,7 @@
 import { outcomeSchema } from "./contracts.js";
 export const ninjaClashHistory = {
   gameId: "ninja-clash",
-  gameVersions: ["1.0.0"] as readonly string[],
+  gameVersions: ["1.0.0", "1.1.0"] as readonly string[],
   projectView({
     gameVersion,
     recordedOutcome,
@@ -14,7 +14,7 @@ export const ninjaClashHistory = {
     readonly playerSlotId: string;
   }) {
     if (
-      gameVersion !== "1.0.0" ||
+      !["1.0.0", "1.1.0"].includes(gameVersion) ||
       players.length < 2 ||
       players.length > 4 ||
       new Set(players).size !== players.length ||

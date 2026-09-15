@@ -347,27 +347,30 @@ const bombermanSurface = (
     }),
   });
 
-const gameDeployments = Object.freeze([
-  {
+const ninjaClashSurface = (gameVersion: "1.0.0" | "1.1.0") =>
+  ({
     gameId: "ninja-clash",
-    gameVersion: "1.0.0",
+    gameVersion,
     setupProtocol: 6,
     platformControls: resignPlatformControls,
     presentation: {
       kind: "surface-v1",
-      publicBasePath: "/game-surfaces/ninja-clash/1.0.2",
+      publicBasePath: "/game-surfaces/ninja-clash/1.1.0",
       artifact: {
         schemaVersion: 1,
         gameId: "ninja-clash",
-        supportedGameVersions: ["1.0.0"],
-        surfaceVersion: "1.0.2",
+        supportedGameVersions: ["1.0.0", "1.1.0"],
+        surfaceVersion: "1.1.0",
         bridgeVersion: 2,
         entrypoints: { setup: "setup/index.html", play: "play/index.html" },
         capabilities: {},
-        contentDigest: "sha256-edg+IKxpHCcm5yxnFPzjSuFU2SOTIaUBfOhBINq9BcU=",
+        contentDigest: "sha256-enVGWBZP+PJTIHGT50AWfsDnCUxz1usExDPU88MizpU=",
       },
     },
-  },
+  }) as const satisfies GameDeploymentRegistration;
+const gameDeployments = Object.freeze([
+  ninjaClashSurface("1.0.0"),
+  ninjaClashSurface("1.1.0"),
   bombermanSurface("1.0.0"),
   bombermanSurface("1.1.0"),
   bombermanSurface("1.2.0"),

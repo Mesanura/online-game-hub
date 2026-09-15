@@ -8,7 +8,7 @@ import {
 } from "@online-game-hub/realtime-game-sdk";
 import { ninjaClashDefinition as game, type Input } from "../src/core/index.js";
 for (const count of [2, 3, 4]) {
-  const rng = createRealtimeRng("ninja-clash-1.0.0-" + count + "p");
+  const rng = createRealtimeRng("ninja-clash-1.1.0-" + count + "p");
   const players = Array.from({ length: count }, (_, i) =>
     defineRealtimePlayerSlotId("p" + i),
   );
@@ -18,6 +18,7 @@ for (const count of [2, 3, 4]) {
   let clashAt = -1,
     comboAt = -1;
   const effects = new Set<string>();
+  let clashCheckpoint: { tick: number; view: unknown } | null = null;
   if (count === 4) {
     let preview = state;
     for (let t = 0; t < 180; t++)
@@ -28,7 +29,7 @@ for (const count of [2, 3, 4]) {
     );
     mkdirSync(directory, { recursive: true });
     writeFileSync(
-      new URL("play.json", directory),
+      new URL("play-1.1.json", directory),
       JSON.stringify(
         game.projectView({
           state: preview,
@@ -72,21 +73,21 @@ for (const count of [2, 3, 4]) {
         add(1, { type: "MOVE", direction: -1 });
         add(0, { type: "ATTACK" });
         add(1, { type: "ATTACK" });
-        clashAt = state.tick + 3;
-      } else if (clashAt >= 0 && state.tick === clashAt + 3) {
+        clashAt = state.actionTick + 3;
+      } else if (clashAt >= 0 && state.actionTick === clashAt + 3) {
         add(0, { type: "ATTACK" });
-        comboAt = state.tick;
-      } else if (comboAt >= 0 && state.tick === comboAt + 3)
+        comboAt = state.actionTick;
+      } else if (comboAt >= 0 && state.actionTick === comboAt + 3)
         add(0, { type: "SLIDE" });
-      else if (comboAt >= 0 && state.tick === comboAt + 4)
+      else if (comboAt >= 0 && state.actionTick === comboAt + 4)
         add(0, { type: "ATTACK" });
       else if (
         comboAt >= 0 &&
-        state.tick > comboAt + 4 &&
+        state.actionTick > comboAt + 4 &&
         target &&
         Math.abs(target.x - p0.x) <= 3200 &&
         Math.abs(target.y - p0.y) < 1500 &&
-        state.tick >= p0.attackReady
+        state.actionTick >= p0.attackReady
       ) {
         add(0, { type: "MOVE", direction: target.x >= p0.x ? 1 : -1 });
         add(0, { type: "ATTACK" });
@@ -99,7 +100,46 @@ for (const count of [2, 3, 4]) {
         actorSlotId: e.slotId,
         input: e.input,
       });
+    const previousState = state;
     state = game.step({ state, inputs, rng, tick: state.tick }).state;
+    if (count === 4) {
+      const directory = new URL(
+        "../../../game-surfaces/ninja-clash/tests/fixtures/",
+        import.meta.url,
+      );
+      const writeView = (name: string, candidate: typeof state) =>
+        writeFileSync(
+          new URL(name + ".json", directory),
+          JSON.stringify(
+            game.projectView({
+              state: candidate,
+              viewer: { kind: "player", slotId: required(players[0]) },
+            }),
+            null,
+            2,
+          ) + "\n",
+        );
+      if (state.hitstopTicks > 0 && !clashCheckpoint) {
+        writeView("before-clash", previousState);
+        writeView("clash", state);
+      }
+      if (state.round !== previousState.round) {
+        writeView("before-kill", previousState);
+        writeView("kill-countdown", state);
+      }
+      if (state.outcome && !previousState.outcome) {
+        writeView("before-final-kill", previousState);
+        writeView("kill-finished", state);
+      }
+    }
+    if (state.hitstopTicks > 0 && !clashCheckpoint)
+      clashCheckpoint = {
+        tick: state.tick,
+        view: game.projectView({
+          state,
+          viewer: { kind: "player", slotId: required(players[0]) },
+        }),
+      };
     for (const e of state.effects) effects.add(e.kind);
   }
   if (
@@ -130,10 +170,11 @@ for (const count of [2, 3, 4]) {
   const dir = new URL("./fixtures/", import.meta.url);
   mkdirSync(dir, { recursive: true });
   writeFileSync(
-    new URL("ninja-clash-1.0.0-" + count + "p.json", dir),
+    new URL("ninja-clash-1.1.0-" + count + "p.json", dir),
     JSON.stringify(
       {
         replay,
+        clashCheckpoint,
         stateHash: createHash("sha256")
           .update(JSON.stringify(state))
           .digest("hex"),

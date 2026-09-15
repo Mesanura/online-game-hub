@@ -3,7 +3,7 @@ import {
   ninjaClashDefinition as game,
   configSchema,
   inputSchema,
-} from "../src/core/index.js";
+} from "../src/v1/core/index.js";
 import {
   active,
   advance,

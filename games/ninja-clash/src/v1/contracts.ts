@@ -76,26 +76,17 @@ export type Fighter = {
   slideUntil: number;
   slideReady: number;
   slideFacing: -1 | 1;
-  clashPoseUntil: number;
-  bufferedAction: "JUMP" | "ATTACK" | "SLIDE" | null;
-  bufferedUntil: number;
 };
 export type Effect = {
   id: number;
-  kind: "ATTACK" | "CLASH" | "DEATH" | "SLIDE" | "JUMP" | "WALL_JUMP";
+  kind: "ATTACK" | "CLASH" | "DEATH" | "SLIDE";
   x: number;
   y: number;
   until: number;
-  startedAt: number;
-  sourceSlotId: string;
-  targetSlotId: string | null;
-  facing: -1 | 1;
 };
 export type State = {
   config: Config;
   tick: number;
-  actionTick: number;
-  hitstopTicks: number;
   round: number;
   phase: "COUNTDOWN" | "ACTIVE" | "FINISHED";
   countdown: number;

@@ -9,8 +9,8 @@ it("publishes exact Setup/Play with immutable asset digest", () => {
   );
   expect(manifest).toMatchObject({
     gameId: "ninja-clash",
-    supportedGameVersions: ["1.0.0"],
-    surfaceVersion: "1.0.2",
+    supportedGameVersions: ["1.0.0", "1.1.0"],
+    surfaceVersion: "1.1.0",
     bridgeVersion: 2,
     entrypoints: { setup: "setup/index.html", play: "play/index.html" },
   });
@@ -18,7 +18,7 @@ it("publishes exact Setup/Play with immutable asset digest", () => {
   expect(read("../surface.lock.json")).toEqual({
     schemaVersion: 1,
     gameId: "ninja-clash",
-    surfaceVersion: "1.0.2",
+    surfaceVersion: "1.1.0",
     contentDigest: manifest.contentDigest,
   });
   expect(Object.keys(read("../package.json").dependencies).sort()).toEqual([
