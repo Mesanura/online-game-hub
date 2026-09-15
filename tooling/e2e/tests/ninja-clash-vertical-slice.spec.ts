@@ -5,7 +5,10 @@ import {
   PostgresRealtimeReplayStore,
   PostgresRealtimeMatchRepository,
 } from "@online-game-hub/database";
-import { verifyRealtimeReplay } from "@online-game-hub/realtime-game-sdk";
+import {
+  defineRealtimePlayerSlotId,
+  verifyRealtimeReplay,
+} from "@online-game-hub/realtime-game-sdk";
 import { resolveRealtimeGameDefinition } from "@online-game-hub/game-registry/server";
 import { startE2eHarness, type E2eHarness } from "../src/harness.js";
 import { registerE2eAccount } from "../src/account.js";
@@ -72,52 +75,141 @@ test("two accounts score three rounds, reconnect and reuse target settings", asy
     const code = required(new URL(invite).pathname.split("/").at(-1));
     const room = required(await rooms.getByRoomCode(code));
     const replayId = required(room.currentRound).replayId;
+    const definition = required(
+      resolveRealtimeGameDefinition(room.gameId, room.gameVersion),
+    );
+    const ownerSlotId = defineRealtimePlayerSlotId(
+      required(room.currentRound?.playerOrder[0]),
+    );
+    interface PublicView {
+      phase: string;
+      players: { index: number; x: number; y: number }[];
+    }
+    // Advancing the manual scheduler only queues work. Wait for the committed
+    // tick, then for the iframe to render that tick's projected coordinates.
+    // Reading immediately after advance can observe the previous snapshot and
+    // queue another movement batch, running past the opponent on slower runners.
+    async function advance(ticks: number): Promise<PublicView> {
+      const target =
+        Number(await owner.getByTestId("server-tick").textContent()) + ticks;
+      harness.advanceRealtimeTicks(ticks);
+      await expect
+        .poll(
+          async () => {
+            const current = Number(
+              await owner.getByTestId("server-tick").textContent(),
+            );
+            return (
+              current >= target ||
+              ((await owner
+                .getByTestId("match-status")
+                .getAttribute("data-status")) === "completed" &&
+                current === (await replays.get(replayId))?.finalTick)
+            );
+          },
+          { timeout: 30000, intervals: [10, 25, 50, 100] },
+        )
+        .toBe(true);
+      const finalTick = Number(
+        await owner.getByTestId("server-tick").textContent(),
+      );
+      // The runtime commits replay and room persistence before publishing a snapshot.
+      const record = required(await replays.get(replayId));
+      const rebuilt = verifyRealtimeReplay(
+        {
+          ...record,
+          finalTick,
+          recordedOutcome: null,
+          recordedRngCursor: null,
+        },
+        resolveRealtimeGameDefinition,
+      );
+      expect(rebuilt.ok).toBe(true);
+      if (!rebuilt.ok) throw new Error(rebuilt.code);
+      const view = definition.projectView({
+        state: rebuilt.result.state,
+        viewer: { kind: "player", slotId: ownerSlotId },
+      }) as unknown as PublicView;
+      await expect
+        .poll(() =>
+          surface(owner)
+            .locator("#root")
+            .evaluate((root) => ({
+              phase: root.getAttribute("data-phase"),
+              players: [...root.querySelectorAll(".score")].map((score) => ({
+                x: Number(score.getAttribute("data-x")),
+                y: Number(score.getAttribute("data-y")),
+              })),
+            })),
+        )
+        .toEqual({
+          phase: view.phase,
+          players: view.players.map(({ x, y }) => ({ x, y })),
+        });
+      return view;
+    }
+    async function pressAndWaitForInput(
+      action: () => Promise<void>,
+      expected: unknown,
+    ) {
+      const previousSequence =
+        (await replays.get(replayId))?.events.at(-1)?.sequence ?? 0;
+      await action();
+      await expect
+        .poll(async () => {
+          await advance(1);
+          return (await replays.get(replayId))?.events
+            .filter(
+              (event) =>
+                event.sequence > previousSequence &&
+                event.actorSlotId === ownerSlotId,
+            )
+            .map((event) => event.input);
+        })
+        .toContainEqual(expected);
+    }
     for (let round = 1; round <= 3; round++) {
-      harness.advanceRealtimeTicks(180);
+      let currentView = await advance(180);
       await expect(surface(owner).locator("#root")).toHaveAttribute(
         "data-phase",
         "ACTIVE",
       );
       await closeGameHud(owner);
       await surface(owner).locator("#stage").click();
-      const x0 = Number(
-          await surface(owner).locator("#score-0").getAttribute("data-x"),
-        ),
-        x1 = Number(
-          await surface(owner).locator("#score-1").getAttribute("data-x"),
-        );
+      const x0 = required(currentView.players[0]).x,
+        x1 = required(currentView.players[1]).x;
       const key = x0 < x1 ? "KeyD" : "KeyA";
       await owner.keyboard.down(key);
       await expect
         .poll(
           async () => {
-            harness.advanceRealtimeTicks(9);
-            const a = Number(
-                await surface(owner).locator("#score-0").getAttribute("data-x"),
-              ),
-              b = Number(
-                await surface(owner).locator("#score-1").getAttribute("data-x"),
-              );
-            return Math.abs(a - b) <= 3300;
+            const a = required(currentView.players[0]).x,
+              b = required(currentView.players[1]).x;
+            currentView = await advance(Math.abs(a - b) > 6000 ? 9 : 1);
+            return (
+              Math.abs(
+                required(currentView.players[0]).x -
+                  required(currentView.players[1]).x,
+              ) <= 3300
+            );
           },
-          { timeout: 20000, intervals: [100] },
+          { timeout: 45000, intervals: [0] },
         )
         .toBe(true);
-      await owner.keyboard.up(key);
-      await expect
-        .poll(async () => {
-          harness.advanceRealtimeTicks(1);
-          return (await replays.get(replayId))?.events.at(-1)?.input;
-        })
-        .toEqual({ type: "MOVE", direction: 0 });
-      await owner.keyboard.press("KeyJ");
-      await expect
-        .poll(async () => {
-          harness.advanceRealtimeTicks(1);
-          return (await replays.get(replayId))?.events.at(-1)?.input;
-        })
-        .toEqual({ type: "ATTACK" });
-      harness.advanceRealtimeTicks(5);
+      await pressAndWaitForInput(() => owner.keyboard.up(key), {
+        type: "MOVE",
+        direction: 0,
+      });
+      const stoppedX = Number(
+        await surface(owner).locator("#score-0").getAttribute("data-x"),
+      );
+      const distance = (x1 - stoppedX) * (key === "KeyD" ? 1 : -1);
+      expect(distance).toBeGreaterThan(0);
+      expect(distance).toBeLessThanOrEqual(3300);
+      await pressAndWaitForInput(() => owner.keyboard.press("KeyJ"), {
+        type: "ATTACK",
+      });
+      await advance(5);
       if (round < 3) {
         await expect(surface(owner).locator("#root")).toHaveAttribute(
           "data-phase",
