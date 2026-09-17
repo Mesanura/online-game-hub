@@ -166,7 +166,7 @@ function renderSetup(): void {
   );
   notice(setupMessage);
   surfaceRoot
-    .querySelectorAll<HTMLButtonElement>("[data-score], [data-starter]")
+    .querySelectorAll<HTMLButtonElement>("[data-score], [data-speed-level], [data-starter]")
     .forEach((button) => {
       button.addEventListener("click", () => {
         if (
@@ -178,10 +178,13 @@ function renderSetup(): void {
           return;
         if (button.getAttribute("aria-pressed") === "true") return;
         const score = Number(button.dataset.score);
+        const speedLevel = Number(button.dataset.speedLevel);
         const starter = button.dataset.starter;
         const intent: SetupIntent | null =
           score === 7 || score === 11 || score === 21
             ? { type: "SET_TARGET_SCORE", targetScore: score }
+            : speedLevel === 1 || speedLevel === 2 || speedLevel === 3
+              ? { type: "SET_SPEED_LEVEL", speedLevel }
             : starter === "OWNER" ||
                 starter === "NON_OWNER" ||
                 starter === "RANDOM"
@@ -404,7 +407,7 @@ function handleHost(message: HostSurfaceMessage): void {
   if (message.type === "host.init") {
     if (
       message.gameId !== "badminton" ||
-      !["1.0.0", "1.1.0", "1.2.0", "1.3.0", "1.4.0"].includes(
+      !["1.0.0", "1.1.0", "1.2.0", "1.3.0", "1.4.0", "1.5.0"].includes(
         message.gameVersion,
       ) ||
       message.mode !== mode

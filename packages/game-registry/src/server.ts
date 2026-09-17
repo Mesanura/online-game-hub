@@ -37,8 +37,12 @@ import {
   badmintonDefinitionV1_1_0,
   badmintonDefinitionV1_2_0,
   badmintonDefinitionV1_3_0,
+  badmintonDefinitionV1_4_0,
 } from "@online-game-hub/badminton/core";
-import { badmintonSetupDefinition } from "@online-game-hub/badminton/setup";
+import {
+  badmintonSetupDefinition,
+  badmintonSetupDefinitionV1_4_0,
+} from "@online-game-hub/badminton/setup";
 import {
   tankMazeDefinition,
   tankMazeDefinitionV1_0_0,
@@ -135,6 +139,7 @@ const realtimeServerDefinitions = Object.freeze([
   eraseRealtimeGameDefinition(badmintonDefinitionV1_1_0),
   eraseRealtimeGameDefinition(badmintonDefinitionV1_2_0),
   eraseRealtimeGameDefinition(badmintonDefinitionV1_3_0),
+  eraseRealtimeGameDefinition(badmintonDefinitionV1_4_0),
 ]) as readonly UnknownRealtimeGameDefinition[];
 
 export function resolveRealtimeGameDefinition(
@@ -221,22 +226,27 @@ const roundSetupDefinitions = Object.freeze([
   Object.freeze({
     gameId: badmintonDefinitionV1_0_0.manifest.id,
     gameVersion: badmintonDefinitionV1_0_0.manifest.gameVersion,
-    definition: eraseRoundSetupDefinition(badmintonSetupDefinition),
+    definition: eraseRoundSetupDefinition(badmintonSetupDefinitionV1_4_0),
   }),
   Object.freeze({
     gameId: badmintonDefinitionV1_1_0.manifest.id,
     gameVersion: badmintonDefinitionV1_1_0.manifest.gameVersion,
-    definition: eraseRoundSetupDefinition(badmintonSetupDefinition),
+    definition: eraseRoundSetupDefinition(badmintonSetupDefinitionV1_4_0),
   }),
   Object.freeze({
     gameId: badmintonDefinitionV1_2_0.manifest.id,
     gameVersion: badmintonDefinitionV1_2_0.manifest.gameVersion,
-    definition: eraseRoundSetupDefinition(badmintonSetupDefinition),
+    definition: eraseRoundSetupDefinition(badmintonSetupDefinitionV1_4_0),
   }),
   Object.freeze({
     gameId: badmintonDefinitionV1_3_0.manifest.id,
     gameVersion: badmintonDefinitionV1_3_0.manifest.gameVersion,
-    definition: eraseRoundSetupDefinition(badmintonSetupDefinition),
+    definition: eraseRoundSetupDefinition(badmintonSetupDefinitionV1_4_0),
+  }),
+  Object.freeze({
+    gameId: badmintonDefinitionV1_4_0.manifest.id,
+    gameVersion: badmintonDefinitionV1_4_0.manifest.gameVersion,
+    definition: eraseRoundSetupDefinition(badmintonSetupDefinitionV1_4_0),
   }),
   Object.freeze({
     gameId: badmintonDefinition.manifest.id,

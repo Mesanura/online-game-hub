@@ -67,11 +67,10 @@ describe("badminton projected contracts", () => {
 
   it("describes automatic serving only for 1.0.0 and keeps 1.1.0 manual", () => {
     expect(serveRuleLabel("1.0.0")).toContain("准备倒计时结束后开球");
-    for (const version of ["1.1.0", "1.2.0", "1.3.0", "1.4.0"]) {
+    for (const version of ["1.1.0", "1.2.0", "1.3.0", "1.4.0", "1.5.0"]) {
       expect(serveRuleLabel(version)).toContain("发球方按 S");
       expect(serveRuleLabel(version)).toContain("不会超时失分");
     }
-    expect(() => serveRuleLabel("1.5.0")).toThrow();
     const setup = setupViewSchema.parse({
       config: { targetScore: 7 },
       starter: "NON_OWNER",

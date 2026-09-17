@@ -25,7 +25,7 @@ const rng = createRealtimeRng("manual-serve");
 const neutral = { move: 0, jump: false, serve: false, shot: "NONE" } as const;
 function initial(side: BadmintonSide = 0): BadmintonState {
   const state = structuredClone(
-    createInitialState({ config: { targetScore: 7 }, players, rng }).state,
+    createInitialState({ config: { targetScore: 7, speedLevel: 1 }, players, rng }).state,
   );
   state.server = side;
   return state;
@@ -219,8 +219,16 @@ describe("stroke selection and drag", () => {
           lastHit: side === 0 ? 1 : 0,
         };
         const advanceExact = (state: BadmintonState, shot: "CLEAR" | "NONE") =>
-          definition.step({
-            state,
+          (definition as any).step({
+            state:
+              definition.manifest.gameVersion === "1.2.0"
+                ? (() => {
+                    const { speedLevel: _speedLevel, ...legacy } = structuredClone(
+                      state,
+                    );
+                    return legacy;
+                  })()
+                : state,
             tick: state.tick,
             rng,
             inputs: [
@@ -229,7 +237,7 @@ describe("stroke selection and drag", () => {
                 input: { type: "CONTROL", ...neutral, shot },
               },
             ],
-          }).state;
+          }).state as BadmintonState;
         state = advanceExact(state, "CLEAR");
         const launchSpeed = Math.abs(state.shuttle.velocityX);
         let lastSlope = 0;

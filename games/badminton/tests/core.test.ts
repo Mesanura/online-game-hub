@@ -27,7 +27,11 @@ const players = [
 const rng = createRealtimeRng("badminton-unit-seed");
 const neutral = { move: 0, jump: false, serve: false, shot: "NONE" } as const;
 function initial(targetScore: 7 | 11 | 21 = 7) {
-  return createInitialState({ config: { targetScore }, players, rng }).state;
+  return createInitialState({
+    config: { targetScore, speedLevel: 1 },
+    players,
+    rng,
+  }).state;
 }
 function advance(
   state: BadmintonState,
@@ -78,7 +82,7 @@ function grounded(side: BadmintonSide, x = side === 0 ? 250_000 : 750_000) {
 
 describe("badminton schemas and initialization", () => {
   it("has deterministic, detached, frozen, JSON-safe initial state and no gameplay RNG consumption", () => {
-    const config = Object.freeze({ targetScore: 7 as const });
+    const config = Object.freeze({ targetScore: 7 as const, speedLevel: 1 as const });
     const source = Object.freeze({ ...rng });
     const first = createInitialState({ config, players, rng: source });
     expect(first).toEqual(createInitialState({ config, players, rng: source }));
@@ -122,14 +126,14 @@ describe("badminton schemas and initialization", () => {
   it("rejects missing/duplicate slots, wrong tick, foreign actor and unsorted or repeated input slots", () => {
     expect(() =>
       createInitialState({
-        config: { targetScore: 7 },
+        config: { targetScore: 7, speedLevel: 1 },
         players: [players[0]],
         rng,
       }),
     ).toThrow("exactly two distinct");
     expect(() =>
       createInitialState({
-        config: { targetScore: 7 },
+        config: { targetScore: 7, speedLevel: 1 },
         players: [players[0], players[0]],
         rng,
       }),
@@ -581,6 +585,32 @@ describe("collision and scoring rules", () => {
 });
 
 describe("purity, projection and complete deterministic matches", () => {
+  it("uses fewer flight ticks for higher speed levels", () => {
+    const flightDuration = (speedLevel: 1 | 2 | 3) => {
+      let state = rally({
+        speedLevel,
+        athletes: structuredClone(initial().athletes),
+      });
+      state.athletes[0].x = 410_000;
+      state.athletes[0].y = 390_000;
+      state.shuttle = {
+        x: 450_000,
+        y: 280_000,
+        velocityX: -100,
+        velocityY: 0,
+        lastHit: 1,
+      };
+      state = advance(state, { shot: "CLEAR" });
+      const start = state.tick;
+      while (state.phase === "RALLY" && state.tick - start < 130)
+        state = advance(state);
+      return state.tick - start;
+    };
+    const standard = flightDuration(1);
+    expect(flightDuration(2)).toBeLessThan(standard);
+    expect(flightDuration(3)).toBeLessThan(flightDuration(2));
+  });
+
   it("keeps inputs and state immutable and projects only public detached data for each viewer", () => {
     const state = initial();
     const before = JSON.stringify(state);
@@ -617,7 +647,7 @@ describe("purity, projection and complete deterministic matches", () => {
   it("completes manually served matches by actual scoring without consuming RNG", () => {
     const run = () => {
       let current = createInitialState({
-        config: { targetScore: 7 },
+        config: { targetScore: 7, speedLevel: 1 },
         players,
         rng,
       });

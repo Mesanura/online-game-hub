@@ -15,8 +15,8 @@ describe("badminton independent Surface artifact", () => {
     expect(manifest).toMatchObject({
       schemaVersion: 1,
       gameId: "badminton",
-      supportedGameVersions: ["1.0.0", "1.1.0", "1.2.0", "1.3.0", "1.4.0"],
-      surfaceVersion: "1.3.1",
+      supportedGameVersions: ["1.0.0", "1.1.0", "1.2.0", "1.3.0", "1.4.0", "1.5.0"],
+      surfaceVersion: "1.4.0",
       bridgeVersion: 2,
       entrypoints: { setup: "setup/index.html", play: "play/index.html" },
       capabilities: {},

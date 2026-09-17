@@ -1,0 +1,48 @@
+export const COURT = Object.freeze({
+  width: 1_000_000,
+  height: 600_000,
+  ground: 500_000,
+  leftLine: 80_000,
+  rightLine: 920_000,
+  netX: 500_000,
+  netTop: 370_000,
+  netWidth: 6_000,
+  shuttleRadius: 6_000,
+  leftServeLine: 360_000,
+  rightServeLine: 640_000,
+  frontFootOffset: 20_000,
+});
+
+export const PHYSICS = Object.freeze({
+  tickRate: 60,
+  runSpeed: 5_500,
+  jumpSpeed: 11_000,
+  playerGravity: 500,
+  shuttleGravity: 320,
+  dragNumerator: 978,
+  verticalDragNumerator: 985,
+  maxFallSpeed: 18_000,
+  racketOffsetX: 40_000,
+  racketOffsetY: 85_000,
+  racketRadiusX: 100_000,
+  racketRadiusY: 105_000,
+  swingDuration: 10,
+  swingCooldown: 24,
+  smashRecovery: 36,
+  clearDragNumerator: 997,
+  clearApex: 40_000,
+  smashNetClearance: 12_000,
+  smashContactHeight: 110_000,
+  smashHeightAboveNet: 75_000,
+  inputLease: 45,
+  serveSwingDuration: 18,
+  serveContactTick: 6,
+  serveHandOffsetX: 40_000,
+  serveHandOffsetY: 70_000,
+  underhandHeight: 80_000,
+  pointDelay: 90,
+});
+
+export function scoreLimit(target: 7 | 11 | 21): number {
+  return target === 7 ? 11 : target === 11 ? 15 : 30;
+}

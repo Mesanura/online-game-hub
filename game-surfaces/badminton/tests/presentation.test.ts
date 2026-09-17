@@ -51,7 +51,7 @@ describe("exact versions and serve intent", () => {
     expect(encodePlayIntent(intent, "1.3.0")).toEqual(intent);
     expect(encodePlayIntent(intent, "1.4.0")).toEqual(intent);
     expect(() => parsePlayView(fixture(), "1.5.0")).toThrow();
-    expect(() => encodePlayIntent(intent, "1.5.0")).toThrow();
+    expect(encodePlayIntent(intent, "1.5.0")).toEqual(intent);
   });
   it("latches a quick serve until authoritative start and keeps other held controls", () => {
     const controls = new ControlState(),

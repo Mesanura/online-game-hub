@@ -6,9 +6,7 @@ import {
 } from "@online-game-hub/game-setup";
 import { z } from "zod";
 
-import { badmintonConfigSchema, type BadmintonConfig } from "../core/index.js";
-
-export { badmintonSetupDefinitionV1_4_0 } from "./v1_4.js";
+import { badmintonConfigSchema, type BadmintonConfig } from "../core/v1_4.js";
 
 const starter = z.enum(["OWNER", "NON_OWNER", "RANDOM", "FIXED"]);
 export const badmintonSetupStateSchema = z
@@ -37,12 +35,6 @@ export const badmintonSetupActionSchema = z.discriminatedUnion("type", [
     .object({
       type: z.literal("SET_TARGET_SCORE"),
       targetScore: badmintonConfigSchema.shape.targetScore,
-    })
-    .strict(),
-  z
-    .object({
-      type: z.literal("SET_SPEED_LEVEL"),
-      speedLevel: badmintonConfigSchema.shape.speedLevel,
     })
     .strict(),
 ]);
@@ -78,7 +70,7 @@ function ready(
   );
 }
 
-export const badmintonSetupDefinition = Object.freeze({
+export const badmintonSetupDefinitionV1_4_0 = Object.freeze({
   setupStateSchema: badmintonSetupStateSchema,
   setupActionSchema: badmintonSetupActionSchema,
   setupViewSchema: badmintonSetupViewSchema,
@@ -120,30 +112,13 @@ export const badmintonSetupDefinition = Object.freeze({
         }),
       };
     }
-    if (action.type === "SET_TARGET_SCORE") {
-      if (previous.config.targetScore === action.targetScore)
-        return { status: "rejected", code: "SETUP_UNCHANGED" };
-      return {
-        status: "accepted",
-        state: Object.freeze({
-          ...previous,
-          config: Object.freeze({
-            ...previous.config,
-            targetScore: action.targetScore,
-          }),
-        }),
-      };
-    }
-    if (previous.config.speedLevel === action.speedLevel)
+    if (previous.config.targetScore === action.targetScore)
       return { status: "rejected", code: "SETUP_UNCHANGED" };
     return {
       status: "accepted",
       state: Object.freeze({
         ...previous,
-        config: Object.freeze({
-          ...previous.config,
-          speedLevel: action.speedLevel,
-        }),
+        config: Object.freeze({ targetScore: action.targetScore }),
       }),
     };
   },

@@ -10,11 +10,11 @@ import {
 import { describe, expect, it } from "vitest";
 
 import {
-  badmintonDefinition,
   badmintonDefinitionV1_0_0,
   badmintonDefinitionV1_1_0,
   badmintonDefinitionV1_2_0,
   badmintonDefinitionV1_3_0,
+  badmintonDefinitionV1_4_0,
 } from "../src/core/index.js";
 
 const resolve = (gameId: string, gameVersion: string) =>
@@ -27,7 +27,7 @@ const resolve = (gameId: string, gameVersion: string) =>
         : gameId === "badminton" && gameVersion === "1.3.0"
           ? eraseRealtimeGameDefinition(badmintonDefinitionV1_3_0)
           : gameId === "badminton" && gameVersion === "1.4.0"
-            ? eraseRealtimeGameDefinition(badmintonDefinition)
+            ? eraseRealtimeGameDefinition(badmintonDefinitionV1_4_0)
             : undefined;
 const fixture = (name: string, version = "1.0.0") =>
   JSON.parse(
@@ -63,7 +63,9 @@ describe("badminton exact realtime golden records", () => {
     "rebuilds the %s %s record with a frozen trajectory at every tick",
     (version, name, digest) => {
       const definition =
-        version === "1.3.0" ? badmintonDefinitionV1_3_0 : badmintonDefinition;
+        version === "1.3.0"
+          ? badmintonDefinitionV1_3_0
+          : badmintonDefinitionV1_4_0;
       const replay = fixture(name, version);
       const verified = verifyRealtimeReplay(replay, resolve);
       expect(verified.ok).toBe(true);

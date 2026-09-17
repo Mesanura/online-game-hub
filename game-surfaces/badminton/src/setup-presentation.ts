@@ -14,7 +14,7 @@ export function netPlayRules(gameVersion: string): string {
 
 export function usesManualServe(gameVersion: string): boolean {
   if (gameVersion === "1.0.0") return false;
-  if (["1.1.0", "1.2.0", "1.3.0", "1.4.0"].includes(gameVersion)) return true;
+  if (["1.1.0", "1.2.0", "1.3.0", "1.4.0", "1.5.0"].includes(gameVersion)) return true;
   throw new Error("Unsupported badminton version.");
 }
 
@@ -38,7 +38,13 @@ function starterLabel(view: Readonly<SetupView>): string {
 
 export function setupSummary(view: Readonly<SetupView>): string {
   const score = view.config.targetScore;
-  return `${score} 分制 · 领先 2 分 · ${scoreCap(score)} 分封顶 · ${starterLabel(view)}`;
+  const speed =
+    view.config.speedLevel === 2
+      ? " · 加速球速"
+      : view.config.speedLevel === 3
+        ? " · 疾速球速"
+        : "";
+  return `${score} 分制${speed} · 领先 2 分 · ${scoreCap(score)} 分封顶 · ${starterLabel(view)}`;
 }
 
 export function renderSetupView(
@@ -51,6 +57,23 @@ export function renderSetupView(
   const score = current.config.targetScore;
   const cap = scoreCap(score);
   const manualServe = usesManualServe(gameVersion);
+  const speedChoices =
+    gameVersion === "1.5.0"
+      ? `<section aria-labelledby="speed-choice"><div class="field-heading"><h2 id="speed-choice">球速挡位</h2><span>越高越紧张</span></div><div class="choice-grid speed-grid" role="group" aria-label="球速挡位">
+      ${(
+        [
+          [1, "标准", "熟悉节奏"],
+          [2, "加速", "反应更快"],
+          [3, "疾速", "极限对攻"],
+        ] as const
+      )
+        .map(
+          ([value, label, description]) =>
+            `<button type="button" data-speed-level="${value}" data-setup-focus="speed-${value}" aria-pressed="${current.config.speedLevel === value}" aria-disabled="${disabled || pending}" ${disabled ? "disabled" : ""}><strong>${label}</strong><span>${description}</span></button>`,
+        )
+        .join("")}
+    </div></section>`
+      : "";
   return `<main class="setup-page"><section class="setup-card" aria-labelledby="setup-title">
     <div class="setup-heading"><span class="game-mark">${shuttleIcon}</span><div><p class="eyebrow">一起挥拍，快乐开场</p><h1 id="setup-title">火柴人羽毛球</h1></div><span class="two-player">双人对战</span></div>
     <p class="setup-summary" data-testid="setup-summary" aria-live="polite">${setupSummary(current)}</p>
@@ -71,7 +94,7 @@ export function renderSetupView(
             `<button type="button" data-score="${value}" data-setup-focus="score-${value}" aria-pressed="${score === value}" aria-disabled="${disabled || pending}" ${disabled ? "disabled" : ""}><strong>${value}<small>分</small></strong><span>${label}</span><span>${scoreCap(value)} 分封顶</span></button>`,
         )
         .join("")}
-    </div></section><section aria-labelledby="serve-choice"><div class="field-heading"><h2 id="serve-choice">谁先发球？</h2><span>首发方在左侧</span></div><div class="starter-grid" role="group" aria-label="首发选择">
+    </div></section>${speedChoices}<section aria-labelledby="serve-choice"><div class="field-heading"><h2 id="serve-choice">谁先发球？</h2><span>首发方在左侧</span></div><div class="starter-grid" role="group" aria-label="首发选择">
       ${(
         [
           ["OWNER", "房主首发"],
@@ -87,7 +110,7 @@ export function renderSetupView(
     </div>${current.starter === "FIXED" && !current.participantSlotIds.includes(current.fixedStarterSlotId ?? "") ? '<p class="muted">上一局首发玩家已离开，请重新选择首发方。</p>' : ""}</section></div>
     <div class="how-to"><span><kbd>A</kbd><kbd>D</kbd> 移动</span><span><kbd>W</kbd> 起跳</span>${manualServe ? "<span><kbd>S</kbd> 发球</span>" : ""}<span><kbd>J</kbd> 高远球</span><span><kbd>K</kbd> 扣杀</span><span><kbd>L</kbd> 吊球</span></div>
     ${netPlayRules(gameVersion) ? `<p class="rule-note" data-testid="net-play-rules">${netPlayRules(gameVersion)}</p>` : ""}
-    <p class="setup-bottom">${current.canEdit ? "你是房主，可以修改目标比分和首发方。" : "目标比分和首发方由房主修改。"}${current.participantSlotIds.length < 2 ? "等待另一位玩家加入。" : ""}确认规则后，两位玩家分别点击房间中的准备按钮。手机可使用屏幕按钮。</p>
+    <p class="setup-bottom">${current.canEdit ? `你是房主，可以修改目标比分${gameVersion === "1.5.0" ? "、球速挡位" : ""}和首发方。` : `${gameVersion === "1.5.0" ? "目标比分、球速挡位和首发方" : "目标比分和首发方"}由房主修改。`}${current.participantSlotIds.length < 2 ? "等待另一位玩家加入。" : ""}确认规则后，两位玩家分别点击房间中的准备按钮。手机可使用屏幕按钮。</p>
     <p class="notice" id="surface-notice" role="status"></p>
   </section></main>`;
 }

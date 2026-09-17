@@ -21,7 +21,10 @@ const players = [
 ] as const;
 const rng = createRealtimeRng("badminton-net-play");
 const neutral = { move: 0, jump: false, serve: false, shot: "NONE" } as const;
-type Definition = typeof badmintonDefinition;
+type Definition =
+  | typeof badmintonDefinition
+  | typeof badmintonDefinitionV1_2_0
+  | typeof badmintonDefinitionV1_3_0;
 const other = (side: BadmintonSide): BadmintonSide => (side === 0 ? 1 : 0);
 const mirror = (x: number, side: BadmintonSide) =>
   side === 0 ? x : COURT.width - x;
@@ -29,7 +32,7 @@ const mirror = (x: number, side: BadmintonSide) =>
 function initial(): BadmintonState {
   return structuredClone(
     badmintonDefinition.createInitialState({
-      config: { targetScore: 7 },
+      config: { targetScore: 7, speedLevel: 1 },
       players,
       rng,
     }).state,
@@ -49,15 +52,23 @@ function advance(
   ] = [{}, {}],
   definition: Definition = badmintonDefinition,
 ): BadmintonState {
-  return definition.step({
-    state,
+  const selected = definition as any;
+  const inputState =
+    selected.manifest.gameVersion === "1.5.0"
+      ? state
+      : (() => {
+          const { speedLevel: _speedLevel, ...legacy } = structuredClone(state);
+          return legacy;
+        })();
+  return selected.step({
+    state: inputState,
     tick: state.tick,
     rng,
     inputs: players.map((slotId, side) => ({
       slotId,
       input: { type: "CONTROL", ...neutral, ...controls[side] },
     })),
-  }).state;
+  }).state as BadmintonState;
 }
 
 function contact(

@@ -1,17 +1,16 @@
 import { z } from "zod";
 
-import { COURT, PHYSICS, scoreLimit } from "../constants.js";
+import { COURT, PHYSICS, scoreLimit } from "../v1/constants-v1_4.js";
 
 const integer = z.number().int();
 const slot = z.string().min(1).max(128);
 const side = z.union([z.literal(0), z.literal(1)]);
 const targetScore = z.union([z.literal(7), z.literal(11), z.literal(21)]);
-const speedLevel = z.union([z.literal(1), z.literal(2), z.literal(3)]);
 const direction = z.union([z.literal(-1), z.literal(0), z.literal(1)]);
 const shot = z.enum(["NONE", "CLEAR", "DROP", "SMASH"]);
 const scores = z.tuple([integer.min(0).max(30), integer.min(0).max(30)]);
 
-export const badmintonConfigSchema = z.object({ targetScore, speedLevel: speedLevel.default(1) }).strict();
+export const badmintonConfigSchema = z.object({ targetScore }).strict();
 export const badmintonInputSchema = z.discriminatedUnion("type", [
   z
     .object({
@@ -88,7 +87,6 @@ export const badmintonStateSchema = z
   .object({
     players: z.tuple([slot, slot]),
     targetScore,
-    speedLevel,
     tick: integer.nonnegative(),
     phase: z.enum(["SERVE", "SERVING", "RALLY", "POINT", "FINISHED"]),
     phaseTicks: integer.min(0).max(PHYSICS.pointDelay),

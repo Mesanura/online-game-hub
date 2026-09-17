@@ -11,7 +11,7 @@
 | [黑白棋](./reversi/GAME_SPEC.md)            | `reversi`          | 2    | turn-based | `1.1.0`          | `1.0.0`                            | 支持        |
 | [中国跳棋](./chinese-checkers/GAME_SPEC.md) | `chinese-checkers` | 2–6  | turn-based | `1.1.0`          | `1.0.0`                            | 支持        |
 | [乒乓对战（Pong）](./pong/GAME_SPEC.md)     | `pong`             | 2    | realtime   | `1.2.0`          | `1.0.0`、`1.1.0`                   | record-only |
-| [火柴人羽毛球](./badminton/GAME_SPEC.md)    | `badminton`        | 2    | realtime   | `1.4.0`          | `1.0.0`、`1.1.0`、`1.2.0`、`1.3.0` | record-only |
+| [火柴人羽毛球](./badminton/GAME_SPEC.md)    | `badminton`        | 2    | realtime   | `1.5.0`          | `1.0.0`、`1.1.0`、`1.2.0`、`1.3.0`、`1.4.0` | record-only |
 | [坦克迷战](./tank-maze/GAME_SPEC.md)        | `tank-maze`        | 2–8  | realtime   | `1.3.0`          | `1.0.0`、`1.1.0`、`1.2.0`          | record-only |
 | [气垫球](./air-hockey/GAME_SPEC.md)         | `air-hockey`       | 2    | realtime   | `1.1.0`          | `1.0.0`                            | record-only |
 | [像素炸弹人](./bomberman/GAME_SPEC.md)      | `bomberman`        | 2–4  | realtime   | `1.2.0`          | `1.0.0`、`1.1.0`                   | record-only |

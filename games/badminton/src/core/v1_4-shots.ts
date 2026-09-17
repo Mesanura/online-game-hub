@@ -1,16 +1,8 @@
-import { COURT, PHYSICS } from "../constants.js";
-import type { BadmintonSide, BadmintonState } from "./schemas.js";
+import { COURT, PHYSICS } from "../v1/constants-v1_4.js";
+import type { BadmintonSide, BadmintonState } from "./v1_4-schemas.js";
 
 type Shot = "CLEAR" | "DROP" | "SMASH";
-type Flight = { shot: Shot; velocityX: number; velocityY: number; ticks: number };
-
-function speedScale(level: BadmintonState["speedLevel"]): number {
-  return level === 3 ? 800 : level === 2 ? 900 : 1000;
-}
-
-function flightTicks(baseTicks: number, level: BadmintonState["speedLevel"]): number {
-  return Math.max(1, Math.trunc((baseTicks * speedScale(level)) / 1000));
-}
+type Flight = { shot: Shot; velocityX: number; velocityY: number };
 
 export function shotDrag(shot: Shot | undefined): number {
   return shot === "CLEAR" ? PHYSICS.clearDragNumerator : PHYSICS.dragNumerator;
@@ -82,13 +74,11 @@ function verticalVelocity(distance: number, ticks: number): number {
 }
 
 function flight(
-  state: BadmintonState,
   shuttle: BadmintonState["shuttle"],
   shot: Shot,
   targetX: number,
-  baseTicks: number,
+  ticks: number,
 ): Flight | null {
-  const ticks = flightTicks(baseTicks, state.speedLevel);
   const velocityX = horizontalVelocity(
     targetX - shuttle.x,
     ticks,
@@ -102,7 +92,6 @@ function flight(
       COURT.ground - COURT.shuttleRadius - shuttle.y,
       ticks,
     ),
-    ticks,
   };
 }
 
@@ -111,11 +100,12 @@ function flight(
 function clearsNet(
   shuttle: BadmintonState["shuttle"],
   launch: Flight,
+  ticks: number,
   clearance: number,
 ): boolean {
   let { x, y } = shuttle;
   let { velocityX, velocityY } = launch;
-  for (let tick = 0; tick < launch.ticks; tick += 1) {
+  for (let tick = 0; tick < ticks; tick += 1) {
     velocityX = Math.trunc((velocityX * shotDrag(launch.shot)) / 1000);
     velocityY = verticalStep(velocityY);
     const startX = x;
@@ -131,8 +121,7 @@ function clearsNet(
   return true;
 }
 
-function clear(state: BadmintonState, targetX: number): Flight {
-  const shuttle = state.shuttle;
+function clear(shuttle: BadmintonState["shuttle"], targetX: number): Flight {
   // The available height, rather than a fixed duration, sets the lift's arc.
   // Lower horizontal drag lets a steep lift retain enough depth to pass a camper.
   let low = 1;
@@ -153,7 +142,7 @@ function clear(state: BadmintonState, targetX: number): Flight {
     if (apex < Math.min(shuttle.y, PHYSICS.clearApex)) high = ticks - 1;
     else low = ticks;
   }
-  const launch = flight(state, shuttle, "CLEAR", targetX, low);
+  const launch = flight(shuttle, "CLEAR", targetX, low);
   if (launch === null) throw new Error("Badminton clear exceeds launch speed.");
   return launch;
 }
@@ -170,7 +159,7 @@ export function planShot(
   if (!serving && player.swingShot === "DROP") {
     // Restore the 1.2.0 arc: receivers can approach from the backcourt,
     // and a forecourt drop exposes a descending high contact for a smash.
-    const launch = flight(state, shuttle, "DROP", mirror(620_000), 68);
+    const launch = flight(shuttle, "DROP", mirror(620_000), 68);
     if (launch !== null) return launch;
   }
   if (
@@ -186,14 +175,14 @@ export function planShot(
     const aim = player.controls.move * facing;
     const target = aim > 0 ? 670_000 : aim < 0 ? 870_000 : 770_000;
     for (let ticks = 24; ticks <= 44; ticks += 1) {
-      const launch = flight(state, shuttle, "SMASH", mirror(target), ticks);
+      const launch = flight(shuttle, "SMASH", mirror(target), ticks);
       if (
         launch !== null &&
         launch.velocityY >= 0 &&
-        clearsNet(shuttle, launch, PHYSICS.smashNetClearance)
+        clearsNet(shuttle, launch, ticks, PHYSICS.smashNetClearance)
       )
         return launch;
     }
   }
-  return clear(state, mirror(870_000));
+  return clear(shuttle, mirror(870_000));
 }

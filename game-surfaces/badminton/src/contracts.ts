@@ -8,10 +8,11 @@ const integer = z.number().int();
 const slot = z.string().min(1).max(128);
 const side = z.enum(["LEFT", "RIGHT"]);
 const targetScore = z.union([z.literal(7), z.literal(11), z.literal(21)]);
+const speedLevel = z.union([z.literal(1), z.literal(2), z.literal(3)]);
 const shot = z.enum(["NONE", "CLEAR", "DROP", "SMASH"]);
 const scores = z.tuple([integer.min(0).max(30), integer.min(0).max(30)]);
 const starter = z.enum(["OWNER", "NON_OWNER", "RANDOM", "FIXED"]);
-const config = z.object({ targetScore }).strict();
+const config = z.object({ targetScore, speedLevel: speedLevel.optional() }).strict();
 
 export const setupViewSchema = z
   .object({
@@ -158,6 +159,7 @@ export const setupIntentSchema = z.discriminatedUnion("type", [
     })
     .strict(),
   z.object({ type: z.literal("SET_TARGET_SCORE"), targetScore }).strict(),
+  z.object({ type: z.literal("SET_SPEED_LEVEL"), speedLevel }).strict(),
 ]);
 export const playIntentSchema = z.discriminatedUnion("type", [
   z
@@ -179,7 +181,7 @@ export type PlayIntent = z.infer<typeof playIntentSchema>;
 export type ControlIntent = Extract<PlayIntent, { type: "CONTROL" }>;
 
 export function parsePlayView(input: unknown, gameVersion: string): PlayView {
-  if (["1.1.0", "1.2.0", "1.3.0", "1.4.0"].includes(gameVersion)) {
+  if (["1.1.0", "1.2.0", "1.3.0", "1.4.0", "1.5.0"].includes(gameVersion)) {
     const view = playViewSchema.parse(input);
     if (view.court.netTop !== (gameVersion === "1.1.0" ? 340_000 : 370_000))
       throw new Error("Badminton court does not match the exact version.");
@@ -210,7 +212,7 @@ export function encodePlayIntent(
   input: PlayIntent,
   gameVersion: string,
 ): unknown {
-  if (["1.1.0", "1.2.0", "1.3.0", "1.4.0"].includes(gameVersion))
+  if (["1.1.0", "1.2.0", "1.3.0", "1.4.0", "1.5.0"].includes(gameVersion))
     return playIntentSchema.parse(input);
   if (gameVersion !== "1.0.0")
     throw new Error("Unsupported badminton version.");

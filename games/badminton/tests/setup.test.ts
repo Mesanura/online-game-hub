@@ -13,7 +13,7 @@ const slots = [
 ] satisfies SetupSlot[];
 const initial = () =>
   setup.initialize({
-    source: { kind: "defaults", config: { targetScore: 7 } },
+    source: { kind: "defaults", config: { targetScore: 7, speedLevel: 1 } },
     slots,
   });
 
@@ -21,7 +21,7 @@ describe("badminton game-owned setup", () => {
   it("defaults to a ready-to-confirm short match with the owner serving on the left", () => {
     const state = initial();
     expect(state).toEqual({
-      config: { targetScore: 7 },
+      config: { targetScore: 7, speedLevel: 1 },
       starter: "OWNER",
       fixedStarterSlotId: null,
     });
@@ -75,6 +75,21 @@ describe("badminton game-owned setup", () => {
         action: { type: "SELECT_STARTER", starter: "NON_OWNER" },
       }),
     ).toMatchObject({ status: "accepted", state: { starter: "NON_OWNER" } });
+    expect(
+      setup.transition({
+        ...context,
+        action: { type: "SET_SPEED_LEVEL", speedLevel: 3 },
+      }),
+    ).toMatchObject({
+      status: "accepted",
+      state: { config: { targetScore: 7, speedLevel: 3 } },
+    });
+    expect(
+      setup.transition({
+        ...context,
+        action: { type: "SET_SPEED_LEVEL", speedLevel: 1 },
+      }),
+    ).toEqual({ status: "rejected", code: "SETUP_UNCHANGED" });
   });
 
   it.each([
@@ -109,7 +124,7 @@ describe("badminton game-owned setup", () => {
     const state = badmintonSetupStateSchema.parse({
       ...initial(),
       starter: "RANDOM",
-      config: { targetScore: 21 },
+      config: { targetScore: 21, speedLevel: 3 },
     });
     const rng = Object.freeze(createSetupRng("badminton-setup-seed"));
     const first = setup.finalize({ state, slots, rng });
